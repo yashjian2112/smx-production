@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma generate)",
+      "Bash(npx prisma db push)",
+      "Bash(nc -zv aws-0-us-east-1.pooler.supabase.com 5432)",
+      "Bash(nc -zv db.valzrbhtbwhrqwecgrpg.supabase.co 5432)",
+      "Bash(npm run build)",
+      "Bash(cat /Users/mr.yash/Desktop/production/app/api/units/[id]/route.ts)",
+      "Bash(cat /Users/mr.yash/Desktop/production/app/api/units/[id]/approve/route.ts)",
+      "Bash(cat /Users/mr.yash/Desktop/production/app/api/units/[id]/assign/route.ts)",
+      "Bash(cat /Users/mr.yash/Desktop/production/app/api/units/[id]/qc/route.ts)",
+      "Bash(git -C /Users/mr.yash/Desktop/production status)",
+      "Bash(git init)",
+      "Bash(git add .)",
+      "Bash(git commit -m \"Initial SMX Drives production tracker - Next.js 14, Prisma, Supabase, JWT auth\")"
+    ]
+  }
+}

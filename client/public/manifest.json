@@ -1,0 +1,10 @@
+{
+  "name": "Production Tracker",
+  "short_name": "ProdTracker",
+  "description": "Track employee units per day and controller serial numbers",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary"
+}

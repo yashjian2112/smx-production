@@ -1,0 +1,285 @@
+// SMX Drives - Production Traceability & Workforce Performance
+// PostgreSQL schema - permanent logs, 5+ year retention
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ----- Auth & Users -----
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash String   @map("password_hash")
+  name          String
+  role          Role     @default(PRODUCTION_EMPLOYEE)
+  active        Boolean  @default(true)
+  stagePermissions String? @map("stage_permissions") // JSON array of stage IDs user can work on
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  assignedStages    StageAssignment[]
+  stageLogs         StageLog[]
+  qcRecords         QCRecord[]
+  reworkRecords     ReworkRecord[]
+  timelineLogs      TimelineLog[]
+  approvedBy        StageLog[]       @relation("ApprovedBy")
+  performance       UserPerformanceSummary[]
+  auditLogs         AuditLog[]
+}
+
+enum Role {
+  ADMIN
+  PRODUCTION_MANAGER
+  PRODUCTION_EMPLOYEE
+}
+
+// ----- Products / Models -----
+model Product {
+  id          String   @id @default(cuid())
+  code        String   @unique  // e.g. 1000 for SMX1000
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  orders      Order[]
+  units       ControllerUnit[]
+}
+
+// ----- Orders -----
+model Order {
+  id          String    @id @default(cuid())
+  orderNumber String    @unique @map("order_number")
+  productId   String    @map("product_id")
+  quantity    Int
+  dueDate     DateTime? @map("due_date")
+  priority    Int       @default(0)  // higher = more urgent
+  status      OrderStatus @default(ACTIVE)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdById String?   @map("created_by_id")
+
+  product Product @relation(fields: [productId], references: [id])
+  units   ControllerUnit[]
+}
+
+enum OrderStatus {
+  ACTIVE
+  HOLD
+  CANCELLED
+  CLOSED
+}
+
+// ----- Controller Unit (one per serial) -----
+model ControllerUnit {
+  id              String    @id @default(cuid())
+  serialNumber    String    @unique @map("serial_number")  // SMX100026001
+  orderId         String    @map("order_id")
+  productId       String    @map("product_id")
+  currentStage    StageType @map("current_stage")
+  currentStatus   UnitStatus @map("current_status") @default(PENDING)
+  firmwareVersion String?   @map("firmware_version")
+  softwareVersion String?   @map("software_version")
+  readyForDispatch Boolean  @default(false) @map("ready_for_dispatch")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  order       Order    @relation(fields: [orderId], references: [id])
+  product     Product  @relation(fields: [productId], references: [id])
+  assignments StageAssignment[]
+  stageLogs   StageLog[]
+  qcRecords   QCRecord[]
+  reworkRecords ReworkRecord[]
+  timelineLogs TimelineLog[]
+}
+
+enum StageType {
+  POWERSTAGE_MANUFACTURING
+  BRAINBOARD_MANUFACTURING
+  CONTROLLER_ASSEMBLY
+  QC_AND_SOFTWARE
+  REWORK
+  FINAL_ASSEMBLY
+}
+
+enum UnitStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  WAITING_APPROVAL
+  APPROVED
+  REJECTED_BACK
+  BLOCKED
+}
+
+// ----- Stage assignment (who is assigned to this unit at this stage) -----
+model StageAssignment {
+  id         String   @id @default(cuid())
+  unitId     String   @map("unit_id")
+  userId     String   @map("user_id")
+  stage      StageType
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  unit ControllerUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  user User            @relation(fields: [userId], references: [id])
+  @@unique([unitId, stage])
+  @@map("stage_assignments")
+}
+
+// ----- Stage log (each time unit moves / status changes at a stage) -----
+model StageLog {
+  id          String    @id @default(cuid())
+  unitId      String    @map("unit_id")
+  userId      String?   @map("user_id")
+  stage       StageType
+  statusFrom  UnitStatus? @map("status_from")
+  statusTo    UnitStatus  @map("status_to")
+  approvedById String?   @map("approved_by_id")
+  remarks     String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  unit        ControllerUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  user        User?          @relation(fields: [userId], references: [id])
+  approvedBy  User?          @relation("ApprovedBy", fields: [approvedById], references: [id])
+  @@map("stage_logs")
+}
+
+// ----- QC records (pass/fail, detected at stage, source stage) -----
+model QCRecord {
+  id             String   @id @default(cuid())
+  unitId         String   @map("unit_id")
+  userId         String?  @map("user_id")
+  result         QCResult  // PASS, FAIL
+  detectedAtStage StageType @map("detected_at_stage")  // always QC_AND_SOFTWARE for now
+  sourceStage    StageType? @map("source_stage")       // root cause stage
+  issueCategoryId String?  @map("issue_category_id")
+  remarks        String?
+  firmwareVersion String? @map("firmware_version")
+  softwareVersion String? @map("software_version")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  unit           ControllerUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  user           User?          @relation(fields: [userId], references: [id])
+  issueCategory  IssueCategory? @relation(fields: [issueCategoryId], references: [id])
+  @@map("qc_records")
+}
+
+enum QCResult {
+  PASS
+  FAIL
+}
+
+// ----- Rework -----
+model ReworkRecord {
+  id              String   @id @default(cuid())
+  unitId          String   @map("unit_id")
+  assignedUserId  String?  @map("assigned_user_id")
+  rootCauseStage  StageType? @map("root_cause_stage")
+  rootCauseCategoryId String? @map("root_cause_category_id")
+  correctiveAction String? @map("corrective_action")
+  cycleCount      Int      @default(1) @map("cycle_count")
+  status          ReworkStatus @default(OPEN)
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  unit        ControllerUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  assignedUser User?         @relation(fields: [assignedUserId], references: [id])
+  rootCauseCategory RootCauseCategory? @relation(fields: [rootCauseCategoryId], references: [id])
+  @@map("rework_records")
+}
+
+enum ReworkStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  SENT_TO_QC
+}
+
+// ----- Timeline (permanent audit - never delete) -----
+model TimelineLog {
+  id         String   @id @default(cuid())
+  unitId     String?  @map("unit_id")
+  orderId    String?  @map("order_id")
+  userId     String?  @map("user_id")
+  action     String
+  stage      StageType?
+  statusFrom UnitStatus?
+  statusTo   UnitStatus?
+  remarks    String?
+  metadata   String?  // JSON for extra context
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  unit  ControllerUnit? @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  user  User?           @relation(fields: [userId], references: [id])
+  @@map("timeline_logs")
+}
+
+// ----- Categories (settings) -----
+model IssueCategory {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  qcRecords QCRecord[]
+  @@map("issue_categories")
+}
+
+model RootCauseCategory {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  reworkRecords ReworkRecord[]
+  @@map("root_cause_categories")
+}
+
+// ----- User performance (computed/cached scores) -----
+model UserPerformanceSummary {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  periodFrom        DateTime @map("period_from")
+  periodTo          DateTime @map("period_to")
+  score             Float    // 0-100
+  onTimeScore       Float    @map("on_time_score")
+  productivityScore Float    @map("productivity_score")
+  qualityScore      Float    @map("quality_score")
+  disciplineScore   Float    @map("discipline_score")
+  assignedCount     Int      @map("assigned_count")
+  completedCount    Int      @map("completed_count")
+  faultLinkedCount  Int      @map("fault_linked_count")
+  reworkLinkedCount Int      @map("rework_linked_count")
+  delayCount        Int      @map("delay_count")
+  avgCompletionMinutes Int?  @map("avg_completion_minutes")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, periodFrom, periodTo])
+  @@map("user_performance_summaries")
+}
+
+// ----- Audit (admin actions, user management, settings) -----
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  action    String
+  entity    String?
+  entityId  String?  @map("entity_id")
+  details   String?  // JSON
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+  @@map("audit_logs")
+}
