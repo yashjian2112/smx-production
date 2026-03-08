@@ -65,7 +65,7 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
   return (
     <div className="space-y-6 pb-8">
       <div className="flex items-center gap-2">
-        <Link href="/dashboard" className="text-zinc-500 hover:text-white text-sm">← Back</Link>
+        <Link href="/orders" className="text-zinc-500 hover:text-white text-sm">← Orders</Link>
       </div>
 
       {/* Unit header */}
@@ -89,24 +89,6 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
       <div className="card p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-medium text-sm">Stage Barcodes</h3>
-          <div className="flex gap-2">
-            <Link
-              href={`/print/unit/${unit.id}`}
-              target="_blank"
-              className="text-xs text-sky-400 hover:text-sky-300"
-            >
-              Print label ↗
-            </Link>
-            {unit.qcBarcode && (
-              <Link
-                href={`/print/qc/${unit.id}`}
-                target="_blank"
-                className="text-xs text-sky-400 hover:text-sky-300"
-              >
-                Print QC ↗
-              </Link>
-            )}
-          </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           {stageBarcodes.map(({ label, value }) => (
@@ -162,12 +144,13 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {unit.qcBarcode && (
+      {/* QC test report — only visible once QC has been performed */}
+      {unit.qcBarcode && unit.qcRecords && unit.qcRecords.length > 0 && (
         <QcReportPrint
           serialNumber={unit.serialNumber}
           qcBarcode={unit.qcBarcode}
-          result={unit.qcRecords?.[0]?.result ?? '—'}
-          date={unit.qcRecords?.[0] ? new Date(unit.qcRecords[0].createdAt).toLocaleString() : '—'}
+          result={unit.qcRecords[0].result ?? '—'}
+          date={new Date(unit.qcRecords[0].createdAt).toLocaleString()}
         />
       )}
 

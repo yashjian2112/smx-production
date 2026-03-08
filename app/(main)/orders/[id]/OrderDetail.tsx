@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
@@ -31,6 +30,12 @@ const STATUS_STYLES: Record<string, { dot: string; text: string }> = {
   BLOCKED:     { dot: 'bg-red-500',   text: 'text-red-400'   },
 };
 
+// Stages employees are allowed to scan and work on
+const EMPLOYEE_ACCESSIBLE_STAGES = new Set([
+  'POWERSTAGE_MANUFACTURING',
+  'BRAINBOARD_MANUFACTURING',
+]);
+
 function MiniProgress({ units }: { units: UnitData[] }) {
   const total = units.length;
   if (total === 0) return null;
@@ -49,12 +54,22 @@ function MiniProgress({ units }: { units: UnitData[] }) {
   );
 }
 
+function LockIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-zinc-600">
+      <rect x="3" y="11" width="18" height="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
 function StageCard({
   stage,
   isExpanded,
   onToggle,
   onScanStart,
   isEmployee,
+  isAccessible,        // employee can scan this stage
   accent = 'blue',
 }: {
   stage: StageGroup;
@@ -62,12 +77,16 @@ function StageCard({
   onToggle: () => void;
   onScanStart: () => void;
   isEmployee: boolean;
+  isAccessible: boolean;
   accent?: 'blue' | 'amber' | 'green' | 'red';
 }) {
   const total = stage.units.length;
   const completed = stage.units.filter((u) => u.currentStatus === 'COMPLETED').length;
   const inProgress = stage.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
   const blocked = stage.units.filter((u) => u.currentStatus === 'BLOCKED').length;
+
+  // Locked for this employee = employee logged in but not an accessible stage
+  const isLocked = isEmployee && !isAccessible;
 
   const colors = {
     blue:  { border: 'rgba(56,189,248,0.2)',  title: 'text-sky-400',   scanBg: 'rgba(14,165,233,0.15)', scanBorder: 'rgba(14,165,233,0.3)',  scanText: '#38bdf8' },
@@ -76,38 +95,56 @@ function StageCard({
     red:   { border: 'rgba(239,68,68,0.2)',   title: 'text-red-400',   scanBg: 'rgba(239,68,68,0.12)', scanBorder: 'rgba(239,68,68,0.3)',   scanText: '#f87171' },
   }[accent];
 
-  if (total === 0) return null;
+  const lockedBorder = 'rgba(255,255,255,0.06)';
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${colors.border}`, background: 'rgba(255,255,255,0.02)' }}>
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{
+        border: `1px solid ${isLocked ? lockedBorder : colors.border}`,
+        background: isLocked ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.02)',
+        opacity: isLocked ? 0.65 : 1,
+      }}
+    >
       {/* Header row */}
       <div className="flex items-stretch">
-        {/* Info section (expand/collapse) */}
+        {/* Info section — manager can expand; employees see nothing clickable when locked */}
         <button
           type="button"
-          onClick={onToggle}
-          className="flex-1 flex items-center justify-between p-3 hover:bg-white/5 transition-colors text-left min-w-0"
+          onClick={!isLocked ? onToggle : undefined}
+          className={`flex-1 flex items-center justify-between p-3 text-left min-w-0 ${
+            !isLocked ? 'hover:bg-white/5 transition-colors cursor-pointer' : 'cursor-default'
+          }`}
         >
           <div className="flex-1 min-w-0 pr-2">
-            <p className={`text-sm font-semibold ${colors.title}`}>{stage.label}</p>
-            <p className="text-[11px] text-zinc-500 mt-0.5">
-              {completed}/{total} done
-              {inProgress > 0 && ` · ${inProgress} active`}
-              {blocked > 0 && <span className="text-red-400"> · {blocked} blocked</span>}
-            </p>
-            <MiniProgress units={stage.units} />
+            <p className={`text-sm font-semibold ${isLocked ? 'text-zinc-500' : colors.title}`}>{stage.label}</p>
+            {total > 0 ? (
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                {completed}/{total} done
+                {inProgress > 0 && ` · ${inProgress} active`}
+                {blocked > 0 && <span className="text-red-400"> · {blocked} blocked</span>}
+              </p>
+            ) : (
+              <p className="text-[11px] text-zinc-600 mt-0.5">No units at this stage yet</p>
+            )}
+            {!isLocked && <MiniProgress units={stage.units} />}
           </div>
-          <svg
-            className={`text-zinc-600 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-            width="14" height="14" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-          >
-            <path d="M9 18l6-6-6-6" />
-          </svg>
+          {/* Expand chevron for managers; lock icon for locked employee stages */}
+          {isLocked ? (
+            <LockIcon />
+          ) : (
+            <svg
+              className={`text-zinc-600 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+              width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+            >
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          )}
         </button>
 
-        {/* Scan button (employees only) */}
-        {isEmployee && (
+        {/* Right side: scan button (employees on accessible stages only) */}
+        {isEmployee && isAccessible && total > 0 && (
           <button
             type="button"
             onClick={onScanStart}
@@ -119,7 +156,6 @@ function StageCard({
               minWidth: 56,
             }}
           >
-            {/* Barcode scan icon */}
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M3 7V5a2 2 0 0 1 2-2h2" />
               <path d="M17 3h2a2 2 0 0 1 2 2v2" />
@@ -135,15 +171,15 @@ function StageCard({
         )}
       </div>
 
-      {/* Expanded unit list */}
-      {isExpanded && (
+      {/* Expanded unit list — managers only (employees scan to find their unit) */}
+      {isExpanded && !isEmployee && total > 0 && (
         <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <ul>
             {stage.units.map((u) => {
               const s = STATUS_STYLES[u.currentStatus] ?? STATUS_STYLES.PENDING;
               return (
                 <li key={u.id} className="border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                  <Link
+                  <a
                     href={`/units/${u.id}`}
                     className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors"
                   >
@@ -155,7 +191,7 @@ function StageCard({
                     <svg className="text-zinc-700 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M9 18l6-6-6-6" />
                     </svg>
-                  </Link>
+                  </a>
                 </li>
               );
             })}
@@ -181,17 +217,11 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
   const faStage  = stages.find((s) => s.key === 'FINAL_ASSEMBLY');
   const rwStage  = stages.find((s) => s.key === 'REWORK');
 
-  const mfgPending =
-    (psStage?.units.filter((u) => u.currentStatus !== 'COMPLETED').length ?? 0) +
-    (bbStage?.units.filter((u) => u.currentStatus !== 'COMPLETED').length ?? 0);
-
-  // Called when employee scans a barcode from a stage card
   async function handleScan(code: string) {
     setScanning(null);
     setScanStatus({ msg: 'Looking up unit…', type: 'info' });
 
     try {
-      // Try serial lookup first, then barcode lookup
       let res = await fetch(`/api/units/by-serial/${encodeURIComponent(code)}`);
       let data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -206,7 +236,7 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
 
       const unitId: string = data.id;
 
-      // Auto-start: mark unit as IN_PROGRESS if it's PENDING
+      // Auto-start: mark unit IN_PROGRESS if still PENDING
       if (data.currentStatus === 'PENDING') {
         await fetch(`/api/units/${unitId}`, {
           method: 'PATCH',
@@ -222,7 +252,6 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
     }
   }
 
-  const hasManufacturing = (psStage?.units.length ?? 0) > 0 || (bbStage?.units.length ?? 0) > 0;
   const sequential = [
     asmStage && { stage: asmStage, accent: 'blue'  as const },
     qcStage  && { stage: qcStage,  accent: 'amber' as const },
@@ -254,19 +283,15 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
           >
             {scanStatus.msg}
             {scanStatus.type === 'error' && (
-              <button
-                type="button"
-                onClick={() => setScanStatus(null)}
-                className="ml-3 underline opacity-70"
-              >
+              <button type="button" onClick={() => setScanStatus(null)} className="ml-3 underline opacity-70">
                 Dismiss
               </button>
             )}
           </div>
         )}
 
-        {/* Manufacturing Phase (Parallel PS + BB) */}
-        {hasManufacturing && (
+        {/* ── Manufacturing Phase (Parallel PS + BB) ── */}
+        {(psStage || bbStage) && (
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Manufacturing</span>
@@ -274,39 +299,33 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
               <span className="text-[11px] text-zinc-600">Parallel</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {psStage && psStage.units.length > 0 && (
+              {psStage && (
                 <StageCard
                   stage={psStage}
                   isExpanded={expanded === psStage.key}
                   onToggle={() => toggle(psStage.key)}
                   onScanStart={() => setScanning({ stageKey: psStage.key, stageLabel: psStage.label })}
                   isEmployee={isEmployee}
+                  isAccessible={EMPLOYEE_ACCESSIBLE_STAGES.has(psStage.key)}
                   accent="blue"
                 />
               )}
-              {bbStage && bbStage.units.length > 0 && (
+              {bbStage && (
                 <StageCard
                   stage={bbStage}
                   isExpanded={expanded === bbStage.key}
                   onToggle={() => toggle(bbStage.key)}
                   onScanStart={() => setScanning({ stageKey: bbStage.key, stageLabel: bbStage.label })}
                   isEmployee={isEmployee}
+                  isAccessible={EMPLOYEE_ACCESSIBLE_STAGES.has(bbStage.key)}
                   accent="blue"
                 />
               )}
             </div>
-            {mfgPending > 0 && asmStage && asmStage.units.length > 0 && (
-              <p className="text-xs text-amber-400 mt-2 flex items-center gap-1.5">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                {mfgPending} unit{mfgPending !== 1 ? 's' : ''} still in manufacturing — assembly locked for those units
-              </p>
-            )}
           </div>
         )}
 
-        {/* Sequential stages */}
+        {/* ── Sequential Production Flow ── */}
         {sequential.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -322,6 +341,7 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
                   onToggle={() => toggle(stage.key)}
                   onScanStart={() => setScanning({ stageKey: stage.key, stageLabel: stage.label })}
                   isEmployee={isEmployee}
+                  isAccessible={EMPLOYEE_ACCESSIBLE_STAGES.has(stage.key)}
                   accent={accent}
                 />
               ))}
@@ -329,7 +349,7 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
           </div>
         )}
 
-        {/* Rework */}
+        {/* ── Rework (only if units are in rework) ── */}
         {rwStage && rwStage.units.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -342,15 +362,15 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
               onToggle={() => toggle(rwStage.key)}
               onScanStart={() => setScanning({ stageKey: rwStage.key, stageLabel: rwStage.label })}
               isEmployee={isEmployee}
+              isAccessible={false}
               accent="red"
             />
           </div>
         )}
 
-        {/* All stages empty */}
-        {stages.every((s) => s.units.length === 0) && (
+        {totalUnits === 0 && (
           <div className="card p-6 text-center">
-            <p className="text-zinc-500 text-sm">No active units in this order.</p>
+            <p className="text-zinc-500 text-sm">No units in this order yet.</p>
           </div>
         )}
       </div>

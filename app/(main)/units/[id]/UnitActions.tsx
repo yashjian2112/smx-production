@@ -10,11 +10,16 @@ type Unit = {
   currentStatus: string;
 };
 
-export function UnitActions({ unit, sessionRole: _sessionRole }: { unit: Unit; sessionRole: string }) {
+export function UnitActions({ unit, sessionRole }: { unit: Unit; sessionRole: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState('');
   const [remarks, setRemarks] = useState('');
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+
+  const isEmployee = sessionRole === 'PRODUCTION_EMPLOYEE';
+
+  // Employees cannot manually override status — the work flow handles it automatically
+  if (isEmployee) return null;
 
   async function runAction(action: string) {
     setPendingAction(null);
@@ -46,25 +51,25 @@ export function UnitActions({ unit, sessionRole: _sessionRole }: { unit: Unit; s
             type="button"
             onClick={() => setPendingAction('IN_PROGRESS')}
             disabled={!!loading}
-            className="py-2 px-4 rounded-lg bg-amber-600 hover:bg-amber-500 tap-target disabled:opacity-50"
+            className="py-2 px-4 rounded-lg bg-amber-600 hover:bg-amber-500 tap-target disabled:opacity-50 text-sm text-white"
           >
-            In progress
+            {loading === 'IN_PROGRESS' ? 'Saving…' : 'In Progress'}
           </button>
           <button
             type="button"
             onClick={() => setPendingAction('COMPLETED')}
             disabled={!!loading}
-            className="py-2 px-4 rounded-lg bg-sky-600 hover:bg-sky-500 tap-target disabled:opacity-50"
+            className="py-2 px-4 rounded-lg bg-sky-600 hover:bg-sky-500 tap-target disabled:opacity-50 text-sm text-white"
           >
-            Complete
+            {loading === 'COMPLETED' ? 'Saving…' : 'Complete'}
           </button>
           <button
             type="button"
             onClick={() => setPendingAction('BLOCKED')}
             disabled={!!loading}
-            className="py-2 px-4 rounded-lg border border-red-500 text-red-400 hover:bg-red-500/20 tap-target disabled:opacity-50"
+            className="py-2 px-4 rounded-lg border border-red-500 text-red-400 hover:bg-red-500/20 tap-target disabled:opacity-50 text-sm"
           >
-            Block
+            {loading === 'BLOCKED' ? 'Saving…' : 'Block'}
           </button>
         </div>
       )}
