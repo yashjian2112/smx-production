@@ -13,6 +13,58 @@ const STAGE_CONFIG: { key: string; label: string }[] = [
   { key: 'REWORK',                   label: 'Rework' },
 ];
 
+// Ordered pipeline (REWORK is a side-branch, not in the main sequence)
+const STAGE_PIPELINE = [
+  'POWERSTAGE_MANUFACTURING',
+  'BRAINBOARD_MANUFACTURING',
+  'CONTROLLER_ASSEMBLY',
+  'QC_AND_SOFTWARE',
+  'FINAL_ASSEMBLY',
+];
+
+// Which DB barcode field corresponds to each stage
+const STAGE_BARCODE_FIELD: Record<string, 'powerstageBarcode' | 'brainboardBarcode' | 'qcBarcode' | 'finalAssemblyBarcode' | null> = {
+  POWERSTAGE_MANUFACTURING: 'powerstageBarcode',
+  BRAINBOARD_MANUFACTURING: 'brainboardBarcode',
+  CONTROLLER_ASSEMBLY:      null,
+  QC_AND_SOFTWARE:          'qcBarcode',
+  FINAL_ASSEMBLY:           'finalAssemblyBarcode',
+  REWORK:                   null,
+};
+
+type UnitRow = {
+  id: string;
+  serialNumber: string;
+  currentStage: string;
+  currentStatus: string;
+  powerstageBarcode: string | null;
+  brainboardBarcode: string | null;
+  qcBarcode: string | null;
+  finalAssemblyBarcode: string | null;
+};
+
+/**
+ * Derive what status a unit has AT a given stage — even if it has already moved past it.
+ *   COMPLETED  → unit has passed through this stage
+ *   <actual>   → unit is currently at this stage (IN_PROGRESS / PENDING / etc.)
+ *   PENDING    → unit hasn't reached this stage yet
+ *   BLOCKED    → unit is in REWORK (blocked from all normal stages)
+ */
+function derivedStageStatus(unit: UnitRow, stageKey: string): string {
+  if (unit.currentStage === 'REWORK') {
+    return stageKey === 'REWORK' ? unit.currentStatus : 'BLOCKED';
+  }
+  if (stageKey === 'REWORK') return 'PENDING';
+
+  const curIdx = STAGE_PIPELINE.indexOf(unit.currentStage);
+  const tarIdx = STAGE_PIPELINE.indexOf(stageKey);
+
+  if (curIdx < 0 || tarIdx < 0) return unit.currentStatus;
+  if (tarIdx < curIdx) return 'COMPLETED';          // already passed this stage
+  if (tarIdx === curIdx) return unit.currentStatus;  // currently here
+  return 'PENDING';                                  // not yet reached
+}
+
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) redirect('/login');
@@ -30,6 +82,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           serialNumber: true,
           currentStage: true,
           currentStatus: true,
+          powerstageBarcode: true,
+          brainboardBarcode: true,
+          qcBarcode: true,
+          finalAssemblyBarcode: true,
         },
         orderBy: { serialNumber: 'asc' },
       },
@@ -37,24 +93,42 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   });
   if (!order) notFound();
 
-  // Group units by their current stage
-  const unitsByStage: Record<string, typeof order.units> = {};
-  for (const u of order.units) {
-    if (!unitsByStage[u.currentStage]) unitsByStage[u.currentStage] = [];
-    unitsByStage[u.currentStage].push(u);
-  }
+  /**
+   * Each stage shows ALL units (not just the ones currently there).
+   * Each unit in a stage has:
+   *   barcodeForStage — the physical label/QR value for that station
+   *   derivedStatus   — reflects progress relative to pipeline position
+   *
+   * REWORK stage is the only exception: shows only units currently in rework.
+   */
+  const stages: StageGroup[] = STAGE_CONFIG.map(({ key, label }) => {
+    const unitsForStage =
+      key === 'REWORK'
+        ? order.units.filter((u) => u.currentStage === 'REWORK')
+        : order.units;
 
-  const stages: StageGroup[] = STAGE_CONFIG.map(({ key, label }) => ({
-    key,
-    label,
-    units: unitsByStage[key] ?? [],
-  }));
+    return {
+      key,
+      label,
+      units: unitsForStage.map((u) => {
+        const field = STAGE_BARCODE_FIELD[key];
+        return {
+          id: u.id,
+          serialNumber: u.serialNumber,
+          currentStage: u.currentStage,
+          currentStatus: u.currentStatus,
+          barcodeForStage: field ? (u[field] ?? null) : null,
+          derivedStatus: derivedStageStatus(u, key),
+        };
+      }),
+    };
+  });
 
-  const total = order.units.length;
-  const completed = order.units.filter((u) => u.currentStatus === 'COMPLETED').length;
+  const total      = order.units.length;
+  const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED').length;
   const inProgress = order.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
-  const blocked = order.units.filter((u) => u.currentStatus === 'BLOCKED').length;
-  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const blocked    = order.units.filter((u) => u.currentStatus === 'BLOCKED').length;
+  const pct        = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   const isNew = Date.now() - order.createdAt.getTime() < 24 * 60 * 60 * 1000;
 

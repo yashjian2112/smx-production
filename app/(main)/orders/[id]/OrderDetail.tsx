@@ -9,6 +9,8 @@ export type UnitData = {
   serialNumber: string;
   currentStage: string;
   currentStatus: string;
+  barcodeForStage?: string | null;   // the physical label barcode for this station
+  derivedStatus?: string;            // COMPLETED / IN_PROGRESS / PENDING / BLOCKED / REWORK
 };
 
 export type StageGroup = {
@@ -23,11 +25,12 @@ type Props = {
   totalUnits: number;
 };
 
-const STATUS_STYLES: Record<string, { dot: string; text: string }> = {
-  PENDING:     { dot: 'bg-zinc-500',  text: 'text-zinc-400'  },
-  IN_PROGRESS: { dot: 'bg-amber-400', text: 'text-amber-400' },
-  COMPLETED:   { dot: 'bg-green-400', text: 'text-green-400' },
-  BLOCKED:     { dot: 'bg-red-500',   text: 'text-red-400'   },
+const STATUS_STYLES: Record<string, { dot: string; text: string; label: string }> = {
+  PENDING:     { dot: 'bg-zinc-600',   text: 'text-zinc-500',   label: 'Pending'     },
+  IN_PROGRESS: { dot: 'bg-amber-400',  text: 'text-amber-400',  label: 'In Progress' },
+  COMPLETED:   { dot: 'bg-green-400',  text: 'text-green-400',  label: 'Done'        },
+  BLOCKED:     { dot: 'bg-red-500',    text: 'text-red-400',    label: 'Blocked'     },
+  REWORK:      { dot: 'bg-orange-500', text: 'text-orange-400', label: 'Rework'      },
 };
 
 // Stages employees are allowed to scan and work on
@@ -39,7 +42,7 @@ const EMPLOYEE_ACCESSIBLE_STAGES = new Set([
 function MiniProgress({ units }: { units: UnitData[] }) {
   const total = units.length;
   if (total === 0) return null;
-  const done = units.filter((u) => u.currentStatus === 'COMPLETED').length;
+  const done = units.filter((u) => (u.derivedStatus ?? u.currentStatus) === 'COMPLETED').length;
   const pct = Math.round((done / total) * 100);
   return (
     <div className="mt-2">
@@ -69,7 +72,7 @@ function StageCard({
   onToggle,
   onScanStart,
   isEmployee,
-  isAccessible,        // employee can scan this stage
+  isAccessible,
   accent = 'blue',
 }: {
   stage: StageGroup;
@@ -80,12 +83,11 @@ function StageCard({
   isAccessible: boolean;
   accent?: 'blue' | 'amber' | 'green' | 'red';
 }) {
-  const total = stage.units.length;
-  const completed = stage.units.filter((u) => u.currentStatus === 'COMPLETED').length;
-  const inProgress = stage.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
-  const blocked = stage.units.filter((u) => u.currentStatus === 'BLOCKED').length;
+  const total      = stage.units.length;
+  const completed  = stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) === 'COMPLETED').length;
+  const inProgress = stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) === 'IN_PROGRESS').length;
+  const blocked    = stage.units.filter((u) => ['BLOCKED', 'REWORK'].includes(u.derivedStatus ?? u.currentStatus)).length;
 
-  // Locked for this employee = employee logged in but not an accessible stage
   const isLocked = isEmployee && !isAccessible;
 
   const colors = {
@@ -108,7 +110,6 @@ function StageCard({
     >
       {/* Header row */}
       <div className="flex items-stretch">
-        {/* Info section — manager can expand; employees see nothing clickable when locked */}
         <button
           type="button"
           onClick={!isLocked ? onToggle : undefined}
@@ -125,11 +126,10 @@ function StageCard({
                 {blocked > 0 && <span className="text-red-400"> · {blocked} blocked</span>}
               </p>
             ) : (
-              <p className="text-[11px] text-zinc-600 mt-0.5">No units at this stage yet</p>
+              <p className="text-[11px] text-zinc-600 mt-0.5">No units yet</p>
             )}
             {!isLocked && <MiniProgress units={stage.units} />}
           </div>
-          {/* Expand chevron for managers; lock icon for locked employee stages */}
           {isLocked ? (
             <LockIcon />
           ) : (
@@ -143,7 +143,7 @@ function StageCard({
           )}
         </button>
 
-        {/* Right side: scan button (employees on accessible stages only) */}
+        {/* Scan button — employees only on accessible stages */}
         {isEmployee && isAccessible && total > 0 && (
           <button
             type="button"
@@ -171,22 +171,26 @@ function StageCard({
         )}
       </div>
 
-      {/* Expanded unit list — managers only (employees scan to find their unit) */}
+      {/* Expanded unit list — managers only */}
       {isExpanded && !isEmployee && total > 0 && (
         <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <ul>
             {stage.units.map((u) => {
-              const s = STATUS_STYLES[u.currentStatus] ?? STATUS_STYLES.PENDING;
+              const status = u.derivedStatus ?? u.currentStatus;
+              const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
               return (
                 <li key={u.id} className="border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
                   <a
                     href={`/units/${u.id}`}
-                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors"
+                    className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/5 transition-colors"
                   >
                     <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
                     <span className="font-mono text-sky-400 text-sm flex-1 truncate">{u.serialNumber}</span>
-                    <span className={`text-[10px] font-semibold uppercase tracking-wider ${s.text}`}>
-                      {u.currentStatus.replace('_', ' ')}
+                    {u.barcodeForStage && (
+                      <span className="font-mono text-[10px] text-zinc-600 shrink-0 hidden sm:block">{u.barcodeForStage}</span>
+                    )}
+                    <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${s.text}`}>
+                      {s.label}
                     </span>
                     <svg className="text-zinc-700 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M9 18l6-6-6-6" />
@@ -230,7 +234,7 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
       }
 
       if (!res.ok || !data?.id) {
-        setScanStatus({ msg: `No unit found for barcode: ${code}`, type: 'error' });
+        setScanStatus({ msg: `No unit found for: ${code}`, type: 'error' });
         return;
       }
 
