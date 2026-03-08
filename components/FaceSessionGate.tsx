@@ -3,53 +3,24 @@
 import { useState, useEffect } from 'react';
 import { FaceGate } from './FaceGate';
 
-const STORAGE_KEY = 'smx_face_verified';
-const STORAGE_USER_KEY = 'smx_face_verified_user';
-const STORAGE_EXPIRY_KEY = 'smx_face_verified_expiry';
-const EXPIRY_MS = 8 * 60 * 60 * 1000; // 8 hours
-
 type GateState = 'checking' | 'not_enrolled' | 'needs_verify' | 'verified';
 
-function isVerifiedInStorage(userId: string): boolean {
-  try {
-    const verified = localStorage.getItem(STORAGE_KEY);
-    const storedUser = localStorage.getItem(STORAGE_USER_KEY);
-    const expiry = localStorage.getItem(STORAGE_EXPIRY_KEY);
-    if (verified !== '1' || storedUser !== userId) return false;
-    if (!expiry || Date.now() > parseInt(expiry, 10)) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function saveVerifiedToStorage(userId: string) {
-  try {
-    localStorage.setItem(STORAGE_KEY, '1');
-    localStorage.setItem(STORAGE_USER_KEY, userId);
-    localStorage.setItem(STORAGE_EXPIRY_KEY, String(Date.now() + EXPIRY_MS));
-  } catch { /* ignore */ }
-}
-
-function clearStorage() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(STORAGE_USER_KEY);
-    localStorage.removeItem(STORAGE_EXPIRY_KEY);
-  } catch { /* ignore */ }
-}
-
-export function FaceSessionGate({ children, userId }: { children: React.ReactNode; userId: string }) {
-  const [state, setState] = useState('checking' as GateState);
+export function FaceSessionGate({
+  children,
+  userId,
+  serverVerified,
+}: {
+  children: React.ReactNode;
+  userId: string;
+  serverVerified: boolean;
+}) {
+  // If the server already confirmed this user's face cookie, start as verified
+  const [state, setState] = useState(serverVerified ? ('verified' as GateState) : ('checking' as GateState));
 
   useEffect(() => {
-    // Already verified within the last 8 hours for this user — skip entirely
-    if (isVerifiedInStorage(userId)) {
-      setState('verified');
-      return;
-    }
-    // Different user or expired — clear stale data
-    clearStorage();
+    // Server already verified via cookie — nothing to do
+    if (serverVerified) return;
+
     // Check if this user has a face enrolled
     fetch('/api/me/face-descriptor')
       .then((r) => {
@@ -67,15 +38,15 @@ export function FaceSessionGate({ children, userId }: { children: React.ReactNod
         // Network error — let through
         setState('not_enrolled');
       });
-  }, [userId]);
+  }, [userId, serverVerified]);
 
-  function handleVerified() {
-    saveVerifiedToStorage(userId);
+  async function handleVerified() {
+    // Set server-side cookie (persists 8 hours, survives refresh/new tab)
+    await fetch('/api/me/face-verify', { method: 'POST' });
     setState('verified');
   }
 
-  // Always render children — FaceGate overlays on top (fixed inset-0) when needed.
-  // This eliminates the black-screen flash during the 'checking' phase.
+  // Always render children — FaceGate overlays on top when needed.
   return (
     <>
       {state === 'not_enrolled' && (
