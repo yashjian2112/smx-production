@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
-import { findUnitByBarcode, findComponentByBarcode } from '@/lib/barcode';
+import { findUnitByBarcode, findComponentByBarcode, STAGE_BARCODE_FIELD } from '@/lib/barcode';
 
-/** Cross-verify: lookup controller by any stage barcode (PS, BB, QC, or Final). Returns full unit with all stage barcodes and logs. */
+const STAGE_LABEL: Record<string, string> = {
+  POWERSTAGE_MANUFACTURING: 'Powerstage',
+  BRAINBOARD_MANUFACTURING: 'Brainboard',
+  CONTROLLER_ASSEMBLY:      'Assembly',
+  QC_AND_SOFTWARE:          'QC & Software',
+  FINAL_ASSEMBLY:           'Final Assembly',
+};
+
+/** Lookup controller by stage barcode.
+ *  Optional ?stage=STAGE_KEY restricts search to that stage's barcode field.
+ */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ barcode: string }> }
@@ -12,13 +22,25 @@ export async function GET(
     const barcode = decodeURIComponent((await params).barcode).trim();
     if (!barcode) return NextResponse.json({ error: 'Barcode required' }, { status: 400 });
 
-    const unit = await findUnitByBarcode(barcode);
+    const stage = req.nextUrl.searchParams.get('stage') ?? undefined;
+    const unit = await findUnitByBarcode(barcode, stage);
+
     if (!unit) {
-      // Check if the scanned barcode is a component barcode — give a helpful message
+      // If stage-specific search failed, check if the barcode exists in a DIFFERENT stage
+      if (stage && STAGE_BARCODE_FIELD[stage]) {
+        const anyUnit = await findUnitByBarcode(barcode); // search all stages
+        if (anyUnit) {
+          const stageLabel = STAGE_LABEL[stage] ?? stage;
+          return NextResponse.json({
+            error: `This barcode belongs to unit ${anyUnit.serialNumber} but is NOT a ${stageLabel} barcode. Please scan the correct ${stageLabel} label (e.g. C350PS26001 for Powerstage).`,
+          }, { status: 404 });
+        }
+      }
+      // Check if it's a component barcode
       const component = await findComponentByBarcode(barcode);
       if (component) {
         return NextResponse.json({
-          error: `"${barcode.toUpperCase()}" is a COMPONENT barcode (${component.name}), not a unit barcode. Unit barcodes include the production year — e.g. C350PS26001 for a C350 Powerstage unit. Please scan the unit's stage label.`,
+          error: `"${barcode.toUpperCase()}" is a COMPONENT barcode (${component.name}), not a unit barcode. Unit barcodes include the production year — e.g. C350PS26001 for Powerstage.`,
         }, { status: 404 });
       }
       return NextResponse.json({

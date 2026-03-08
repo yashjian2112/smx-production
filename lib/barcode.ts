@@ -109,18 +109,37 @@ export async function findComponentByBarcode(barcode: string) {
   });
 }
 
-/** Find unit by any stage barcode (cross-verify) */
-export async function findUnitByBarcode(barcode: string) {
+/** Map stage keys to their barcode DB field */
+export const STAGE_BARCODE_FIELD: Record<string, 'powerstageBarcode' | 'brainboardBarcode' | 'qcBarcode' | 'finalAssemblyBarcode' | null> = {
+  POWERSTAGE_MANUFACTURING:  'powerstageBarcode',
+  BRAINBOARD_MANUFACTURING:  'brainboardBarcode',
+  CONTROLLER_ASSEMBLY:       null,
+  QC_AND_SOFTWARE:           'qcBarcode',
+  FINAL_ASSEMBLY:            'finalAssemblyBarcode',
+  REWORK:                    null,
+};
+
+/** Find unit by stage barcode.
+ *  If stage is provided, only searches that stage's barcode field.
+ *  If no stage (or stage has no barcode field), searches all 4 fields.
+ */
+export async function findUnitByBarcode(barcode: string, stage?: string) {
   const trimmed = barcode.trim().toUpperCase();
+  const field = stage ? STAGE_BARCODE_FIELD[stage] : null;
+
+  const where = field
+    ? { [field]: { equals: trimmed, mode: 'insensitive' as const } }
+    : {
+        OR: [
+          { powerstageBarcode: { equals: trimmed, mode: 'insensitive' as const } },
+          { brainboardBarcode: { equals: trimmed, mode: 'insensitive' as const } },
+          { qcBarcode: { equals: trimmed, mode: 'insensitive' as const } },
+          { finalAssemblyBarcode: { equals: trimmed, mode: 'insensitive' as const } },
+        ],
+      };
+
   return prisma.controllerUnit.findFirst({
-    where: {
-      OR: [
-        { powerstageBarcode: { equals: trimmed, mode: 'insensitive' } },
-        { brainboardBarcode: { equals: trimmed, mode: 'insensitive' } },
-        { qcBarcode: { equals: trimmed, mode: 'insensitive' } },
-        { finalAssemblyBarcode: { equals: trimmed, mode: 'insensitive' } },
-      ],
-    },
+    where,
     include: {
       order: { include: { product: true } },
       product: true,

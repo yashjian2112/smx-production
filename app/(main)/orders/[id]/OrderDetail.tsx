@@ -225,19 +225,25 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
   const rwStage  = stages.find((s) => s.key === 'REWORK');
 
   async function handleScan(code: string) {
+    const currentStage = scanning; // capture before clearing
     setScanning(null);
     setScanStatus({ msg: 'Looking up unit…', type: 'info' });
 
     try {
+      // First try serial number lookup
       let res = await fetch(`/api/units/by-serial/${encodeURIComponent(code)}`);
       let data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        res = await fetch(`/api/units/by-barcode/${encodeURIComponent(code)}`);
+        // Try stage-specific barcode lookup (passes stageKey so API validates correct barcode type)
+        const stageParam = currentStage?.stageKey
+          ? `?stage=${encodeURIComponent(currentStage.stageKey)}`
+          : '';
+        res = await fetch(`/api/units/by-barcode/${encodeURIComponent(code)}${stageParam}`);
         data = await res.json().catch(() => ({}));
       }
 
       if (!res.ok || !data?.id) {
-        // Use the API's error message (includes smart component barcode detection)
         const apiMsg = data?.error || `No unit found for: ${code}`;
         setScanStatus({ msg: apiMsg, type: 'error' });
         return;

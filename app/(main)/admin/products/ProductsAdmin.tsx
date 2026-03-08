@@ -113,18 +113,6 @@ function StageSection({
               )}
             </div>
             <div className="flex gap-1 shrink-0">
-              {c.barcode && (
-                <a
-                  href={`/print/component/${c.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[10px] px-2 py-1 rounded text-sky-400 hover:text-sky-300"
-                  style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.15)' }}
-                  title="Print barcode stickers"
-                >
-                  Print
-                </a>
-              )}
               <button
                 onClick={() => deleteComponent(c.id)}
                 className="text-zinc-700 hover:text-red-400 p-1"
