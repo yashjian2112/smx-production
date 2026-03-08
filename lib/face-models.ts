@@ -25,8 +25,9 @@ export async function getFaceDescriptor(
   source: HTMLVideoElement | HTMLCanvasElement | HTMLImageElement
 ): Promise<Float32Array | null> {
   const faceapi = await import('@vladmandic/face-api');
+  // Higher minConfidence (0.6) = require clearer face detection to reduce false matches
   const detection = await faceapi
-    .detectSingleFace(source, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+    .detectSingleFace(source, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
     .withFaceLandmarks()
     .withFaceDescriptor();
   return detection?.descriptor ?? null;

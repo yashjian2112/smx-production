@@ -34,6 +34,7 @@ model User {
   performance       UserPerformanceSummary[]
   auditLogs         AuditLog[]
   componentChecks   ComponentCheck[]
+  workSubmissions   StageWorkSubmission[] @relation("WorkSubmissions")
 }
 
 enum Role {
@@ -153,6 +154,7 @@ model ControllerUnit {
   reworkRecords ReworkRecord[]
   timelineLogs TimelineLog[]
   componentChecks ComponentCheck[]
+  workSubmissions StageWorkSubmission[]
 }
 
 enum StageType {
@@ -324,6 +326,58 @@ model UserPerformanceSummary {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@unique([userId, periodFrom, periodTo])
   @@map("user_performance_summaries")
+}
+
+// ----- Stage Checklist Items (admin-managed visual checks per stage) -----
+model StageChecklistItem {
+  id                String    @id @default(cuid())
+  stage             StageType
+  name              String                          // e.g. "Main capacitor bank"
+  description       String?                         // Acceptance criteria
+  referenceImageUrl String?   @map("reference_image_url")
+  required          Boolean   @default(true)
+  sortOrder         Int       @default(0) @map("sort_order")
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@map("stage_checklist_items")
+}
+
+// ----- Stage Work Submissions (photo upload + AI analysis per unit+stage) -----
+model StageWorkSubmission {
+  id              String            @id @default(cuid())
+  unitId          String            @map("unit_id")
+  employeeId      String            @map("employee_id")
+  stage           StageType
+  startedAt       DateTime          @default(now()) @map("started_at")
+  submittedAt     DateTime?         @map("submitted_at")
+  completedAt     DateTime?         @map("completed_at")
+  buildTimeSec    Int?              @map("build_time_sec")
+  imageUrl        String?           @map("image_url")
+  analysisStatus  SubmissionStatus  @default(IN_PROGRESS) @map("analysis_status")
+  analysisResult  SubmissionResult? @map("analysis_result")
+  analysisIssues  String?           @map("analysis_issues")   // JSON [{name,status,note}]
+  analysisSummary String?           @map("analysis_summary")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  unit     ControllerUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  employee User           @relation("WorkSubmissions", fields: [employeeId], references: [id])
+
+  @@map("stage_work_submissions")
+}
+
+enum SubmissionStatus {
+  IN_PROGRESS
+  ANALYZING
+  PASSED
+  FAILED
+}
+
+enum SubmissionResult {
+  PASS
+  FAIL
 }
 
 // ----- Audit (admin actions, user management, settings) -----

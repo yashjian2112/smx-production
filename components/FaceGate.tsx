@@ -14,8 +14,10 @@ type FaceGateProps = {
   title?: string;
 };
 
-const MATCH_THRESHOLD = 0.60;
-const SCAN_INTERVAL_MS = 300;
+// Must match server FACE_MATCH_THRESHOLD in lib/face-verify-server.ts (0.38 = stricter, fewer false accepts)
+const MATCH_THRESHOLD = 0.38;
+const CONSECUTIVE_MATCHES_REQUIRED = 2; // Require 2 frames in a row to reduce lucky one-frame match
+const SCAN_INTERVAL_MS = 350;
 
 export function FaceGate({ mode = 'verify', userId, onVerified, onEnrolled, onCancel, title }: FaceGateProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -26,6 +28,7 @@ export function FaceGate({ mode = 'verify', userId, onVerified, onEnrolled, onCa
   const [status, setStatus] = useState<'loading' | 'scanning' | 'matched' | 'no_face' | 'mismatch' | 'no_descriptor' | 'error' | 'enrolling' | 'enrolled'>('loading');
   const [message, setMessage] = useState('Loading face models…');
   const [attempts, setAttempts] = useState(0);
+  const consecutiveMatchCount = useRef(0);
 
   const stopCamera = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -75,17 +78,46 @@ export function FaceGate({ mode = 'verify', userId, onVerified, onEnrolled, onCa
             if (!videoRef.current || cancelled) return;
             const desc = await getFaceDescriptor(videoRef.current);
             if (!desc) {
+              consecutiveMatchCount.current = 0;
               setStatus('no_face');
               setMessage('No face detected — look directly at the camera');
               return;
             }
             const dist = descriptorDistance(desc, stored);
             if (dist < MATCH_THRESHOLD) {
-              if (intervalRef.current) clearInterval(intervalRef.current);
-              setStatus('matched');
-              setMessage('Identity confirmed ✓');
-              setTimeout(() => { stopCamera(); onVerified?.(); }, 800);
+              consecutiveMatchCount.current += 1;
+              if (consecutiveMatchCount.current >= CONSECUTIVE_MATCHES_REQUIRED) {
+                if (intervalRef.current) clearInterval(intervalRef.current);
+                setStatus('matched');
+                setMessage('Verifying with server…');
+                try {
+                  const verifyRes = await fetch('/api/me/face-verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ descriptor: descriptorToJson(desc) }),
+                  });
+                  if (verifyRes.ok) {
+                    setMessage('Identity confirmed ✓');
+                    setTimeout(() => { stopCamera(); onVerified?.(); }, 800);
+                  } else {
+                    consecutiveMatchCount.current = 0;
+                    const err = await verifyRes.json().catch(() => ({}));
+                    if (verifyRes.status === 429) {
+                      setStatus('mismatch');
+                      setMessage(err.error || 'Too many attempts. Try again in 15 minutes.');
+                    } else {
+                      setAttempts((a) => a + 1);
+                      setStatus('mismatch');
+                      setMessage(err.error || 'Face not recognised by server. Try again.');
+                    }
+                  }
+                } catch {
+                  setStatus('error');
+                  setMessage('Network error. Please retry.');
+                }
+              }
             } else {
+              consecutiveMatchCount.current = 0;
               setAttempts((a) => {
                 const next = a + 1;
                 if (next >= 5) {

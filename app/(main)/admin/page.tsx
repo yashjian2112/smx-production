@@ -21,6 +21,11 @@ export default async function AdminPage() {
           <p className="font-medium">Users</p>
           <p className="text-slate-400 text-xs mt-1">Manage users & face enroll</p>
         </Link>
+        <Link href="/admin/checklists" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center col-span-2">
+          <div className="text-3xl mb-2">✅</div>
+          <p className="font-medium">Stage Checklists</p>
+          <p className="text-slate-400 text-xs mt-1">Define AI quality checks per stage — components, acceptance criteria, reference images</p>
+        </Link>
       </div>
     </div>
   );

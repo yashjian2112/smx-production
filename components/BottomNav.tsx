@@ -27,6 +27,16 @@ const Icons = {
       <path d="m21 21-4.35-4.35" />
     </svg>
   ),
+  Scan: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+      <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+      <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+      <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+      <line x1="7" y1="12" x2="7" y2="12.01" />
+      <line x1="10" y1="12" x2="17" y2="12" />
+    </svg>
+  ),
   Approve: () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12" />
@@ -80,8 +90,7 @@ const adminNav: NavItem[] = [
 
 const employeeNav: NavItem[] = [
   { href: '/dashboard', label: 'My Work', icon: 'Dashboard' },
-  { href: '/my-tasks', label: 'Tasks', icon: 'Tasks' },
-  { href: '/serial', label: 'Serial', icon: 'Serial' },
+  { href: '/orders', label: 'Orders', icon: 'Orders' },
   { href: '/my-performance', label: 'Performance', icon: 'Performance' },
 ];
 

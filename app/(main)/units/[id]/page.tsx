@@ -6,6 +6,7 @@ import { UnitActions } from './UnitActions';
 import { QcReportPrint } from './QcReportPrint';
 import { QRCodeCanvas } from '@/components/QRCode';
 import { ComponentChecklist } from './ComponentChecklist';
+import { WorkTabs } from './WorkTabs';
 
 export default async function UnitPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -135,6 +136,15 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
           initialChecks={initialChecks}
         />
       )}
+
+      {/* Work + History tabs */}
+      <WorkTabs
+        unitId={unit.id}
+        unitSerial={unit.serialNumber}
+        currentStage={unit.currentStage}
+        currentStatus={unit.currentStatus}
+        isEmployee={session.role === 'PRODUCTION_EMPLOYEE'}
+      />
 
       {/* QC Results */}
       {unit.qcRecords && unit.qcRecords.length > 0 && (

@@ -52,7 +52,13 @@
       "Bash(npx vercel --prod)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/login)",
       "Bash(cat /Users/mr.yash/Desktop/production/app/api/units/[id]/rework/route.ts)",
-      "Bash(cat /Users/mr.yash/Desktop/production/app/\\\\\\(main\\\\\\)/dashboard/page.tsx)"
+      "Bash(cat /Users/mr.yash/Desktop/production/app/\\\\\\(main\\\\\\)/dashboard/page.tsx)",
+      "Bash(cat /Users/mr.yash/Desktop/production/app/\\\\\\(main\\\\\\)/orders/page.tsx)",
+      "Bash(cat /Users/mr.yash/Desktop/production/app/\\\\\\(main\\\\\\)/orders/[id]/page.tsx)",
+      "Bash(grep -n \"fullWidth\" /Users/mr.yash/Desktop/production/app/\\\\\\(main\\\\\\)/orders/[id]/OrderDetail.tsx)",
+      "Bash(cat \"/Users/mr.yash/Desktop/production/app/\\(main\\)/admin/page.tsx\")",
+      "Bash(npx prisma migrate dev --name add_checklist_and_work_submissions)",
+      "Bash(npx vercel ls)"
     ]
   }
 }

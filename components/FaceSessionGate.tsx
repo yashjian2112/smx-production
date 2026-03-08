@@ -40,9 +40,8 @@ export function FaceSessionGate({
       });
   }, [userId, serverVerified]);
 
-  async function handleVerified() {
-    // Set server-side cookie (persists 8 hours, survives refresh/new tab)
-    await fetch('/api/me/face-verify', { method: 'POST' });
+  function handleVerified() {
+    // FaceGate already called the server and the cookie is set — just update UI state
     setState('verified');
   }
 

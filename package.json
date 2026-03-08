@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "db:generate": "prisma generate",
@@ -15,7 +15,9 @@
     "db:setup": "bash scripts/setup-db.sh"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@prisma/client": "^6.0.0",
+    "@vercel/blob": "^2.3.1",
     "@vladmandic/face-api": "^1.7.15",
     "bcryptjs": "^2.4.3",
     "jose": "^5.9.6",

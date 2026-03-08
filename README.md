@@ -77,11 +77,26 @@ Open [http://localhost:3000](http://localhost:3000).
 - `npm run db:seed` – seed users, product, order, sample serials
 - `npm run db:studio` – Prisma Studio (opens DB in browser)
 
+## Deploy on Vercel
+
+1. Push your repo to GitHub and import the project in [Vercel](https://vercel.com).
+2. In **Project → Settings → Environment Variables**, add:
+   - `DATABASE_URL` – Supabase **Session/pooler** URI (for serverless)
+   - `DIRECT_URL` – Supabase **Direct** URI (used by Prisma at build time)
+   - `JWT_SECRET` – strong random string
+   - `NEXT_PUBLIC_APP_URL` – your Vercel URL (e.g. `https://your-app.vercel.app`) for server-side redirects/cookies if needed
+3. **Do not** run `db:push` or `db:seed` on Vercel. Run them **once from your machine** (with the same Supabase DB) before or after first deploy:
+   ```bash
+   npx prisma db push
+   npm run db:seed
+   ```
+4. Deploy. The build runs `prisma generate && next build` automatically.
+
 ## Env variables
 
 | Variable             | Description                                      |
 |----------------------|--------------------------------------------------|
-| `DATABASE_URL`       | Supabase connection pooler URI (port 6543)       |
-| `DIRECT_URL`         | Supabase direct connection URI (port 5432)      |
+| `DATABASE_URL`       | Supabase connection pooler URI (Session mode)    |
+| `DIRECT_URL`         | Supabase direct connection URI (for Prisma)     |
 | `JWT_SECRET`         | Secret for session JWT                           |
-| `NEXT_PUBLIC_APP_URL`| App URL (optional)                              |
+| `NEXT_PUBLIC_APP_URL`| App URL (e.g. Vercel URL; optional)              |
