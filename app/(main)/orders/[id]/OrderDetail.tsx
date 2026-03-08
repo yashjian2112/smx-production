@@ -26,11 +26,14 @@ type Props = {
 };
 
 const STATUS_STYLES: Record<string, { dot: string; text: string; label: string }> = {
-  PENDING:     { dot: 'bg-zinc-600',   text: 'text-zinc-500',   label: 'Pending'     },
-  IN_PROGRESS: { dot: 'bg-amber-400',  text: 'text-amber-400',  label: 'In Progress' },
-  COMPLETED:   { dot: 'bg-green-400',  text: 'text-green-400',  label: 'Done'        },
-  BLOCKED:     { dot: 'bg-red-500',    text: 'text-red-400',    label: 'Blocked'     },
-  REWORK:      { dot: 'bg-orange-500', text: 'text-orange-400', label: 'Rework'      },
+  PENDING:          { dot: 'bg-zinc-600',   text: 'text-zinc-500',   label: 'Pending'    },
+  IN_PROGRESS:      { dot: 'bg-amber-400',  text: 'text-amber-400',  label: 'In Progress'},
+  COMPLETED:        { dot: 'bg-green-400',  text: 'text-green-400',  label: 'Done'       },
+  BLOCKED:          { dot: 'bg-red-500',    text: 'text-red-400',    label: 'Blocked'    },
+  REWORK:           { dot: 'bg-orange-500', text: 'text-orange-400', label: 'Rework'     },
+  WAITING_APPROVAL: { dot: 'bg-sky-400',    text: 'text-sky-400',    label: 'Approval'   },
+  APPROVED:         { dot: 'bg-green-300',  text: 'text-green-300',  label: 'Approved'   },
+  REJECTED_BACK:    { dot: 'bg-red-400',    text: 'text-red-300',    label: 'Rejected'   },
 };
 
 // Stages employees are allowed to scan and work on
@@ -85,8 +88,8 @@ function StageCard({
 }) {
   const total      = stage.units.length;
   const completed  = stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) === 'COMPLETED').length;
-  const inProgress = stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) === 'IN_PROGRESS').length;
-  const blocked    = stage.units.filter((u) => ['BLOCKED', 'REWORK'].includes(u.derivedStatus ?? u.currentStatus)).length;
+  const inProgress = stage.units.filter((u) => ['IN_PROGRESS', 'WAITING_APPROVAL', 'APPROVED'].includes(u.derivedStatus ?? u.currentStatus)).length;
+  const blocked    = stage.units.filter((u) => ['BLOCKED', 'REWORK', 'REJECTED_BACK'].includes(u.derivedStatus ?? u.currentStatus)).length;
 
   const isLocked = isEmployee && !isAccessible;
 
