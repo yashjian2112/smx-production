@@ -113,6 +113,23 @@ function StageSection({
               )}
             </div>
             <div className="flex gap-1 shrink-0">
+              {c.barcode && (
+                <a
+                  href={`/print/component/${c.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-[10px] px-2 py-1 rounded font-medium transition-colors"
+                  style={{ background: 'rgba(14,165,233,0.08)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.15)' }}
+                  title="Print component barcode stickers"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <polyline points="6 9 6 2 18 2 18 9" />
+                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                    <rect x="6" y="14" width="12" height="8" />
+                  </svg>
+                  Print
+                </a>
+              )}
               <button
                 onClick={() => deleteComponent(c.id)}
                 className="text-zinc-700 hover:text-red-400 p-1"
