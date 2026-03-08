@@ -237,7 +237,9 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
       }
 
       if (!res.ok || !data?.id) {
-        setScanStatus({ msg: `No unit found for: ${code}`, type: 'error' });
+        // Use the API's error message (includes smart component barcode detection)
+        const apiMsg = data?.error || `No unit found for: ${code}`;
+        setScanStatus({ msg: apiMsg, type: 'error' });
         return;
       }
 

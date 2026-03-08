@@ -33,7 +33,7 @@ export default function SerialPage() {
         // Navigate directly to the unit page
         router.push(`/units/${data.id}`);
       } else {
-        setError('No unit found with that barcode. Try again.');
+        setError(data?.error || 'No unit found with that barcode. Try again.');
         setQuery('');
         inputRef.current?.focus();
       }
