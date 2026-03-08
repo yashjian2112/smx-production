@@ -35,8 +35,8 @@ export function FaceSessionGate({
         }
       })
       .catch(() => {
-        // Network error — let through
-        setState('not_enrolled');
+        // Network error — require verification to be safe (retry on refresh)
+        setState('needs_verify');
       });
   }, [userId, serverVerified]);
 

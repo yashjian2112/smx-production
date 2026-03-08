@@ -53,6 +53,10 @@ export async function POST(req: NextRequest) {
     }
     const { orderNumber, productId, quantity, dueDate, priority, voltage, motorType } = parsed.data;
 
+    // Prevent duplicate order numbers
+    const existing = await prisma.order.findFirst({ where: { orderNumber } });
+    if (existing) return NextResponse.json({ error: `Order number "${orderNumber}" already exists` }, { status: 400 });
+
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 400 });
 

@@ -100,7 +100,7 @@ export function UsersAdmin({ users: initial }: { users: User[] }) {
       if (res.ok) {
         setUsers((us) => us.map((x) => x.id === u.id ? { ...x, active: !x.active } : x));
       }
-    } catch { /* silent */ }
+    } catch { setError('Failed to update user status'); }
   }
 
   function handleEnrolled() {

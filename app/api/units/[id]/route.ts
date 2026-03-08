@@ -112,9 +112,11 @@ export async function PATCH(
       });
 
       // Auto-advance to next stage when current stage is COMPLETED
-      if (statusTo === 'COMPLETED') {
+      // REWORK stage is handled separately via /rework route — skip here
+      if (statusTo === 'COMPLETED' && unit.currentStage !== StageType.REWORK) {
         const next = nextStage(unit.currentStage);
         if (next) {
+          // Advance to next stage
           updates.currentStage = next;
           updates.currentStatus = UnitStatus.PENDING;
           await appendTimeline({
@@ -125,6 +127,18 @@ export async function PATCH(
             statusFrom: UnitStatus.COMPLETED,
             statusTo: UnitStatus.PENDING,
             remarks: `Advanced to ${next}`,
+          });
+        } else {
+          // Final stage (FINAL_ASSEMBLY) completed — mark unit as fully done
+          updates.currentStatus = UnitStatus.COMPLETED;
+          await appendTimeline({
+            unitId: id,
+            userId: session.id,
+            action: 'final_assembly_completed',
+            stage: unit.currentStage,
+            statusFrom: UnitStatus.COMPLETED,
+            statusTo: UnitStatus.COMPLETED,
+            remarks: 'Unit fully assembled and ready for dispatch',
           });
         }
       }
