@@ -71,7 +71,7 @@ export async function PATCH(
     const unit = await prisma.controllerUnit.findUnique({ where: { id } });
     if (!unit) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    const updates: { currentStatus?: UnitStatus; firmwareVersion?: string; softwareVersion?: string } = {};
+    const updates: { currentStatus?: UnitStatus; currentStage?: StageType; firmwareVersion?: string; softwareVersion?: string } = {};
     let statusFrom = unit.currentStatus;
     let statusTo = unit.currentStatus;
 
@@ -110,6 +110,24 @@ export async function PATCH(
         statusTo: updates.currentStatus ?? statusTo,
         remarks: remarks ?? undefined,
       });
+
+      // Auto-advance to next stage when current stage is COMPLETED
+      if (statusTo === 'COMPLETED') {
+        const next = nextStage(unit.currentStage);
+        if (next) {
+          updates.currentStage = next;
+          updates.currentStatus = UnitStatus.PENDING;
+          await appendTimeline({
+            unitId: id,
+            userId: session.id,
+            action: 'stage_completed',
+            stage: next,
+            statusFrom: UnitStatus.COMPLETED,
+            statusTo: UnitStatus.PENDING,
+            remarks: `Advanced to ${next}`,
+          });
+        }
+      }
     }
 
     const updated = await prisma.controllerUnit.update({
