@@ -47,7 +47,9 @@
       "Bash(git push)",
       "Bash(git remote set-url origin https://github.com/yashjian2112/smx-production.git)",
       "Bash(brew install gh)",
-      "Bash(ssh-keygen -t ed25519 -C \"yashjian2112@github\" -f ~/.ssh/id_ed25519 -N \"\")"
+      "Bash(ssh-keygen -t ed25519 -C \"yashjian2112@github\" -f ~/.ssh/id_ed25519 -N \"\")",
+      "Bash(npx next build)",
+      "Bash(npx vercel --prod)"
     ]
   }
 }
