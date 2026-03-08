@@ -72,27 +72,41 @@ export async function generateNextFinalAssemblyBarcode(modelCode: string): Promi
   return barcode;
 }
 
-/** Component barcode: productCode + stageSuffix + 4-digit seq (0001–9999 per model per stage)
+/** Component barcode: COMP- + productCode + stageSuffix + 4-digit seq (0001–9999 per model per stage)
  *  PS=Powerstage, BB=Brainboard, AS=Assembly, FA=FinalAssembly
- *  e.g. C1000PS0001, C1000BB0022, C1000AS0005, C1000FA0003
+ *  e.g. COMP-C350PS0001, COMP-C100BB0022, COMP-1000PS0003
+ *  The "COMP-" prefix makes component barcodes visually distinct from unit barcodes
+ *  (unit barcodes embed the year: C350PS26001)
  */
 export async function generateComponentBarcode(
   productCode: string,
   stageSuffix: 'PS' | 'BB' | 'AS' | 'FA' = 'PS'
 ): Promise<string> {
-  const prefix = `${productCode}${stageSuffix}`;
+  const innerPrefix = `${productCode}${stageSuffix}`;
+  const fullPrefix = `COMP-${innerPrefix}`;
   const last = await prisma.productComponent.findFirst({
-    where: { barcode: { startsWith: prefix } },
+    where: { barcode: { startsWith: fullPrefix } },
     orderBy: { barcode: 'desc' },
     select: { barcode: true },
   });
   const lastVal = last?.barcode;
   let next = 1;
   if (lastVal) {
-    next = parseInt(lastVal.slice(prefix.length), 10) + 1;
+    next = parseInt(lastVal.slice(fullPrefix.length), 10) + 1;
     if (next > 9999) throw new Error('Component barcode sequence full (max 9999 per stage)');
   }
-  return `${prefix}${String(next).padStart(4, '0')}`;
+  return `${fullPrefix}${String(next).padStart(4, '0')}`;
+}
+
+/** Check if a barcode belongs to a component (not a unit).
+ *  Returns component info if found, null otherwise.
+ */
+export async function findComponentByBarcode(barcode: string) {
+  const trimmed = barcode.trim().toUpperCase();
+  return prisma.productComponent.findFirst({
+    where: { barcode: { equals: trimmed, mode: 'insensitive' } },
+    include: { product: { select: { code: true, name: true } } },
+  });
 }
 
 /** Find unit by any stage barcode (cross-verify) */

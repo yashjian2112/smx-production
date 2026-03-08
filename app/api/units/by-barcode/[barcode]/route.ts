@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
-import { findUnitByBarcode } from '@/lib/barcode';
+import { findUnitByBarcode, findComponentByBarcode } from '@/lib/barcode';
 
 /** Cross-verify: lookup controller by any stage barcode (PS, BB, QC, or Final). Returns full unit with all stage barcodes and logs. */
 export async function GET(
@@ -13,7 +13,18 @@ export async function GET(
     if (!barcode) return NextResponse.json({ error: 'Barcode required' }, { status: 400 });
 
     const unit = await findUnitByBarcode(barcode);
-    if (!unit) return NextResponse.json({ error: 'Controller not found' }, { status: 404 });
+    if (!unit) {
+      // Check if the scanned barcode is a component barcode — give a helpful message
+      const component = await findComponentByBarcode(barcode);
+      if (component) {
+        return NextResponse.json({
+          error: `"${barcode.toUpperCase()}" is a COMPONENT barcode (${component.name}), not a unit barcode. Unit barcodes include the production year — e.g. C350PS26001 for a C350 Powerstage unit. Please scan the unit's stage label.`,
+        }, { status: 404 });
+      }
+      return NextResponse.json({
+        error: 'No unit found for this barcode. Check that you scanned the correct stage label.',
+      }, { status: 404 });
+    }
     return NextResponse.json(unit);
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
