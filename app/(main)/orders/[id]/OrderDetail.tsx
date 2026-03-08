@@ -174,7 +174,7 @@ function StageCard({
         )}
       </div>
 
-      {/* Expanded unit list — managers only */}
+      {/* Expanded unit list — managers/admins only */}
       {isExpanded && !isEmployee && total > 0 && (
         <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <ul>
@@ -182,10 +182,11 @@ function StageCard({
               const status = u.derivedStatus ?? u.currentStatus;
               const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
               return (
-                <li key={u.id} className="border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                <li key={u.id} className="flex items-center border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                  {/* Unit detail link */}
                   <a
                     href={`/units/${u.id}`}
-                    className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/5 transition-colors"
+                    className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/5 transition-colors flex-1 min-w-0"
                   >
                     <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
                     <span className="font-mono text-sky-400 text-sm flex-1 truncate">{u.serialNumber}</span>
@@ -198,6 +199,22 @@ function StageCard({
                     <svg className="text-zinc-700 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M9 18l6-6-6-6" />
                     </svg>
+                  </a>
+                  {/* Print unit label — admin only */}
+                  <a
+                    href={`/print/unit/${u.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Print unit barcode labels"
+                    className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 mr-2 rounded text-[10px] font-medium transition-colors"
+                    style={{ background: 'rgba(14,165,233,0.08)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.15)' }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <polyline points="6 9 6 2 18 2 18 9" />
+                      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                      <rect x="6" y="14" width="12" height="8" />
+                    </svg>
+                    Print
                   </a>
                 </li>
               );
