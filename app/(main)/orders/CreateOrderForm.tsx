@@ -13,8 +13,8 @@ export function CreateOrderForm({ products }: { products: Product[] }) {
   const [showFace, setShowFace] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
   const [productId, setProductId] = useState(products[0]?.id ?? '');
-  const [voltage, setVoltage] = useState('48V');
-  const [motorType, setMotorType] = useState<'LBX' | 'UBX'>('LBX');
+  const [voltageFrom, setVoltageFrom] = useState('48V');
+  const [voltageTo, setVoltageTo] = useState('48V');
   const [quantity, setQuantity] = useState(10);
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState(0);
@@ -33,8 +33,7 @@ export function CreateOrderForm({ products }: { products: Product[] }) {
         body: JSON.stringify({
           orderNumber: orderNumber.trim(),
           productId,
-          voltage,
-          motorType,
+          voltage: voltageFrom === voltageTo ? voltageFrom : `${voltageFrom}-${voltageTo}`,
           quantity,
           dueDate: dueDate || undefined,
           priority,
@@ -47,6 +46,8 @@ export function CreateOrderForm({ products }: { products: Product[] }) {
       }
       setOpen(false);
       setOrderNumber('');
+      setVoltageFrom('48V');
+      setVoltageTo('48V');
       setQuantity(10);
       setDueDate('');
       router.refresh();
@@ -127,28 +128,27 @@ export function CreateOrderForm({ products }: { products: Product[] }) {
           </select>
         </div>
 
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <label className={labelCls}>Voltage</label>
+        <div>
+          <label className={labelCls}>Voltage range</label>
+          <div className="flex items-center gap-2">
             <select
-              value={voltage}
-              onChange={(e) => setVoltage(e.target.value)}
-              className="select-field text-sm"
+              value={voltageFrom}
+              onChange={(e) => setVoltageFrom(e.target.value)}
+              className="select-field text-sm flex-1"
             >
               {VOLTAGES.map((v) => (
                 <option key={v} value={v}>{v}</option>
               ))}
             </select>
-          </div>
-          <div className="flex-1">
-            <label className={labelCls}>Motor</label>
+            <span className="text-zinc-500 text-sm shrink-0">to</span>
             <select
-              value={motorType}
-              onChange={(e) => setMotorType(e.target.value as 'LBX' | 'UBX')}
-              className="select-field text-sm"
+              value={voltageTo}
+              onChange={(e) => setVoltageTo(e.target.value)}
+              className="select-field text-sm flex-1"
             >
-              <option value="LBX">LBX</option>
-              <option value="UBX">UBX</option>
+              {VOLTAGES.map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
             </select>
           </div>
         </div>
