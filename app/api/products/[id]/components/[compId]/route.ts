@@ -17,7 +17,7 @@ const updateSchema = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string; compId: string }> }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
     const { compId } = await params;
 
     const body = await req.json();
@@ -43,7 +43,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string; compId: string }> }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
     const { compId } = await params;
 
     await prisma.productComponent.delete({ where: { id: compId } });

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 // POST: create new checklist item (admin only)
 export async function POST(req: NextRequest) {
   const session = await requireSession();
-  requireRole(session, 'ADMIN');
+  requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
 
   const contentType = req.headers.get('content-type') ?? '';
   let body: Record<string, string> = {};
