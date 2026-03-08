@@ -64,6 +64,7 @@ Open [http://localhost:3000](http://localhost:3000).
 - **Approval:** Employee submits → status “Waiting Approval” → Manager approves or rejects
 - **QC:** Pass → move to Final Assembly; Fail → rework record, optional detected/source stage
 - **Timeline:** Append-only log per controller (order, serial, stage, status, user, remarks)
+- **Stage barcodes (no printable BOM sheet):** Powerstage `modelnamePS26001`, Brainboard `modelnameBB26001`, QC `modelnameQC26001` (on QC test report), Final Assembly `modelname260001`. Search by any barcode to open controller and see all stage barcodes + QC pass/fail + logs.
 - **Mobile-first:** Bottom nav, touch-friendly, card layout, PWA-ready
 
 ## Scripts

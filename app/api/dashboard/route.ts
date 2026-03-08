@@ -23,7 +23,7 @@ export async function GET() {
         where: {
           unitId: { in: unitIds },
           userId: session.id,
-          statusTo: 'WAITING_APPROVAL',
+          statusTo: 'COMPLETED',
           createdAt: { gte: today },
         },
       });
@@ -57,7 +57,7 @@ export async function GET() {
 
     const todayOutput = await prisma.stageLog.count({
       where: {
-        statusTo: 'APPROVED',
+        statusTo: 'COMPLETED',
         createdAt: { gte: today },
       },
     });
@@ -70,9 +70,7 @@ export async function GET() {
     const reworkPending = await prisma.reworkRecord.count({
       where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
     });
-    const waitingApproval = await prisma.controllerUnit.count({
-      where: { currentStatus: 'WAITING_APPROVAL' },
-    });
+    const waitingApproval = 0;
     const blocked = await prisma.controllerUnit.count({
       where: { currentStatus: 'BLOCKED', order: { status: 'ACTIVE' } },
     });

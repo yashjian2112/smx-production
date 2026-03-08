@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireSession, requireRole } from '@/lib/auth';
+import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
-import { StageType } from '@prisma/client';
+import { generateNextQCBarcode } from '@/lib/barcode';
+import { StageType, UnitStatus } from '@prisma/client';
 
 export async function POST(
   req: NextRequest,
@@ -32,10 +33,17 @@ export async function POST(
       return NextResponse.json({ error: 'result must be PASS or FAIL' }, { status: 400 });
     }
 
-    const unit = await prisma.controllerUnit.findUnique({ where: { id } });
+    const unit = await prisma.controllerUnit.findUnique({ where: { id }, include: { product: true } });
     if (!unit) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     if (unit.currentStage !== StageType.QC_AND_SOFTWARE) {
       return NextResponse.json({ error: 'Unit not at QC stage' }, { status: 400 });
+    }
+
+    // Assign QC barcode on first QC test (printed on QC test report)
+    let qcBarcode = unit.qcBarcode;
+    if (!qcBarcode && unit.product) {
+      qcBarcode = await generateNextQCBarcode(unit.product.code);
+      await prisma.controllerUnit.update({ where: { id }, data: { qcBarcode } });
     }
 
     await prisma.qCRecord.create({
@@ -52,7 +60,7 @@ export async function POST(
       },
     });
 
-    const updateData: { currentStatus?: 'APPROVED' | 'WAITING_APPROVAL'; firmwareVersion?: string; softwareVersion?: string } = {};
+    const updateData: { currentStatus?: UnitStatus; firmwareVersion?: string; softwareVersion?: string } = {};
     if (firmwareVersion !== undefined) updateData.firmwareVersion = firmwareVersion;
     if (softwareVersion !== undefined) updateData.softwareVersion = softwareVersion;
 
@@ -73,7 +81,7 @@ export async function POST(
         remarks,
       });
     } else {
-      updateData.currentStatus = 'WAITING_APPROVAL';
+      updateData.currentStatus = UnitStatus.BLOCKED;
       await prisma.controllerUnit.update({
         where: { id },
         data: updateData,

@@ -29,21 +29,30 @@ export default async function OrdersPage() {
       </div>
       <div className="space-y-2">
         {orders.length === 0 ? (
-          <p className="text-slate-500">No orders yet. Create one above.</p>
+          <p className="text-zinc-600 text-sm">No orders yet. Create one above.</p>
         ) : (
           orders.map((o) => (
             <Link
               key={o.id}
               href={`/orders/${o.id}`}
-              className="block p-4 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500"
+              className="card-interactive block p-4"
             >
               <div className="flex justify-between items-start">
-                <span className="font-mono font-medium">{o.orderNumber}</span>
-                <span className={`text-xs px-2 py-0.5 rounded ${o.status === 'ACTIVE' ? 'bg-green-500/20 text-green-400' : 'bg-slate-600 text-slate-400'}`}>
+                <span className="font-mono font-medium text-sm">{o.orderNumber}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  o.status === 'ACTIVE'
+                    ? 'text-green-400'
+                    : 'text-zinc-500'
+                }`}
+                  style={o.status === 'ACTIVE'
+                    ? { background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }
+                    : { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }
+                  }
+                >
                   {o.status}
                 </span>
               </div>
-              <p className="text-slate-400 text-sm mt-1">{o.product.name} · {o._count.units} units</p>
+              <p className="text-zinc-500 text-sm mt-1">{o.product.name} · {o._count.units} units</p>
             </Link>
           ))
         )}

@@ -47,7 +47,7 @@ export async function GET(
 }
 
 const updateSchema = z.object({
-  status: z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'WAITING_APPROVAL', 'REJECTED_BACK', 'BLOCKED']).optional(),
+  status: z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED']).optional(),
   remarks: z.string().optional(),
   assignUserId: z.string().optional(),
   firmwareVersion: z.string().optional(),
@@ -78,7 +78,6 @@ export async function PATCH(
     if (status) {
       statusTo = status as UnitStatus;
       updates.currentStatus = statusTo;
-      if (status === 'COMPLETED') updates.currentStatus = 'WAITING_APPROVAL';
     }
     if (firmwareVersion !== undefined) updates.firmwareVersion = firmwareVersion;
     if (softwareVersion !== undefined) updates.softwareVersion = softwareVersion;
@@ -105,7 +104,7 @@ export async function PATCH(
       await appendTimeline({
         unitId: id,
         userId: session.id,
-        action: status === 'WAITING_APPROVAL' ? 'submitted_for_approval' : 'status_changed',
+        action: 'status_changed',
         stage: unit.currentStage,
         statusFrom,
         statusTo: updates.currentStatus ?? statusTo,

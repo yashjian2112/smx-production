@@ -3,6 +3,7 @@ import { requireSession, requireRole, isManager } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
 import { generateNextSerial } from '@/lib/serial';
+import { generateNextPowerstageBarcode, generateNextBrainboardBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
 import { StageType } from '@prisma/client';
 import { z } from 'zod';
 
@@ -12,6 +13,8 @@ const createSchema = z.object({
   quantity: z.number().int().min(1).max(10000),
   dueDate: z.string().datetime().optional(),
   priority: z.number().int().optional(),
+  voltage: z.string().optional(),
+  motorType: z.enum(['LBX', 'UBX']).optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -48,7 +51,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
-    const { orderNumber, productId, quantity, dueDate, priority } = parsed.data;
+    const { orderNumber, productId, quantity, dueDate, priority, voltage, motorType } = parsed.data;
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 400 });
@@ -60,6 +63,8 @@ export async function POST(req: NextRequest) {
         quantity,
         dueDate: dueDate ? new Date(dueDate) : null,
         priority: priority ?? 0,
+        voltage: voltage ?? null,
+        motorType: motorType ?? null,
         createdById: session.id,
       },
       include: { product: true },
@@ -72,20 +77,27 @@ export async function POST(req: NextRequest) {
       remarks: `Order ${orderNumber}, qty ${quantity}`,
     });
 
-    // Generate unit records with serials
-    const units: { serialNumber: string; orderId: string; productId: string }[] = [];
+    // Generate unit records with serials and all 4 stage barcodes for cross-verification
     for (let i = 0; i < quantity; i++) {
       const serial = await generateNextSerial(product.code);
-      units.push({ serialNumber: serial, orderId: order.id, productId });
+      const powerstageBarcode = await generateNextPowerstageBarcode(product.code);
+      const brainboardBarcode = await generateNextBrainboardBarcode(product.code);
+      const qcBarcode = await generateNextQCBarcode(product.code);
+      const finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(product.code);
+      await prisma.controllerUnit.create({
+        data: {
+          serialNumber: serial,
+          orderId: order.id,
+          productId: product.id,
+          currentStage: StageType.POWERSTAGE_MANUFACTURING,
+          currentStatus: 'PENDING',
+          powerstageBarcode,
+          brainboardBarcode,
+          qcBarcode,
+          finalAssemblyBarcode,
+        },
+      });
     }
-
-    await prisma.controllerUnit.createMany({
-      data: units.map((u) => ({
-        ...u,
-        currentStage: StageType.POWERSTAGE_MANUFACTURING,
-        currentStatus: 'PENDING',
-      })),
-    });
 
     const createdUnits = await prisma.controllerUnit.findMany({
       where: { orderId: order.id },

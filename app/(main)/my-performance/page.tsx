@@ -11,7 +11,7 @@ export default async function MyPerformancePage() {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const completed = await prisma.stageLog.count({
-    where: { userId: session.id, statusTo: 'WAITING_APPROVAL', createdAt: { gte: thirtyDaysAgo } },
+    where: { userId: session.id, statusTo: 'COMPLETED', createdAt: { gte: thirtyDaysAgo } },
   });
   const assigned = await prisma.stageAssignment.count({
     where: { userId: session.id },

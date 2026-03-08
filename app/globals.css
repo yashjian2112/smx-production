@@ -3,28 +3,116 @@
 @tailwind utilities;
 
 :root {
-  --bg: #0f172a;
-  --surface: #1e293b;
-  --border: #334155;
-  --text: #f8fafc;
-  --muted: #94a3b8;
+  --bg: #09090b;
+  --surface: #111118;
+  --card: #18181b;
+  --border: #27272a;
+  --text: #fafafa;
+  --muted: #a1a1aa;
   --accent: #0ea5e9;
+  --hairline: rgba(255, 255, 255, 0.06);
 }
 
+/* ── Base ───────────────────────────────────────── */
 body {
   @apply bg-smx-dark text-white antialiased;
   min-height: 100dvh;
 }
 
-/* Touch-friendly tap targets */
-@media (pointer: coarse) {
-  .tap-target {
-    min-height: 44px;
-    min-width: 44px;
+/* Default smooth transitions on interactive elements */
+button, a {
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+
+/* ── Premium thin scrollbar ─────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+/* ── Component utilities ────────────────────────── */
+@layer components {
+
+  /* Premium card — hairline border + subtle depth */
+  .card {
+    @apply bg-zinc-900 rounded-xl;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.6);
+  }
+
+  /* Interactive card — sky hover glow */
+  .card-interactive {
+    @apply card;
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+  }
+  .card-interactive:hover {
+    border-color: rgba(14,165,233,0.25);
+    box-shadow: 0 0 0 1px rgba(14,165,233,0.08), 0 4px 16px rgba(14,165,233,0.06);
+  }
+
+  /* Primary CTA button */
+  .btn-primary {
+    @apply bg-sky-500 hover:bg-sky-400 text-white font-medium rounded-lg;
+    box-shadow: 0 4px 14px rgba(14,165,233,0.25);
+    transition: background-color 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+  }
+  .btn-primary:hover { box-shadow: 0 4px 20px rgba(14,165,233,0.35); }
+  .btn-primary:disabled { @apply opacity-40; box-shadow: none; cursor: not-allowed; }
+
+  /* Ghost / secondary button */
+  .btn-ghost {
+    @apply text-zinc-400 hover:text-white rounded-lg;
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
+  }
+  .btn-ghost:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.03); }
+
+  /* Form input */
+  .input-field {
+    @apply w-full px-3 py-2.5 rounded-lg text-white placeholder-zinc-600 focus:outline-none;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+  .input-field:focus {
+    border-color: rgba(14,165,233,0.5);
+    box-shadow: 0 0 0 3px rgba(14,165,233,0.08);
+  }
+
+  /* Select field */
+  .select-field {
+    @apply input-field;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2371717a' stroke-width='1.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='m19.5 8.25-7.5 7.5-7.5-7.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+    padding-right: 2.5rem;
   }
 }
 
-/* Bottom nav safe area */
-.pb-safe {
-  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+/* ── Touch targets ──────────────────────────────── */
+@media (pointer: coarse) {
+  .tap-target { min-height: 44px; min-width: 44px; }
+}
+
+/* ── Safe area ──────────────────────────────────── */
+.pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+
+/* ── Print (QC test report — no printable BOM sheet) ── */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; color: #111; }
+  #qc-test-report { border: 1px solid #ccc; color: #111; }
+  #qc-test-report .text-sky-400 { color: #0ea5e9; }
+  #qc-test-report .text-green-400 { color: #16a34a; }
+  #qc-test-report .text-red-400 { color: #dc2626; }
+}
+
+/* ── Face scan animation ────────────────────────── */
+@keyframes scanBar {
+  0%   { top: 12px;  opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { top: 348px; opacity: 0; }
 }

@@ -11,3 +11,4 @@ client/dist/
 .next/
 .vercel/
 *.tsbuildinfo
+.vercel

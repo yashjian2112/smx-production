@@ -19,6 +19,8 @@ model User {
   name          String
   role          Role     @default(PRODUCTION_EMPLOYEE)
   active        Boolean  @default(true)
+  faceDescriptor String?  @map("face_descriptor") // JSON float32 array [128 numbers]
+  faceEnrolled  Boolean  @default(false) @map("face_enrolled")
   stagePermissions String? @map("stage_permissions") // JSON array of stage IDs user can work on
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -31,6 +33,7 @@ model User {
   approvedBy        StageLog[]       @relation("ApprovedBy")
   performance       UserPerformanceSummary[]
   auditLogs         AuditLog[]
+  componentChecks   ComponentCheck[]
 }
 
 enum Role {
@@ -50,6 +53,46 @@ model Product {
 
   orders      Order[]
   units       ControllerUnit[]
+  components  ProductComponent[]
+}
+
+// ----- Product Components (BOM per model) -----
+model ProductComponent {
+  id          String     @id @default(cuid())
+  productId   String     @map("product_id")
+  name        String
+  partNumber  String?    @map("part_number")
+  barcode     String?
+  description String?
+  stage       StageType?
+  sortOrder   Int        @default(0) @map("sort_order")
+  required    Boolean    @default(true)
+  active      Boolean    @default(true)
+  printed     Boolean    @default(false)
+  printedAt   DateTime?  @map("printed_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  product Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  checks  ComponentCheck[]
+  @@map("product_components")
+}
+
+model ComponentCheck {
+  id           String    @id @default(cuid())
+  unitId       String    @map("unit_id")
+  componentId  String    @map("component_id")
+  stage        StageType
+  checked      Boolean   @default(false)
+  scannedValue String?   @map("scanned_value")
+  checkedById  String?   @map("checked_by_id")
+  checkedAt    DateTime? @map("checked_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  unit      ControllerUnit   @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  component ProductComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  checker   User?            @relation(fields: [checkedById], references: [id])
+  @@unique([unitId, componentId])
+  @@map("component_checks")
 }
 
 // ----- Orders -----
@@ -61,6 +104,8 @@ model Order {
   dueDate     DateTime? @map("due_date")
   priority    Int       @default(0)  // higher = more urgent
   status      OrderStatus @default(ACTIVE)
+  voltage     String?   // e.g. "48V"
+  motorType   MotorType?  @map("motor_type")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   createdById String?   @map("created_by_id")
@@ -76,6 +121,11 @@ enum OrderStatus {
   CLOSED
 }
 
+enum MotorType {
+  LBX
+  UBX
+}
+
 // ----- Controller Unit (one per serial) -----
 model ControllerUnit {
   id              String    @id @default(cuid())
@@ -87,6 +137,11 @@ model ControllerUnit {
   firmwareVersion String?   @map("firmware_version")
   softwareVersion String?   @map("software_version")
   readyForDispatch Boolean  @default(false) @map("ready_for_dispatch")
+  // Stage-wise barcodes: cross-verify controller at any stage (no printable BOM sheet)
+  powerstageBarcode   String?  @unique @map("powerstage_barcode")   // modelnamePS26001
+  brainboardBarcode   String?  @unique @map("brainboard_barcode")   // modelnameBB26001
+  qcBarcode          String?  @unique @map("qc_barcode")            // modelnameQC26001 (on QC test report)
+  finalAssemblyBarcode String? @unique @map("final_assembly_barcode") // modelname260001
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -97,6 +152,7 @@ model ControllerUnit {
   qcRecords   QCRecord[]
   reworkRecords ReworkRecord[]
   timelineLogs TimelineLog[]
+  componentChecks ComponentCheck[]
 }
 
 enum StageType {

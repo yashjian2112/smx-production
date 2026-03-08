@@ -2,13 +2,19 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { FaceGate } from '@/components/FaceGate';
 
 type Product = { id: string; code: string; name: string };
 
+const VOLTAGES = ['24V','36V','48V','60V','72V','84V','96V','108V','120V','130V'];
+
 export function CreateOrderForm({ products }: { products: Product[] }) {
   const [open, setOpen] = useState(false);
+  const [showFace, setShowFace] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
   const [productId, setProductId] = useState(products[0]?.id ?? '');
+  const [voltage, setVoltage] = useState('48V');
+  const [motorType, setMotorType] = useState<'LBX' | 'UBX'>('LBX');
   const [quantity, setQuantity] = useState(10);
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState(0);
@@ -16,8 +22,8 @@ export function CreateOrderForm({ products }: { products: Product[] }) {
   const [error, setError] = useState('');
   const router = useRouter();
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function doCreate() {
+    setShowFace(false);
     setError('');
     setLoading(true);
     try {
@@ -27,6 +33,8 @@ export function CreateOrderForm({ products }: { products: Product[] }) {
         body: JSON.stringify({
           orderNumber: orderNumber.trim(),
           productId,
+          voltage,
+          motorType,
           quantity,
           dueDate: dueDate || undefined,
           priority,
@@ -47,67 +55,140 @@ export function CreateOrderForm({ products }: { products: Product[] }) {
     }
   }
 
+  if (showFace) {
+    return (
+      <FaceGate
+        mode="verify"
+        title="Verify your identity to create order"
+        onVerified={doCreate}
+        onCancel={() => setShowFace(false)}
+      />
+    );
+  }
+
   if (!open) {
     return (
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="py-2 px-4 rounded-lg bg-sky-600 hover:bg-sky-500 font-medium tap-target"
+        className="btn-primary py-2 px-4 text-sm tap-target"
       >
         Create order
       </button>
     );
   }
 
+  function handleSubmit(e: { preventDefault: () => void }) {
+    e.preventDefault();
+    setShowFace(true);
+  }
+
+  const labelCls = 'block text-[11px] font-medium text-zinc-500 tracking-widest uppercase mb-1.5';
+
   return (
-    <form onSubmit={submit} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-      <div className="bg-smx-surface border border-slate-600 rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-semibold mb-4">Create order</h3>
-        {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
-        <label className="block text-sm text-slate-400 mb-1">Order number</label>
-        <input
-          value={orderNumber}
-          onChange={(e) => setOrderNumber(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 mb-3"
-          required
-        />
-        <label className="block text-sm text-slate-400 mb-1">Product</label>
-        <select
-          value={productId}
-          onChange={(e) => setProductId(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 mb-3"
-        >
-          {products.map((p) => (
-            <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
-          ))}
-        </select>
-        <label className="block text-sm text-slate-400 mb-1">Quantity</label>
-        <input
-          type="number"
-          min={1}
-          value={quantity}
-          onChange={(e) => setQuantity(parseInt(e.target.value, 10) || 1)}
-          className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 mb-3"
-        />
-        <label className="block text-sm text-slate-400 mb-1">Due date (optional)</label>
-        <input
-          type="date"
-          value={dueDate}
-          onChange={(e) => setDueDate(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 mb-3"
-        />
-        <label className="block text-sm text-slate-400 mb-1">Priority</label>
-        <input
-          type="number"
-          value={priority}
-          onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
-          className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 mb-4"
-        />
-        <div className="flex gap-2">
-          <button type="submit" disabled={loading} className="flex-1 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 font-medium disabled:opacity-50">
-            {loading ? 'Creating…' : 'Create'}
+    <form onSubmit={handleSubmit} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+      <div className="card p-6 w-full max-w-md max-h-[90vh] overflow-y-auto space-y-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-base font-semibold">Create order</h3>
+          <button type="button" onClick={() => setOpen(false)} className="text-zinc-600 hover:text-zinc-300">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
           </button>
-          <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 rounded-lg border border-slate-600 hover:bg-slate-700">
+        </div>
+
+        {error && (
+          <p className="text-red-400 text-sm p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+            {error}
+          </p>
+        )}
+
+        <div>
+          <label className={labelCls}>Work order number</label>
+          <input
+            value={orderNumber}
+            onChange={(e) => setOrderNumber(e.target.value)}
+            className="input-field text-sm"
+            placeholder="e.g. WO-2026-001"
+            required
+          />
+        </div>
+
+        <div>
+          <label className={labelCls}>Product</label>
+          <select
+            value={productId}
+            onChange={(e) => setProductId(e.target.value)}
+            className="select-field text-sm"
+          >
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className={labelCls}>Voltage</label>
+            <select
+              value={voltage}
+              onChange={(e) => setVoltage(e.target.value)}
+              className="select-field text-sm"
+            >
+              {VOLTAGES.map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1">
+            <label className={labelCls}>Motor</label>
+            <select
+              value={motorType}
+              onChange={(e) => setMotorType(e.target.value as 'LBX' | 'UBX')}
+              className="select-field text-sm"
+            >
+              <option value="LBX">LBX</option>
+              <option value="UBX">UBX</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>Quantity</label>
+          <input
+            type="number"
+            min={1}
+            value={quantity}
+            onChange={(e) => setQuantity(parseInt(e.target.value, 10) || 1)}
+            className="input-field text-sm"
+          />
+        </div>
+
+        <div>
+          <label className={labelCls}>Due date <span className="normal-case text-zinc-700">(optional)</span></label>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="input-field text-sm"
+          />
+        </div>
+
+        <div>
+          <label className={labelCls}>Priority</label>
+          <input
+            type="number"
+            value={priority}
+            onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
+            className="input-field text-sm"
+          />
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <button type="submit" disabled={loading} className="btn-primary flex-1 py-2.5 text-sm">
+            {loading ? 'Creating…' : 'Create order'}
+          </button>
+          <button type="button" onClick={() => setOpen(false)} className="btn-ghost px-4 py-2.5 text-sm">
             Cancel
           </button>
         </div>

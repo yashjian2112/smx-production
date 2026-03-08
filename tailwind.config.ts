@@ -10,9 +10,10 @@ const config: Config = {
     extend: {
       colors: {
         smx: {
-          dark: '#0f172a',
-          surface: '#1e293b',
-          border: '#334155',
+          dark: '#09090b',
+          surface: '#111118',
+          card: '#18181b',
+          border: '#27272a',
           accent: '#0ea5e9',
           success: '#22c55e',
           warn: '#eab308',
@@ -20,10 +21,11 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['var(--font-geist-sans)', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-poppins)', 'system-ui', 'sans-serif'],
       },
-      safeArea: {
-        bottom: 'env(safe-area-inset-bottom, 0px)',
+      boxShadow: {
+        'glow-sky': '0 0 0 1px rgba(14,165,233,0.15), 0 4px 24px rgba(14,165,233,0.08)',
+        'card': '0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.6)',
       },
     },
   },

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { FaceGate } from '@/components/FaceGate';
 
 type Unit = {
   id: string;
@@ -9,56 +10,26 @@ type Unit = {
   currentStatus: string;
 };
 
-export function UnitActions({ unit, sessionRole }: { unit: Unit; sessionRole: string }) {
+export function UnitActions({ unit, sessionRole: _sessionRole }: { unit: Unit; sessionRole: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState('');
   const [remarks, setRemarks] = useState('');
-  const isManager = sessionRole === 'ADMIN' || sessionRole === 'PRODUCTION_MANAGER';
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
-  async function updateStatus(status: string) {
-    setLoading(status);
+  async function runAction(action: string) {
+    setPendingAction(null);
+    setLoading(action);
     try {
       await fetch(`/api/units/${unit.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, remarks: remarks || undefined }),
+        body: JSON.stringify({ status: action, remarks: remarks || undefined }),
       });
       router.refresh();
-    } finally {
-      setLoading('');
-    }
+    } finally { setLoading(''); }
   }
 
-  async function approve() {
-    setLoading('approve');
-    try {
-      await fetch(`/api/units/${unit.id}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'approve' }),
-      });
-      router.refresh();
-    } finally {
-      setLoading('');
-    }
-  }
-
-  async function reject() {
-    setLoading('reject');
-    try {
-      await fetch(`/api/units/${unit.id}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reject' }),
-      });
-      router.refresh();
-    } finally {
-      setLoading('');
-    }
-  }
-
-  const canWork = unit.currentStatus === 'PENDING' || unit.currentStatus === 'IN_PROGRESS' || unit.currentStatus === 'REJECTED_BACK';
-  const waitingApproval = unit.currentStatus === 'WAITING_APPROVAL';
+  const canWork = unit.currentStatus === 'PENDING' || unit.currentStatus === 'IN_PROGRESS';
 
   return (
     <div className="space-y-3">
@@ -73,7 +44,7 @@ export function UnitActions({ unit, sessionRole }: { unit: Unit; sessionRole: st
         <div className="flex gap-2 flex-wrap">
           <button
             type="button"
-            onClick={() => updateStatus('IN_PROGRESS')}
+            onClick={() => setPendingAction('IN_PROGRESS')}
             disabled={!!loading}
             className="py-2 px-4 rounded-lg bg-amber-600 hover:bg-amber-500 tap-target disabled:opacity-50"
           >
@@ -81,15 +52,15 @@ export function UnitActions({ unit, sessionRole }: { unit: Unit; sessionRole: st
           </button>
           <button
             type="button"
-            onClick={() => updateStatus('COMPLETED')}
+            onClick={() => setPendingAction('COMPLETED')}
             disabled={!!loading}
             className="py-2 px-4 rounded-lg bg-sky-600 hover:bg-sky-500 tap-target disabled:opacity-50"
           >
-            Complete & submit
+            Complete
           </button>
           <button
             type="button"
-            onClick={() => updateStatus('BLOCKED')}
+            onClick={() => setPendingAction('BLOCKED')}
             disabled={!!loading}
             className="py-2 px-4 rounded-lg border border-red-500 text-red-400 hover:bg-red-500/20 tap-target disabled:opacity-50"
           >
@@ -97,25 +68,14 @@ export function UnitActions({ unit, sessionRole }: { unit: Unit; sessionRole: st
           </button>
         </div>
       )}
-      {waitingApproval && isManager && (
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={approve}
-            disabled={!!loading}
-            className="flex-1 py-3 rounded-lg bg-green-600 hover:bg-green-500 font-medium tap-target disabled:opacity-50"
-          >
-            Approve → Next stage
-          </button>
-          <button
-            type="button"
-            onClick={reject}
-            disabled={!!loading}
-            className="py-3 px-4 rounded-lg border border-red-500 text-red-400 hover:bg-red-500/20 tap-target disabled:opacity-50"
-          >
-            Reject
-          </button>
-        </div>
+
+      {pendingAction && (
+        <FaceGate
+          mode="verify"
+          title="Verify your identity"
+          onVerified={() => runAction(pendingAction)}
+          onCancel={() => setPendingAction(null)}
+        />
       )}
     </div>
   );
