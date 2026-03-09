@@ -133,7 +133,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-5',
-      max_tokens: 1024,
+      max_tokens: 2048,
       messages: [
         {
           role: 'user',
@@ -141,22 +141,42 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
             {
               type: 'text',
-              text: `You are a quality control inspector for SMX Drives electronic controller manufacturing.
+              text: `You are a precision PCB quality-control AI for SMX Drives electronic controller manufacturing.
+Inspect this image and report the status of EVERY visible component individually.
 
 Stage: ${unit.currentStage.replace(/_/g, ' ')}
-Unit: ${unit.serialNumber}
+Unit serial: ${unit.serialNumber}
 Product: ${unit.product?.name ?? 'Unknown'}
 
-Checklist:
+Expected components for this stage:
 ${checklistText}
 
-Analyze the image and respond ONLY with valid JSON:
+For EVERY component you can identify in the image, check all five criteria:
+1. PRESENCE        — Is it installed?
+2. ORIENTATION     — Correct direction? (ICs pin-1, diodes, polarised caps, MOSFETs)
+3. PLACEMENT       — Seated on pads properly? Not shifted, bridged, or tombstoned?
+4. SOLDER QUALITY  — No bridges, cold joints, insufficient solder, or excess flux?
+5. DAMAGE          — Cracked, burned, visibly defective?
+
+Respond ONLY with valid JSON — no markdown fences, no extra text outside the JSON object:
 {
   "overall": "PASS" or "FAIL",
-  "components": [{"name": "...", "status": "PRESENT|MISSING|DEFECTIVE", "note": "..."}],
-  "summary": "1-2 sentence assessment"
+  "components": [
+    {
+      "name": "component ref or name, e.g. U1 / R12 / C4 / Main capacitor",
+      "status": "PRESENT" | "MISSING" | "DEFECTIVE" | "WRONG_ORIENTATION" | "SOLDER_ISSUE" | "MISPLACED",
+      "note": "specific observation, e.g. 'correctly oriented, clean solder joints' or 'pin-1 dot facing wrong direction' or 'visible solder bridge between pins 3-4'",
+      "location": "board location hint, e.g. 'top-left near power connector' or 'centre of board'"
+    }
+  ],
+  "summary": "1–2 sentence overall assessment"
 }
-PASS only if ALL REQUIRED items are PRESENT and properly installed. FAIL otherwise.`,
+
+RULES:
+— List every distinct component you can see, even unlabelled passives.
+— PASS only when ALL items marked REQUIRED in the checklist are PRESENT, correctly oriented, and have acceptable solder joints.
+— If the image is blurry, too dark, or the PCB is not visible, set overall to "FAIL" and explain in summary.
+— Be precise in notes so the operator knows exactly what to fix and where.`,
             },
           ],
         },

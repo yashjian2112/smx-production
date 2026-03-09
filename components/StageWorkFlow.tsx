@@ -15,7 +15,7 @@ type Submission = {
   buildTimeSec?: number | null;
 };
 
-type Issue = { name: string; status: string; note: string };
+type Issue = { name: string; status: string; note: string; location?: string };
 
 type Props = {
   unitId: string;
@@ -66,6 +66,16 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraOpen, setCameraOpen]   = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+
+  // ── auto-capture state ────────────────────────────────────────────────────
+  const [autoCapture, setAutoCapture]     = useState(true);
+  const [stableMs, setStableMs]           = useState(0);          // 0–1500
+  const [autoCountdown, setAutoCountdown] = useState<number | null>(null); // 3,2,1
+  const prevFrameRef    = useRef<ImageData | null>(null);
+  const frameTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cdTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stableMsRef     = useRef(0);
+  const autoCapturedRef = useRef(false);
 
   const stageLabel = currentStage.replace(/_/g, ' ');
 
@@ -130,12 +140,124 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   }
 
   // ── camera helpers ─────────────────────────────────────────────────────────
+
+  // Measures average pixel difference between two same-size ImageData frames.
+  // Samples every 4th pixel for speed. Returns 0–255 (0 = identical).
+  function getFrameDiff(a: ImageData, b: ImageData): number {
+    let total = 0, count = 0;
+    for (let i = 0; i < a.data.length; i += 16) {
+      total +=
+        (Math.abs(a.data[i]   - b.data[i])   +
+         Math.abs(a.data[i+1] - b.data[i+1]) +
+         Math.abs(a.data[i+2] - b.data[i+2])) / 3;
+      count++;
+    }
+    return count > 0 ? total / count : 255;
+  }
+
   const stopCamera = useCallback(() => {
+    // Stop auto-capture timers
+    if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null; }
+    if (cdTimerRef.current)    { clearInterval(cdTimerRef.current);    cdTimerRef.current    = null; }
+    stableMsRef.current = 0;
+    autoCapturedRef.current = false;
+    prevFrameRef.current = null;
+    setStableMs(0);
+    setAutoCountdown(null);
+    // Stop stream
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     setCameraOpen(false);
     setCameraReady(false);
   }, []);
+
+  // ── auto-capture: frame stability analysis ────────────────────────────────
+  // Runs at 200 ms intervals once camera is live. Compares consecutive 160×120
+  // frames. When the average pixel diff stays < 10 for 1.5 s the board is
+  // considered stable → triggers a 3-count countdown → auto-captures.
+  useEffect(() => {
+    if (!cameraReady || !autoCapture) return;
+
+    // Reset stability state each time camera opens / auto mode toggled on
+    stableMsRef.current = 0;
+    autoCapturedRef.current = false;
+    prevFrameRef.current = null;
+    setStableMs(0);
+    setAutoCountdown(null);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 160; canvas.height = 120;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    frameTimerRef.current = setInterval(() => {
+      const video = cameraRef.current;
+      if (!video || video.videoWidth === 0 || video.readyState < 2) return;
+      if (autoCapturedRef.current) return;
+
+      ctx.drawImage(video, 0, 0, 160, 120);
+      const curr = ctx.getImageData(0, 0, 160, 120);
+
+      if (prevFrameRef.current) {
+        const diff = getFrameDiff(prevFrameRef.current, curr);
+
+        if (diff < 10) {
+          // Frame is stable — build up stability meter
+          stableMsRef.current = Math.min(stableMsRef.current + 200, 1500);
+        } else {
+          // Camera is moving — decay faster than build
+          stableMsRef.current = Math.max(0, stableMsRef.current - 350);
+        }
+        setStableMs(stableMsRef.current);
+
+        // Reached full stability → start countdown
+        if (stableMsRef.current >= 1500 && !autoCapturedRef.current) {
+          autoCapturedRef.current = true;
+          clearInterval(frameTimerRef.current!);
+          frameTimerRef.current = null;
+
+          let count = 3;
+          setAutoCountdown(count);
+          cdTimerRef.current = setInterval(() => {
+            count--;
+            if (count <= 0) {
+              clearInterval(cdTimerRef.current!);
+              cdTimerRef.current = null;
+              setAutoCountdown(null);
+              // capturePhoto only uses refs + stable setters — safe to call here
+              const vid = cameraRef.current;
+              if (!vid || vid.videoWidth === 0) return;
+              const cap = document.createElement('canvas');
+              cap.width = vid.videoWidth; cap.height = vid.videoHeight;
+              cap.getContext('2d')?.drawImage(vid, 0, 0);
+              cap.toBlob(blob => {
+                if (!blob) return;
+                const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
+                setCapturedImage(file);
+                setPreviewUrl(URL.createObjectURL(file));
+                // stop stream inline so we don't depend on stopCamera ref
+                if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null; }
+                streamRef.current?.getTracks().forEach(t => t.stop());
+                streamRef.current = null;
+                setCameraOpen(false);
+                setCameraReady(false);
+                stableMsRef.current = 0;
+                setStableMs(0);
+              }, 'image/jpeg', 0.92);
+            } else {
+              setAutoCountdown(count);
+            }
+          }, 900);
+        }
+      }
+      prevFrameRef.current = curr;
+    }, 200);
+
+    return () => {
+      if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null; }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraReady, autoCapture]);
 
   // videoRefCallback: called by React the instant the <video> DOM element is created.
   // This is more reliable than useEffect because React guarantees it fires synchronously
@@ -290,36 +412,75 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
         </div>
 
         {/* Per-component breakdown */}
-        {issues.length > 0 && (
-          <div className="px-4 pb-4 space-y-2">
-            <h4 className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-3">Component Details</h4>
-            {issues.map((issue, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-3 p-3 rounded-xl"
-                style={{
-                  background: issue.status === 'PRESENT'
-                    ? 'rgba(34,197,94,0.06)' : issue.status === 'DEFECTIVE'
-                    ? 'rgba(251,191,36,0.06)' : 'rgba(239,68,68,0.06)',
-                  border: `1px solid ${issue.status === 'PRESENT'
-                    ? 'rgba(34,197,94,0.15)' : issue.status === 'DEFECTIVE'
-                    ? 'rgba(251,191,36,0.15)' : 'rgba(239,68,68,0.15)'}`,
-                }}
-              >
-                <span className="text-lg shrink-0">
-                  {issue.status === 'PRESENT' ? '✅' : issue.status === 'DEFECTIVE' ? '⚠️' : '❌'}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white">{issue.name}</p>
-                  {issue.note && <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">{issue.note}</p>}
+        {issues.length > 0 && (() => {
+          // Helpers for the 5-status system
+          const statusMeta: Record<string, { bg: string; border: string; text: string; icon: string; label: string }> = {
+            PRESENT:          { bg: 'rgba(34,197,94,0.06)',   border: 'rgba(34,197,94,0.18)',   text: '#4ade80', icon: '✅', label: 'OK'          },
+            MISSING:          { bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',    text: '#f87171', icon: '❌', label: 'MISSING'     },
+            DEFECTIVE:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '⚠️', label: 'DEFECTIVE'  },
+            WRONG_ORIENTATION:{ bg: 'rgba(251,146,60,0.07)',  border: 'rgba(251,146,60,0.2)',   text: '#fb923c', icon: '🔄', label: 'ORIENTATION' },
+            SOLDER_ISSUE:     { bg: 'rgba(192,132,252,0.07)', border: 'rgba(192,132,252,0.2)',  text: '#c084fc', icon: '🔧', label: 'SOLDER'     },
+            MISPLACED:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '📍', label: 'MISPLACED'  },
+          };
+          const getMeta = (s: string) => statusMeta[s] ?? statusMeta['DEFECTIVE'];
+
+          const failIssues = issues.filter(c => c.status !== 'PRESENT');
+          const okIssues   = issues.filter(c => c.status === 'PRESENT');
+
+          return (
+            <div className="px-4 pb-4 space-y-4">
+              {/* Issues first */}
+              {failIssues.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-red-400/70">
+                    {failIssues.length} Issue{failIssues.length !== 1 ? 's' : ''} Found
+                  </h4>
+                  {failIssues.map((issue, i) => {
+                    const m = getMeta(issue.status);
+                    return (
+                      <div key={i} className="rounded-xl p-3" style={{ background: m.bg, border: `1px solid ${m.border}` }}>
+                        <div className="flex items-start gap-3">
+                          <span className="text-lg shrink-0 mt-0.5">{m.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-semibold text-white">{issue.name}</p>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: m.border, color: m.text }}>{m.label}</span>
+                            </div>
+                            {issue.note && <p className="text-xs text-zinc-300 mt-1 leading-relaxed">{issue.note}</p>}
+                            {issue.location && (
+                              <p className="text-[11px] text-zinc-500 mt-1 flex items-center gap-1">
+                                <span>📍</span>{issue.location}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <span className={`text-[10px] font-bold shrink-0 mt-0.5 ${
-                  issue.status === 'PRESENT' ? 'text-green-400' : issue.status === 'DEFECTIVE' ? 'text-amber-400' : 'text-red-400'
-                }`}>{issue.status}</span>
-              </div>
-            ))}
-          </div>
-        )}
+              )}
+
+              {/* OK components collapsed */}
+              {okIssues.length > 0 && (
+                <details className="group">
+                  <summary className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500 cursor-pointer select-none list-none flex items-center gap-1.5">
+                    <span className="group-open:rotate-90 inline-block transition-transform">▶</span>
+                    {okIssues.length} component{okIssues.length !== 1 ? 's' : ''} OK
+                  </summary>
+                  <div className="mt-2 space-y-1.5">
+                    {okIssues.map((issue, i) => (
+                      <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.1)' }}>
+                        <span className="text-sm">✅</span>
+                        <p className="text-xs text-zinc-400 font-medium flex-1">{issue.name}</p>
+                        {issue.location && <p className="text-[10px] text-zinc-600">{issue.location}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Actions */}
         <div className="p-4 pb-safe mt-auto" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
@@ -471,32 +632,59 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
             {/* Camera header */}
             <div
-              className="flex justify-between items-center px-4 flex-shrink-0"
+              className="flex justify-between items-center px-4 flex-shrink-0 gap-3"
               style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 12 }}
             >
-              <div className="flex items-center gap-2">
+              {/* Status dot + label */}
+              <div className="flex items-center gap-2 min-w-0">
                 <span
-                  className="w-2 h-2 rounded-full"
+                  className="w-2 h-2 rounded-full shrink-0"
                   style={{
                     background: cameraReady ? '#22c55e' : '#f59e0b',
                     boxShadow: cameraReady ? '0 0 6px #22c55e' : '0 0 6px #f59e0b',
                     animation: 'pulse 1.5s infinite',
                   }}
                 />
-                <p className="text-white text-sm font-semibold">
-                  {cameraReady ? 'Scan ready' : 'Starting camera…'}
+                <p className="text-white text-sm font-semibold truncate">
+                  {cameraReady
+                    ? autoCapture
+                      ? stableMs >= 1500
+                        ? '3… 2… 1…'
+                        : stableMs >= 800
+                        ? 'Hold steady…'
+                        : 'Auto — align board'
+                      : 'Manual capture'
+                    : 'Starting camera…'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={stopCamera}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400"
-                style={{ background: 'rgba(255,255,255,0.08)' }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <path d="M18 6 6 18M6 6l12 12" />
-                </svg>
-              </button>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {/* AUTO / MANUAL toggle */}
+                <button
+                  type="button"
+                  onClick={() => setAutoCapture(p => !p)}
+                  className="px-3 py-1 rounded-full text-xs font-bold transition-all"
+                  style={{
+                    background: autoCapture ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)',
+                    border: autoCapture ? '1px solid rgba(34,197,94,0.35)' : '1px solid rgba(255,255,255,0.12)',
+                    color: autoCapture ? '#4ade80' : 'rgba(255,255,255,0.45)',
+                  }}
+                >
+                  {autoCapture ? '⚡ Auto' : 'Manual'}
+                </button>
+
+                {/* Close */}
+                <button
+                  type="button"
+                  onClick={stopCamera}
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400"
+                  style={{ background: 'rgba(255,255,255,0.08)' }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Video feed + scanning overlay + shutter button — all in one layer */}
@@ -550,29 +738,86 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                     </div>
                   </div>
 
-                  {/* ── Shutter button — floats inside video, never behind nav ── */}
+                  {/* ── Shutter area — stability ring + button + label ── */}
                   <div
-                    className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-2"
-                    style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 100px), 110px)', background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)', paddingTop: 48 }}
+                    className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-3"
+                    style={{
+                      paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 100px), 110px)',
+                      background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)',
+                      paddingTop: 52,
+                    }}
                   >
-                    <button
-                      type="button"
-                      onClick={capturePhoto}
-                      className="flex items-center justify-center transition-transform active:scale-90"
-                      style={{
-                        width: 72, height: 72,
-                        borderRadius: '50%',
-                        background: 'white',
-                        boxShadow: '0 0 0 5px rgba(255,255,255,0.25), 0 8px 24px rgba(0,0,0,0.5)',
-                      }}
-                      aria-label="Capture photo"
-                    >
-                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" strokeWidth="2" strokeLinecap="round">
-                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                        <circle cx="12" cy="13" r="4" />
-                      </svg>
-                    </button>
-                    <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>Tap to capture</span>
+                    {/* Button with stability ring overlaid */}
+                    <div className="relative flex items-center justify-center" style={{ width: 88, height: 88 }}>
+
+                      {/* Stability ring SVG — rotated so fill starts at top */}
+                      {(() => {
+                        const r = 42;
+                        const circ = 2 * Math.PI * r; // ≈ 264
+                        const pct  = stableMs / 1500;
+                        const ringColor = stableMs >= 1500 ? '#4ade80' : stableMs > 800 ? '#fbbf24' : '#38bdf8';
+                        return (
+                          <svg
+                            width="88" height="88"
+                            viewBox="0 0 88 88"
+                            className="absolute inset-0"
+                            style={{ transform: 'rotate(-90deg)' }}
+                          >
+                            {/* Track */}
+                            <circle cx="44" cy="44" r={r} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
+                            {/* Fill */}
+                            <circle
+                              cx="44" cy="44" r={r} fill="none"
+                              stroke={ringColor}
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                              strokeDasharray={`${pct * circ} ${circ}`}
+                              style={{ transition: 'stroke-dasharray 0.2s ease, stroke 0.4s ease', filter: stableMs >= 1500 ? `drop-shadow(0 0 4px ${ringColor})` : 'none' }}
+                            />
+                          </svg>
+                        );
+                      })()}
+
+                      {/* Shutter button */}
+                      <button
+                        type="button"
+                        onClick={capturePhoto}
+                        className="flex items-center justify-center transition-transform active:scale-90"
+                        style={{
+                          width: 68, height: 68,
+                          borderRadius: '50%',
+                          background: autoCountdown !== null ? '#4ade80' : 'white',
+                          boxShadow: autoCountdown !== null
+                            ? '0 0 0 4px rgba(74,222,128,0.3), 0 8px 24px rgba(0,0,0,0.5)'
+                            : '0 0 0 4px rgba(255,255,255,0.2), 0 8px 24px rgba(0,0,0,0.5)',
+                          transition: 'background 0.3s ease, box-shadow 0.3s ease',
+                        }}
+                        aria-label="Capture photo"
+                      >
+                        {autoCountdown !== null ? (
+                          /* Countdown number */
+                          <span className="text-2xl font-black text-black leading-none">{autoCountdown}</span>
+                        ) : (
+                          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" strokeWidth="2" strokeLinecap="round">
+                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                            <circle cx="12" cy="13" r="4" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Dynamic status label */}
+                    <span className="text-xs font-medium text-center px-4" style={{ color: 'rgba(255,255,255,0.65)' }}>
+                      {autoCapture
+                        ? autoCountdown !== null
+                          ? 'Capturing…'
+                          : stableMs >= 1200
+                          ? 'Hold perfectly still!'
+                          : stableMs >= 600
+                          ? 'Almost steady — keep holding…'
+                          : 'Align PCB · hold steady to auto-capture'
+                        : 'Tap button to capture'}
+                    </span>
                   </div>
                 </>
               )}
