@@ -64,7 +64,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
   const cameraRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraOpen, setCameraOpen]   = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
 
   const stageLabel = currentStage.replace(/_/g, ' ');
 
@@ -133,30 +134,47 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     setCameraOpen(false);
+    setCameraReady(false);
   }, []);
 
+  // Attach stream to video element as soon as the overlay mounts (cameraOpen → true).
+  // Using useEffect is the correct approach — setTimeout is unreliable because React
+  // may not have committed the <video> DOM node within 50 ms on slower devices.
+  useEffect(() => {
+    if (cameraOpen && cameraRef.current && streamRef.current) {
+      cameraRef.current.srcObject = streamRef.current;
+      cameraRef.current.play().catch(() => {
+        // autoPlay might be blocked by browser — playsInline + muted should allow it
+      });
+    }
+  }, [cameraOpen]);
+
   async function openCamera() {
+    setError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      });
       streamRef.current = stream;
-      setCameraOpen(true);
-      // attach stream after state update
-      setTimeout(() => {
-        if (cameraRef.current) cameraRef.current.srcObject = stream;
-      }, 50);
+      setCameraOpen(true); // triggers the useEffect above to attach the stream
     } catch {
-      setError('Camera not available on this device. Please use a device with a camera.');
+      setError('Camera access denied or unavailable. Please allow camera access and try again.');
     }
   }
 
   function capturePhoto() {
-    if (!cameraRef.current) return;
+    const video = cameraRef.current;
+    // Guard: video must be playing and have valid dimensions
+    if (!video || video.videoWidth === 0 || video.readyState < 2) {
+      setError('Camera is still loading — please wait a moment and try again.');
+      return;
+    }
     const canvas = document.createElement('canvas');
-    canvas.width = cameraRef.current.videoWidth;
-    canvas.height = cameraRef.current.videoHeight;
-    canvas.getContext('2d')?.drawImage(cameraRef.current, 0, 0);
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d')?.drawImage(video, 0, 0);
     canvas.toBlob(blob => {
-      if (!blob) return;
+      if (!blob) { setError('Failed to capture photo. Please try again.'); return; }
       const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
       setCapturedImage(file);
       setPreviewUrl(URL.createObjectURL(file));
@@ -434,22 +452,60 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
         {/* Live camera overlay */}
         {cameraOpen && (
           <div className="absolute inset-0 z-10 bg-black flex flex-col">
-            <div className="flex justify-between items-center p-4 flex-shrink-0">
-              <p className="text-white font-semibold">Take photo</p>
-              <button type="button" onClick={stopCamera} className="text-zinc-400 hover:text-white text-xl">✕</button>
+            {/* Camera header */}
+            <div
+              className="flex justify-between items-center px-4 flex-shrink-0"
+              style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 12 }}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: cameraReady ? '#22c55e' : '#f59e0b', boxShadow: cameraReady ? '0 0 6px #22c55e' : '0 0 6px #f59e0b', animation: 'pulse 1.5s infinite' }}
+                />
+                <p className="text-white text-sm font-semibold">
+                  {cameraReady ? 'Camera ready' : 'Starting camera…'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={stopCamera}
+                className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400"
+                style={{ background: 'rgba(255,255,255,0.08)' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-            <div className="flex-1 relative overflow-hidden">
+
+            {/* Video feed */}
+            <div className="flex-1 relative overflow-hidden bg-zinc-950">
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-              <video ref={cameraRef} className="w-full h-full object-cover" muted playsInline autoPlay />
+              <video
+                ref={cameraRef}
+                className="w-full h-full object-cover"
+                muted
+                playsInline
+                autoPlay
+                onPlaying={() => setCameraReady(true)}
+              />
+              {!cameraReady && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-10 h-10 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
             </div>
+
+            {/* Capture button */}
             <div className="p-5 flex-shrink-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 20px)' }}>
               <button
                 type="button"
                 onClick={capturePhoto}
-                className="w-full py-4 rounded-2xl text-base font-bold"
-                style={{ background: 'white', color: 'black' }}
+                disabled={!cameraReady}
+                className="w-full py-5 rounded-2xl text-base font-bold disabled:opacity-40 transition-opacity"
+                style={{ background: cameraReady ? 'white' : 'rgba(255,255,255,0.2)', color: 'black' }}
               >
-                📸 Capture
+                {cameraReady ? '📸 Capture Photo' : 'Waiting for camera…'}
               </button>
             </div>
           </div>
