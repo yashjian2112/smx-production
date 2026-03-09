@@ -553,7 +553,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                   {/* ── Shutter button — floats inside video, never behind nav ── */}
                   <div
                     className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-2"
-                    style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 24px), 32px)', background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%)', paddingTop: 40 }}
+                    style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 100px), 110px)', background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)', paddingTop: 48 }}
                   >
                     <button
                       type="button"
