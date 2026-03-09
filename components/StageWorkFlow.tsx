@@ -499,8 +499,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
               </button>
             </div>
 
-            {/* Video feed */}
-            <div className="flex-1 relative overflow-hidden bg-black">
+            {/* Video feed + scanning overlay + shutter button — all in one layer */}
+            <div className="flex-1 relative overflow-hidden bg-black" style={{ minHeight: 0 }}>
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
                 ref={videoRefCallback}
@@ -511,7 +511,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 onPlaying={() => setCameraReady(true)}
               />
 
-              {/* Loading state (camera not yet playing) */}
+              {/* Loading state */}
               {!cameraReady && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
                   <div className="w-12 h-12 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
@@ -519,104 +519,62 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 </div>
               )}
 
-              {/* ── Scanning overlay ── shown once camera is live */}
+              {/* ── Scanning overlay + capture button — shown once camera is live ── */}
               {cameraReady && (
                 <>
                   {/* Soft dark vignette around edges */}
                   <div
                     className="absolute inset-0 pointer-events-none"
-                    style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 55%, rgba(0,0,0,0.72) 100%)' }}
+                    style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 50%, rgba(0,0,0,0.68) 100%)' }}
                   />
 
-                  {/* Scan frame — centred */}
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  {/* Scan frame — centred, sits above the shutter area */}
+                  <div
+                    className="absolute inset-x-0 top-0 pointer-events-none flex items-center justify-center"
+                    style={{ bottom: 140 }}
+                  >
                     <div className="relative" style={{ width: 272, height: 200 }}>
-
-                      {/* ── Corner brackets ── */}
                       {/* Top-left */}
-                      <div
-                        className="absolute top-0 left-0 w-8 h-8"
-                        style={{ borderTop: '2.5px solid #38bdf8', borderLeft: '2.5px solid #38bdf8', borderRadius: '4px 0 0 0', animation: 'swf-corner-pulse 2s ease-in-out infinite' }}
-                      />
+                      <div className="absolute top-0 left-0 w-8 h-8" style={{ borderTop: '2.5px solid #38bdf8', borderLeft: '2.5px solid #38bdf8', borderRadius: '4px 0 0 0', animation: 'swf-corner-pulse 2s ease-in-out infinite' }} />
                       {/* Top-right */}
-                      <div
-                        className="absolute top-0 right-0 w-8 h-8"
-                        style={{ borderTop: '2.5px solid #38bdf8', borderRight: '2.5px solid #38bdf8', borderRadius: '0 4px 0 0', animation: 'swf-corner-pulse 2s ease-in-out infinite 0.5s' }}
-                      />
+                      <div className="absolute top-0 right-0 w-8 h-8" style={{ borderTop: '2.5px solid #38bdf8', borderRight: '2.5px solid #38bdf8', borderRadius: '0 4px 0 0', animation: 'swf-corner-pulse 2s ease-in-out infinite 0.5s' }} />
                       {/* Bottom-left */}
-                      <div
-                        className="absolute bottom-0 left-0 w-8 h-8"
-                        style={{ borderBottom: '2.5px solid #38bdf8', borderLeft: '2.5px solid #38bdf8', borderRadius: '0 0 0 4px', animation: 'swf-corner-pulse 2s ease-in-out infinite 1s' }}
-                      />
+                      <div className="absolute bottom-0 left-0 w-8 h-8" style={{ borderBottom: '2.5px solid #38bdf8', borderLeft: '2.5px solid #38bdf8', borderRadius: '0 0 0 4px', animation: 'swf-corner-pulse 2s ease-in-out infinite 1s' }} />
                       {/* Bottom-right */}
-                      <div
-                        className="absolute bottom-0 right-0 w-8 h-8"
-                        style={{ borderBottom: '2.5px solid #38bdf8', borderRight: '2.5px solid #38bdf8', borderRadius: '0 0 4px 0', animation: 'swf-corner-pulse 2s ease-in-out infinite 1.5s' }}
-                      />
-
+                      <div className="absolute bottom-0 right-0 w-8 h-8" style={{ borderBottom: '2.5px solid #38bdf8', borderRight: '2.5px solid #38bdf8', borderRadius: '0 0 4px 0', animation: 'swf-corner-pulse 2s ease-in-out infinite 1.5s' }} />
                       {/* Centre crosshair */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-5 h-px" style={{ background: 'rgba(56,189,248,0.35)' }} />
-                      </div>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="h-5 w-px" style={{ background: 'rgba(56,189,248,0.35)' }} />
-                      </div>
-
-                      {/* ── Sweep scan line ── */}
-                      <div
-                        className="absolute left-0 right-0"
-                        style={{
-                          height: 2,
-                          top: 0,
-                          background: 'linear-gradient(90deg, transparent 0%, #7dd3fc 25%, #38bdf8 50%, #7dd3fc 75%, transparent 100%)',
-                          boxShadow: '0 0 10px 3px rgba(56,189,248,0.55)',
-                          animation: 'swf-scan 2.4s cubic-bezier(0.4,0,0.6,1) infinite',
-                        }}
-                      />
+                      <div className="absolute inset-0 flex items-center justify-center"><div className="w-5 h-px" style={{ background: 'rgba(56,189,248,0.35)' }} /></div>
+                      <div className="absolute inset-0 flex items-center justify-center"><div className="h-5 w-px" style={{ background: 'rgba(56,189,248,0.35)' }} /></div>
+                      {/* Sweep scan line */}
+                      <div className="absolute left-0 right-0" style={{ height: 2, top: 0, background: 'linear-gradient(90deg, transparent 0%, #7dd3fc 25%, #38bdf8 50%, #7dd3fc 75%, transparent 100%)', boxShadow: '0 0 10px 3px rgba(56,189,248,0.55)', animation: 'swf-scan 2.4s cubic-bezier(0.4,0,0.6,1) infinite' }} />
                     </div>
                   </div>
 
-                  {/* Guide label */}
-                  <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none">
-                    <span
-                      className="text-xs font-medium px-3 py-1 rounded-full"
-                      style={{ background: 'rgba(0,0,0,0.55)', color: 'rgba(125,211,252,0.85)', border: '1px solid rgba(56,189,248,0.2)' }}
+                  {/* ── Shutter button — floats inside video, never behind nav ── */}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-2"
+                    style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 24px), 32px)', background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%)', paddingTop: 40 }}
+                  >
+                    <button
+                      type="button"
+                      onClick={capturePhoto}
+                      className="flex items-center justify-center transition-transform active:scale-90"
+                      style={{
+                        width: 72, height: 72,
+                        borderRadius: '50%',
+                        background: 'white',
+                        boxShadow: '0 0 0 5px rgba(255,255,255,0.25), 0 8px 24px rgba(0,0,0,0.5)',
+                      }}
+                      aria-label="Capture photo"
                     >
-                      Align PCB within the frame
-                    </span>
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" strokeWidth="2" strokeLinecap="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                    </button>
+                    <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>Tap to capture</span>
                   </div>
                 </>
-              )}
-            </div>
-
-            {/* ── Capture button — always clearly visible ── */}
-            <div
-              className="flex-shrink-0 px-5 py-4"
-              style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 20px)', background: '#0a0a0a', borderTop: '1px solid rgba(255,255,255,0.06)' }}
-            >
-              {cameraReady ? (
-                <button
-                  type="button"
-                  onClick={capturePhoto}
-                  className="w-full py-5 rounded-2xl text-base font-bold flex items-center justify-center gap-3 transition-transform active:scale-[0.98]"
-                  style={{ background: 'white', color: '#0a0a0a' }}
-                >
-                  {/* Camera shutter icon */}
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                    <circle cx="12" cy="13" r="4" />
-                  </svg>
-                  Capture Photo
-                </button>
-              ) : (
-                /* Camera loading — still a real visible button, not faded */
-                <div
-                  className="w-full py-5 rounded-2xl flex items-center justify-center gap-3"
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.45)' }}
-                >
-                  <div className="w-5 h-5 border-2 border-white/25 border-t-white/60 rounded-full animate-spin" />
-                  <span className="text-sm font-semibold">Starting camera…</span>
-                </div>
               )}
             </div>
           </div>
