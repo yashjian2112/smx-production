@@ -3,17 +3,48 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+const STAGE_LABELS: Record<string, string> = {
+  POWERSTAGE_MANUFACTURING: 'Powerstage',
+  BRAINBOARD_MANUFACTURING: 'Brainboard',
+  CONTROLLER_ASSEMBLY: 'Assembly',
+  QC_AND_SOFTWARE:     'QC & Software',
+  REWORK:              'Rework',
+  FINAL_ASSEMBLY:      'Final Assembly',
+};
+
+type FoundUnit = {
+  id: string;
+  serialNumber: string;
+  currentStage: string;
+  currentStatus: string;
+};
+
 export default function SerialPage() {
-  const [query, setQuery] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [query, setQuery]       = useState('');
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [found, setFound]       = useState<FoundUnit | null>(null);
+  const [countdown, setCountdown] = useState(5);
   const inputRef = useRef<HTMLInputElement>(null);
-  const router = useRouter();
+  const router   = useRouter();
 
   // Auto-focus on mount so barcode gun can scan immediately
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Countdown after unit is found — fires once per second, then navigates
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (!found) return;
+
+    if (countdown <= 0) {
+      // Start work and navigate
+      fetch(`/api/units/${found.id}/work`, { method: 'POST' }).catch(() => {});
+      router.push(`/units/${found.id}`);
+      return;
+    }
+
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [found, countdown, router]);
 
   async function handleScan(e: React.FormEvent) {
     e.preventDefault();
@@ -23,16 +54,22 @@ export default function SerialPage() {
     setLoading(true);
     try {
       // Try serial first, then barcode
-      let res = await fetch(`/api/units/by-serial/${encodeURIComponent(val)}`);
+      let res  = await fetch(`/api/units/by-serial/${encodeURIComponent(val)}`);
       let data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        res = await fetch(`/api/units/by-barcode/${encodeURIComponent(val)}`);
+        res  = await fetch(`/api/units/by-barcode/${encodeURIComponent(val)}`);
         data = await res.json().catch(() => ({}));
       }
+
       if (res.ok && data?.id) {
-        // Auto-start work so the unit page lands straight on "Open Work"
-        fetch(`/api/units/${data.id}/work`, { method: 'POST' }).catch(() => {});
-        router.push(`/units/${data.id}`);
+        // Show serial + countdown before starting work
+        setFound({
+          id:            data.id,
+          serialNumber:  data.serialNumber ?? val,
+          currentStage:  data.currentStage ?? '',
+          currentStatus: data.currentStatus ?? '',
+        });
+        setCountdown(5);
       } else {
         setError(data?.error || 'No unit found with that barcode. Try again.');
         setQuery('');
@@ -47,6 +84,68 @@ export default function SerialPage() {
     }
   }
 
+  // ── FOUND state: serial + countdown ────────────────────────────────────────
+  if (found) {
+    const stageLabel  = STAGE_LABELS[found.currentStage] ?? found.currentStage.replace(/_/g, ' ');
+    // SVG ring progress — 5 segments, one filled per second remaining
+    const radius  = 52;
+    const circ    = 2 * Math.PI * radius;
+    const dash    = (countdown / 5) * circ;
+
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 gap-8">
+
+        {/* Confirmed badge */}
+        <div
+          className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-green-400"
+          style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Unit Found
+        </div>
+
+        {/* Serial number — large, prominent */}
+        <div className="text-center">
+          <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest mb-2">Serial Number</p>
+          <p className="font-mono text-3xl font-bold text-white tracking-wider">{found.serialNumber}</p>
+          <p className="text-zinc-500 text-sm mt-2">{stageLabel}</p>
+        </div>
+
+        {/* Circular countdown ring */}
+        <div className="relative flex items-center justify-center">
+          <svg width="128" height="128" viewBox="0 0 128 128" className="-rotate-90">
+            {/* Track */}
+            <circle cx="64" cy="64" r={radius} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
+            {/* Progress */}
+            <circle
+              cx="64" cy="64" r={radius}
+              fill="none"
+              stroke="#f59e0b"
+              strokeWidth="6"
+              strokeLinecap="round"
+              strokeDasharray={`${dash} ${circ}`}
+              style={{ transition: 'stroke-dasharray 0.9s linear' }}
+            />
+          </svg>
+          {/* Countdown number */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-4xl font-bold text-amber-400 font-mono tabular-nums">{countdown}</span>
+          </div>
+        </div>
+
+        <p className="text-zinc-500 text-sm text-center">
+          Work starts in <span className="text-amber-400 font-semibold">{countdown}s</span>
+          <br />
+          <span className="text-zinc-600 text-xs">Build time will begin automatically</span>
+        </p>
+
+      </div>
+    );
+  }
+
+  // ── SCAN state ─────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8 px-4">
       {/* Icon */}
@@ -73,7 +172,7 @@ export default function SerialPage() {
         <p className="text-zinc-500 text-sm mt-2">
           Point your scanner at the unit barcode or type it below.
           <br />
-          You'll go straight to the work page.
+          Build time starts automatically.
         </p>
       </div>
 
@@ -115,10 +214,7 @@ export default function SerialPage() {
           type="submit"
           disabled={loading || !query.trim()}
           className="w-full py-4 rounded-2xl text-base font-bold transition-all disabled:opacity-40"
-          style={{
-            background: 'linear-gradient(135deg, #0ea5e9, #6366f1)',
-            color: 'white',
-          }}
+          style={{ background: 'linear-gradient(135deg, #0ea5e9, #6366f1)', color: 'white' }}
         >
           {loading ? 'Looking up…' : 'Open Unit →'}
         </button>

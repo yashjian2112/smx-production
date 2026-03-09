@@ -98,31 +98,33 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* Stage barcodes with QR codes */}
-      <div className="card p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-medium text-sm">Stage Barcodes</h3>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {stageBarcodes.map(({ label, value, isFinal }) => (
-            <div key={label} className="flex flex-col items-center gap-2 p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              {value ? (
-                isFinal
-                  ? <Barcode128 value={value} height={50} fontSize={10} background="transparent" lineColor="#e2e8f0" />
-                  : <QRCodeCanvas value={value} size={80} dark="#e2e8f0" light="transparent" />
-              ) : (
-                <div className="w-20 h-20 rounded flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                  <span className="text-zinc-700 text-xs">N/A</span>
+      {/* Stage barcodes — hidden for employees, they don't need to see these */}
+      {!isEmployee && (
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-medium text-sm">Stage Barcodes</h3>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {stageBarcodes.map(({ label, value, isFinal }) => (
+              <div key={label} className="flex flex-col items-center gap-2 p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                {value ? (
+                  isFinal
+                    ? <Barcode128 value={value} height={50} fontSize={10} background="transparent" lineColor="#e2e8f0" />
+                    : <QRCodeCanvas value={value} size={80} dark="#e2e8f0" light="transparent" />
+                ) : (
+                  <div className="w-20 h-20 rounded flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <span className="text-zinc-700 text-xs">N/A</span>
+                  </div>
+                )}
+                <div className="text-center">
+                  <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">{label}</p>
+                  <p className="font-mono text-xs text-zinc-400 mt-0.5">{value ?? '—'}</p>
                 </div>
-              )}
-              <div className="text-center">
-                <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">{label}</p>
-                <p className="font-mono text-xs text-zinc-400 mt-0.5">{value ?? '—'}</p>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Component checklist — shown to admins/managers only; AI handles visual check for employees */}
       {!isEmployee && components.length > 0 && (

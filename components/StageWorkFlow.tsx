@@ -62,7 +62,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const [error, setError] = useState('');
   const [startingWork, setStartingWork] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -146,8 +145,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
         if (cameraRef.current) cameraRef.current.srcObject = stream;
       }, 50);
     } catch {
-      // Camera not available — fall back to file picker
-      fileInputRef.current?.click();
+      setError('Camera not available on this device. Please use a device with a camera.');
     }
   }
 
@@ -164,13 +162,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
       setPreviewUrl(URL.createObjectURL(file));
       stopCamera();
     }, 'image/jpeg', 0.92);
-  }
-
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setCapturedImage(f);
-    setPreviewUrl(URL.createObjectURL(f));
   }
 
   function retakePhoto() {
@@ -409,34 +400,18 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 <p className="text-white font-semibold">Take a photo of your work</p>
                 <p className="text-zinc-500 text-xs">The AI will verify component placement and quality</p>
               </div>
-              <div className="w-full grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={openCamera}
-                  className="py-5 rounded-2xl flex flex-col items-center gap-2 text-sky-400 font-medium text-sm"
-                  style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.25)' }}
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                    <circle cx="12" cy="13" r="4" />
-                  </svg>
-                  Camera
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="py-5 rounded-2xl flex flex-col items-center gap-2 text-zinc-400 font-medium text-sm"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
-                  Upload
-                </button>
-              </div>
-              <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
+              <button
+                type="button"
+                onClick={openCamera}
+                className="w-full py-6 rounded-2xl flex flex-col items-center gap-3 text-sky-400 font-semibold text-sm"
+                style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}
+              >
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+                Open Camera
+              </button>
             </div>
           ) : (
             /* Photo preview */
