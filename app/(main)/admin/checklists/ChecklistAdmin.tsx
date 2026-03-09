@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { BoardLocationPicker, zonesToText, parseZoneIds } from '@/components/BoardLocationPicker';
 
 const STAGES = [
   { key: 'POWERSTAGE_MANUFACTURING', label: 'Powerstage' },
@@ -338,7 +339,7 @@ export function ChecklistAdmin({ initialItems }: Props) {
               </div>
               {item.boardLocation && (
                 <p className="text-[11px] text-sky-400/70 mt-0.5 flex items-center gap-1">
-                  <span>📍</span> {item.boardLocation}
+                  <span>📍</span> {zonesToText(parseZoneIds(item.boardLocation)) || item.boardLocation}
                 </p>
               )}
               {item.orientationRule && (
@@ -431,18 +432,15 @@ export function ChecklistAdmin({ initialItems }: Props) {
             <p className="text-[10px] text-zinc-600 mt-1">AI will verify this — most important for MOSFETs, ICs, diodes</p>
           </div>
 
-          {/* Board location */}
+          {/* Board location — visual zone picker */}
           <div>
-            <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">
+            <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-2">
               Board location
             </label>
-            <input
+            <BoardLocationPicker
               value={form.boardLocation}
-              onChange={e => setForm(f => ({ ...f, boardLocation: e.target.value }))}
-              placeholder="e.g. Left and right sides in 3 groups of 3 per side"
-              className="input-field text-sm"
+              onChange={v => setForm(f => ({ ...f, boardLocation: v }))}
             />
-            <p className="text-[10px] text-zinc-600 mt-1">Where on the board? AI verifies component is in the correct zone</p>
           </div>
 
           {/* Acceptance criteria */}
@@ -525,7 +523,7 @@ export function ChecklistAdmin({ initialItems }: Props) {
                   <span className="text-sky-400">×{item.expectedCount}</span>
                 )}
                 {item.boardLocation && (
-                  <span className="text-sky-400/60 truncate">📍 {item.boardLocation}</span>
+                  <span className="text-sky-400/60 truncate">📍 {zonesToText(parseZoneIds(item.boardLocation)) || item.boardLocation}</span>
                 )}
                 {item.orientationRule && (
                   <span className="text-amber-400/60 truncate">🔄 {item.orientationRule}</span>

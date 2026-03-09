@@ -6,6 +6,7 @@ import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { put } from '@vercel/blob';
 import Anthropic from '@anthropic-ai/sdk';
+import { parseZoneIds, zonesToText } from '@/components/BoardLocationPicker';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -132,7 +133,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             const parts: string[] = [];
             parts.push(`${i + 1}. ${c.name}`);
             if (c.expectedCount)   parts.push(`  Expected count  : ${c.expectedCount}`);
-            if (c.boardLocation)   parts.push(`  Board location  : ${c.boardLocation}`);
+            if (c.boardLocation) {
+              // Convert zone IDs to readable text; fall back to raw value for legacy entries
+              const zoneIds  = parseZoneIds(c.boardLocation);
+              const readable = zoneIds.length > 0 ? zonesToText(zoneIds) : c.boardLocation;
+              parts.push(`  Board location  : ${readable}`);
+            }
             if (c.orientationRule) parts.push(`  Orientation rule: ${c.orientationRule}`);
             if (c.description)     parts.push(`  Additional notes: ${c.description}`);
             parts.push(`  Required        : ${c.required ? 'YES — board FAILS if any issue found' : 'NO'}`);
