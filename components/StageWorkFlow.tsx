@@ -451,9 +451,9 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
           )}
         </div>
 
-        {/* Live camera overlay */}
+        {/* Live camera overlay — fixed + z-[200] so it covers the bottom nav (z-50) */}
         {cameraOpen && (
-          <div className="absolute inset-0 z-10 bg-black flex flex-col">
+          <div className="fixed inset-0 z-[200] bg-black flex flex-col">
             {/* Scan-line keyframe — scoped to this overlay */}
             <style>{`
               @keyframes swf-scan {
