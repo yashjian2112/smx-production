@@ -27,7 +27,7 @@ export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, curre
             className={`flex-1 py-3 text-sm font-semibold transition-colors ${tab === 'work' ? 'text-sky-400' : 'text-zinc-500 hover:text-zinc-300'}`}
             style={tab === 'work' ? { borderBottom: '2px solid #38bdf8', marginBottom: -1 } : {}}
           >
-            Work
+            Open Work
           </button>
         )}
         <button
