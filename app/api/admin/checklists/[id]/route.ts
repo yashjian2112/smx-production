@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const form = await req.formData();
     const file = form.get('referenceImage') as File | null;
     body = Object.fromEntries(
-      ['name', 'description', 'required', 'sortOrder', 'active', 'expectedCount', 'orientationRule', 'isBoardReference']
+      ['name', 'description', 'required', 'sortOrder', 'active', 'expectedCount', 'orientationRule', 'boardLocation', 'isBoardReference']
         .map((k) => [k, form.get(k) as string])
     );
     if (file && file.size > 0) {
@@ -39,6 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.active           !== undefined) data.active           = body.active !== 'false';
   if (body.expectedCount    !== undefined) data.expectedCount    = body.expectedCount ? parseInt(body.expectedCount, 10) : null;
   if (body.orientationRule  !== undefined) data.orientationRule  = body.orientationRule || null;
+  if (body.boardLocation    !== undefined) data.boardLocation    = body.boardLocation   || null;
   if (body.isBoardReference !== undefined) data.isBoardReference = body.isBoardReference === 'true';
   if (referenceImageUrl) data.referenceImageUrl = referenceImageUrl;
 

@@ -132,6 +132,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             const parts: string[] = [];
             parts.push(`${i + 1}. ${c.name}`);
             if (c.expectedCount)   parts.push(`  Expected count  : ${c.expectedCount}`);
+            if (c.boardLocation)   parts.push(`  Board location  : ${c.boardLocation}`);
             if (c.orientationRule) parts.push(`  Orientation rule: ${c.orientationRule}`);
             if (c.description)     parts.push(`  Additional notes: ${c.description}`);
             parts.push(`  Required        : ${c.required ? 'YES — board FAILS if any issue found' : 'NO'}`);
@@ -219,10 +220,10 @@ ${countSummary}
 
 For EACH component in the manifest, verify ALL of the following:
 1. COUNT       — Are ALL expected units present? (count them individually)
-2. ORIENTATION — Does every unit follow the orientation rule exactly?
-3. ALIGNMENT   — Are they seated correctly on pads, not shifted/tilted/tombstoned?
-4. DAMAGE      — Any cracked, burned, or visibly defective units?
-5. POSITION    — Are they in the correct board location? (compare with reference image)
+2. LOCATION    — Are they in the correct board zone as specified in "Board location"?
+3. ORIENTATION — Does every unit follow the orientation rule exactly?
+4. ALIGNMENT   — Are they seated correctly on pads, not shifted/tilted/tombstoned?
+5. DAMAGE      — Any cracked, burned, or visibly defective units?
 
 Respond ONLY with valid JSON — no markdown fences, no extra text:
 {
@@ -240,11 +241,12 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
 
 STRICT RULES:
 — Count every visible unit individually — do not guess.
-— If expected count is 18 and you can only see 17, status = MISSING with note explaining which position.
+— If expected count is 18 and you can only see 17, status = MISSING with note explaining which position is empty.
+— If a component is found in the WRONG ZONE (not matching board location), status = MISPLACED.
 — If orientation rule is given and ANY unit violates it, status = WRONG_ORIENTATION — this is an immediate FAIL.
-— PASS only when: all REQUIRED components are present with correct count, correct orientation, and correct alignment.
+— PASS only when: all REQUIRED components are present with correct count, correct location, correct orientation, and correct alignment.
 — If the image is blurry, too dark, or board not visible: overall = FAIL, explain in summary.
-— Compare against the board reference image for position and orientation verification.`,
+— Compare against the board reference image for position, zone, and orientation verification.`,
     });
 
     const message = await anthropic.messages.create({

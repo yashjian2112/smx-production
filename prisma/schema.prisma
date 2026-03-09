@@ -337,6 +337,7 @@ model StageChecklistItem {
   referenceImageUrl String?   @map("reference_image_url")
   expectedCount     Int?      @map("expected_count")       // How many of this component on the board
   orientationRule   String?   @map("orientation_rule")     // e.g. "heatsink tab faces outward"
+  boardLocation     String?   @map("board_location")       // e.g. "Left and right sides, 3 groups of 3"
   isBoardReference  Boolean   @default(false) @map("is_board_reference") // Full board reference image
   required          Boolean   @default(true)
   sortOrder         Int       @default(0) @map("sort_order")

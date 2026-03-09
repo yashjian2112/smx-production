@@ -20,6 +20,7 @@ type ChecklistItem = {
   referenceImageUrl: string | null;
   expectedCount: number | null;
   orientationRule: string | null;
+  boardLocation: string | null;
   isBoardReference: boolean;
   required: boolean;
   sortOrder: number;
@@ -45,7 +46,7 @@ export function ChecklistAdmin({ initialItems }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     name: '', description: '', required: true, sortOrder: 0,
-    expectedCount: '', orientationRule: '',
+    expectedCount: '', orientationRule: '', boardLocation: '',
   });
   const [refImage, setRefImage]   = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -120,6 +121,7 @@ export function ChecklistAdmin({ initialItems }: Props) {
       fd.append('sortOrder',      String(form.sortOrder));
       fd.append('expectedCount',  form.expectedCount);
       fd.append('orientationRule', form.orientationRule);
+      fd.append('boardLocation',   form.boardLocation);
       fd.append('isBoardReference', 'false');
       if (refImage) fd.append('referenceImage', refImage);
 
@@ -128,7 +130,7 @@ export function ChecklistAdmin({ initialItems }: Props) {
       const item = await res.json();
       setItems((prev) => [...prev, item]);
       setShowAdd(false);
-      setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '' });
+      setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' });
       setRefImage(null); setPreviewUrl('');
     } finally { setSaving(false); }
   }
@@ -334,6 +336,11 @@ export function ChecklistAdmin({ initialItems }: Props) {
                 )}
                 <span className="text-[10px] text-zinc-600">#{item.sortOrder}</span>
               </div>
+              {item.boardLocation && (
+                <p className="text-[11px] text-sky-400/70 mt-0.5 flex items-center gap-1">
+                  <span>📍</span> {item.boardLocation}
+                </p>
+              )}
               {item.orientationRule && (
                 <p className="text-[11px] text-amber-400/70 mt-0.5 flex items-center gap-1">
                   <span>🔄</span> {item.orientationRule}
@@ -424,6 +431,20 @@ export function ChecklistAdmin({ initialItems }: Props) {
             <p className="text-[10px] text-zinc-600 mt-1">AI will verify this — most important for MOSFETs, ICs, diodes</p>
           </div>
 
+          {/* Board location */}
+          <div>
+            <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">
+              Board location
+            </label>
+            <input
+              value={form.boardLocation}
+              onChange={e => setForm(f => ({ ...f, boardLocation: e.target.value }))}
+              placeholder="e.g. Left and right sides in 3 groups of 3 per side"
+              className="input-field text-sm"
+            />
+            <p className="text-[10px] text-zinc-600 mt-1">Where on the board? AI verifies component is in the correct zone</p>
+          </div>
+
           {/* Acceptance criteria */}
           <div>
             <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">
@@ -503,8 +524,11 @@ export function ChecklistAdmin({ initialItems }: Props) {
                 {item.expectedCount && (
                   <span className="text-sky-400">×{item.expectedCount}</span>
                 )}
+                {item.boardLocation && (
+                  <span className="text-sky-400/60 truncate">📍 {item.boardLocation}</span>
+                )}
                 {item.orientationRule && (
-                  <span className="text-zinc-600 truncate">— {item.orientationRule}</span>
+                  <span className="text-amber-400/60 truncate">🔄 {item.orientationRule}</span>
                 )}
                 {item.required && (
                   <span className="ml-auto text-[10px] text-red-400 shrink-0">REQUIRED</span>
