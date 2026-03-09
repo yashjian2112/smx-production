@@ -454,6 +454,21 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
         {/* Live camera overlay */}
         {cameraOpen && (
           <div className="absolute inset-0 z-10 bg-black flex flex-col">
+            {/* Scan-line keyframe — scoped to this overlay */}
+            <style>{`
+              @keyframes swf-scan {
+                0%   { top: 0%; opacity: 1; }
+                48%  { opacity: 1; }
+                50%  { top: calc(100% - 2px); opacity: 0.4; }
+                52%  { opacity: 1; }
+                100% { top: 0%; opacity: 1; }
+              }
+              @keyframes swf-corner-pulse {
+                0%, 100% { opacity: 1; }
+                50%       { opacity: 0.55; }
+              }
+            `}</style>
+
             {/* Camera header */}
             <div
               className="flex justify-between items-center px-4 flex-shrink-0"
@@ -462,10 +477,14 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
               <div className="flex items-center gap-2">
                 <span
                   className="w-2 h-2 rounded-full"
-                  style={{ background: cameraReady ? '#22c55e' : '#f59e0b', boxShadow: cameraReady ? '0 0 6px #22c55e' : '0 0 6px #f59e0b', animation: 'pulse 1.5s infinite' }}
+                  style={{
+                    background: cameraReady ? '#22c55e' : '#f59e0b',
+                    boxShadow: cameraReady ? '0 0 6px #22c55e' : '0 0 6px #f59e0b',
+                    animation: 'pulse 1.5s infinite',
+                  }}
                 />
                 <p className="text-white text-sm font-semibold">
-                  {cameraReady ? 'Camera ready' : 'Starting camera…'}
+                  {cameraReady ? 'Scan ready' : 'Starting camera…'}
                 </p>
               </div>
               <button
@@ -481,7 +500,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             </div>
 
             {/* Video feed */}
-            <div className="flex-1 relative overflow-hidden bg-zinc-950">
+            <div className="flex-1 relative overflow-hidden bg-black">
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
                 ref={videoRefCallback}
@@ -491,24 +510,114 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 autoPlay
                 onPlaying={() => setCameraReady(true)}
               />
+
+              {/* Loading state (camera not yet playing) */}
               {!cameraReady && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-10 h-10 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
+                  <div className="w-12 h-12 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-amber-400 text-sm font-medium">Initialising camera…</p>
                 </div>
+              )}
+
+              {/* ── Scanning overlay ── shown once camera is live */}
+              {cameraReady && (
+                <>
+                  {/* Soft dark vignette around edges */}
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 55%, rgba(0,0,0,0.72) 100%)' }}
+                  />
+
+                  {/* Scan frame — centred */}
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <div className="relative" style={{ width: 272, height: 200 }}>
+
+                      {/* ── Corner brackets ── */}
+                      {/* Top-left */}
+                      <div
+                        className="absolute top-0 left-0 w-8 h-8"
+                        style={{ borderTop: '2.5px solid #38bdf8', borderLeft: '2.5px solid #38bdf8', borderRadius: '4px 0 0 0', animation: 'swf-corner-pulse 2s ease-in-out infinite' }}
+                      />
+                      {/* Top-right */}
+                      <div
+                        className="absolute top-0 right-0 w-8 h-8"
+                        style={{ borderTop: '2.5px solid #38bdf8', borderRight: '2.5px solid #38bdf8', borderRadius: '0 4px 0 0', animation: 'swf-corner-pulse 2s ease-in-out infinite 0.5s' }}
+                      />
+                      {/* Bottom-left */}
+                      <div
+                        className="absolute bottom-0 left-0 w-8 h-8"
+                        style={{ borderBottom: '2.5px solid #38bdf8', borderLeft: '2.5px solid #38bdf8', borderRadius: '0 0 0 4px', animation: 'swf-corner-pulse 2s ease-in-out infinite 1s' }}
+                      />
+                      {/* Bottom-right */}
+                      <div
+                        className="absolute bottom-0 right-0 w-8 h-8"
+                        style={{ borderBottom: '2.5px solid #38bdf8', borderRight: '2.5px solid #38bdf8', borderRadius: '0 0 4px 0', animation: 'swf-corner-pulse 2s ease-in-out infinite 1.5s' }}
+                      />
+
+                      {/* Centre crosshair */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-5 h-px" style={{ background: 'rgba(56,189,248,0.35)' }} />
+                      </div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="h-5 w-px" style={{ background: 'rgba(56,189,248,0.35)' }} />
+                      </div>
+
+                      {/* ── Sweep scan line ── */}
+                      <div
+                        className="absolute left-0 right-0"
+                        style={{
+                          height: 2,
+                          top: 0,
+                          background: 'linear-gradient(90deg, transparent 0%, #7dd3fc 25%, #38bdf8 50%, #7dd3fc 75%, transparent 100%)',
+                          boxShadow: '0 0 10px 3px rgba(56,189,248,0.55)',
+                          animation: 'swf-scan 2.4s cubic-bezier(0.4,0,0.6,1) infinite',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Guide label */}
+                  <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none">
+                    <span
+                      className="text-xs font-medium px-3 py-1 rounded-full"
+                      style={{ background: 'rgba(0,0,0,0.55)', color: 'rgba(125,211,252,0.85)', border: '1px solid rgba(56,189,248,0.2)' }}
+                    >
+                      Align PCB within the frame
+                    </span>
+                  </div>
+                </>
               )}
             </div>
 
-            {/* Capture button */}
-            <div className="p-5 flex-shrink-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 20px)' }}>
-              <button
-                type="button"
-                onClick={capturePhoto}
-                disabled={!cameraReady}
-                className="w-full py-5 rounded-2xl text-base font-bold disabled:opacity-40 transition-opacity"
-                style={{ background: cameraReady ? 'white' : 'rgba(255,255,255,0.2)', color: 'black' }}
-              >
-                {cameraReady ? '📸 Capture Photo' : 'Waiting for camera…'}
-              </button>
+            {/* ── Capture button — always clearly visible ── */}
+            <div
+              className="flex-shrink-0 px-5 py-4"
+              style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 20px)', background: '#0a0a0a', borderTop: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              {cameraReady ? (
+                <button
+                  type="button"
+                  onClick={capturePhoto}
+                  className="w-full py-5 rounded-2xl text-base font-bold flex items-center justify-center gap-3 transition-transform active:scale-[0.98]"
+                  style={{ background: 'white', color: '#0a0a0a' }}
+                >
+                  {/* Camera shutter icon */}
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                  Capture Photo
+                </button>
+              ) : (
+                /* Camera loading — still a real visible button, not faded */
+                <div
+                  className="w-full py-5 rounded-2xl flex items-center justify-center gap-3"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.45)' }}
+                >
+                  <div className="w-5 h-5 border-2 border-white/25 border-t-white/60 rounded-full animate-spin" />
+                  <span className="text-sm font-semibold">Starting camera…</span>
+                </div>
+              )}
             </div>
           </div>
         )}
