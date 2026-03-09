@@ -30,7 +30,8 @@ export default function SerialPage() {
         data = await res.json().catch(() => ({}));
       }
       if (res.ok && data?.id) {
-        // Navigate directly to the unit page
+        // Auto-start work so the unit page lands straight on "Open Work"
+        fetch(`/api/units/${data.id}/work`, { method: 'POST' }).catch(() => {});
         router.push(`/units/${data.id}`);
       } else {
         setError(data?.error || 'No unit found with that barcode. Try again.');

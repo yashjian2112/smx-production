@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { BarcodeScanner } from './BarcodeScanner';
 import { useRouter } from 'next/navigation';
 
 type Submission = {
@@ -21,7 +20,7 @@ type Issue = { name: string; status: string; note: string };
 type Props = {
   unitId: string;
   unitSerial: string;
-  stageBarcode: string | null;   // the physical barcode for the current stage (e.g. C350PS26001)
+  stageBarcode: string | null;
   currentStage: string;
   currentStatus: string;
 };
@@ -36,79 +35,120 @@ function LiveTimer({ startedAt }: { startedAt: string }) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     const start = new Date(startedAt).getTime();
-    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    const tick = () => setElapsed(Math.floor((Date.now() - start) / 1000));
+    tick();
+    const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, [startedAt]);
   return <span className="font-mono text-amber-400 font-bold">{fmtDuration(elapsed)}</span>;
 }
 
-export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, currentStatus }: Props) {
+export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const router = useRouter();
-  const [step, setStep] = useState<'idle' | 'scanning' | 'working' | 'uploading' | 'analyzing' | 'result'>('idle');
+
+  // ── state machine ──────────────────────────────────────────────────────────
+  // loading → auto-starting work
+  // idle    → work couldn't auto-start, show manual "Start Work" button
+  // working → work started, show "Open Work" button
+  // open    → full-screen work panel (photo capture)
+  // analyzing → AI running
+  // result  → PASS / FAIL shown
+  // completed → stage already done
+  const [step, setStep] = useState<'loading' | 'idle' | 'working' | 'open' | 'analyzing' | 'result' | 'completed'>('loading');
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [capturedImage, setCapturedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [result, setResult] = useState<{ result: string; issues: Issue[]; summary: string } | null>(null);
   const [error, setError] = useState('');
+  const [startingWork, setStartingWork] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [cameraMode, setCameraMode] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
-  // Check for existing active submission on mount
+  const stageLabel = currentStage.replace(/_/g, ' ');
+
+  // ── auto-start work on mount ───────────────────────────────────────────────
   useEffect(() => {
+    if (currentStatus === 'COMPLETED') {
+      setStep('completed');
+      return;
+    }
+
     if (currentStatus === 'IN_PROGRESS') {
+      // Try to resume existing submission
       fetch(`/api/units/${unitId}/work`)
         .then(r => r.json())
         .then(data => {
           if (data.active) {
             setSubmission(data.active);
             setStep('working');
+          } else {
+            // No active submission — create one
+            return fetch(`/api/units/${unitId}/work`, { method: 'POST' })
+              .then(r => r.json())
+              .then(d => { setSubmission(d); setStep('working'); });
           }
         })
-        .catch(() => {});
-    }
-  }, [unitId, currentStatus]);
-
-  // Start work after scanning the stage barcode
-  const handleScan = useCallback(async (code: string) => {
-    const normalized = code.trim().toUpperCase();
-    const expected = stageBarcode?.trim().toUpperCase();
-
-    if (expected && normalized !== expected) {
-      setError(`Wrong barcode! You scanned: ${normalized}. Expected: ${expected}`);
-      setStep('idle');
+        .catch(() => setStep('idle'));
       return;
     }
+
+    // PENDING — auto-start work
+    fetch(`/api/units/${unitId}/work`, { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data?.id) {
+          setSubmission(data);
+          setStep('working');
+        } else {
+          setStep('idle');
+        }
+      })
+      .catch(() => setStep('idle'));
+  }, [unitId, currentStatus]);
+
+  // ── manual start (fallback) ────────────────────────────────────────────────
+  async function startWork() {
+    setStartingWork(true);
     setError('');
     try {
       const res = await fetch(`/api/units/${unitId}/work`, { method: 'POST' });
       const data = await res.json();
-      setSubmission(data);
-      setStep('working');
+      if (data?.id) {
+        setSubmission(data);
+        setStep('working');
+      } else {
+        setError(data?.error ?? 'Failed to start work. Please try again.');
+      }
     } catch {
-      setError('Failed to start work. Please try again.');
-      setStep('idle');
-    }
-  }, [unitId, stageBarcode]);
-
-  // Camera for photo capture
-  async function openCamera() {
-    setCameraMode(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      streamRef.current = stream;
-      if (cameraRef.current) { cameraRef.current.srcObject = stream; }
-    } catch {
-      setCameraMode(false);
-      fileInputRef.current?.click();
+      setError('Network error. Please try again.');
+    } finally {
+      setStartingWork(false);
     }
   }
 
-  function stopCamera() {
+  // ── camera helpers ─────────────────────────────────────────────────────────
+  const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
-    setCameraMode(false);
+    setCameraOpen(false);
+  }, []);
+
+  async function openCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      streamRef.current = stream;
+      setCameraOpen(true);
+      // attach stream after state update
+      setTimeout(() => {
+        if (cameraRef.current) cameraRef.current.srcObject = stream;
+      }, 50);
+    } catch {
+      // Camera not available — fall back to file picker
+      fileInputRef.current?.click();
+    }
   }
 
   function capturePhoto() {
@@ -133,7 +173,13 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
     setPreviewUrl(URL.createObjectURL(f));
   }
 
-  async function submitImage() {
+  function retakePhoto() {
+    setCapturedImage(null);
+    setPreviewUrl('');
+  }
+
+  // ── submit to AI ──────────────────────────────────────────────────────────
+  async function submitForAI() {
     if (!capturedImage || !submission) return;
     setStep('analyzing');
     setError('');
@@ -152,13 +198,36 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
       }
     } catch {
       setError('Submission failed. Please try again.');
-      setStep('working');
+      setStep('open');
     }
   }
 
-  const stageLabel = currentStage.replace(/_/g, ' ');
+  // ══════════════════════════════════════════════════════════════════════════
+  //  RENDER
+  // ══════════════════════════════════════════════════════════════════════════
 
-  // ── IDLE: waiting to start ──────────────────────────────────────────────────
+  // ── loading ────────────────────────────────────────────────────────────────
+  if (step === 'loading') {
+    return (
+      <div className="py-8 flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+        <p className="text-zinc-500 text-sm">Starting work…</p>
+      </div>
+    );
+  }
+
+  // ── completed ──────────────────────────────────────────────────────────────
+  if (step === 'completed') {
+    return (
+      <div className="rounded-2xl p-5 text-center" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
+        <div className="text-3xl mb-2">✅</div>
+        <p className="text-green-400 font-semibold">Stage completed</p>
+        <p className="text-zinc-500 text-xs mt-1">This unit has moved to the next stage.</p>
+      </div>
+    );
+  }
+
+  // ── idle (manual fallback) ─────────────────────────────────────────────────
   if (step === 'idle') {
     return (
       <div className="space-y-4">
@@ -167,186 +236,73 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
             {error}
           </div>
         )}
-        {currentStatus === 'COMPLETED' ? (
-          <div className="rounded-xl p-4 text-center" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
-            <p className="text-green-400 font-semibold">Stage completed ✓</p>
-            <p className="text-zinc-500 text-xs mt-1">This unit has moved to the next stage.</p>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setStep('scanning')}
-            className="w-full py-4 rounded-2xl font-bold text-sm flex flex-col items-center gap-2"
-            style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}
-          >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" />
-              <path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-              <line x1="7" y1="9" x2="7" y2="15" /><line x1="10" y1="9" x2="10" y2="15" />
-              <line x1="13" y1="9" x2="13" y2="15" /><line x1="16" y1="9" x2="16" y2="15" />
-            </svg>
-            Scan unit barcode to start {stageLabel}
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  // ── SCANNING ────────────────────────────────────────────────────────────────
-  if (step === 'scanning') {
-    return (
-      <BarcodeScanner
-        title={`Scan to start — ${stageLabel}`}
-        hint={stageBarcode ? `Scan: ${stageBarcode}` : `Scan barcode for unit ${unitSerial}`}
-        onScan={handleScan}
-        onClose={() => setStep('idle')}
-      />
-    );
-  }
-
-  // ── WORKING: timer + photo capture ─────────────────────────────────────────
-  if (step === 'working') {
-    return (
-      <div className="space-y-4">
-        {/* Timer */}
-        {submission && (
-          <div className="rounded-xl p-4 text-center" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.15)' }}>
-            <p className="text-zinc-500 text-xs mb-1">Time working</p>
-            <LiveTimer startedAt={submission.startedAt} />
-          </div>
-        )}
-
-        {error && <p className="text-red-400 text-sm">{error}</p>}
-
-        {/* Photo capture area */}
-        <div>
-          <p className="text-sm text-zinc-400 mb-2 font-medium">When done, take a photo of the completed work:</p>
-          {previewUrl ? (
-            <div className="relative rounded-xl overflow-hidden" style={{ border: '1px solid rgba(14,165,233,0.3)' }}>
-              <Image src={previewUrl} alt="Captured" width={400} height={300} className="w-full object-cover max-h-56" />
-              <button
-                type="button"
-                onClick={() => { setCapturedImage(null); setPreviewUrl(''); }}
-                className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/70 flex items-center justify-center text-white text-xs"
-              >✕</button>
-            </div>
+        <button
+          type="button"
+          onClick={startWork}
+          disabled={startingWork}
+          className="w-full py-5 rounded-2xl font-bold text-sm flex flex-col items-center gap-2 disabled:opacity-50"
+          style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}
+        >
+          {startingWork ? (
+            <div className="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={openCamera}
-                className="py-4 rounded-xl flex flex-col items-center gap-2 text-sm text-sky-400"
-                style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.2)' }}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                  <circle cx="12" cy="13" r="4" />
-                </svg>
-                Take Photo
-              </button>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="py-4 rounded-xl flex flex-col items-center gap-2 text-sm text-zinc-400"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-                Upload Photo
-              </button>
-              <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
-            </div>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
           )}
-        </div>
-
-        {/* Live camera */}
-        {cameraMode && (
-          <div className="fixed inset-0 z-50 bg-black flex flex-col">
-            <div className="flex justify-between items-center p-4">
-              <p className="text-white font-semibold">Take photo</p>
-              <button type="button" onClick={stopCamera} className="text-zinc-400 hover:text-white">✕</button>
-            </div>
-            <div className="flex-1 relative">
-              <video ref={cameraRef} className="w-full h-full object-cover" muted playsInline autoPlay />
-            </div>
-            <div className="p-6">
-              <button
-                type="button"
-                onClick={capturePhoto}
-                className="w-full py-4 rounded-2xl text-lg font-bold"
-                style={{ background: 'white', color: 'black' }}
-              >
-                📸 Capture
-              </button>
-            </div>
-          </div>
-        )}
-
-        {capturedImage && (
-          <button
-            type="button"
-            onClick={submitImage}
-            className="w-full py-4 rounded-2xl font-bold text-sm"
-            style={{ background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: 'white' }}
-          >
-            Submit for AI Verification →
-          </button>
-        )}
+          {startingWork ? 'Starting…' : `Start ${stageLabel}`}
+        </button>
       </div>
     );
   }
 
-  // ── ANALYZING ───────────────────────────────────────────────────────────────
-  if (step === 'analyzing') {
-    return (
-      <div className="py-10 text-center space-y-4">
-        <div className="w-16 h-16 border-4 border-sky-400 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-zinc-400 font-medium">AI is analyzing the image…</p>
-        <p className="text-zinc-600 text-sm">Checking all components against the checklist</p>
-      </div>
-    );
-  }
-
-  // ── RESULT ──────────────────────────────────────────────────────────────────
+  // ── result screen (full-screen) ────────────────────────────────────────────
   if (step === 'result' && result) {
     const pass = result.result === 'PASS';
     const issues = result.issues as Issue[];
 
     return (
-      <div className="space-y-4">
+      <div
+        className="fixed inset-0 z-50 flex flex-col overflow-y-auto"
+        style={{ background: '#0a0a0f' }}
+      >
         {/* Result banner */}
-        <div
-          className="rounded-2xl p-5 text-center"
-          style={{
-            background: pass ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
-            border: `1px solid ${pass ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-          }}
-        >
-          <div className="text-4xl mb-2">{pass ? '✅' : '❌'}</div>
-          <p className={`text-lg font-bold ${pass ? 'text-green-400' : 'text-red-400'}`}>
-            {pass ? 'Quality Check PASSED' : 'Quality Check FAILED'}
+        <div className="p-6 text-center flex-shrink-0">
+          <div className="text-5xl mb-3">{pass ? '✅' : '❌'}</div>
+          <p className={`text-xl font-bold ${pass ? 'text-green-400' : 'text-red-400'}`}>
+            {pass ? 'All Clear — Stage Complete!' : 'Component Issues Found'}
           </p>
-          <p className="text-zinc-400 text-sm mt-2">{result.summary}</p>
+          <p className="text-zinc-400 text-sm mt-2 max-w-sm mx-auto leading-relaxed">{result.summary}</p>
           {pass && submission?.buildTimeSec && (
             <p className="text-zinc-500 text-xs mt-2">Build time: {fmtDuration(submission.buildTimeSec)}</p>
           )}
         </div>
 
-        {/* Per-component results */}
+        {/* Per-component breakdown */}
         {issues.length > 0 && (
-          <div className="card p-4 space-y-2">
-            <h4 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Component Check</h4>
+          <div className="px-4 pb-4 space-y-2">
+            <h4 className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500 mb-3">Component Details</h4>
             {issues.map((issue, i) => (
-              <div key={i} className="flex items-start gap-3 py-1.5 border-b last:border-0" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                <span className="shrink-0 mt-0.5">
+              <div
+                key={i}
+                className="flex items-start gap-3 p-3 rounded-xl"
+                style={{
+                  background: issue.status === 'PRESENT'
+                    ? 'rgba(34,197,94,0.06)' : issue.status === 'DEFECTIVE'
+                    ? 'rgba(251,191,36,0.06)' : 'rgba(239,68,68,0.06)',
+                  border: `1px solid ${issue.status === 'PRESENT'
+                    ? 'rgba(34,197,94,0.15)' : issue.status === 'DEFECTIVE'
+                    ? 'rgba(251,191,36,0.15)' : 'rgba(239,68,68,0.15)'}`,
+                }}
+              >
+                <span className="text-lg shrink-0">
                   {issue.status === 'PRESENT' ? '✅' : issue.status === 'DEFECTIVE' ? '⚠️' : '❌'}
                 </span>
-                <div>
-                  <p className="text-sm font-medium text-white">{issue.name}</p>
-                  {issue.note && <p className="text-xs text-zinc-500">{issue.note}</p>}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white">{issue.name}</p>
+                  {issue.note && <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">{issue.note}</p>}
                 </div>
-                <span className={`ml-auto text-[10px] font-bold shrink-0 ${
+                <span className={`text-[10px] font-bold shrink-0 mt-0.5 ${
                   issue.status === 'PRESENT' ? 'text-green-400' : issue.status === 'DEFECTIVE' ? 'text-amber-400' : 'text-red-400'
                 }`}>{issue.status}</span>
               </div>
@@ -355,24 +311,228 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
         )}
 
         {/* Actions */}
-        {!pass && (
-          <button
-            type="button"
-            onClick={() => { setCapturedImage(null); setPreviewUrl(''); setResult(null); setStep('working'); }}
-            className="w-full py-3 rounded-xl text-sm font-semibold"
-            style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
-          >
-            Fix issues and retry →
-          </button>
-        )}
-        {pass && (
-          <div className="text-center text-zinc-500 text-sm">
-            Stage completed! Moving to next stage…
+        <div className="p-4 pb-safe mt-auto" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
+          {!pass ? (
+            <button
+              type="button"
+              onClick={() => { retakePhoto(); setResult(null); setStep('open'); }}
+              className="w-full py-4 rounded-2xl font-bold text-sm"
+              style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+            >
+              Fix issues and retake photo →
+            </button>
+          ) : (
+            <div
+              className="w-full py-4 rounded-2xl text-center text-sm font-semibold text-green-400"
+              style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}
+            >
+              Moving to next stage…
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── analyzing ──────────────────────────────────────────────────────────────
+  if (step === 'analyzing') {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6" style={{ background: '#0a0a0f' }}>
+        <div className="relative">
+          <div className="w-20 h-20 border-4 border-sky-400/30 rounded-full" />
+          <div className="absolute inset-0 w-20 h-20 border-4 border-sky-400 border-t-transparent rounded-full animate-spin" />
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-white font-semibold text-lg">AI is inspecting…</p>
+          <p className="text-zinc-500 text-sm">Checking component placement and quality</p>
+        </div>
+        {previewUrl && (
+          <div className="rounded-xl overflow-hidden opacity-30 w-32 h-24 relative">
+            <Image src={previewUrl} alt="Analyzing" fill className="object-cover" />
           </div>
         )}
       </div>
     );
   }
 
-  return null;
+  // ── open: full-screen work panel ───────────────────────────────────────────
+  if (step === 'open') {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0a0a0f' }}>
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-4 flex-shrink-0"
+          style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          <div>
+            <p className="text-xs text-zinc-500 font-medium uppercase tracking-widest">{stageLabel}</p>
+            {submission && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <LiveTimer startedAt={submission.startedAt} />
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setStep('working')}
+            className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto">
+          {error && (
+            <div className="rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              {error}
+            </div>
+          )}
+
+          {!previewUrl ? (
+            /* Photo capture area */
+            <div className="flex-1 flex flex-col items-center justify-center gap-6">
+              <div className="text-center space-y-2">
+                <div
+                  className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto"
+                  style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.2)' }}
+                >
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                </div>
+                <p className="text-white font-semibold">Take a photo of your work</p>
+                <p className="text-zinc-500 text-xs">The AI will verify component placement and quality</p>
+              </div>
+              <div className="w-full grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={openCamera}
+                  className="py-5 rounded-2xl flex flex-col items-center gap-2 text-sky-400 font-medium text-sm"
+                  style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.25)' }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                  Camera
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="py-5 rounded-2xl flex flex-col items-center gap-2 text-zinc-400 font-medium text-sm"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Upload
+                </button>
+              </div>
+              <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
+            </div>
+          ) : (
+            /* Photo preview */
+            <div className="flex-1 flex flex-col gap-4">
+              <div className="relative rounded-2xl overflow-hidden flex-1" style={{ minHeight: 220, border: '1px solid rgba(14,165,233,0.2)' }}>
+                <Image src={previewUrl} alt="Work photo" fill className="object-cover" />
+              </div>
+              <button
+                type="button"
+                onClick={retakePhoto}
+                className="w-full py-3 rounded-xl text-sm text-zinc-400 font-medium"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                Retake photo
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Live camera overlay */}
+        {cameraOpen && (
+          <div className="absolute inset-0 z-10 bg-black flex flex-col">
+            <div className="flex justify-between items-center p-4 flex-shrink-0">
+              <p className="text-white font-semibold">Take photo</p>
+              <button type="button" onClick={stopCamera} className="text-zinc-400 hover:text-white text-xl">✕</button>
+            </div>
+            <div className="flex-1 relative overflow-hidden">
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <video ref={cameraRef} className="w-full h-full object-cover" muted playsInline autoPlay />
+            </div>
+            <div className="p-5 flex-shrink-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 20px)' }}>
+              <button
+                type="button"
+                onClick={capturePhoto}
+                className="w-full py-4 rounded-2xl text-base font-bold"
+                style={{ background: 'white', color: 'black' }}
+              >
+                📸 Capture
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Footer — Complete button */}
+        {capturedImage && !cameraOpen && (
+          <div className="p-4 flex-shrink-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <button
+              type="button"
+              onClick={submitForAI}
+              className="w-full py-4 rounded-2xl font-bold text-base"
+              style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
+            >
+              ✅ Complete — Run AI Check
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── working: "Open Work" button + timer ────────────────────────────────────
+  return (
+    <div className="space-y-4">
+      {/* Timer chip */}
+      {submission && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-xl w-fit"
+          style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.15)' }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          <span className="text-zinc-500 text-xs">Working</span>
+          <LiveTimer startedAt={submission.startedAt} />
+        </div>
+      )}
+
+      {/* Open Work button */}
+      <button
+        type="button"
+        onClick={() => setStep('open')}
+        className="w-full py-5 rounded-2xl font-bold text-base flex items-center justify-center gap-3"
+        style={{
+          background: 'linear-gradient(135deg, rgba(14,165,233,0.15), rgba(99,102,241,0.15))',
+          border: '1px solid rgba(14,165,233,0.35)',
+          color: '#38bdf8',
+        }}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="7" width="20" height="14" rx="2" />
+          <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+          <line x1="12" y1="12" x2="12" y2="16" />
+          <line x1="10" y1="14" x2="14" y2="14" />
+        </svg>
+        Open Work
+      </button>
+
+      <p className="text-zinc-600 text-xs text-center">Take a photo when done · AI will verify placement</p>
+    </div>
+  );
 }
