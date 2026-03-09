@@ -92,11 +92,20 @@ export default async function DashboardPage() {
 
   if (session.role === 'PRODUCTION_EMPLOYEE') {
     type ActiveSub = {
-      id: string; startedAt: string;
-      unit: { id: string; serialNumber: string; currentStage: string; currentStatus: string; product?: { name: string } | null };
+      id: string;
+      startedAt: string;
+      unit: {
+        id: string;
+        serialNumber: string;
+        currentStage: string;
+        currentStatus: string;
+        product?: { name: string } | null;
+        order?: { id: string; orderNumber: string } | null;
+      };
     };
+
     const ed = data as { myActive?: ActiveSub[]; completedToday?: number };
-    const myActive    = ed.myActive ?? [];
+    const myActive       = ed.myActive ?? [];
     const completedToday = ed.completedToday ?? 0;
 
     const stageLabels: Record<string, string> = {
@@ -107,6 +116,32 @@ export default async function DashboardPage() {
       REWORK:                   'Rework',
       FINAL_ASSEMBLY:           'Final Assembly',
     };
+
+    const stageDotColor: Record<string, string> = {
+      POWERSTAGE_MANUFACTURING: '#f59e0b',
+      BRAINBOARD_MANUFACTURING: '#818cf8',
+      CONTROLLER_ASSEMBLY:      '#38bdf8',
+      QC_AND_SOFTWARE:          '#34d399',
+      REWORK:                   '#f87171',
+      FINAL_ASSEMBLY:           '#a78bfa',
+    };
+
+    // Group active submissions by order
+    type OrderGroup = {
+      orderId: string;
+      orderNumber: string;
+      productName: string;
+      subs: ActiveSub[];
+    };
+    const groupMap: Record<string, OrderGroup> = {};
+    for (const sub of myActive) {
+      const key     = sub.unit.order?.id ?? '__none__';
+      const orderNo = sub.unit.order?.orderNumber ?? '—';
+      const prodName = sub.unit.product?.name ?? '';
+      if (!groupMap[key]) groupMap[key] = { orderId: key, orderNumber: orderNo, productName: prodName, subs: [] };
+      groupMap[key].subs.push(sub);
+    }
+    const orderGroups = Object.values(groupMap);
 
     return (
       <div className="space-y-6">
@@ -143,26 +178,63 @@ export default async function DashboardPage() {
           <svg className="ml-auto text-zinc-600" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
         </Link>
 
-        {/* Open Work — only units with an active submission */}
-        {myActive.length > 0 ? (
-          <div>
-            <h3 className="font-medium text-sm text-zinc-400 mb-3">Open Work</h3>
-            <ul className="space-y-2">
-              {myActive.map((sub) => (
-                <li key={sub.id}>
-                  <Link href={`/units/${sub.unit.id}`} className="card-interactive flex items-center gap-3 p-3">
-                    <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
-                    <div className="min-w-0">
-                      <p className="font-mono text-sky-400 text-sm">{sub.unit.serialNumber}</p>
-                      <p className="text-zinc-500 text-xs">
-                        {sub.unit.product?.name} · {stageLabels[sub.unit.currentStage] ?? sub.unit.currentStage}
-                      </p>
-                    </div>
-                    <span className="ml-auto text-xs text-amber-400 font-semibold shrink-0">IN PROGRESS →</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+        {/* Open Work — grouped by order */}
+        {orderGroups.length > 0 ? (
+          <div className="space-y-4">
+            <h3 className="font-medium text-sm text-zinc-400">Open Work</h3>
+            {orderGroups.map((group) => (
+              <div
+                key={group.orderId}
+                className="rounded-2xl overflow-hidden"
+                style={{ border: '1px solid rgba(255,255,255,0.07)' }}
+              >
+                {/* Order header */}
+                <div
+                  className="flex items-center justify-between px-4 py-3"
+                  style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#71717a" strokeWidth="2" strokeLinecap="round" className="shrink-0">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span className="text-white font-semibold text-sm font-mono tracking-wide">{group.orderNumber}</span>
+                    {group.productName && (
+                      <span className="text-zinc-500 text-xs truncate">· {group.productName}</span>
+                    )}
+                  </div>
+                  <span
+                    className="text-xs font-semibold px-2 py-0.5 rounded-full shrink-0"
+                    style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}
+                  >
+                    {group.subs.length} unit{group.subs.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* Units in this order */}
+                <ul className="divide-y" style={{ '--tw-divide-opacity': 1, borderColor: 'rgba(255,255,255,0.04)' } as React.CSSProperties}>
+                  {group.subs.map((sub) => (
+                    <li key={sub.id}>
+                      <Link
+                        href={`/units/${sub.unit.id}`}
+                        className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.03] active:bg-white/[0.06]"
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0 animate-pulse"
+                          style={{ background: stageDotColor[sub.unit.currentStage] ?? '#f59e0b' }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-mono text-sky-400 text-sm font-semibold">{sub.unit.serialNumber}</p>
+                          <p className="text-zinc-500 text-xs mt-0.5">
+                            {stageLabels[sub.unit.currentStage] ?? sub.unit.currentStage}
+                          </p>
+                        </div>
+                        <svg className="text-zinc-600 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         ) : (
           /* No active work — blank state */
