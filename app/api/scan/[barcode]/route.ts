@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
-import { findUnitByBarcode, findComponentByBarcode } from '@/lib/barcode';
+import { findUnitByBarcode, findComponentByBarcode, findUnitByComponentBarcode } from '@/lib/barcode';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ barcode: string }> }) {
   try {
@@ -8,11 +8,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ barcode
     const { barcode } = await params;
     const unit = await findUnitByBarcode(barcode);
     if (!unit) {
-      // Check if the scanned barcode is a component barcode — give a helpful message
+      // Check if the scanned barcode is a component barcode — try to find a matching unit
       const component = await findComponentByBarcode(barcode);
       if (component) {
+        const unitByComp = await findUnitByComponentBarcode(barcode);
+        if (unitByComp) {
+          return NextResponse.json({
+            unitId: unitByComp.id,
+            serialNumber: unitByComp.serialNumber,
+            currentStage: unitByComp.currentStage,
+            currentStatus: unitByComp.currentStatus,
+            order: unitByComp.order,
+            product: unitByComp.product,
+            stageLogs: unitByComp.stageLogs,
+            qcRecords: unitByComp.qcRecords,
+          });
+        }
         return NextResponse.json({
-          error: `"${barcode.toUpperCase()}" is a COMPONENT barcode (${component.name}), not a unit barcode. Unit barcodes include the production year — e.g. C350PS26001 for a C350 Powerstage unit. Please scan the unit's stage label.`,
+          error: `Scanned ${component.name} component barcode but no pending unit found at that stage. Make sure an order is active for this product.`,
         }, { status: 404 });
       }
       return NextResponse.json({ error: 'No unit found for this barcode. Check that you scanned the correct stage label.' }, { status: 404 });

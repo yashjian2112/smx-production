@@ -20,6 +20,7 @@ export type StageGroup = {
 };
 
 type Props = {
+  orderId: string;
   stages: StageGroup[];
   isEmployee: boolean;
   totalUnits: number;
@@ -226,11 +227,30 @@ function StageCard({
   );
 }
 
-export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
+export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [scanning, setScanning] = useState<{ stageKey: string; stageLabel: string } | null>(null);
   const [scanStatus, setScanStatus] = useState<{ msg: string; type: 'error' | 'info' } | null>(null);
+  const [genLoading, setGenLoading] = useState(false);
+
+  async function handleGenerateBarcodes() {
+    setGenLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/generate-barcodes`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setScanStatus({ msg: `Barcodes generated for ${data.generated} unit(s). Refreshing…`, type: 'info' });
+        router.refresh();
+      } else {
+        setScanStatus({ msg: data.error || 'Failed to generate barcodes', type: 'error' });
+      }
+    } catch {
+      setScanStatus({ msg: 'Network error. Please try again.', type: 'error' });
+    } finally {
+      setGenLoading(false);
+    }
+  }
 
   const toggle = useCallback((key: string) => setExpanded((p) => (p === key ? null : key)), []);
 
@@ -303,6 +323,23 @@ export function OrderDetail({ stages, isEmployee, totalUnits }: Props) {
       )}
 
       <div className="space-y-4">
+        {/* Generate Barcodes — admin/manager only */}
+        {!isEmployee && (
+          <button
+            type="button"
+            onClick={handleGenerateBarcodes}
+            disabled={genLoading}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-opacity disabled:opacity-50"
+            style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)', color: '#818cf8' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" /><path d="M14 14h.01M18 14h.01M14 18h.01M18 18h.01M21 14v4M14 21h4" />
+            </svg>
+            {genLoading ? 'Generating…' : 'Generate Barcodes for All Units'}
+          </button>
+        )}
+
         {/* Scan status feedback */}
         {scanStatus && (
           <div

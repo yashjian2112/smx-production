@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
-import { findUnitByBarcode, findComponentByBarcode, STAGE_BARCODE_FIELD } from '@/lib/barcode';
+import { findUnitByBarcode, findComponentByBarcode, findUnitByComponentBarcode, STAGE_BARCODE_FIELD } from '@/lib/barcode';
 
 const STAGE_LABEL: Record<string, string> = {
   POWERSTAGE_MANUFACTURING: 'Powerstage',
@@ -36,11 +36,16 @@ export async function GET(
           }, { status: 404 });
         }
       }
-      // Check if it's a component barcode
+      // Check if it's a component barcode — try to find a matching unit by product+stage
       const component = await findComponentByBarcode(barcode);
       if (component) {
+        const unitByComp = await findUnitByComponentBarcode(barcode);
+        if (unitByComp) {
+          // Found a unit at the matching stage — return it so work can start
+          return NextResponse.json(unitByComp);
+        }
         return NextResponse.json({
-          error: `"${barcode.toUpperCase()}" is a COMPONENT barcode (${component.name}), not a unit barcode. Unit barcodes include the production year — e.g. C350PS26001 for Powerstage.`,
+          error: `Scanned ${component.name} component barcode but no pending unit found at that stage. Make sure an order is active for this product.`,
         }, { status: 404 });
       }
       return NextResponse.json({

@@ -1,3 +1,4 @@
+import { StageType } from '@prisma/client';
 import { prisma } from './prisma';
 
 /**
@@ -106,6 +107,62 @@ export async function findComponentByBarcode(barcode: string) {
   return prisma.productComponent.findFirst({
     where: { barcode: { equals: trimmed, mode: 'insensitive' } },
     include: { product: { select: { code: true, name: true } } },
+  });
+}
+
+/** Map component stage suffix → controller stage key */
+const COMP_SUFFIX_TO_STAGE: Record<string, string> = {
+  PS: 'POWERSTAGE_MANUFACTURING',
+  BB: 'BRAINBOARD_MANUFACTURING',
+  AS: 'CONTROLLER_ASSEMBLY',
+  FA: 'FINAL_ASSEMBLY',
+  QC: 'QC_AND_SOFTWARE',
+};
+
+/** Parse a COMP- barcode to extract product code and stage.
+ *  Format: COMP-{productCode}{stageSuffix(2)}{seq(4)}
+ *  e.g. COMP-L350PS0002 → { productCode: 'L350', stageKey: 'POWERSTAGE_MANUFACTURING' }
+ */
+export function parseComponentBarcode(barcode: string): { productCode: string; stageKey: string } | null {
+  const upper = barcode.trim().toUpperCase();
+  if (!upper.startsWith('COMP-')) return null;
+  const inner = upper.slice(5); // e.g. "L350PS0002"
+  if (inner.length < 7) return null; // need at least 1 + 2 + 4
+  const seq = inner.slice(-4);
+  if (!/^\d{4}$/.test(seq)) return null;
+  const withoutSeq = inner.slice(0, -4); // "L350PS"
+  if (withoutSeq.length < 3) return null;
+  const stageSuffix = withoutSeq.slice(-2); // "PS"
+  const productCode = withoutSeq.slice(0, -2); // "L350"
+  const stageKey = COMP_SUFFIX_TO_STAGE[stageSuffix];
+  if (!stageKey || !productCode) return null;
+  return { productCode, stageKey };
+}
+
+/** When a component barcode is scanned, find the first unit
+ *  of that product currently at the matching stage (PENDING or IN_PROGRESS).
+ *  This lets workers scan physical component labels (COMP-L350PS0002) to start stage work.
+ */
+export async function findUnitByComponentBarcode(barcode: string) {
+  const parsed = parseComponentBarcode(barcode);
+  if (!parsed) return null;
+  const { productCode, stageKey } = parsed;
+  return prisma.controllerUnit.findFirst({
+    where: {
+      product: { code: { equals: productCode, mode: 'insensitive' } },
+      currentStage: stageKey as StageType,
+      currentStatus: { in: ['PENDING', 'IN_PROGRESS'] },
+    },
+    orderBy: { createdAt: 'asc' }, // first-in, first-out
+    include: {
+      order: { include: { product: true } },
+      product: true,
+      assignments: { include: { user: { select: { id: true, name: true, email: true } } } },
+      stageLogs: { include: { user: true, approvedBy: true }, orderBy: { createdAt: 'desc' } },
+      qcRecords: { include: { issueCategory: true }, orderBy: { createdAt: 'desc' } },
+      reworkRecords: { include: { rootCauseCategory: true, assignedUser: true }, orderBy: { createdAt: 'desc' } },
+      timelineLogs: { include: { user: true }, orderBy: { createdAt: 'desc' }, take: 100 },
+    },
   });
 }
 

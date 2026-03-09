@@ -244,7 +244,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       )}
 
       {/* Stage breakdown */}
-      <OrderDetail stages={stages} isEmployee={isEmployee} totalUnits={total} />
+      <OrderDetail orderId={order.id} stages={stages} isEmployee={isEmployee} totalUnits={total} />
     </div>
   );
 }
