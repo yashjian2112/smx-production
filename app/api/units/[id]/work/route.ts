@@ -6,7 +6,7 @@ import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { put } from '@vercel/blob';
 import Anthropic from '@anthropic-ai/sdk';
-import { parseZoneIds, zonesToText } from '@/components/BoardLocationPicker';
+import { parseZoneIds, zonesToText } from '@/lib/boardZones';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
