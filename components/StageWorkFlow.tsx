@@ -62,7 +62,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const [error, setError] = useState('');
   const [startingWork, setStartingWork] = useState(false);
 
-  const cameraRef = useRef<HTMLVideoElement>(null);
+  const cameraRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraOpen, setCameraOpen]   = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -137,17 +137,19 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     setCameraReady(false);
   }, []);
 
-  // Attach stream to video element as soon as the overlay mounts (cameraOpen → true).
-  // Using useEffect is the correct approach — setTimeout is unreliable because React
-  // may not have committed the <video> DOM node within 50 ms on slower devices.
-  useEffect(() => {
-    if (cameraOpen && cameraRef.current && streamRef.current) {
-      cameraRef.current.srcObject = streamRef.current;
-      cameraRef.current.play().catch(() => {
-        // autoPlay might be blocked by browser — playsInline + muted should allow it
+  // videoRefCallback: called by React the instant the <video> DOM element is created.
+  // This is more reliable than useEffect because React guarantees it fires synchronously
+  // after mount — no timing gap, no null-ref race condition.
+  const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
+    cameraRef.current = node;
+    if (node && streamRef.current) {
+      node.srcObject = streamRef.current;
+      node.play().catch(() => {
+        // play() is rejected on some browsers if the gesture chain is broken;
+        // onPlaying + autoPlay + playsInline + muted should allow it in practice.
       });
     }
-  }, [cameraOpen]);
+  }, []);
 
   async function openCamera() {
     setError('');
@@ -482,7 +484,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             <div className="flex-1 relative overflow-hidden bg-zinc-950">
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
-                ref={cameraRef}
+                ref={videoRefCallback}
                 className="w-full h-full object-cover"
                 muted
                 playsInline
