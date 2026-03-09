@@ -530,7 +530,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   // ── open: full-screen work panel ───────────────────────────────────────────
   if (step === 'open') {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0a0a0f' }}>
+      <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: '#0a0a0f' }}>
         {/* Header */}
         <div
           className="flex items-center justify-between px-4 flex-shrink-0"
@@ -558,7 +558,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
         </div>
 
         {/* Body */}
-        <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto">
+        <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto" style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 16px), 24px)' }}>
           {error && (
             <div className="rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
               {error}
@@ -595,15 +595,32 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
               </button>
             </div>
           ) : (
-            /* Photo preview */
-            <div className="flex-1 flex flex-col gap-4">
-              <div className="relative rounded-2xl overflow-hidden flex-1" style={{ minHeight: 220, border: '1px solid rgba(14,165,233,0.2)' }}>
+            /* Photo preview + action buttons */
+            <div className="flex-1 flex flex-col gap-3">
+              {/* Image */}
+              <div className="relative rounded-2xl overflow-hidden" style={{ minHeight: 220, border: '1px solid rgba(14,165,233,0.2)' }}>
                 <Image src={previewUrl} alt="Work photo" fill className="object-cover" />
+                {/* overlay badge */}
+                <div className="absolute top-3 left-3">
+                  <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ background: 'rgba(0,0,0,0.65)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)' }}>
+                    📸 Photo captured
+                  </span>
+                </div>
               </div>
+
+              {/* Action buttons — always visible directly below the preview */}
               <button
                 type="button"
-                onClick={retakePhoto}
-                className="w-full py-3 rounded-xl text-sm text-zinc-400 font-medium"
+                onClick={submitForAI}
+                className="w-full py-4 rounded-2xl font-bold text-base"
+                style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
+              >
+                ✅ Submit — Run AI Check
+              </button>
+              <button
+                type="button"
+                onClick={() => { setCapturedImage(null); setPreviewUrl(''); }}
+                className="w-full py-3 rounded-2xl text-sm font-medium text-zinc-400"
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
               >
                 Retake photo
@@ -825,19 +842,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
           </div>
         )}
 
-        {/* Footer — Complete button */}
-        {capturedImage && !cameraOpen && (
-          <div className="p-4 flex-shrink-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <button
-              type="button"
-              onClick={submitForAI}
-              className="w-full py-4 rounded-2xl font-bold text-base"
-              style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
-            >
-              ✅ Complete — Run AI Check
-            </button>
-          </div>
-        )}
       </div>
     );
   }

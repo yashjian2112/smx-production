@@ -333,8 +333,11 @@ model StageChecklistItem {
   id                String    @id @default(cuid())
   stage             StageType
   name              String                          // e.g. "Main capacitor bank"
-  description       String?                         // Acceptance criteria
+  description       String?                         // Acceptance criteria / orientation rules
   referenceImageUrl String?   @map("reference_image_url")
+  expectedCount     Int?      @map("expected_count")       // How many of this component on the board
+  orientationRule   String?   @map("orientation_rule")     // e.g. "heatsink tab faces outward"
+  isBoardReference  Boolean   @default(false) @map("is_board_reference") // Full board reference image
   required          Boolean   @default(true)
   sortOrder         Int       @default(0) @map("sort_order")
   active            Boolean   @default(true)

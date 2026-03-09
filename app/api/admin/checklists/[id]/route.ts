@@ -17,7 +17,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const form = await req.formData();
     const file = form.get('referenceImage') as File | null;
     body = Object.fromEntries(
-      ['name', 'description', 'required', 'sortOrder', 'active'].map((k) => [k, form.get(k) as string])
+      ['name', 'description', 'required', 'sortOrder', 'active', 'expectedCount', 'orientationRule', 'isBoardReference']
+        .map((k) => [k, form.get(k) as string])
     );
     if (file && file.size > 0) {
       const blob = await put(`checklists/${Date.now()}-${file.name}`, file, {
@@ -31,11 +32,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const data: Record<string, unknown> = {};
-  if (body.name !== undefined) data.name = body.name;
-  if (body.description !== undefined) data.description = body.description || null;
-  if (body.required !== undefined) data.required = body.required !== 'false';
-  if (body.sortOrder !== undefined) data.sortOrder = parseInt(body.sortOrder, 10) || 0;
-  if (body.active !== undefined) data.active = body.active !== 'false';
+  if (body.name             !== undefined) data.name             = body.name;
+  if (body.description      !== undefined) data.description      = body.description || null;
+  if (body.required         !== undefined) data.required         = body.required !== 'false';
+  if (body.sortOrder        !== undefined) data.sortOrder        = parseInt(body.sortOrder, 10) || 0;
+  if (body.active           !== undefined) data.active           = body.active !== 'false';
+  if (body.expectedCount    !== undefined) data.expectedCount    = body.expectedCount ? parseInt(body.expectedCount, 10) : null;
+  if (body.orientationRule  !== undefined) data.orientationRule  = body.orientationRule || null;
+  if (body.isBoardReference !== undefined) data.isBoardReference = body.isBoardReference === 'true';
   if (referenceImageUrl) data.referenceImageUrl = referenceImageUrl;
 
   const item = await prisma.stageChecklistItem.update({ where: { id }, data });

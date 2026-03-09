@@ -25,11 +25,14 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     const file = form.get('referenceImage') as File | null;
     body = {
-      stage: form.get('stage') as string,
-      name: form.get('name') as string,
-      description: (form.get('description') as string) ?? '',
-      required: (form.get('required') as string) ?? 'true',
-      sortOrder: (form.get('sortOrder') as string) ?? '0',
+      stage:           form.get('stage')           as string,
+      name:            form.get('name')             as string,
+      description:     (form.get('description')     as string) ?? '',
+      required:        (form.get('required')         as string) ?? 'true',
+      sortOrder:       (form.get('sortOrder')        as string) ?? '0',
+      expectedCount:   (form.get('expectedCount')   as string) ?? '',
+      orientationRule: (form.get('orientationRule') as string) ?? '',
+      isBoardReference:(form.get('isBoardReference') as string) ?? 'false',
     };
     if (file && file.size > 0) {
       const blob = await put(`checklists/${Date.now()}-${file.name}`, file, {
@@ -44,12 +47,15 @@ export async function POST(req: NextRequest) {
 
   const item = await prisma.stageChecklistItem.create({
     data: {
-      stage: body.stage as never,
-      name: body.name,
-      description: body.description || null,
+      stage:            body.stage as never,
+      name:             body.name,
+      description:      body.description || null,
       referenceImageUrl: referenceImageUrl ?? null,
-      required: body.required !== 'false',
-      sortOrder: parseInt(body.sortOrder ?? '0', 10) || 0,
+      expectedCount:    body.expectedCount ? parseInt(body.expectedCount, 10) : null,
+      orientationRule:  body.orientationRule || null,
+      isBoardReference: body.isBoardReference === 'true',
+      required:         body.required !== 'false',
+      sortOrder:        parseInt(body.sortOrder ?? '0', 10) || 0,
     },
   });
 
