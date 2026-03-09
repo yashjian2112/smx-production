@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { UnitActions } from './UnitActions';
 import { QcReportPrint } from './QcReportPrint';
 import { QRCodeCanvas } from '@/components/QRCode';
+import { Barcode128 } from '@/components/Barcode128';
 import { ComponentChecklist } from './ComponentChecklist';
 import { WorkTabs } from './WorkTabs';
 
@@ -47,11 +48,22 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
   };
 
   const stageBarcodes = [
-    { label: 'Powerstage', value: unit.powerstageBarcode },
-    { label: 'Brainboard', value: unit.brainboardBarcode },
-    { label: 'QC', value: unit.qcBarcode },
-    { label: 'Final Assembly', value: unit.finalAssemblyBarcode ?? unit.serialNumber },
+    { label: 'Powerstage',     value: unit.powerstageBarcode,                        isFinal: false },
+    { label: 'Brainboard',     value: unit.brainboardBarcode,                        isFinal: false },
+    { label: 'QC',             value: unit.qcBarcode,                                isFinal: false },
+    { label: 'Final Assembly', value: unit.finalAssemblyBarcode ?? unit.serialNumber, isFinal: true  },
   ];
+
+  // Stage barcode for the current stage — passed to StageWorkFlow for scan validation
+  const stageBarcodeMap: Record<string, string | null> = {
+    POWERSTAGE_MANUFACTURING: unit.powerstageBarcode ?? null,
+    BRAINBOARD_MANUFACTURING: unit.brainboardBarcode ?? null,
+    QC_AND_SOFTWARE:          unit.qcBarcode ?? null,
+    FINAL_ASSEMBLY:           unit.finalAssemblyBarcode ?? null,
+    CONTROLLER_ASSEMBLY:      null,
+    REWORK:                   null,
+  };
+  const currentStageBarcode = stageBarcodeMap[unit.currentStage] ?? null;
 
   const components = unit.product?.components ?? [];
   const initialChecks = unit.componentChecks.map((cc) => ({
@@ -91,10 +103,12 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
           <h3 className="font-medium text-sm">Stage Barcodes</h3>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          {stageBarcodes.map(({ label, value }) => (
+          {stageBarcodes.map(({ label, value, isFinal }) => (
             <div key={label} className="flex flex-col items-center gap-2 p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
               {value ? (
-                <QRCodeCanvas value={value} size={80} dark="#e2e8f0" light="transparent" />
+                isFinal
+                  ? <Barcode128 value={value} height={50} fontSize={10} background="transparent" lineColor="#e2e8f0" />
+                  : <QRCodeCanvas value={value} size={80} dark="#e2e8f0" light="transparent" />
               ) : (
                 <div className="w-20 h-20 rounded flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
                   <span className="text-zinc-700 text-xs">N/A</span>
@@ -123,6 +137,7 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
       <WorkTabs
         unitId={unit.id}
         unitSerial={unit.serialNumber}
+        stageBarcode={currentStageBarcode}
         currentStage={unit.currentStage}
         currentStatus={unit.currentStatus}
         isEmployee={session.role === 'PRODUCTION_EMPLOYEE'}

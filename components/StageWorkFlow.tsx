@@ -21,6 +21,7 @@ type Issue = { name: string; status: string; note: string };
 type Props = {
   unitId: string;
   unitSerial: string;
+  stageBarcode: string | null;   // the physical barcode for the current stage (e.g. C350PS26001)
   currentStage: string;
   currentStatus: string;
 };
@@ -41,7 +42,7 @@ function LiveTimer({ startedAt }: { startedAt: string }) {
   return <span className="font-mono text-amber-400 font-bold">{fmtDuration(elapsed)}</span>;
 }
 
-export function StageWorkFlow({ unitId, unitSerial, currentStage, currentStatus }: Props) {
+export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, currentStatus }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<'idle' | 'scanning' | 'working' | 'uploading' | 'analyzing' | 'result'>('idle');
   const [submission, setSubmission] = useState<Submission | null>(null);
@@ -69,11 +70,13 @@ export function StageWorkFlow({ unitId, unitSerial, currentStage, currentStatus 
     }
   }, [unitId, currentStatus]);
 
-  // Start work after scanning unit
+  // Start work after scanning the stage barcode
   const handleScan = useCallback(async (code: string) => {
     const normalized = code.trim().toUpperCase();
-    if (!normalized.includes(unitSerial.toUpperCase()) && !unitSerial.toUpperCase().includes(normalized)) {
-      setError(`Wrong unit! Scanned: ${normalized}. Expected unit: ${unitSerial}`);
+    const expected = stageBarcode?.trim().toUpperCase();
+
+    if (expected && normalized !== expected) {
+      setError(`Wrong barcode! You scanned: ${normalized}. Expected: ${expected}`);
       setStep('idle');
       return;
     }
@@ -87,7 +90,7 @@ export function StageWorkFlow({ unitId, unitSerial, currentStage, currentStatus 
       setError('Failed to start work. Please try again.');
       setStep('idle');
     }
-  }, [unitId, unitSerial]);
+  }, [unitId, stageBarcode]);
 
   // Camera for photo capture
   async function openCamera() {
@@ -194,7 +197,7 @@ export function StageWorkFlow({ unitId, unitSerial, currentStage, currentStatus 
     return (
       <BarcodeScanner
         title={`Scan to start — ${stageLabel}`}
-        hint={`Scan barcode for unit ${unitSerial}`}
+        hint={stageBarcode ? `Scan: ${stageBarcode}` : `Scan barcode for unit ${unitSerial}`}
         onScan={handleScan}
         onClose={() => setStep('idle')}
       />

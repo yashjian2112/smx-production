@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { QRCodeCanvas } from '@/components/QRCode';
+import { Barcode128 } from '@/components/Barcode128';
 
 export function PrintUnit({
   serialNumber,
@@ -40,10 +41,10 @@ export function PrintUnit({
   }, []);
 
   const barcodes = [
-    { label: 'Powerstage', value: powerstageBarcode },
-    { label: 'Brainboard', value: brainboardBarcode },
-    { label: 'QC', value: qcBarcode },
-    { label: 'Final Assembly', value: finalAssemblyBarcode },
+    { label: 'Powerstage',     value: powerstageBarcode,     isFinal: false },
+    { label: 'Brainboard',     value: brainboardBarcode,     isFinal: false },
+    { label: 'QC',             value: qcBarcode,             isFinal: false },
+    { label: 'Final Assembly', value: finalAssemblyBarcode,  isFinal: true  },
   ];
 
   return (
@@ -70,15 +71,27 @@ export function PrintUnit({
         </div>
 
         {/* Barcodes grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {barcodes.map(({ label, value }) => (
-            <div key={label} style={{ border: '1px solid #ccc', borderRadius: 6, padding: 12, textAlign: 'center' }}>
-              {value && <QRCodeCanvas value={value} size={100} dark="#000000" light="#ffffff" />}
-              <div style={{ fontSize: 10, fontWeight: 'bold', marginTop: 6, textTransform: 'uppercase', letterSpacing: 1 }}>{label}</div>
-              <div style={{ fontSize: 9, fontFamily: 'monospace', color: '#444', marginTop: 2 }}>{value || '—'}</div>
+        {/* Top row: Powerstage + Brainboard + QC (QR codes) */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+          {barcodes.filter(b => !b.isFinal).map(({ label, value }) => (
+            <div key={label} style={{ border: '1px solid #ccc', borderRadius: 6, padding: 10, textAlign: 'center' }}>
+              {value && <QRCodeCanvas value={value} size={88} dark="#000000" light="#ffffff" />}
+              <div style={{ fontSize: 9, fontWeight: 'bold', marginTop: 5, textTransform: 'uppercase', letterSpacing: 1 }}>{label}</div>
+              <div style={{ fontSize: 8, fontFamily: 'monospace', color: '#444', marginTop: 2 }}>{value || '—'}</div>
             </div>
           ))}
         </div>
+
+        {/* Bottom: Final Assembly — full-width Code 128 (GS1-128, customer-facing) */}
+        {barcodes.filter(b => b.isFinal).map(({ label, value }) => (
+          <div key={label} style={{ border: '2px solid #000', borderRadius: 6, padding: 14, textAlign: 'center' }}>
+            <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 8, color: '#333' }}>
+              ★ {label} — Customer Label (Code 128)
+            </div>
+            {value && <Barcode128 value={value} width={2.5} height={70} fontSize={13} background="#ffffff" lineColor="#000000" />}
+            <div style={{ fontSize: 10, fontFamily: 'monospace', color: '#111', marginTop: 4, fontWeight: 'bold', letterSpacing: 2 }}>{value || '—'}</div>
+          </div>
+        ))}
 
         {/* Footer */}
         <div style={{ marginTop: 20, borderTop: '1px solid #ccc', paddingTop: 10, fontSize: 9, color: '#888' }}>

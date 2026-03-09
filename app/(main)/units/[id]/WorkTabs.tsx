@@ -7,12 +7,13 @@ import { StageHistory } from '@/components/StageHistory';
 type Props = {
   unitId: string;
   unitSerial: string;
+  stageBarcode: string | null;   // physical barcode for current stage
   currentStage: string;
   currentStatus: string;
   isEmployee: boolean;
 };
 
-export function WorkTabs({ unitId, unitSerial, currentStage, currentStatus, isEmployee }: Props) {
+export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, isEmployee }: Props) {
   const [tab, setTab] = useState<'work' | 'history'>(isEmployee ? 'work' : 'history');
 
   return (
@@ -45,6 +46,7 @@ export function WorkTabs({ unitId, unitSerial, currentStage, currentStatus, isEm
           <StageWorkFlow
             unitId={unitId}
             unitSerial={unitSerial}
+            stageBarcode={stageBarcode}
             currentStage={currentStage}
             currentStatus={currentStatus}
           />
