@@ -40,11 +40,29 @@ export async function POST(req: NextRequest) {
   const xPct = Math.round(x * 100);
   const yPct = Math.round(y * 100);
 
-  const prompt = `You are an expert PCB component inspector.
+  const prompt = `You are an expert PCB electronics engineer performing precise component identification.
 
 A user clicked at position (${xPct}% from left, ${yPct}% from top) on this PCB board image.
 
 Identify the SINGLE electronic component located at or nearest to that position.
+
+COMPONENT TYPE GUIDE — use these to choose the correct presetId:
+- mosfet: power transistor with flat metal tab/heatsink surface, usually in TO-220/D2PAK package
+- resistor: small rectangular SMD chip or through-hole component with coloured bands
+- smd-cap: small rectangular SMD ceramic capacitor (looks like SMD resistor but no markings)
+- elec-cap: cylindrical electrolytic capacitor with polarity marking (+/-)
+- diode: small 2-pin component, often with a stripe marking, or large power diode
+- ic: flat multi-pin integrated circuit chip (QFP, SOIC, DIP packages)
+- header: plastic connector housing with rows of metal pins (JST, Molex, etc.)
+- bus-bar: THICK flat copper or aluminium bar/strip used for high-current power distribution — NOT a header
+- inductor: coil/toroid, often drum-shaped or rectangular with wire windings visible
+- transformer: larger magnetic core component with multiple windings
+- spacer: mechanical standoff or spacer, no electrical function
+- custom: anything that does not fit above categories
+
+KEY DISTINCTIONS:
+- bus-bar vs header: A bus-bar is a solid metal conductor (copper/aluminium strip), thick and flat. A header has a plastic body with individual metal pins. If you see a thick copper strip, choose bus-bar.
+- smd-cap vs resistor: Resistors often have printed values; ceramic caps usually have none.
 
 Return ONLY a single valid JSON object — no markdown, no explanation, no code fences:
 {
@@ -57,15 +75,13 @@ Return ONLY a single valid JSON object — no markdown, no explanation, no code 
   "required": true
 }
 
-Rules:
-- presetId must be one of: mosfet, resistor, smd-cap, elec-cap, diode, ic, header, bus-bar, inductor, transformer, spacer, custom
-- boardLocation: use zone code where this component sits — TL, TC, TR, ML, MC, MR, BL, BC, BR
-- expectedCount: set to 1 (user is picking individual components)
-- Be specific about the component type at the clicked location`;
+- boardLocation: zone code — TL, TC, TR, ML, MC, MR, BL, BC, BR
+- expectedCount: always 1
+- name: be specific (include part number if visible, e.g. "MOSFET IRFB4227" not just "MOSFET")`;
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-6',
       max_tokens: 512,
       messages: [{
         role: 'user',
