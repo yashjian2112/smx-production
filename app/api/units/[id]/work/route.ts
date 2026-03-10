@@ -207,15 +207,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     type TextBlock = { type: 'text'; text: string };
     const contentBlocks: (ImageBlock | TextBlock)[] = [];
 
-    // Board-level reference image (most important — full correct board)
+    // Board-level reference image — also keep buffer for per-position comparison crops
+    let refImgBuf: Buffer | null = null;
+    let refImgW = 1000;
+    let refImgH = 1000;
     if (boardRefItem?.referenceImageUrl) {
       try {
         const refRes = await fetch(boardRefItem.referenceImageUrl, { headers: blobAuth });
         if (refRes.ok) {
-          const refBuf     = await refRes.arrayBuffer();
-          const refType    = (refRes.headers.get('content-type') || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
+          refImgBuf = Buffer.from(await refRes.arrayBuffer());
+          const refMeta = await sharp(refImgBuf).metadata();
+          refImgW = refMeta.width  ?? 1000;
+          refImgH = refMeta.height ?? 1000;
+          const refType = (refRes.headers.get('content-type') || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
           contentBlocks.push({ type: 'text', text: '══ BOARD REFERENCE IMAGE (correct completed board — use this as the gold standard) ══' });
-          contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: refType, data: Buffer.from(refBuf).toString('base64') } });
+          contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: refType, data: refImgBuf.toString('base64') } });
         }
       } catch { /* skip silently */ }
     }
@@ -253,11 +259,28 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // Each marker gets its own tight crop, upscaled 3× + sharpened.
     // This lets Claude inspect individual pads without any ambiguity.
     type MarkerPos = { x: number; y: number; label: string; size?: string };
-    const SMALL_SIZES = new Set(['micro', 'mini', 'small']);
-    const CROP_HALF   = 0.04;   // 4% of shorter image dimension → square window
-    const UPSCALE_PX  = 480;    // enlarge every crop to 480×480 px (~5–6× zoom)
-    const MAX_CROPS   = 12;
-    let   totalCrops  = 0;
+    const SMALL_SIZES  = new Set(['micro', 'mini', 'small']);
+    const CROP_HALF    = 0.06;   // 6% of shorter dim — wider window tolerates perspective offset
+    const UPSCALE_PX   = 320;    // 320px per crop (pairs sent together, keep total size down)
+    const MAX_PAIRS    = 8;      // max marker positions to show (each = 1 or 2 crops)
+    let   totalPairs   = 0;
+
+    // Helper: extract a square CLAHE-enhanced crop from any buffer at normalised (nx, ny)
+    async function makeCrop(buf: Buffer, bW: number, bH: number, nx: number, ny: number): Promise<Buffer> {
+      const cx      = Math.round(nx * bW);
+      const cy      = Math.round(ny * bH);
+      const halfPx  = Math.max(20, Math.round(CROP_HALF * Math.min(bW, bH)));
+      const left    = Math.max(0, cx - halfPx);
+      const top     = Math.max(0, cy - halfPx);
+      const size    = Math.min(halfPx * 2, bW - left, bH - top);
+      return sharp(buf)
+        .extract({ left, top, width: size, height: size })
+        .clahe({ width: 8, height: 8, maxSlope: 4 })
+        .resize(UPSCALE_PX, UPSCALE_PX, { fit: 'fill', kernel: 'lanczos3' })
+        .sharpen({ sigma: 1.5, m1: 0.5, m2: 2.5, x1: 2 })
+        .jpeg({ quality: 92 })
+        .toBuffer();
+    }
 
     const smallItems = componentItems.filter(item => {
       if (!item.componentPositions) return false;
@@ -268,18 +291,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     if (smallItems.length > 0) {
+      const hasRef = refImgBuf !== null;
       contentBlocks.push({
         type: 'text',
         text: [
-          '══ PAD-LEVEL CROPS (5–6× zoomed, CLAHE + sharpened) ══',
-          `Each image below is a ${UPSCALE_PX}px square close-up centred on one expected component position.`,
-          'Rule: bare copper pads visible → MISSING.  Component body on pads → PRESENT.',
-          'Tally your PRESENT count per group to fill the JSON "name" field.',
+          '══ PAD-LEVEL COMPARISON CROPS (CLAHE + sharpened, ~5× zoom) ══',
+          hasRef
+            ? 'For each position: REFERENCE crop (correct board) is shown first, then SUBMITTED crop.'
+            : 'Each crop is centred on one expected component position from the submitted photo.',
+          'PRESENT = component body visible on pads.  MISSING = bare copper pads only.',
+          'Sum PRESENT count per component group for the JSON response.',
         ].join('\n'),
       });
 
       for (const item of smallItems) {
-        if (totalCrops >= MAX_CROPS) break;
+        if (totalPairs >= MAX_PAIRS) break;
 
         let positions: MarkerPos[];
         try { positions = JSON.parse(item.componentPositions as string); }
@@ -294,35 +320,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         });
 
         for (const pos of smallPos) {
-          if (totalCrops >= MAX_CROPS) break;
-
-          // Square crop centred on marker — use shorter image dimension so
-          // resize to UPSCALE_PX×UPSCALE_PX is never distorted
-          const cx       = Math.round(pos.x * imgW);
-          const cy       = Math.round(pos.y * imgH);
-          const halfPx   = Math.max(20, Math.round(CROP_HALF * Math.min(imgW, imgH)));
-          const left     = Math.max(0, cx - halfPx);
-          const top      = Math.max(0, cy - halfPx);
-          const cropSize = Math.min(halfPx * 2, imgW - left, imgH - top);
+          if (totalPairs >= MAX_PAIRS) break;
 
           try {
-            const cropBuf = await sharp(imgBuf)
-              .extract({ left, top, width: cropSize, height: cropSize })
-              .clahe({ width: 8, height: 8, maxSlope: 4 })          // local contrast (same as enhance-image)
-              .resize(UPSCALE_PX, UPSCALE_PX, { fit: 'fill', kernel: 'lanczos3' })
-              .sharpen({ sigma: 1.5, m1: 0.5, m2: 2.5, x1: 2 })
-              .jpeg({ quality: 95 })
-              .toBuffer();
+            // Reference crop (what a correct board looks like at this position)
+            if (refImgBuf) {
+              const refCrop = await makeCrop(refImgBuf, refImgW, refImgH, pos.x, pos.y);
+              contentBlocks.push({ type: 'text', text: `  ${pos.label} REFERENCE:` });
+              contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refCrop.toString('base64') } });
+            }
 
-            contentBlocks.push({
-              type: 'text',
-              text: `  ${pos.label} @ (${Math.round(pos.x * 100)}%, ${Math.round(pos.y * 100)}%):`,
-            });
-            contentBlocks.push({
-              type: 'image',
-              source: { type: 'base64', media_type: 'image/jpeg', data: cropBuf.toString('base64') },
-            });
-            totalCrops++;
+            // Submitted crop (what worker's photo shows at same position)
+            const subCrop = await makeCrop(imgBuf, imgW, imgH, pos.x, pos.y);
+            contentBlocks.push({ type: 'text', text: `  ${pos.label} SUBMITTED @ (${Math.round(pos.x * 100)}%,${Math.round(pos.y * 100)}%):` });
+            contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: subCrop.toString('base64') } });
+
+            totalPairs++;
           } catch (cropErr) {
             console.error('[crops] Failed for', item.name, pos.label, cropErr);
           }
