@@ -46,7 +46,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.active           != null)  data.active           = body.active !== 'false';
     if (body.expectedCount    !== undefined) data.expectedCount = body.expectedCount ? parseInt(body.expectedCount as string, 10) : null;
     if (body.orientationRule  !== undefined) data.orientationRule = body.orientationRule || null;
-    if (body.boardLocation    !== undefined) data.boardLocation   = body.boardLocation   || null;
+    if (body.boardLocation         !== undefined) data.boardLocation         = body.boardLocation   || null;
+    if (body.componentPositions    !== undefined) data.componentPositions    = body.componentPositions || null;
     if (body.isBoardReference != null)  data.isBoardReference = body.isBoardReference === 'true';
     if ('productId' in body)            data.productId        = body.productId || null;
     if (referenceImageUrl)              data.referenceImageUrl = referenceImageUrl;

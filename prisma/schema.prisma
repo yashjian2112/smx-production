@@ -340,6 +340,7 @@ model StageChecklistItem {
   expectedCount     Int?      @map("expected_count")        // How many of this component on the board
   orientationRule   String?   @map("orientation_rule")      // e.g. "heatsink tab faces outward"
   boardLocation     String?   @map("board_location")        // comma-separated zone IDs
+  componentPositions String?  @map("component_positions")   // JSON [{x,y,label}] — precise marker coords (0-1)
   isBoardReference  Boolean   @default(false) @map("is_board_reference") // Full board reference image
   required          Boolean   @default(true)
   sortOrder         Int       @default(0) @map("sort_order")

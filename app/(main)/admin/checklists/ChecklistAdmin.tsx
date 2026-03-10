@@ -7,6 +7,8 @@ import * as XLSX from 'xlsx';
 import { BoardLocationPicker, zonesToText, parseZoneIds } from '@/components/BoardLocationPicker';
 import { blobImgUrl } from '@/lib/blobUrl';
 import type { ScannedComponent } from '@/app/api/admin/checklists/scan/route';
+import { BoardMapper } from './BoardMapper';
+import type { MarkerSet } from './BoardMapper';
 
 // ── Bulk import row ────────────────────────────────────────────────────────────
 type BulkRow = {
@@ -160,6 +162,7 @@ type ChecklistItem = {
   expectedCount: number | null;
   orientationRule: string | null;
   boardLocation: string | null;
+  componentPositions: string | null; // JSON MarkerPosition[]
   isBoardReference: boolean;
   required: boolean;
   sortOrder: number;
@@ -188,6 +191,9 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [boardRefFile, setBoardRefFile] = useState<File | null>(null);
   const [boardRefPreview, setBoardRefPreview] = useState('');
   const [savingBoardRef, setSavingBoardRef]   = useState(false);
+
+  // Board mapper state
+  const [showMapper, setShowMapper] = useState(false);
 
   // Bulk spreadsheet import state
   const bulkInputRef                          = useRef<HTMLInputElement>(null);
@@ -491,6 +497,29 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
       setItems(prev => [...prev, ...added]);
       setBulkRows(null);
     } finally { setBulkUploading(false); }
+  }
+
+  // ── Save component positions from BoardMapper ─────────────────────────────
+  async function savePositions(markerSets: MarkerSet[]) {
+    // Save each component's positions to its checklist item
+    const updates = markerSets.filter((ms) => ms.positions.length > 0);
+    const updatedItems = [...items];
+    for (const ms of updates) {
+      const item = stageItems.find((i) => i.id === ms.componentId);
+      if (!item) continue;
+      const res = await fetch(`/api/admin/checklists/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ componentPositions: JSON.stringify(ms.positions) }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        const idx = updatedItems.findIndex((i) => i.id === item.id);
+        if (idx >= 0) updatedItems[idx] = updated;
+      }
+    }
+    setItems(updatedItems);
+    setShowMapper(false);
   }
 
   // ── AI board scan ────────────────────────────────────────────────────────────
@@ -843,11 +872,24 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
           <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
             Components to verify ({stageItems.filter(i => i.active).length} active)
           </p>
-          {stageItems.length > 0 && (
-            <div className="text-[11px] text-zinc-600">
-              Total expected: {stageItems.reduce((sum, i) => sum + (i.expectedCount ?? 1), 0)} parts
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Map on board button — only when there's a board ref image + components */}
+            {boardRefItem?.referenceImageUrl && stageItems.filter(i => i.productId === activeProduct && !i.isBoardReference).length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowMapper(true)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all"
+                style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.3)', color: '#2dd4bf' }}
+              >
+                📍 Map on board
+              </button>
+            )}
+            {stageItems.length > 0 && (
+              <div className="text-[11px] text-zinc-600">
+                Total: {stageItems.reduce((sum, i) => sum + (i.expectedCount ?? 1), 0)} parts
+              </div>
+            )}
+          </div>
         </div>
 
         {stageItems.length === 0 && !showAdd && (
@@ -899,6 +941,12 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 {/* Show "Global" badge when viewing a product tab but item is inherited from global */}
                 {activeProduct !== null && item.productId === null && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-purple-400" style={{ background: 'rgba(168,85,247,0.1)' }}>🌐 Global</span>
+                )}
+                {/* Mapped indicator */}
+                {item.componentPositions && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-teal-400" style={{ background: 'rgba(20,184,166,0.1)' }}>
+                    📍 {JSON.parse(item.componentPositions).length} mapped
+                  </span>
                 )}
                 <span className="text-[10px] text-zinc-600">#{item.sortOrder}</span>
               </div>
@@ -1359,6 +1407,26 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
             <span className="font-bold text-white">{stageItems.filter(i => i.active).reduce((sum, i) => sum + (i.expectedCount ?? 1), 0)}</span>
           </div>
         </div>
+      )}
+
+      {/* ── Board Mapper modal ────────────────────────────────────────────────── */}
+      {showMapper && boardRefItem?.referenceImageUrl && (
+        <BoardMapper
+          imageUrl={blobImgUrl(boardRefItem.referenceImageUrl)}
+          components={stageItems
+            .filter((i) => i.productId === activeProduct && !i.isBoardReference && i.active)
+            .map((i) => ({ id: i.id, name: i.name, count: i.expectedCount ?? 1 }))}
+          initialMarkers={stageItems
+            .filter((i) => i.productId === activeProduct && i.componentPositions)
+            .map((i) => ({
+              componentId: i.id,
+              name: i.name,
+              color: '#ffffff',
+              positions: JSON.parse(i.componentPositions!),
+            }))}
+          onSave={savePositions}
+          onClose={() => setShowMapper(false)}
+        />
       )}
     </div>
   );
