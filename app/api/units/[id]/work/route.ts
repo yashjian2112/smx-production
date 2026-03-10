@@ -350,28 +350,42 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     // ── Per-position crops for small-footprint components ────────────────────
-    // Each marker gets its own tight crop, upscaled 3× + sharpened.
-    // This lets Claude inspect individual pads without any ambiguity.
+    // Each marker gets its own tight crop, upscaled + CLAHE sharpened.
+    // Crop window and upscale resolution are SIZE-AWARE:
+    //   micro → very tight window (0.025) + 480px → ~9× zoom  (0402 resistors, tiny SMD)
+    //   mini  → tight window  (0.04)  + 400px → ~6× zoom  (0603, small caps)
+    //   small → normal window (0.06)  + 320px → ~3× zoom  (0805, diodes, SOT-23)
     type MarkerPos = { x: number; y: number; label: string; size?: string };
     const SMALL_SIZES  = new Set(['micro', 'mini', 'small']);
-    const CROP_HALF    = 0.06;   // 6% of shorter dim — wider window tolerates perspective offset
-    const UPSCALE_PX   = 320;    // 320px per crop (pairs sent together, keep total size down)
-    const MAX_PAIRS    = 8;      // max marker positions to show (each = 1 or 2 crops)
+    const CROP_PARAMS: Record<string, { half: number; px: number }> = {
+      micro: { half: 0.025, px: 480 },  // ~9× zoom — ideal for 0402 / micro SMD
+      mini:  { half: 0.040, px: 400 },  // ~6× zoom — ideal for 0603
+      small: { half: 0.060, px: 320 },  // ~3× zoom — ideal for 0805 and larger
+    };
+    const MAX_PAIRS    = 12;     // increased to fit up to 12 component positions
     let   totalPairs   = 0;
 
     // Helper: extract a square CLAHE-enhanced crop from any buffer at normalised (nx, ny)
-    const makeCrop = async (buf: Buffer, bW: number, bH: number, nx: number, ny: number): Promise<Buffer> => {
+    // sizeHint drives the crop window + upscale resolution selection
+    const makeCrop = async (
+      buf: Buffer, bW: number, bH: number,
+      nx: number, ny: number,
+      sizeHint = 'small',
+    ): Promise<Buffer> => {
+      const params  = CROP_PARAMS[sizeHint] ?? CROP_PARAMS['small'];
       const cx      = Math.round(nx * bW);
       const cy      = Math.round(ny * bH);
-      const halfPx  = Math.max(20, Math.round(CROP_HALF * Math.min(bW, bH)));
+      const halfPx  = Math.max(12, Math.round(params.half * Math.min(bW, bH)));
       const left    = Math.max(0, cx - halfPx);
       const top     = Math.max(0, cy - halfPx);
       const size    = Math.min(halfPx * 2, bW - left, bH - top);
+      // Stronger CLAHE + sharpen for micro components
+      const isMicro = sizeHint === 'micro';
       return sharp(buf)
         .extract({ left, top, width: size, height: size })
-        .clahe({ width: 8, height: 8, maxSlope: 4 })
-        .resize(UPSCALE_PX, UPSCALE_PX, { fit: 'fill', kernel: 'lanczos3' })
-        .sharpen({ sigma: 1.5, m1: 0.5, m2: 2.5, x1: 2 })
+        .clahe({ width: isMicro ? 4 : 8, height: isMicro ? 4 : 8, maxSlope: isMicro ? 6 : 4 })
+        .resize(params.px, params.px, { fit: 'fill', kernel: 'lanczos3' })
+        .sharpen({ sigma: isMicro ? 2.0 : 1.5, m1: isMicro ? 0.8 : 0.5, m2: isMicro ? 3.5 : 2.5, x1: 2 })
         .jpeg({ quality: 92 })
         .toBuffer();
     };
@@ -389,11 +403,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       contentBlocks.push({
         type: 'text',
         text: [
-          '══ PAD-LEVEL COMPARISON CROPS (CLAHE + sharpened, ~5× zoom) ══',
+          '══ PAD-LEVEL COMPARISON CROPS (CLAHE + sharpened, size-aware zoom) ══',
           hasRef
             ? 'For each position: REFERENCE crop (correct board) is shown first, then SUBMITTED crop.'
             : 'Each crop is centred on one expected component position from the submitted photo.',
-          'PRESENT = component body visible on pads.  MISSING = bare copper pads only.',
+          'Micro components use ~9× zoom, mini ~6×, small ~3×.',
+          'PRESENT = component body clearly visible on pads.  MISSING = bare copper pads only, no component body.',
           'Sum PRESENT count per component group for the JSON response.',
         ].join('\n'),
       });
@@ -408,27 +423,33 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         const smallPos = positions.filter(p => SMALL_SIZES.has(p.size ?? 'small'));
         if (smallPos.length === 0) continue;
 
+        // Determine the dominant size for this component's positions
+        const dominantSize = smallPos.some(p => p.size === 'micro') ? 'micro'
+          : smallPos.some(p => p.size === 'mini') ? 'mini' : 'small';
+
         contentBlocks.push({
           type: 'text',
-          text: `▶ ${item.name} — expect ${item.expectedCount ?? smallPos.length}, checking ${smallPos.length} pad${smallPos.length > 1 ? 's' : ''}:`,
+          text: `▶ ${item.name} [${dominantSize}] — expect ${item.expectedCount ?? smallPos.length}, checking ${smallPos.length} position${smallPos.length > 1 ? 's' : ''}:`,
         });
 
         for (const pos of smallPos) {
           if (totalPairs >= MAX_PAIRS) break;
 
+          const sizeHint = pos.size ?? 'small';
+
           try {
             // Reference crop (what a correct board looks like at this position)
             if (refImgBuf) {
-              const refCrop = await makeCrop(refImgBuf, refImgW, refImgH, pos.x, pos.y);
-              contentBlocks.push({ type: 'text', text: `  ${pos.label} REFERENCE:` });
+              const refCrop = await makeCrop(refImgBuf, refImgW, refImgH, pos.x, pos.y, sizeHint);
+              contentBlocks.push({ type: 'text', text: `  ${pos.label} REFERENCE [${sizeHint}]:` });
               contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refCrop.toString('base64') } });
             }
 
             // Submitted crop — use zone-specific photo if available, else full board
             const itemZone = (item as { photoZone?: string | null }).photoZone ?? 'full';
             const zp = photoMap[itemZone] ?? photoMap['full'];
-            const subCrop = await makeCrop(zp.buf, zp.w, zp.h, pos.x, pos.y);
-            contentBlocks.push({ type: 'text', text: `  ${pos.label} SUBMITTED @ (${Math.round(pos.x * 100)}%,${Math.round(pos.y * 100)}%):` });
+            const subCrop = await makeCrop(zp.buf, zp.w, zp.h, pos.x, pos.y, sizeHint);
+            contentBlocks.push({ type: 'text', text: `  ${pos.label} SUBMITTED @ (${Math.round(pos.x * 100)}%,${Math.round(pos.y * 100)}%) [${sizeHint} zoom]:` });
             contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: subCrop.toString('base64') } });
 
             totalPairs++;
