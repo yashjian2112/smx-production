@@ -254,8 +254,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // This lets Claude inspect individual pads without any ambiguity.
     type MarkerPos = { x: number; y: number; label: string; size?: string };
     const SMALL_SIZES = new Set(['micro', 'mini', 'small']);
-    const CROP_HALF   = 0.05;   // 5% each side → 10% window centred on marker
-    const UPSCALE_PX  = 320;    // enlarge every crop to 320×320 px
+    const CROP_HALF   = 0.04;   // 4% of shorter image dimension → square window
+    const UPSCALE_PX  = 480;    // enlarge every crop to 480×480 px (~5–6× zoom)
     const MAX_CROPS   = 12;
     let   totalCrops  = 0;
 
@@ -271,8 +271,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       contentBlocks.push({
         type: 'text',
         text: [
-          '══ PAD-LEVEL CROPS (3× zoomed, sharpened) ══',
-          `Each image below is a ${UPSCALE_PX}px close-up centred on one expected component position.`,
+          '══ PAD-LEVEL CROPS (5–6× zoomed, CLAHE + sharpened) ══',
+          `Each image below is a ${UPSCALE_PX}px square close-up centred on one expected component position.`,
           'Rule: bare copper pads visible → MISSING.  Component body on pads → PRESENT.',
           'Tally your PRESENT count per group to fill the JSON "name" field.',
         ].join('\n'),
@@ -296,17 +296,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         for (const pos of smallPos) {
           if (totalCrops >= MAX_CROPS) break;
 
-          const left   = Math.max(0,    Math.round((pos.x - CROP_HALF) * imgW));
-          const top    = Math.max(0,    Math.round((pos.y - CROP_HALF) * imgH));
-          const cropW  = Math.min(Math.max(40, Math.round(CROP_HALF * 2 * imgW)), imgW - left);
-          const cropH  = Math.min(Math.max(40, Math.round(CROP_HALF * 2 * imgH)), imgH - top);
+          // Square crop centred on marker — use shorter image dimension so
+          // resize to UPSCALE_PX×UPSCALE_PX is never distorted
+          const cx       = Math.round(pos.x * imgW);
+          const cy       = Math.round(pos.y * imgH);
+          const halfPx   = Math.max(20, Math.round(CROP_HALF * Math.min(imgW, imgH)));
+          const left     = Math.max(0, cx - halfPx);
+          const top      = Math.max(0, cy - halfPx);
+          const cropSize = Math.min(halfPx * 2, imgW - left, imgH - top);
 
           try {
             const cropBuf = await sharp(imgBuf)
-              .extract({ left, top, width: cropW, height: cropH })
+              .extract({ left, top, width: cropSize, height: cropSize })
+              .clahe({ width: 8, height: 8, maxSlope: 4 })          // local contrast (same as enhance-image)
               .resize(UPSCALE_PX, UPSCALE_PX, { fit: 'fill', kernel: 'lanczos3' })
-              .sharpen({ sigma: 1.5, m1: 0.5, m2: 2.5, x1: 2 })   // same recipe as /api/enhance-image
-              .jpeg({ quality: 92 })
+              .sharpen({ sigma: 1.5, m1: 0.5, m2: 2.5, x1: 2 })
+              .jpeg({ quality: 95 })
               .toBuffer();
 
             contentBlocks.push({
