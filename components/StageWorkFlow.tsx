@@ -607,6 +607,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
   // ── open: full-screen work panel ───────────────────────────────────────────
   if (step === 'open') {
+    const allDone = requiredZones.every(z => !!capturedImages[z]);
+
     return (
       <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: '#0a0a0f' }}>
         {/* Header */}
@@ -635,8 +637,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
           </button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto" style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 16px), 24px)' }}>
+        {/* Body — extra bottom padding when sticky footer is visible */}
+        <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto" style={{ paddingBottom: allDone ? 96 : 'max(calc(env(safe-area-inset-bottom) + 16px), 24px)' }}>
           {error && (
             <div className="rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
               {error}
@@ -673,7 +675,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             const zone    = requiredZones[currentZoneIdx] ?? 'full';
             const meta    = ZONE_META[zone] ?? ZONE_META['full'];
             const thisUrl = previewUrls[zone];
-            const allDone = requiredZones.every(z => capturedImages[z]);
 
             return thisUrl ? (
               /* Photo preview for this zone */
@@ -715,18 +716,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                     </button>
                   ) : null}
                 </div>
-
-                {/* Submit button — only when all zones captured */}
-                {allDone && (
-                  <button
-                    type="button"
-                    onClick={submitForAI}
-                    className="w-full py-4 rounded-2xl font-bold text-base"
-                    style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
-                  >
-                    ✅ Submit {requiredZones.length > 1 ? `all ${requiredZones.length} photos` : ''} — Run AI Check
-                  </button>
-                )}
 
                 {/* Zone thumbnails strip (multi-zone only) */}
                 {requiredZones.length > 1 && (
@@ -834,6 +823,28 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             );
           })()}
         </div>
+
+        {/* ── Sticky Submit footer — always visible at bottom when all photos done ── */}
+        {allDone && !cameraOpen && (
+          <div
+            className="flex-shrink-0 px-4 pb-safe"
+            style={{
+              paddingBottom: 'max(env(safe-area-inset-bottom), 16px)',
+              paddingTop: 12,
+              borderTop: '1px solid rgba(255,255,255,0.07)',
+              background: 'rgba(10,10,15,0.96)',
+            }}
+          >
+            <button
+              type="button"
+              onClick={submitForAI}
+              className="w-full py-4 rounded-2xl font-bold text-base"
+              style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
+            >
+              ✅ Submit {requiredZones.length > 1 ? `all ${requiredZones.length} photos` : 'photo'} — Run AI Check
+            </button>
+          </div>
+        )}
 
         {/* Live camera overlay — fixed + z-[200] so it covers the bottom nav (z-50) */}
         {cameraOpen && (
