@@ -1056,15 +1056,6 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   👆 Click image for each component position ({manualPositions.length}{manualQty > 0 ? ` / ${manualQty}` : ''} placed) • right-click on marker to remove
                 </p>
               )}
-              {/* Hidden SVG filter for sharpening via feConvolveMatrix */}
-              <svg width="0" height="0" style={{ position: 'absolute', pointerEvents: 'none' }}>
-                <defs>
-                  <filter id="pick-sharpen" x="0" y="0" width="100%" height="100%" colorInterpolationFilters="linearRGB">
-                    <feConvolveMatrix order="3" kernelMatrix="0 -1 0 -1 5 -1 0 -1 0" preserveAlpha="true" />
-                  </filter>
-                </defs>
-              </svg>
-
               {/* Enhance toolbar */}
               <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                 <button
@@ -1122,7 +1113,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                       ⟡ Sharp
                     </button>
 
-                    {/* Original toggle */}
+                    {/* Original / Enhanced compare toggle */}
                     <button
                       type="button"
                       onClick={() => setPickShowOrig(p => !p)}
@@ -1133,7 +1124,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                         border:     '1px solid rgba(255,255,255,0.08)',
                       }}
                     >
-                      {pickShowOrig ? 'Original' : 'Enhanced'}
+                      {pickShowOrig ? '◉ Original' : '○ Compare'}
                     </button>
 
                     {/* Reset defaults */}
@@ -1186,9 +1177,10 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                     className="object-contain"
                     style={{
                       pointerEvents: 'none',
-                      filter: pickShowOrig
+                      // Only apply filter when Enhance is toggled ON and not viewing original
+                      filter: (!pickShowEnhance || pickShowOrig)
                         ? 'none'
-                        : `contrast(${pickContrast}) brightness(${pickBrightness}) saturate(1.1)${pickSharpen ? ' url(#pick-sharpen)' : ''}`,
+                        : `contrast(${pickContrast}) brightness(${pickBrightness}) saturate(1.1)${pickSharpen ? ' contrast(1.15) saturate(1.2)' : ''}`,
                     }}
                   />
 
