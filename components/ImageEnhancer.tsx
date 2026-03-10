@@ -57,10 +57,15 @@ function sharpenImageData(imageData: ImageData): ImageData {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
-  // ── Enhancement settings ────────────────────────────────────────────────
-  const [contrast,   setContrast]   = useState(1.35);
-  const [brightness, setBrightness] = useState(1.05);
-  const [sharpen,    setSharpen]    = useState(true);
+  // ── Server-enhanced image (CLAHE + unsharp mask via sharp) ──────────────
+  const [enhancedSrc,  setEnhancedSrc]  = useState<string | null>(null);
+  const [enhancing,    setEnhancing]    = useState(true);   // true while API call in flight
+  const [enhanceFailed, setEnhanceFailed] = useState(false); // fallback if API fails
+  const enhancedBlobRef = useRef<Blob | null>(null);        // keep ref for onEnhancedBlob
+
+  // ── Display adjustment (CSS filter on top of server-enhanced image) ──────
+  const [contrast,     setContrast]     = useState(1.0);    // 1.0 = no additional change
+  const [brightness,   setBrightness]   = useState(1.0);
   const [showOriginal, setShowOriginal] = useState(false);
   const [showControls, setShowControls] = useState(false);
 
@@ -75,20 +80,55 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
   const pinchRef     = useRef<{ dist: number; startZoom: number } | null>(null);
   const lastTapTime  = useRef(0);
   const lastTapCoord = useRef({ x: 0, y: 0 });
-  const exportTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Zoom-linked auto clarity ────────────────────────────────────────────
-  // Logarithmic: doubling zoom always adds the same clarity step.
-  // zoom 1→ +0  |  zoom 2→ +0.15  |  zoom 3→ +0.24  |  zoom 5→ +0.35
-  const zoomBoost        = Math.log2(Math.max(1, zoom)) * 0.15;
-  const effectiveContrast = Math.min(3.0, contrast + zoomBoost);
-  // Auto-enable sharpening once zoomed past 1.5× — small components need it
-  const effectiveSharpen  = sharpen || zoom > 1.5;
+  // ── Auto-call enhance API whenever src changes ───────────────────────────
+  useEffect(() => {
+    if (!src) return;
+    let cancelled = false;
+    setEnhancing(true);
+    setEnhanceFailed(false);
+    setEnhancedSrc(null);
+    enhancedBlobRef.current = null;
 
-  // ── CSS filter string ───────────────────────────────────────────────────
+    (async () => {
+      try {
+        // src is a local blob URL — fetch it as a blob, POST to enhance API
+        const rawBlob = await fetch(src).then(r => r.blob());
+        const fd = new FormData();
+        fd.append('image', rawBlob, 'photo.jpg');
+        const res = await fetch('/api/enhance-image', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error(`enhance API ${res.status}`);
+        const blob = await res.blob();
+        if (cancelled) return;
+        enhancedBlobRef.current = blob;
+        setEnhancedSrc(URL.createObjectURL(blob));
+        onEnhancedBlob(blob);  // immediately pass to parent (submit will use this)
+      } catch (err) {
+        console.warn('Image enhance failed, using original:', err);
+        if (cancelled) return;
+        setEnhanceFailed(true);
+        // Fall back: pass original src blob to parent
+        fetch(src).then(r => r.blob()).then(b => { if (!cancelled) onEnhancedBlob(b); }).catch(() => {});
+      } finally {
+        if (!cancelled) setEnhancing(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
+
+  // ── Zoom-linked auto clarity (CSS on top of server enhancement) ──────────
+  const zoomBoost         = Math.log2(Math.max(1, zoom)) * 0.12;
+  const effectiveContrast = Math.min(2.5, contrast + zoomBoost);
+
+  // ── The source actually shown in the <img> ───────────────────────────────
+  const displaySrc = showOriginal ? src : (enhancedSrc ?? src);
+
+  // ── CSS filter — fine-tuning on top of the server-processed image ────────
   const filterStr = showOriginal
     ? 'none'
-    : `contrast(${effectiveContrast.toFixed(3)}) brightness(${brightness}) saturate(1.1)${effectiveSharpen ? ' contrast(1.15) saturate(1.2)' : ''}`;
+    : `contrast(${effectiveContrast.toFixed(3)}) brightness(${brightness})`;
 
   // ── Clamp offset so image never leaves the viewport ─────────────────────
   const clamp = useCallback((ox: number, oy: number, z: number) => {
@@ -102,38 +142,6 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
       y: Math.max(-maxY, Math.min(maxY, oy)),
     };
   }, []);
-
-  // ── Export enhanced blob (debounced 150ms so sliders don't thrash) ───────
-  const scheduleExport = useCallback(() => {
-    if (exportTimer.current) clearTimeout(exportTimer.current);
-    exportTimer.current = setTimeout(() => {
-      const img = imgRef.current;
-      if (!img || !img.complete || img.naturalWidth === 0) return;
-
-      const canvas = document.createElement('canvas');
-      canvas.width  = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      // Export uses base contrast (no zoom boost — AI receives the full image, not the zoomed view)
-      ctx.filter = showOriginal ? 'none' : `contrast(${contrast}) brightness(${brightness}) saturate(1.1)`;
-      ctx.drawImage(img, 0, 0);
-      ctx.filter = 'none';
-
-      if (effectiveSharpen && !showOriginal) {
-        const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        ctx.putImageData(sharpenImageData(id), 0, 0);
-      }
-
-      canvas.toBlob(blob => {
-        if (blob) onEnhancedBlob(blob);
-      }, 'image/jpeg', 0.92);
-    }, 150);
-  }, [contrast, brightness, sharpen, showOriginal, filterStr, onEnhancedBlob]);
-
-  // Re-export whenever filter settings change
-  useEffect(() => { scheduleExport(); }, [scheduleExport]);
 
   // ── Double-tap / double-click zoom ───────────────────────────────────────
   const handleDoubleTap = useCallback((clientX: number, clientY: number) => {
@@ -275,14 +283,13 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {/* ── Main image ─────────────────────────────────────────────────── */}
+      {/* ── Main image (shows server-enhanced version once ready) ────────── */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         ref={imgRef}
-        src={src}
+        src={displaySrc}
         alt="Captured work photo"
         draggable={false}
-        onLoad={scheduleExport}
         className="w-full h-full object-cover"
         style={{
           filter:          filterStr,
@@ -297,6 +304,20 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
         }}
       />
 
+      {/* ── Enhancement loading overlay ──────────────────────────────────── */}
+      {enhancing && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 pointer-events-none"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}>
+          {/* Spinner */}
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="animate-spin">
+            <circle cx="14" cy="14" r="11" stroke="rgba(255,255,255,0.15)" strokeWidth="3"/>
+            <path d="M14 3 A11 11 0 0 1 25 14" stroke="#38bdf8" strokeWidth="3" strokeLinecap="round"/>
+          </svg>
+          <span className="text-[11px] font-semibold text-sky-300">Enhancing pixels…</span>
+          <span className="text-[9px] text-zinc-400">CLAHE · Unsharp mask · Deblur</span>
+        </div>
+      )}
+
       {/* ── Top-right: control buttons ─────────────────────────────────── */}
       <div className="absolute top-2 right-2 flex gap-1 z-10">
         {zoom > 1 && (
@@ -309,18 +330,21 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
             Reset
           </button>
         )}
-        <button
-          type="button"
-          onClick={e => { e.stopPropagation(); setShowOriginal(p => !p); }}
-          className="text-[10px] font-bold px-2 py-1 rounded-full transition-colors"
-          style={{
-            background: 'rgba(0,0,0,0.72)',
-            color:      showOriginal ? '#fbbf24' : '#e2e8f0',
-            border:     showOriginal ? '1px solid #fbbf2490' : '1px solid rgba(255,255,255,0.15)',
-          }}
-        >
-          {showOriginal ? 'Original' : '✨ Enhanced'}
-        </button>
+        {/* Only show compare button once enhancement is done */}
+        {!enhancing && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setShowOriginal(p => !p); }}
+            className="text-[10px] font-bold px-2 py-1 rounded-full transition-colors"
+            style={{
+              background: 'rgba(0,0,0,0.72)',
+              color:      showOriginal ? '#fbbf24' : '#4ade80',
+              border:     showOriginal ? '1px solid #fbbf2490' : '1px solid rgba(74,222,128,0.3)',
+            }}
+          >
+            {showOriginal ? '○ Original' : '✨ Enhanced'}
+          </button>
+        )}
         <button
           type="button"
           onClick={e => { e.stopPropagation(); setShowControls(p => !p); }}
@@ -335,34 +359,42 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
         </button>
       </div>
 
-      {/* ── Top-left: zoom + auto-boost badge ──────────────────────────── */}
-      {zoom > 1.05 && (
+      {/* ── Top-left: status + zoom badge ───────────────────────────────── */}
+      {!enhancing && (
         <div className="absolute top-2 left-2 z-10 pointer-events-none flex items-center gap-1">
-          <span
-            className="text-[11px] font-black px-2 py-0.5 rounded-full tabular-nums"
-            style={{ background: 'rgba(0,0,0,0.72)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)' }}
-          >
-            {zoom.toFixed(1)}×
-          </span>
+          {/* Enhancement status chip */}
           {!showOriginal && (
             <span
-              className="text-[9px] font-bold px-1.5 py-0.5 rounded-full tabular-nums"
-              style={{ background: 'rgba(0,0,0,0.7)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)' }}
+              className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{
+                background: enhanceFailed ? 'rgba(239,68,68,0.15)' : 'rgba(74,222,128,0.12)',
+                color:      enhanceFailed ? '#f87171' : '#4ade80',
+                border:     enhanceFailed ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(74,222,128,0.2)',
+              }}
             >
-              clarity ×{effectiveContrast.toFixed(2)}
+              {enhanceFailed ? '⚠ raw' : '✓ deblurred'}
+            </span>
+          )}
+          {/* Zoom badge */}
+          {zoom > 1.05 && (
+            <span
+              className="text-[11px] font-black px-2 py-0.5 rounded-full tabular-nums"
+              style={{ background: 'rgba(0,0,0,0.72)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)' }}
+            >
+              {zoom.toFixed(1)}×
             </span>
           )}
         </div>
       )}
 
       {/* ── Bottom-left: double-tap hint (fades when zoomed) ───────────── */}
-      {zoom <= 1 && (
+      {zoom <= 1 && !enhancing && (
         <div className="absolute bottom-2 left-2 z-10 pointer-events-none">
           <span className="text-[9px] text-white/35">Double-tap to zoom in</span>
         </div>
       )}
 
-      {/* ── Adjustment panel (slides in from bottom) ───────────────────── */}
+      {/* ── Adjustment panel (fine-tune on top of server enhancement) ───── */}
       {showControls && (
         <div
           className="absolute bottom-0 left-0 right-0 z-20 rounded-t-2xl px-4 pt-3 pb-4 space-y-3"
@@ -374,12 +406,16 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
             <div className="w-8 h-0.5 rounded-full bg-zinc-600" />
           </div>
 
-          {/* Contrast — label shows effective value when zoomed */}
+          <p className="text-[9px] text-zinc-500 text-center -mt-1">
+            Fine-tune on top of AI deblur · base values
+          </p>
+
+          {/* Contrast */}
           <SliderRow
             label="Contrast"
             icon="◑"
             value={contrast}
-            min={0.8} max={3.0} step={0.05}
+            min={0.5} max={2.5} step={0.05}
             onChange={v => { setContrast(v); setShowOriginal(false); }}
             effectiveValue={zoom > 1.05 ? effectiveContrast : undefined}
           />
@@ -393,30 +429,10 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
             onChange={v => { setBrightness(v); setShowOriginal(false); }}
           />
 
-          {/* Sharpen toggle */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[13px] text-zinc-400">⟡</span>
-              <span className="text-[11px] text-zinc-300">Sharpen</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => { setSharpen(p => !p); setShowOriginal(false); }}
-              className="text-[11px] font-bold px-3 py-1 rounded-full transition-colors"
-              style={{
-                background: sharpen ? 'rgba(56,189,248,0.18)' : 'rgba(255,255,255,0.06)',
-                color:      sharpen ? '#38bdf8' : '#71717a',
-                border:     sharpen ? '1px solid rgba(56,189,248,0.3)' : '1px solid rgba(255,255,255,0.08)',
-              }}
-            >
-              {sharpen ? 'On' : 'Off'}
-            </button>
-          </div>
-
           {/* Reset defaults */}
           <button
             type="button"
-            onClick={() => { setContrast(1.35); setBrightness(1.05); setSharpen(true); setShowOriginal(false); }}
+            onClick={() => { setContrast(1.0); setBrightness(1.0); setShowOriginal(false); }}
             className="w-full text-[10px] text-zinc-500 hover:text-zinc-300 text-center py-1 transition-colors"
           >
             Reset to defaults
