@@ -249,14 +249,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     contentBlocks.push({ type: 'text', text: '══ SUBMITTED PHOTO (inspect this — compare against reference images above) ══' });
     contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
 
-    // ── Region crops for small-footprint components ───────────────────────────
-    // Components marked micro/mini/small are often invisible at full-board scale.
-    // Crop their pick-&-place regions from the submitted photo and send as
-    // close-ups so Claude can inspect exact pad locations clearly.
+    // ── Per-position crops for small-footprint components ────────────────────
+    // Each marker gets its own tight crop, upscaled 3× + sharpened.
+    // This lets Claude inspect individual pads without any ambiguity.
     type MarkerPos = { x: number; y: number; label: string; size?: string };
     const SMALL_SIZES = new Set(['micro', 'mini', 'small']);
-    const CROP_PAD    = 0.06; // 6% padding around bounding box
-    const MAX_CROPS   = 8;
+    const CROP_HALF   = 0.05;   // 5% each side → 10% window centred on marker
+    const UPSCALE_PX  = 320;    // enlarge every crop to 320×320 px
+    const MAX_CROPS   = 12;
     let   totalCrops  = 0;
 
     const smallItems = componentItems.filter(item => {
@@ -270,7 +270,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (smallItems.length > 0) {
       contentBlocks.push({
         type: 'text',
-        text: `══ CLOSE-UP CROPS FROM SUBMITTED PHOTO (${smallItems.length} small-component group${smallItems.length > 1 ? 's' : ''}) ══\nExamine each crop carefully — the markers show EXACTLY where each component should be seated.`,
+        text: [
+          '══ PAD-LEVEL CROPS (3× zoomed, sharpened) ══',
+          `Each image below is a ${UPSCALE_PX}px close-up centred on one expected component position.`,
+          'Rule: bare copper pads visible → MISSING.  Component body on pads → PRESENT.',
+          'Tally your PRESENT count per group to fill the JSON "name" field.',
+        ].join('\n'),
       });
 
       for (const item of smallItems) {
@@ -283,44 +288,30 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         const smallPos = positions.filter(p => SMALL_SIZES.has(p.size ?? 'small'));
         if (smallPos.length === 0) continue;
 
-        // If markers span > 50% of width, split into left and right clusters
-        const xs    = smallPos.map(p => p.x);
-        const spanX = Math.max(...xs) - Math.min(...xs);
-        const regions: { label: string; positions: MarkerPos[] }[] =
-          spanX > 0.5 && smallPos.length >= 2
-            ? (() => {
-                const midX     = (Math.min(...xs) + Math.max(...xs)) / 2;
-                const leftPos  = smallPos.filter(p => p.x <= midX);
-                const rightPos = smallPos.filter(p => p.x > midX);
-                const out: { label: string; positions: MarkerPos[] }[] = [];
-                if (leftPos.length)  out.push({ label: `${item.name} — left side`,  positions: leftPos });
-                if (rightPos.length) out.push({ label: `${item.name} — right side`, positions: rightPos });
-                return out;
-              })()
-            : [{ label: item.name, positions: smallPos }];
+        contentBlocks.push({
+          type: 'text',
+          text: `▶ ${item.name} — expect ${item.expectedCount ?? smallPos.length}, checking ${smallPos.length} pad${smallPos.length > 1 ? 's' : ''}:`,
+        });
 
-        for (const region of regions) {
+        for (const pos of smallPos) {
           if (totalCrops >= MAX_CROPS) break;
 
-          const rxs    = region.positions.map(p => p.x);
-          const rys    = region.positions.map(p => p.y);
-          const left   = Math.max(0,    Math.round((Math.min(...rxs) - CROP_PAD) * imgW));
-          const top    = Math.max(0,    Math.round((Math.min(...rys) - CROP_PAD) * imgH));
-          const right  = Math.min(imgW, Math.round((Math.max(...rxs) + CROP_PAD) * imgW));
-          const bottom = Math.min(imgH, Math.round((Math.max(...rys) + CROP_PAD) * imgH));
-          const width  = Math.max(80, right - left);
-          const height = Math.max(80, bottom - top);
+          const left   = Math.max(0,    Math.round((pos.x - CROP_HALF) * imgW));
+          const top    = Math.max(0,    Math.round((pos.y - CROP_HALF) * imgH));
+          const cropW  = Math.min(Math.max(40, Math.round(CROP_HALF * 2 * imgW)), imgW - left);
+          const cropH  = Math.min(Math.max(40, Math.round(CROP_HALF * 2 * imgH)), imgH - top);
 
           try {
             const cropBuf = await sharp(imgBuf)
-              .extract({ left, top, width: Math.min(width, imgW - left), height: Math.min(height, imgH - top) })
+              .extract({ left, top, width: cropW, height: cropH })
+              .resize(UPSCALE_PX, UPSCALE_PX, { fit: 'fill', kernel: 'lanczos3' })
+              .sharpen({ sigma: 1.5, m1: 0.5, m2: 2.5, x1: 2 })   // same recipe as /api/enhance-image
               .jpeg({ quality: 92 })
               .toBuffer();
 
-            const markerList = region.positions.map(p => p.label).join(', ');
             contentBlocks.push({
               type: 'text',
-              text: `Close-up crop: ${region.label} — expected marker${region.positions.length > 1 ? 's' : ''} ${markerList}`,
+              text: `  ${pos.label} @ (${Math.round(pos.x * 100)}%, ${Math.round(pos.y * 100)}%):`,
             });
             contentBlocks.push({
               type: 'image',
@@ -328,7 +319,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             });
             totalCrops++;
           } catch (cropErr) {
-            console.error('[crops] Failed for', region.label, cropErr);
+            console.error('[crops] Failed for', item.name, pos.label, cropErr);
           }
         }
       }
@@ -379,7 +370,8 @@ STRICT RULES:
 — If the image is blurry, too dark, or board not visible: overall = FAIL, explain in summary.
 — Compare against the board reference image for position, zone, and orientation verification.
 — For components with "Precise positions" listed: cross-reference those exact coordinates on the submitted photo.
-— For components with close-up crops provided: examine the crop carefully — empty pads = MISSING, component on pads = PRESENT.`,
+— For components with pad-level crops: check EACH crop individually — bare copper pads = MISSING at that position, component body on pads = PRESENT. Sum the PRESENT pads to get your found count.
+— Do NOT guess from the full board photo for components that have pad-level crops — use the crops as ground truth.`,
     });
 
     const message = await anthropic.messages.create({
