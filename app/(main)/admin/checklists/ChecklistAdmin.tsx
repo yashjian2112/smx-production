@@ -4,7 +4,9 @@ import { useState, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import * as XLSX from 'xlsx';
-import { BoardLocationPicker, zonesToText, parseZoneIds } from '@/components/BoardLocationPicker';
+import { InlineBoardPicker } from '@/components/InlineBoardPicker';
+import type { MarkerPosition as InlineMarkerPosition } from '@/components/InlineBoardPicker';
+import { zonesToText, parseZoneIds } from '@/lib/boardZones';
 import { blobImgUrl } from '@/lib/blobUrl';
 import type { ScannedComponent } from '@/app/api/admin/checklists/scan/route';
 import { BoardMapper } from './BoardMapper';
@@ -237,6 +239,8 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [previewUrl, setPreviewUrl] = useState('');
   const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [showAdvanced, setShowAdvanced]     = useState(false);
+  // Inline board position picker state (replaces zone grid)
+  const [newComponentPositions, setNewComponentPositions] = useState<InlineMarkerPosition[]>([]);
 
   // Items for current stage + current product tab.
   // On a product-specific tab we show:
@@ -345,12 +349,24 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
         setError(j.error ?? `Failed to save (${res.status})`);
         return;
       }
-      const item = await res.json();
+      let item = await res.json();
+
+      // Save component positions if any were placed on the board image
+      if (newComponentPositions.length > 0) {
+        const patchRes = await fetch(`/api/admin/checklists/${item.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ componentPositions: JSON.stringify(newComponentPositions) }),
+        });
+        if (patchRes.ok) item = await patchRes.json();
+      }
+
       setItems((prev) => [...prev, item]);
       setShowAdd(false);
       setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' });
       setRefImage(null); setPreviewUrl('');
       setSelectedPreset(''); setShowAdvanced(false);
+      setNewComponentPositions([]);
     } finally { setSaving(false); }
   }
 
@@ -1479,6 +1495,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   setSelectedPreset('');
                   setShowAdvanced(false);
                   setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' });
+                  setNewComponentPositions([]);
                 }}
                 className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
               >
@@ -1509,6 +1526,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                         expectedCount:   '',   // user must always enter count
                         boardLocation:   '',   // user must always pick location
                       }));
+                      setNewComponentPositions([]);
                     }}
                     className="flex flex-col items-center gap-1.5 rounded-xl py-3 px-2 transition-all hover:scale-105 active:scale-95"
                     style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
@@ -1584,16 +1602,30 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 </div>
               </div>
 
-              {/* ── Board location picker ─────────────────────────────────────── */}
-              <div>
-                <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-2">
-                  Board location
-                </label>
-                <BoardLocationPicker
-                  value={form.boardLocation}
-                  onChange={v => setForm(f => ({ ...f, boardLocation: v }))}
-                />
-              </div>
+              {/* ── Board position picker (click on board image to mark each component) ── */}
+              {boardRefItem?.referenceImageUrl ? (
+                <div>
+                  <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-2">
+                    Component positions on board
+                  </label>
+                  <InlineBoardPicker
+                    imageUrl={blobImgUrl(boardRefItem.referenceImageUrl)}
+                    componentName={form.name || selectedPreset}
+                    expectedCount={parseInt(form.expectedCount) || 0}
+                    positions={newComponentPositions}
+                    onChange={setNewComponentPositions}
+                  />
+                </div>
+              ) : (
+                <div
+                  className="rounded-xl px-3 py-3 text-center"
+                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.1)' }}
+                >
+                  <p className="text-[11px] text-zinc-600">
+                    📷 Upload a board reference image above to enable visual position marking
+                  </p>
+                </div>
+              )}
 
               {/* ── Advanced / override section ───────────────────────────────── */}
               <div>
@@ -1695,7 +1727,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => { setShowAdd(false); setSelectedPreset(''); setShowAdvanced(false); setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' }); setRefImage(null); setPreviewUrl(''); }}
+                onClick={() => { setShowAdd(false); setSelectedPreset(''); setShowAdvanced(false); setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' }); setRefImage(null); setPreviewUrl(''); setNewComponentPositions([]); }}
                 className="btn-ghost px-4 py-2.5 text-sm"
               >
                 Cancel
