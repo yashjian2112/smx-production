@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { BoardLocationPicker, zonesToText, parseZoneIds } from '@/components/BoardLocationPicker';
 import { blobImgUrl } from '@/lib/blobUrl';
+import type { ScannedComponent } from '@/app/api/admin/checklists/scan/route';
 
 // ── Component preset library ──────────────────────────────────────────────────
 // Select a preset → rules auto-fill → just enter quantity
@@ -176,6 +177,15 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [boardRefPreview, setBoardRefPreview] = useState('');
   const [savingBoardRef, setSavingBoardRef]   = useState(false);
 
+  // AI scan state
+  const [scanning, setScanning]             = useState(false);
+  const [scanResults, setScanResults]       = useState<ScannedComponent[] | null>(null);
+  const [scanError, setScanError]           = useState('');
+  // Per-row editable counts for scan results
+  const [scanCounts, setScanCounts]         = useState<Record<number, number>>({});
+  const [scanLocations, setScanLocations]   = useState<Record<number, string>>({});
+  const [addingAll, setAddingAll]           = useState(false);
+
   // Component form state
   const fileRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
@@ -321,6 +331,59 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
     if (res.ok) setItems((prev) => prev.filter((i) => i.id !== id));
   }
 
+  // ── AI board scan ────────────────────────────────────────────────────────────
+  async function scanBoard() {
+    if (!boardRefItem?.referenceImageUrl) return;
+    setScanning(true); setScanError(''); setScanResults(null);
+    try {
+      const res = await fetch('/api/admin/checklists/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: boardRefItem.referenceImageUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setScanError(data.error ?? 'Scan failed'); return; }
+      setScanResults(data.components);
+      // Initialise editable counts/locations from AI results
+      const counts: Record<number, number> = {};
+      const locs: Record<number, string> = {};
+      data.components.forEach((c: ScannedComponent, i: number) => {
+        counts[i] = c.expectedCount;
+        locs[i]   = c.boardLocation;
+      });
+      setScanCounts(counts);
+      setScanLocations(locs);
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : 'Scan failed');
+    } finally { setScanning(false); }
+  }
+
+  async function addAllScanned() {
+    if (!scanResults) return;
+    setAddingAll(true);
+    try {
+      const added: ChecklistItem[] = [];
+      for (let i = 0; i < scanResults.length; i++) {
+        const c = scanResults[i];
+        const fd = new FormData();
+        fd.append('stage',           activeStage);
+        fd.append('name',            c.name);
+        fd.append('description',     c.description);
+        fd.append('required',        String(c.required));
+        fd.append('sortOrder',       String(i));
+        fd.append('expectedCount',   String(scanCounts[i] ?? c.expectedCount));
+        fd.append('orientationRule', c.orientationRule);
+        fd.append('boardLocation',   scanLocations[i] ?? c.boardLocation);
+        fd.append('isBoardReference', 'false');
+        if (activeProduct) fd.append('productId', activeProduct);
+        const res = await fetch('/api/admin/checklists', { method: 'POST', body: fd });
+        if (res.ok) added.push(await res.json());
+      }
+      setItems((prev) => [...prev, ...added]);
+      setScanResults(null);
+    } finally { setAddingAll(false); }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -439,6 +502,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 src={boardRefPreview || blobImgUrl(boardRefItem!.referenceImageUrl)}
                 alt="Board reference"
                 fill
+                unoptimized
                 className="object-cover"
               />
             ) : (
@@ -492,6 +556,23 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 >
                   {boardRefItem?.referenceImageUrl ? '🔄 Replace reference image' : '+ Upload board reference image'}
                 </button>
+                {/* AI scan button — only when a reference image is set */}
+                {boardRefItem?.referenceImageUrl && (
+                  <button
+                    type="button"
+                    onClick={scanBoard}
+                    disabled={scanning}
+                    className="w-full py-2 rounded-lg text-xs font-bold transition-all"
+                    style={{ background: scanning ? 'rgba(139,92,246,0.08)' : 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', color: '#c084fc' }}
+                  >
+                    {scanning ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                        Scanning board…
+                      </span>
+                    ) : '🤖 Auto-detect components with AI'}
+                  </button>
+                )}
                 {boardRefItem?.referenceImageUrl && (
                   <button type="button" onClick={deleteBoardRef} className="text-[11px] text-zinc-600 hover:text-red-400 transition-colors">
                     Remove
@@ -510,6 +591,89 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
           </div>
         </div>
       </div>
+
+      {/* ── AI Scan error ─────────────────────────────────────────────────────── */}
+      {scanError && (
+        <div className="rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          🤖 Scan error: {scanError}
+        </div>
+      )}
+
+      {/* ── AI Scan results review panel ──────────────────────────────────────── */}
+      {scanResults && (
+        <div className="card p-4 space-y-3" style={{ border: '1px solid rgba(139,92,246,0.25)', background: 'rgba(139,92,246,0.04)' }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-purple-300">🤖 AI detected {scanResults.length} component types</p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">Review counts and locations, then add all to the checklist.</p>
+            </div>
+            <button type="button" onClick={() => setScanResults(null)} className="text-zinc-600 hover:text-zinc-400 text-lg leading-none">×</button>
+          </div>
+
+          <div className="space-y-2">
+            {scanResults.map((c, i) => {
+              const preset = COMPONENT_PRESETS.find(p => p.id === c.presetId);
+              return (
+                <div key={i} className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(139,92,246,0.12)' }}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{preset?.emoji ?? '🔧'}</span>
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-zinc-200">{c.name}</p>
+                      {c.orientationRule && <p className="text-[10px] text-amber-400/70 mt-0.5">🔄 {c.orientationRule}</p>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-zinc-600 mb-1">Quantity</label>
+                      <input
+                        type="number" min={1}
+                        value={scanCounts[i] ?? c.expectedCount}
+                        onChange={e => setScanCounts(prev => ({ ...prev, [i]: parseInt(e.target.value) || 1 }))}
+                        className="input-field text-xs py-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-zinc-600 mb-1">Location</label>
+                      <input
+                        type="text"
+                        value={scanLocations[i] ?? c.boardLocation}
+                        onChange={e => setScanLocations(prev => ({ ...prev, [i]: e.target.value }))}
+                        placeholder="e.g. TL,TR"
+                        className="input-field text-xs py-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={addAllScanned}
+              disabled={addingAll}
+              className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all"
+              style={{ background: addingAll ? 'rgba(139,92,246,0.4)' : 'linear-gradient(135deg,#7c3aed,#6d28d9)', border: '1px solid rgba(139,92,246,0.4)' }}
+            >
+              {addingAll ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Adding…
+                </span>
+              ) : `✓ Add all ${scanResults.length} components to checklist`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setScanResults(null)}
+              className="px-4 py-2.5 rounded-xl text-sm text-zinc-500"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Component checklist ───────────────────────────────────────────────── */}
       <div className="space-y-2">
@@ -548,7 +712,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
             {/* Reference image */}
             <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
               {item.referenceImageUrl ? (
-                <Image src={blobImgUrl(item.referenceImageUrl)} alt={item.name} width={56} height={56} className="w-full h-full object-cover" />
+                <Image src={blobImgUrl(item.referenceImageUrl)} alt={item.name} width={56} height={56} unoptimized className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5">

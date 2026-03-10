@@ -97,6 +97,7 @@ export function StageHistory({ unitId }: Props) {
                   alt="Work photo"
                   width={400}
                   height={200}
+                  unoptimized
                   className="w-full object-cover max-h-40"
                 />
               </div>
