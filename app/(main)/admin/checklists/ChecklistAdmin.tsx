@@ -618,7 +618,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
     if (pickQueue.length === 0) return;
     setSavingQueue(true);
     try {
-      const newItems = [];
+      const newItems: ChecklistItem[] = [];
       for (let idx = 0; idx < pickQueue.length; idx++) {
         const { component: c, qty } = pickQueue[idx];
         const fd = new FormData();
