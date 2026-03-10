@@ -477,23 +477,25 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
         {/* Per-component breakdown */}
         {issues.length > 0 && (() => {
-          // Helpers for the 5-status system
+          // Helpers for the 6-status system (inc. CANNOT_CONFIRM)
           const statusMeta: Record<string, { bg: string; border: string; text: string; icon: string; label: string }> = {
-            PRESENT:          { bg: 'rgba(34,197,94,0.06)',   border: 'rgba(34,197,94,0.18)',   text: '#4ade80', icon: '✅', label: 'OK'          },
-            MISSING:          { bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',    text: '#f87171', icon: '❌', label: 'MISSING'     },
-            DEFECTIVE:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '⚠️', label: 'DEFECTIVE'  },
-            WRONG_ORIENTATION:{ bg: 'rgba(251,146,60,0.07)',  border: 'rgba(251,146,60,0.2)',   text: '#fb923c', icon: '🔄', label: 'ORIENTATION' },
-            SOLDER_ISSUE:     { bg: 'rgba(192,132,252,0.07)', border: 'rgba(192,132,252,0.2)',  text: '#c084fc', icon: '🔧', label: 'SOLDER'     },
-            MISPLACED:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '📍', label: 'MISPLACED'  },
+            PRESENT:          { bg: 'rgba(34,197,94,0.06)',   border: 'rgba(34,197,94,0.18)',   text: '#4ade80', icon: '✅', label: 'OK'            },
+            MISSING:          { bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',    text: '#f87171', icon: '❌', label: 'MISSING'       },
+            DEFECTIVE:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '⚠️', label: 'DEFECTIVE'    },
+            WRONG_ORIENTATION:{ bg: 'rgba(251,146,60,0.07)',  border: 'rgba(251,146,60,0.2)',   text: '#fb923c', icon: '🔄', label: 'ORIENTATION'   },
+            SOLDER_ISSUE:     { bg: 'rgba(192,132,252,0.07)', border: 'rgba(192,132,252,0.2)',  text: '#c084fc', icon: '🔧', label: 'SOLDER'        },
+            MISPLACED:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '📍', label: 'MISPLACED'     },
+            CANNOT_CONFIRM:   { bg: 'rgba(251,191,36,0.06)',  border: 'rgba(251,191,36,0.15)',  text: '#fbbf24', icon: '🔍', label: 'UNCONFIRMED'   },
           };
           const getMeta = (s: string) => statusMeta[s] ?? statusMeta['DEFECTIVE'];
 
-          const failIssues = issues.filter(c => c.status !== 'PRESENT');
-          const okIssues   = issues.filter(c => c.status === 'PRESENT');
+          const failIssues    = issues.filter(c => c.status !== 'PRESENT' && c.status !== 'CANNOT_CONFIRM');
+          const unconfirmed   = issues.filter(c => c.status === 'CANNOT_CONFIRM');
+          const okIssues      = issues.filter(c => c.status === 'PRESENT');
 
           return (
             <div className="px-4 pb-4 space-y-4">
-              {/* Issues first */}
+              {/* Confirmed failures first */}
               {failIssues.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-[11px] font-semibold uppercase tracking-widest text-red-400/70">
@@ -522,6 +524,36 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                     );
                   })}
                 </div>
+              )}
+
+              {/* Cannot-confirm items (amber, not red) */}
+              {unconfirmed.length > 0 && (
+                <details className="group" open>
+                  <summary className="text-[11px] font-semibold uppercase tracking-widest text-amber-400/80 cursor-pointer select-none list-none flex items-center gap-1.5">
+                    <span className="group-open:rotate-90 inline-block transition-transform">▶</span>
+                    🔍 {unconfirmed.length} could not verify at this photo scale
+                  </summary>
+                  <div className="mt-2 space-y-1.5">
+                    {unconfirmed.map((issue, i) => {
+                      const m = getMeta('CANNOT_CONFIRM');
+                      return (
+                        <div key={i} className="rounded-xl p-3" style={{ background: m.bg, border: `1px solid ${m.border}` }}>
+                          <div className="flex items-start gap-3">
+                            <span className="text-base shrink-0 mt-0.5">🔍</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-medium text-white">{issue.name}</p>
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: m.border, color: m.text }}>UNCONFIRMED</span>
+                              </div>
+                              {issue.note && <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{issue.note}</p>}
+                              <p className="text-[10px] text-amber-400/60 mt-1">Supervisor spot-check recommended for this component</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
               )}
 
               {/* OK components collapsed */}

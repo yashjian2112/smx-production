@@ -467,7 +467,7 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
   "components": [
     {
       "name": "component name from manifest (include count found, e.g. 'MOSFET (found 17 of 18)')",
-      "status": "PRESENT" | "MISSING" | "DEFECTIVE" | "WRONG_ORIENTATION" | "SOLDER_ISSUE" | "MISPLACED",
+      "status": "PRESENT" | "MISSING" | "DEFECTIVE" | "WRONG_ORIENTATION" | "SOLDER_ISSUE" | "MISPLACED" | "CANNOT_CONFIRM",
       "note": "specific finding — include count if mismatch, exact location of problem, orientation issue detail",
       "location": "board position, e.g. 'top-left group, 3rd unit' or 'bottom-center strip'"
     }
@@ -476,12 +476,22 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
 }
 
 STRICT RULES:
-— Count every visible unit individually — do not guess.
-— If expected count is 18 and you can only see 17, status = MISSING with note explaining which position is empty.
-— If a component is found in the WRONG ZONE (not matching board location), status = MISPLACED.
-— If orientation rule is given and ANY unit violates it, status = WRONG_ORIENTATION — this is an immediate FAIL.
-— PASS only when: all REQUIRED components are present with correct count, correct location, correct orientation, and correct alignment.
-— If the image is blurry, too dark, or board not visible: overall = FAIL, explain in summary.
+— Count every visible unit individually where possible.
+— CRITICAL DISTINCTION — use the correct status:
+    PRESENT        = component body clearly visible on its pads ✓
+    MISSING        = you can see BARE COPPER PADS with NO component body at that exact position — high confidence the part is absent
+    CANNOT_CONFIRM = the component is expected but the photo scale/angle does not allow individual unit verification (small SMD, crowded area, partially obscured) — DO NOT assume MISSING
+    DEFECTIVE      = component present but visibly damaged/burned/cracked
+    WRONG_ORIENTATION = component present but rotated incorrectly
+    SOLDER_ISSUE   = visible solder defect (bridge, cold joint, tombstone)
+    MISPLACED      = component present but in wrong board zone
+— NEVER use MISSING just because you cannot identify/see a small component — that is CANNOT_CONFIRM.
+— ONLY use MISSING when bare pads are clearly visible at the expected position.
+— CANNOT_CONFIRM does NOT cause a FAIL on its own — it flags for supervisor awareness only.
+— overall = FAIL ONLY when a REQUIRED component has status MISSING, DEFECTIVE, WRONG_ORIENTATION, SOLDER_ISSUE, or MISPLACED.
+— overall = PASS when all required components are PRESENT or CANNOT_CONFIRM with no confirmed defects.
+— If orientation rule is given and ANY unit clearly violates it, status = WRONG_ORIENTATION — immediate FAIL.
+— If the image is blurry, too dark, or board not visible at all: overall = FAIL, explain in summary.
 — Compare against the board reference image for position, zone, and orientation verification.
 — For components with "Precise positions" listed: cross-reference those exact coordinates on the submitted photo.
 — For components with pad-level crops: check EACH crop individually — bare copper pads = MISSING at that position, component body on pads = PRESENT. Sum the PRESENT pads to get your found count.
@@ -497,10 +507,27 @@ STRICT RULES:
     const rawText = message.content[0].type === 'text' ? message.content[0].text : '';
     const match   = rawText.match(/\{[\s\S]*\}/);
     if (match) {
-      const parsed        = JSON.parse(match[0]);
-      analysisResult      = parsed.overall === 'PASS' ? 'PASS' : 'FAIL';
-      analysisIssues      = parsed.components ?? [];
-      analysisSummary     = parsed.summary ?? '';
+      const parsed   = JSON.parse(match[0]);
+      analysisIssues = parsed.components ?? [];
+      analysisSummary = parsed.summary ?? '';
+
+      // Re-derive overall from component statuses so that CANNOT_CONFIRM never causes a FAIL.
+      // Only these statuses on a REQUIRED component should trigger FAIL:
+      const FAIL_STATUSES = new Set(['MISSING', 'DEFECTIVE', 'WRONG_ORIENTATION', 'SOLDER_ISSUE', 'MISPLACED']);
+      const requiredNames = componentItems.filter(c => c.required).map(c => c.name.toLowerCase());
+      const hasConfirmedFail = analysisIssues.some(issue => {
+        if (!FAIL_STATUSES.has(issue.status)) return false;
+        // Check if this component is marked required in the manifest
+        return requiredNames.length === 0 || // if no required info, respect AI's call
+          requiredNames.some(rn => issue.name.toLowerCase().includes(rn) || rn.includes(issue.name.toLowerCase().split('(')[0].trim()));
+      });
+      analysisResult = hasConfirmedFail ? 'FAIL' : 'PASS';
+
+      // If there are CANNOT_CONFIRM items, append a note to the summary
+      const unconfirmed = analysisIssues.filter(i => i.status === 'CANNOT_CONFIRM');
+      if (unconfirmed.length > 0 && analysisResult === 'PASS') {
+        analysisSummary += ` (${unconfirmed.length} component${unconfirmed.length > 1 ? 's' : ''} could not be confirmed at this photo scale — supervisor spot-check recommended)`;
+      }
     }
   } catch (err) {
     console.error('Vision error:', err);
