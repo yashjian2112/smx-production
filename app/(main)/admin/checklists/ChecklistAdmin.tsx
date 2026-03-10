@@ -623,6 +623,15 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
 
     // Manual tab step 3: place numbered markers for each component instance
     if (pickTab === 'manual' && manualStep === 3) {
+      // Block if already placed enough markers
+      if (manualPositions.length >= manualQty) return;
+      // Block if clicking too close to an existing marker (< 4% of image size)
+      const tooClose = manualPositions.some(p => {
+        const dx = (p.x - x) * (p.x - x);
+        const dy = (p.y - y) * (p.y - y);
+        return Math.sqrt(dx + dy) < 0.04;
+      });
+      if (tooClose) return;
       const preset = COMPONENT_PRESETS.find(p => p.id === manualPreset) ?? COMPONENT_PRESETS[0];
       const name = manualName.trim() || preset.name;
       const prefix = name.charAt(0).toUpperCase();
@@ -1000,7 +1009,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                     </g>
                   ))}
 
-                  {/* Manual position markers — numbered red circles (right-click to remove) */}
+                  {/* Manual position markers — small numbered red circles (right-click to remove) */}
                   {pickTab === 'manual' && manualStep === 3 && manualPositions.map((pos, i) => (
                     <g key={i} style={{ pointerEvents: 'all', cursor: 'pointer' }}
                       onContextMenu={e => {
@@ -1011,8 +1020,8 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                           return next.map((p, j) => ({ ...p, label: `${prefix}${j + 1}` }));
                         });
                       }}>
-                      <circle cx={`${pos.x * 100}%`} cy={`${pos.y * 100}%`} r="11" fill="rgba(239,68,68,0.9)" stroke="white" strokeWidth="1.5" />
-                      <text x={`${pos.x * 100}%`} y={`${pos.y * 100}%`} textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="800" fill="white" style={{ pointerEvents: 'none' }}>{pos.label}</text>
+                      <circle cx={`${pos.x * 100}%`} cy={`${pos.y * 100}%`} r="6" fill="rgba(239,68,68,0.92)" stroke="white" strokeWidth="1" />
+                      <text x={`${pos.x * 100}%`} y={`${pos.y * 100}%`} textAnchor="middle" dominantBaseline="central" fontSize="6" fontWeight="800" fill="white" style={{ pointerEvents: 'none' }}>{pos.label}</text>
                     </g>
                   ))}
 
@@ -1145,21 +1154,34 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                     {/* Step 1: Component type */}
                     {manualStep === 1 && (
                       <div className="space-y-2">
-                        <div className="grid grid-cols-3 gap-1">
-                          {COMPONENT_PRESETS.map(p => (
-                            <button key={p.id} type="button"
-                              onClick={() => { setManualPreset(p.id); setManualName(''); }}
-                              className="rounded-lg py-1.5 text-center text-[10px] font-semibold transition-all"
-                              style={{
-                                background: manualPreset === p.id ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.04)',
-                                border: `1px solid ${manualPreset === p.id ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.08)'}`,
-                                color: manualPreset === p.id ? '#c4b5fd' : '#71717a',
-                              }}>
-                              <div>{p.emoji}</div>
-                              <div className="truncate">{p.label}</div>
-                            </button>
-                          ))}
-                        </div>
+                        {/* Preset grid — already-queued types are hidden */}
+                        {(() => {
+                          const usedIds = new Set(pickQueue.map(q => q.component.presetId));
+                          const available = COMPONENT_PRESETS.filter(p => !usedIds.has(p.id) || p.id === 'custom');
+                          return (
+                            <div className="grid grid-cols-3 gap-1">
+                              {available.map(p => (
+                                <button key={p.id} type="button"
+                                  onClick={() => { setManualPreset(p.id); setManualName(''); }}
+                                  className="rounded-lg py-1.5 text-center text-[10px] font-semibold transition-all"
+                                  style={{
+                                    background: manualPreset === p.id ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.04)',
+                                    border: `1px solid ${manualPreset === p.id ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.08)'}`,
+                                    color: manualPreset === p.id ? '#c4b5fd' : '#71717a',
+                                  }}>
+                                  <div>{p.emoji}</div>
+                                  <div className="truncate">{p.label}</div>
+                                </button>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                        {/* Already added */}
+                        {pickQueue.length > 0 && (
+                          <p className="text-[9px] text-zinc-600 text-center">
+                            {pickQueue.map(q => q.component.name).join(', ')} already added
+                          </p>
+                        )}
                         <div>
                           <label className="block text-[10px] text-zinc-600 mb-1">Name (optional)</label>
                           <input type="text" value={manualName} onChange={e => setManualName(e.target.value)}
