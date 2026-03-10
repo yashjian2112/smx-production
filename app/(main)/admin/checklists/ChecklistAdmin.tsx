@@ -214,11 +214,10 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [pickMode, setPickMode]             = useState(false);
   const [picking, setPicking]               = useState(false);
   const [pickError, setPickError]           = useState('');
-  const [pickMarkers, setPickMarkers]       = useState<Array<{ x: number; y: number; label: string }>>([]);
-  const [pendingPick, setPendingPick]       = useState<{ x: number; y: number; component: ScannedComponent } | null>(null);
-  const [pickCount, setPickCount]           = useState(1);
-  const [pickLocation, setPickLocation]     = useState('');
-  const [addingPick, setAddingPick]         = useState(false);
+  const [pickQueue, setPickQueue]           = useState<Array<{ id: string; x: number; y: number; component: ScannedComponent; qty: number }>>([]);
+  const [lastPick, setLastPick]             = useState<{ x: number; y: number; component: ScannedComponent } | null>(null);
+  const [lastPickQty, setLastPickQty]       = useState(1);
+  const [savingQueue, setSavingQueue]       = useState(false);
 
   // Component form state
   const fileRef = useRef<HTMLInputElement>(null);
@@ -587,7 +586,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
 
   // ── Pick & place ─────────────────────────────────────────────────────────────
   async function handleImageClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (!pickMode || picking || pendingPick) return;
+    if (!pickMode || picking) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top) / rect.height;
@@ -600,46 +599,55 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
       });
       const data = await res.json();
       if (!res.ok) { setPickError(data.error ?? 'Pick failed'); return; }
-      setPendingPick({ x, y, component: data.component });
-      setPickCount(1);
-      setPickLocation(data.component.boardLocation ?? '');
+      setLastPick({ x, y, component: data.component });
+      setLastPickQty(1);
     } catch (err) {
       setPickError(err instanceof Error ? err.message : 'Pick failed');
     } finally { setPicking(false); }
   }
 
-  async function addPickedComponent() {
-    if (!pendingPick) return;
-    setAddingPick(true);
+  function confirmLastPick() {
+    if (!lastPick) return;
+    const id = Math.random().toString(36).slice(2);
+    setPickQueue(prev => [...prev, { id, x: lastPick.x, y: lastPick.y, component: lastPick.component, qty: lastPickQty }]);
+    setLastPick(null);
+    setLastPickQty(1);
+  }
+
+  async function savePickQueue() {
+    if (pickQueue.length === 0) return;
+    setSavingQueue(true);
     try {
-      const c = pendingPick.component;
-      const preset = COMPONENT_PRESETS.find(p => p.id === c.presetId);
-      const fd = new FormData();
-      fd.append('stage',           activeStage);
-      fd.append('name',            c.name);
-      fd.append('description',     c.description);
-      fd.append('required',        String(c.required));
-      fd.append('sortOrder',       String(stageItems.length));
-      fd.append('expectedCount',   String(pickCount));
-      fd.append('orientationRule', c.orientationRule);
-      fd.append('boardLocation',   pickLocation);
-      fd.append('isBoardReference', 'false');
-      if (activeProduct) fd.append('productId', activeProduct);
-      const res = await fetch('/api/admin/checklists', { method: 'POST', body: fd });
-      if (res.ok) {
-        const item = await res.json();
-        setItems(prev => [...prev, item]);
-        const label = (preset?.emoji ?? '🔧') + ' ' + (c.name.split(' ')[0] ?? 'C');
-        setPickMarkers(prev => [...prev, { x: pendingPick.x, y: pendingPick.y, label }]);
+      const newItems: ChecklistItem[] = [];
+      for (let idx = 0; idx < pickQueue.length; idx++) {
+        const { component: c, qty } = pickQueue[idx];
+        const fd = new FormData();
+        fd.append('stage',           activeStage);
+        fd.append('name',            c.name);
+        fd.append('description',     c.description);
+        fd.append('required',        String(c.required));
+        fd.append('sortOrder',       String(stageItems.length + idx));
+        fd.append('expectedCount',   String(qty));
+        fd.append('orientationRule', c.orientationRule);
+        fd.append('boardLocation',   c.boardLocation ?? '');
+        fd.append('isBoardReference', 'false');
+        if (activeProduct) fd.append('productId', activeProduct);
+        const res = await fetch('/api/admin/checklists', { method: 'POST', body: fd });
+        if (res.ok) newItems.push(await res.json());
       }
-      setPendingPick(null);
-    } finally { setAddingPick(false); }
+      setItems(prev => [...prev, ...newItems]);
+      setPickQueue([]);
+      setLastPick(null);
+      setPickMode(false);
+      setPickError('');
+    } finally { setSavingQueue(false); }
   }
 
   function exitPickMode() {
+    if (pickQueue.length > 0 && !confirm(`Discard ${pickQueue.length} picked component${pickQueue.length > 1 ? 's' : ''}?`)) return;
     setPickMode(false);
-    setPickMarkers([]);
-    setPendingPick(null);
+    setPickQueue([]);
+    setLastPick(null);
     setPickError('');
   }
 
@@ -871,187 +879,182 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
 
       {/* ── Pick & Place mode ──────────────────────────────────────────────────── */}
       {pickMode && boardRefItem?.referenceImageUrl && (
-        <div className="card p-4 space-y-3" style={{ border: '1px solid rgba(20,184,166,0.25)', background: 'rgba(20,184,166,0.03)' }}>
+        <div className="card p-4" style={{ border: '1px solid rgba(20,184,166,0.25)', background: 'rgba(20,184,166,0.03)' }}>
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-3">
             <div>
               <p className="text-sm font-semibold text-teal-300">🎯 Pick & Place Mode</p>
               <p className="text-[11px] text-zinc-500 mt-0.5">
-                {picking ? 'Identifying component…' : pendingPick ? 'Confirm the detected component below.' : 'Click on any component in the board image to identify it.'}
+                {picking ? 'Identifying component…' : 'Click a component on the board, set its qty, then save all at once.'}
               </p>
             </div>
             <button
               type="button"
               onClick={exitPickMode}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-teal-300 transition-all"
-              style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.25)' }}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 transition-all"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
             >
-              ✓ Done
+              ✕ Cancel
             </button>
           </div>
 
-          {/* Interactive board image */}
-          <div
-            className="relative w-full rounded-xl overflow-hidden select-none"
-            style={{
-              aspectRatio: '16/9',
-              background: 'rgba(0,0,0,0.4)',
-              border: `1px solid ${picking ? 'rgba(20,184,166,0.6)' : 'rgba(20,184,166,0.3)'}`,
-              cursor: picking || pendingPick ? 'default' : 'crosshair',
-            }}
-            onClick={handleImageClick}
-          >
-            <Image
-              src={blobImgUrl(boardRefItem.referenceImageUrl)}
-              alt="Board reference"
-              fill
-              unoptimized
-              className="object-contain"
-              style={{ pointerEvents: 'none' }}
-            />
+          {/* Two-panel layout: image left, component list right */}
+          <div className="flex gap-3" style={{ alignItems: 'flex-start' }}>
 
-            {/* SVG overlay for markers + spinner */}
-            <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
-              {/* Placed markers */}
-              {pickMarkers.map((m, i) => (
-                <g key={i}>
-                  <circle
-                    cx={`${m.x * 100}%`}
-                    cy={`${m.y * 100}%`}
-                    r="10"
-                    fill="rgba(20,184,166,0.85)"
-                    stroke="white"
-                    strokeWidth="2"
-                  />
-                  <text
-                    x={`${m.x * 100}%`}
-                    y={`${m.y * 100}%`}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fontSize="8"
-                    fontWeight="bold"
-                    fill="white"
-                  >
-                    {i + 1}
-                  </text>
-                </g>
-              ))}
+            {/* Left: Interactive board image */}
+            <div className="flex-1 min-w-0">
+              <div
+                className="relative w-full rounded-xl overflow-hidden select-none"
+                style={{
+                  aspectRatio: '16/9',
+                  background: 'rgba(0,0,0,0.4)',
+                  border: `1px solid ${picking ? 'rgba(20,184,166,0.6)' : 'rgba(20,184,166,0.3)'}`,
+                  cursor: picking ? 'wait' : 'crosshair',
+                }}
+                onClick={handleImageClick}
+              >
+                <Image
+                  src={blobImgUrl(boardRefItem.referenceImageUrl)}
+                  alt="Board reference"
+                  fill
+                  unoptimized
+                  className="object-contain"
+                  style={{ pointerEvents: 'none' }}
+                />
 
-              {/* Pending pick marker (pulsing) */}
-              {pendingPick && (
-                <g>
-                  <circle
-                    cx={`${pendingPick.x * 100}%`}
-                    cy={`${pendingPick.y * 100}%`}
-                    r="12"
-                    fill="none"
-                    stroke="rgba(251,191,36,0.6)"
-                    strokeWidth="2"
-                  />
-                  <circle
-                    cx={`${pendingPick.x * 100}%`}
-                    cy={`${pendingPick.y * 100}%`}
-                    r="6"
-                    fill="rgba(251,191,36,0.9)"
-                    stroke="white"
-                    strokeWidth="1.5"
-                  />
-                </g>
-              )}
+                {/* SVG overlay */}
+                <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
+                  {/* Queued markers */}
+                  {pickQueue.map((m, i) => (
+                    <g key={m.id}>
+                      <circle cx={`${m.x * 100}%`} cy={`${m.y * 100}%`} r="10" fill="rgba(20,184,166,0.85)" stroke="white" strokeWidth="2" />
+                      <text x={`${m.x * 100}%`} y={`${m.y * 100}%`} textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="bold" fill="white">{i + 1}</text>
+                    </g>
+                  ))}
 
-              {/* Loading spinner crosshair (shown while picking) */}
-              {picking && (
-                <g>
-                  <circle cx="50%" cy="50%" r="14" fill="none" stroke="rgba(20,184,166,0.4)" strokeWidth="2" />
-                  <circle cx="50%" cy="50%" r="14" fill="none" stroke="rgba(20,184,166,0.9)" strokeWidth="2"
-                    strokeDasharray="22 66" strokeLinecap="round">
-                    <animateTransform attributeName="transform" type="rotate" from="0 50% 50%" to="360 50% 50%" dur="0.8s" repeatCount="indefinite" />
-                  </circle>
-                </g>
-              )}
-            </svg>
+                  {/* Last pick marker (amber, not yet confirmed) */}
+                  {lastPick && (
+                    <g>
+                      <circle cx={`${lastPick.x * 100}%`} cy={`${lastPick.y * 100}%`} r="12" fill="none" stroke="rgba(251,191,36,0.6)" strokeWidth="2" />
+                      <circle cx={`${lastPick.x * 100}%`} cy={`${lastPick.y * 100}%`} r="6" fill="rgba(251,191,36,0.9)" stroke="white" strokeWidth="1.5" />
+                    </g>
+                  )}
 
-            {/* Overlay hint when nothing picked yet */}
-            {!picking && !pendingPick && pickMarkers.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="px-3 py-1.5 rounded-lg text-xs text-teal-300" style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(20,184,166,0.3)' }}>
-                  Click on a component
-                </div>
-              </div>
-            )}
-          </div>
+                  {/* Loading spinner */}
+                  {picking && (
+                    <g>
+                      <circle cx="50%" cy="50%" r="14" fill="none" stroke="rgba(20,184,166,0.4)" strokeWidth="2" />
+                      <circle cx="50%" cy="50%" r="14" fill="none" stroke="rgba(20,184,166,0.9)" strokeWidth="2"
+                        strokeDasharray="22 66" strokeLinecap="round">
+                        <animateTransform attributeName="transform" type="rotate" from="0 50% 50%" to="360 50% 50%" dur="0.8s" repeatCount="indefinite" />
+                      </circle>
+                    </g>
+                  )}
+                </svg>
 
-          {/* Pick error */}
-          {pickError && (
-            <div className="rounded-lg p-2.5 text-xs text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-              {pickError}
-            </div>
-          )}
-
-          {/* Pending pick confirmation card */}
-          {pendingPick && (() => {
-            const preset = COMPONENT_PRESETS.find(p => p.id === pendingPick.component.presetId);
-            return (
-              <div className="rounded-xl p-3 space-y-3" style={{ background: 'rgba(251,191,36,0.04)', border: '1px solid rgba(251,191,36,0.2)' }}>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{preset?.emoji ?? '🔧'}</span>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-amber-300">{pendingPick.component.name}</p>
-                    {pendingPick.component.orientationRule && (
-                      <p className="text-[10px] text-amber-400/70 mt-0.5">🔄 {pendingPick.component.orientationRule}</p>
-                    )}
+                {/* Hint overlay */}
+                {!picking && !lastPick && pickQueue.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="px-3 py-1.5 rounded-lg text-xs text-teal-300" style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(20,184,166,0.3)' }}>
+                      Click on a component
+                    </div>
                   </div>
+                )}
+              </div>
+              {pickError && (
+                <div className="mt-2 rounded-lg p-2 text-xs text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  {pickError}
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] text-zinc-600 mb-1">Quantity on board</label>
+              )}
+            </div>
+
+            {/* Right: Component queue */}
+            <div className="flex flex-col gap-2" style={{ width: '240px', flexShrink: 0 }}>
+
+              {/* Just-identified component — confirm before adding to queue */}
+              {lastPick && (() => {
+                const preset = COMPONENT_PRESETS.find(p => p.id === lastPick.component.presetId);
+                return (
+                  <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.3)' }}>
+                    <div className="flex items-center gap-1.5">
+                      <span>{preset?.emoji ?? '🔧'}</span>
+                      <p className="text-xs font-semibold text-amber-300 truncate flex-1">{lastPick.component.name}</p>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-zinc-600 mb-1">Quantity</label>
+                      <input
+                        type="number" min={1}
+                        value={lastPickQty}
+                        onChange={e => setLastPickQty(parseInt(e.target.value) || 1)}
+                        className="input-field text-xs py-1 w-full"
+                      />
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={confirmLastPick}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-bold text-black"
+                        style={{ background: 'linear-gradient(135deg,#fbbf24,#f59e0b)' }}
+                      >
+                        ✓ Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLastPick(null)}
+                        className="px-3 py-1.5 rounded-lg text-xs text-zinc-500"
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                      >
+                        Skip
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Queue list */}
+              {pickQueue.length === 0 && !lastPick && (
+                <div className="rounded-xl p-3 text-center text-[11px] text-zinc-600" style={{ border: '1px dashed rgba(255,255,255,0.08)' }}>
+                  No components yet.<br />Click on the board to start.
+                </div>
+              )}
+
+              {pickQueue.map((item, i) => {
+                const preset = COMPONENT_PRESETS.find(p => p.id === item.component.presetId);
+                return (
+                  <div key={item.id} className="rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(20,184,166,0.15)' }}>
+                    <span className="text-xs text-teal-400 font-bold w-4 shrink-0">{i + 1}</span>
+                    <span className="text-sm shrink-0">{preset?.emoji ?? '🔧'}</span>
+                    <p className="text-xs text-zinc-300 flex-1 truncate">{item.component.name}</p>
                     <input
                       type="number" min={1}
-                      value={pickCount}
-                      onChange={e => setPickCount(parseInt(e.target.value) || 1)}
-                      className="input-field text-xs py-1"
+                      value={item.qty}
+                      onChange={e => setPickQueue(prev => prev.map(q => q.id === item.id ? { ...q, qty: parseInt(e.target.value) || 1 } : q))}
+                      className="input-field text-xs py-0.5 text-center"
+                      style={{ width: '44px' }}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setPickQueue(prev => prev.filter(q => q.id !== item.id))}
+                      className="text-zinc-600 hover:text-red-400 text-sm leading-none shrink-0"
+                    >×</button>
                   </div>
-                  <div>
-                    <label className="block text-[10px] text-zinc-600 mb-1">Board location</label>
-                    <input
-                      type="text"
-                      value={pickLocation}
-                      onChange={e => setPickLocation(e.target.value)}
-                      placeholder="e.g. TL,TR"
-                      className="input-field text-xs py-1"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={addPickedComponent}
-                    disabled={addingPick}
-                    className="flex-1 py-2 rounded-lg text-xs font-bold text-black transition-all"
-                    style={{ background: addingPick ? 'rgba(251,191,36,0.4)' : 'linear-gradient(135deg,#fbbf24,#f59e0b)' }}
-                  >
-                    {addingPick ? 'Adding…' : '✓ Add to checklist'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPendingPick(null)}
-                    className="px-4 py-2 rounded-lg text-xs text-zinc-500"
-                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-                  >
-                    Skip
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
+                );
+              })}
 
-          {/* Picked so far */}
-          {pickMarkers.length > 0 && (
-            <p className="text-[11px] text-teal-400/70">
-              ✓ {pickMarkers.length} component{pickMarkers.length > 1 ? 's' : ''} added via pick & place
-            </p>
-          )}
+              {/* Save all button */}
+              {pickQueue.length > 0 && (
+                <button
+                  type="button"
+                  onClick={savePickQueue}
+                  disabled={savingQueue}
+                  className="w-full py-2.5 rounded-xl text-xs font-bold text-black mt-1 transition-all"
+                  style={{ background: savingQueue ? 'rgba(20,184,166,0.4)' : 'linear-gradient(135deg,#14b8a6,#0d9488)', opacity: savingQueue ? 0.7 : 1 }}
+                >
+                  {savingQueue ? 'Saving…' : `💾 Save ${pickQueue.length} component${pickQueue.length > 1 ? 's' : ''}`}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
