@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { ImageEnhancer } from '@/components/ImageEnhancer';
 
 type Submission = {
   id: string;
@@ -61,6 +62,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [capturedImage, setCapturedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [enhancedBlob, setEnhancedBlob] = useState<Blob | null>(null);
   const [result, setResult] = useState<{ result: string; issues: Issue[]; summary: string } | null>(null);
   const [error, setError] = useState('');
   const [startingWork, setStartingWork] = useState(false);
@@ -320,8 +322,13 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     setStep('analyzing');
     setError('');
 
+    // Use the enhanced blob if available (sharpened + contrast boosted)
+    const fileToSend = enhancedBlob
+      ? new File([enhancedBlob], 'capture.jpg', { type: 'image/jpeg' })
+      : capturedImage;
+
     const fd = new FormData();
-    fd.append('image', capturedImage);
+    fd.append('image', fileToSend);
     fd.append('submissionId', submission.id);
 
     try {
@@ -600,15 +607,13 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
           ) : (
             /* Photo preview + action buttons */
             <div className="flex-1 flex flex-col gap-3">
-              {/* Image */}
+              {/* Enhanced image viewer — double-tap to zoom, pinch to zoom, drag to pan */}
               <div className="relative rounded-2xl overflow-hidden" style={{ minHeight: 220, border: '1px solid rgba(14,165,233,0.2)' }}>
-                <Image src={previewUrl} alt="Work photo" fill className="object-cover" />
-                {/* overlay badge */}
-                <div className="absolute top-3 left-3">
-                  <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ background: 'rgba(0,0,0,0.65)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)' }}>
-                    📸 Photo captured
-                  </span>
-                </div>
+                <ImageEnhancer
+                  src={previewUrl}
+                  onEnhancedBlob={setEnhancedBlob}
+                  minHeight={220}
+                />
               </div>
 
               {/* Action buttons — always visible directly below the preview */}
@@ -622,7 +627,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => { setCapturedImage(null); setPreviewUrl(''); }}
+                onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); }}
                 className="w-full py-3 rounded-2xl text-sm font-medium text-zinc-400"
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
               >
