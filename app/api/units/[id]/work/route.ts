@@ -64,6 +64,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     // Compute suggested zoom per zone from component size markers
     const SIZE_ZOOM: Record<string, number> = { micro: 3.5, mini: 2.5, small: 2.0 };
+    // First pass: give every strip zone a 2× default (even if no component positions set)
+    for (const z of extraZones) {
+      if (z !== 'full') zoneZooms[z] = 2.0;
+    }
+    // Second pass: bump up if any component in that zone needs higher zoom
     for (const item of zoneItems) {
       if (!item.photoZone || !item.componentPositions) continue;
       try {
@@ -71,12 +76,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         for (const pos of positions) {
           const sz = pos.size ?? 'small';
           const suggested = SIZE_ZOOM[sz] ?? 2.0;
-          // Keep the highest zoom needed for this zone
-          zoneZooms[item.photoZone] = Math.max(zoneZooms[item.photoZone] ?? 1, suggested);
+          zoneZooms[item.photoZone] = Math.max(zoneZooms[item.photoZone] ?? 2.0, suggested);
         }
       } catch { /* skip invalid JSON */ }
-      // Default zoom for a strip zone even without positions
-      if (!zoneZooms[item.photoZone]) zoneZooms[item.photoZone] = 2.0;
     }
   }
 

@@ -99,13 +99,18 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const [zoomLevel,   setZoomLevel]   = useState(1);
   const [maxZoom,     setMaxZoom]     = useState(5);
   const [nativeZoom,  setNativeZoom]  = useState(false);   // true = hardware zoom via API
-  const lastPinchRef  = useRef<number | null>(null);       // last pinch distance (px)
+  const lastPinchRef   = useRef<number | null>(null);      // last pinch distance (px)
   const suggestedZoomRef = useRef(1);                      // auto-zoom target for current zone
+  // Ref mirror of zoneZooms — always current even inside stale closures (e.g. auto-open effect)
+  const zoneZoomsRef  = useRef<Record<string, number>>({ full: 1 });
 
   // ── auto-capture state ────────────────────────────────────────────────────
   const [autoCapture, setAutoCapture]     = useState(true);
   const [stableMs, setStableMs]           = useState(0);          // 0–1500
   const [autoCountdown, setAutoCountdown] = useState<number | null>(null); // 3,2,1
+  // ── distance guidance ────────────────────────────────────────────────────
+  // 'closer' | 'back' | 'good' | null — derived from live frame brightness analysis
+  const [distanceHint, setDistanceHint]   = useState<'closer' | 'back' | 'good' | null>(null);
   const prevFrameRef    = useRef<ImageData | null>(null);
   const frameTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const cdTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -127,7 +132,10 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
         const getRes  = await fetch(`/api/units/${unitId}/work`);
         const getData = await getRes.json();
         if (getData.requiredZones) setRequiredZones(getData.requiredZones);
-        if (getData.zoneZooms)     setZoneZooms(getData.zoneZooms);
+        if (getData.zoneZooms) {
+          setZoneZooms(getData.zoneZooms);
+          zoneZoomsRef.current = getData.zoneZooms; // sync ref immediately — no stale closure
+        }
 
         if (currentStatus === 'IN_PROGRESS') {
           if (getData.active) {
@@ -205,10 +213,11 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     prevFrameRef.current = null;
     setStableMs(0);
     setAutoCountdown(null);
-    // Reset zoom
+    // Reset zoom + distance hint
     setZoomLevel(1);
     setNativeZoom(false);
     lastPinchRef.current = null;
+    setDistanceHint(null);
     // Stop stream
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
@@ -242,6 +251,39 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
       ctx.drawImage(video, 0, 0, 160, 120);
       const curr = ctx.getImageData(0, 0, 160, 120);
+
+      // ── Distance guidance: estimate board coverage via adaptive brightness threshold ──
+      // Algorithm: find max brightness in frame → count pixels above 40% of max
+      // (the PCB is lighter than the dark background/table in most factory setups).
+      // Coverage ratio drives the "move closer / move back" hint.
+      {
+        let maxBright = 0;
+        const grays = new Float32Array(curr.data.length >> 2);
+        for (let i = 0, j = 0; i < curr.data.length; i += 4, j++) {
+          const g = 0.299 * curr.data[i] + 0.587 * curr.data[i + 1] + 0.114 * curr.data[i + 2];
+          grays[j] = g;
+          if (g > maxBright) maxBright = g;
+        }
+        // Adaptive threshold: 40% of the brightest pixel in the frame
+        const thresh = maxBright * 0.40;
+        let brightCount = 0;
+        for (let j = 0; j < grays.length; j++) { if (grays[j] > thresh) brightCount++; }
+        const coverage = brightCount / grays.length; // 0–1
+
+        // Zone-specific coverage targets
+        // full board: PCB should fill 30–72% of the frame
+        // strip (top/bottom): zoomed in, PCB fills 45–88%
+        const captureZone = (window as unknown as Record<string, string>)['__captureZone'] || 'full';
+        const [minCov, maxCov] = captureZone === 'full' ? [0.30, 0.72] : [0.45, 0.88];
+
+        if (coverage < minCov) {
+          setDistanceHint('closer');
+        } else if (coverage > maxCov) {
+          setDistanceHint('back');
+        } else {
+          setDistanceHint('good');
+        }
+      }
 
       if (prevFrameRef.current) {
         const diff = getFrameDiff(prevFrameRef.current, curr);
@@ -383,8 +425,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     const zone = requiredZones[currentZoneIdx] ?? 'full';
     // Store current zone so auto-capture closure can read it without stale ref
     (window as unknown as Record<string, string>)['__captureZone'] = zone;
-    // Store suggested zoom for this zone — applied once camera is ready
-    suggestedZoomRef.current = zoneZooms[zone] ?? 1;
+    // Store suggested zoom for this zone — read from REF (never stale even in auto-open effect)
+    suggestedZoomRef.current = zoneZoomsRef.current[zone] ?? 1;
     setZoomLevel(1); // reset first, will be set to suggested once cameraReady fires
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -1067,6 +1109,29 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                     style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 50%, rgba(0,0,0,0.68) 100%)' }}
                   />
 
+                  {/* ── Distance guidance banner ── */}
+                  {distanceHint && distanceHint !== 'good' && (
+                    <div
+                      className="absolute top-3 left-0 right-0 flex justify-center pointer-events-none z-10"
+                    >
+                      <div
+                        className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold"
+                        style={{
+                          background: 'rgba(0,0,0,0.72)',
+                          border: `1px solid ${distanceHint === 'closer' ? 'rgba(251,191,36,0.6)' : 'rgba(251,146,60,0.6)'}`,
+                          color:  distanceHint === 'closer' ? '#fbbf24' : '#fb923c',
+                          backdropFilter: 'blur(8px)',
+                        }}
+                      >
+                        {distanceHint === 'closer' ? (
+                          <><span className="text-lg">↓</span> Move closer</>
+                        ) : (
+                          <><span className="text-lg">↑</span> Move back a little</>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Scan frame — centred, sits above the shutter area */}
                   <div
                     className="absolute inset-x-0 top-0 pointer-events-none flex items-center justify-center"
@@ -1216,6 +1281,12 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                           ? 'Hold perfectly still!'
                           : stableMs >= 600
                           ? 'Almost steady — keep holding…'
+                          : distanceHint === 'closer'
+                          ? '↓ Move closer to fill the frame'
+                          : distanceHint === 'back'
+                          ? '↑ Move back a little'
+                          : distanceHint === 'good'
+                          ? '✓ Good distance — hold steady'
                           : 'Align PCB · hold steady to auto-capture'
                         : 'Tap button to capture'}
                     </span>
