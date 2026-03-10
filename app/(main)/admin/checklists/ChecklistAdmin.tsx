@@ -221,6 +221,12 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   // Zoom + pan for board image (allows precise placement on micro components)
   const [pickZoom, setPickZoom]             = useState(1);
   const [pickOffset, setPickOffset]         = useState({ x: 0, y: 0 }); // CSS translate in px
+  // Image enhancement for pick & place board
+  const [pickContrast,    setPickContrast]    = useState(1.35);
+  const [pickBrightness,  setPickBrightness]  = useState(1.05);
+  const [pickSharpen,     setPickSharpen]     = useState(true);
+  const [pickShowOrig,    setPickShowOrig]    = useState(false);
+  const [pickShowEnhance, setPickShowEnhance] = useState(false);
   const pickOuterRef                        = useRef<HTMLDivElement>(null);
   const pickDragRef                         = useRef<{ sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
   const [lastPick, setLastPick]             = useState<{ x: number; y: number; component: ScannedComponent } | null>(null);
@@ -1050,6 +1056,99 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   👆 Click image for each component position ({manualPositions.length}{manualQty > 0 ? ` / ${manualQty}` : ''} placed) • right-click on marker to remove
                 </p>
               )}
+              {/* Hidden SVG filter for sharpening via feConvolveMatrix */}
+              <svg width="0" height="0" style={{ position: 'absolute', pointerEvents: 'none' }}>
+                <defs>
+                  <filter id="pick-sharpen" x="0" y="0" width="100%" height="100%" colorInterpolationFilters="linearRGB">
+                    <feConvolveMatrix order="3" kernelMatrix="0 -1 0 -1 5 -1 0 -1 0" preserveAlpha="true" />
+                  </filter>
+                </defs>
+              </svg>
+
+              {/* Enhance toolbar */}
+              <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setPickShowEnhance(p => !p)}
+                  className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg transition-colors"
+                  style={{
+                    background: pickShowEnhance ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.05)',
+                    color:      pickShowEnhance ? '#38bdf8' : '#71717a',
+                    border:     pickShowEnhance ? '1px solid rgba(56,189,248,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  ✨ Enhance
+                </button>
+
+                {pickShowEnhance && (
+                  <>
+                    {/* Contrast mini-slider */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-zinc-500">◑</span>
+                      <input
+                        type="range" min={0.8} max={3.0} step={0.05}
+                        value={pickContrast}
+                        onChange={e => { setPickContrast(parseFloat(e.target.value)); setPickShowOrig(false); }}
+                        className="w-16 h-1 accent-sky-400 rounded"
+                        title={`Contrast: ${pickContrast.toFixed(2)}`}
+                      />
+                      <span className="text-[9px] text-zinc-400 tabular-nums">{pickContrast.toFixed(1)}</span>
+                    </div>
+
+                    {/* Brightness mini-slider */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-zinc-500">☀</span>
+                      <input
+                        type="range" min={0.5} max={2.0} step={0.05}
+                        value={pickBrightness}
+                        onChange={e => { setPickBrightness(parseFloat(e.target.value)); setPickShowOrig(false); }}
+                        className="w-16 h-1 accent-sky-400 rounded"
+                        title={`Brightness: ${pickBrightness.toFixed(2)}`}
+                      />
+                      <span className="text-[9px] text-zinc-400 tabular-nums">{pickBrightness.toFixed(1)}</span>
+                    </div>
+
+                    {/* Sharpen toggle */}
+                    <button
+                      type="button"
+                      onClick={() => { setPickSharpen(p => !p); setPickShowOrig(false); }}
+                      className="text-[9px] px-2 py-0.5 rounded font-bold transition-colors"
+                      style={{
+                        background: pickSharpen ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.05)',
+                        color:      pickSharpen ? '#38bdf8' : '#52525b',
+                        border:     '1px solid rgba(255,255,255,0.08)',
+                      }}
+                    >
+                      ⟡ Sharp
+                    </button>
+
+                    {/* Original toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setPickShowOrig(p => !p)}
+                      className="text-[9px] px-2 py-0.5 rounded font-bold transition-colors"
+                      style={{
+                        background: pickShowOrig ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.05)',
+                        color:      pickShowOrig ? '#fbbf24' : '#52525b',
+                        border:     '1px solid rgba(255,255,255,0.08)',
+                      }}
+                    >
+                      {pickShowOrig ? 'Original' : 'Enhanced'}
+                    </button>
+
+                    {/* Reset defaults */}
+                    <button
+                      type="button"
+                      onClick={() => { setPickContrast(1.35); setPickBrightness(1.05); setPickSharpen(true); setPickShowOrig(false); }}
+                      className="text-[9px] px-2 py-0.5 rounded text-zinc-600 hover:text-zinc-400 transition-colors"
+                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                    >
+                      Reset
+                    </button>
+                  </>
+                )}
+              </div>
+
               {/* Board image — scroll to zoom, drag to pan, click to mark */}
               <div
                 ref={pickOuterRef}
@@ -1085,7 +1184,12 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                     fill
                     unoptimized
                     className="object-contain"
-                    style={{ pointerEvents: 'none' }}
+                    style={{
+                      pointerEvents: 'none',
+                      filter: pickShowOrig
+                        ? 'none'
+                        : `contrast(${pickContrast}) brightness(${pickBrightness}) saturate(1.1)${pickSharpen ? ' url(#pick-sharpen)' : ''}`,
+                    }}
                   />
 
                   {/* SVG overlay — scales with image */}
