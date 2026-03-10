@@ -8,20 +8,20 @@ export type ComponentSize = 'micro' | 'mini' | 'small' | 'big' | 'macro';
 
 /** Maps size name → base SVG radius (scales with zoom) */
 export const SIZE_RADIUS: Record<ComponentSize, number> = {
-  micro: 3,   // SMD 0402 resistors, tiny caps
-  mini:  5,   // SMD 0603 caps, small diodes
-  small: 7,   // Standard SMD, TO-92
-  big:   12,  // MOSFETs, ICs, headers
-  macro: 18,  // Spacers, transformers, large caps
+  micro: 1.5,  // SMD 0402 resistors, tiny caps
+  mini:  2.5,  // SMD 0603 caps, small diodes
+  small: 3.5,  // Standard SMD, TO-92
+  big:   6,    // MOSFETs, ICs, headers
+  macro: 9,    // Spacers, transformers, large caps
 };
 
 /** Minimum marker spacing per size (prevents accidental overlap) */
 export const SIZE_MIN_DIST: Record<ComponentSize, number> = {
-  micro: 0.008,  // very tight — closely packed strips
-  mini:  0.014,
-  small: 0.022,
-  big:   0.035,
-  macro: 0.055,
+  micro: 0.004,  // very tight — closely packed strips
+  mini:  0.007,
+  small: 0.011,
+  big:   0.018,
+  macro: 0.028,
 };
 
 type Props = {

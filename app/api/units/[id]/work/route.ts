@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { put } from '@vercel/blob';
 import Anthropic from '@anthropic-ai/sdk';
 import { parseZoneIds, zonesToText } from '@/lib/boardZones';
+import sharp from 'sharp';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -159,6 +160,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             }
             if (c.orientationRule) parts.push(`  Orientation rule: ${c.orientationRule}`);
             if (c.description)     parts.push(`  Additional notes: ${c.description}`);
+            // Include pick-&-place coordinates so Claude knows exactly where to look
+            if (c.componentPositions) {
+              try {
+                const positions: Array<{ x: number; y: number; label: string; size?: string }> =
+                  JSON.parse(c.componentPositions as string);
+                if (positions.length > 0) {
+                  const coordHints = positions
+                    .map(p => `${p.label}@(${Math.round(p.x * 100)}%,${Math.round(p.y * 100)}%)`)
+                    .join('  ');
+                  parts.push(`  Precise positions: ${coordHints}  ← x% from left, y% from top`);
+                }
+              } catch { /* invalid JSON, skip */ }
+            }
             parts.push(`  Required        : ${c.required ? 'YES — board FAILS if any issue found' : 'NO'}`);
             return parts.join('\n');
           })
@@ -176,8 +190,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const blobAuth = { authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` };
     const imgRes    = await fetch(blob.url, { headers: blobAuth });
     const imgBuffer = await imgRes.arrayBuffer();
-    const base64    = Buffer.from(imgBuffer).toString('base64');
+    const imgBuf    = Buffer.from(imgBuffer);          // reuse buffer for crops
+    const base64    = imgBuf.toString('base64');
     const mediaType = (file.type || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp';
+
+    // Get pixel dimensions — needed to convert normalized (0–1) positions to pixel coords
+    const imgMeta = await sharp(imgBuf).metadata();
+    const imgW    = imgMeta.width  ?? 1000;
+    const imgH    = imgMeta.height ?? 1000;
 
     // ── Fetch reference images ────────────────────────────────────────────────
     type ImageBlock = {
@@ -229,6 +249,91 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     contentBlocks.push({ type: 'text', text: '══ SUBMITTED PHOTO (inspect this — compare against reference images above) ══' });
     contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
 
+    // ── Region crops for small-footprint components ───────────────────────────
+    // Components marked micro/mini/small are often invisible at full-board scale.
+    // Crop their pick-&-place regions from the submitted photo and send as
+    // close-ups so Claude can inspect exact pad locations clearly.
+    type MarkerPos = { x: number; y: number; label: string; size?: string };
+    const SMALL_SIZES = new Set(['micro', 'mini', 'small']);
+    const CROP_PAD    = 0.06; // 6% padding around bounding box
+    const MAX_CROPS   = 8;
+    let   totalCrops  = 0;
+
+    const smallItems = componentItems.filter(item => {
+      if (!item.componentPositions) return false;
+      try {
+        const pos: MarkerPos[] = JSON.parse(item.componentPositions as string);
+        return pos.some(p => SMALL_SIZES.has(p.size ?? 'small'));
+      } catch { return false; }
+    });
+
+    if (smallItems.length > 0) {
+      contentBlocks.push({
+        type: 'text',
+        text: `══ CLOSE-UP CROPS FROM SUBMITTED PHOTO (${smallItems.length} small-component group${smallItems.length > 1 ? 's' : ''}) ══\nExamine each crop carefully — the markers show EXACTLY where each component should be seated.`,
+      });
+
+      for (const item of smallItems) {
+        if (totalCrops >= MAX_CROPS) break;
+
+        let positions: MarkerPos[];
+        try { positions = JSON.parse(item.componentPositions as string); }
+        catch { continue; }
+
+        const smallPos = positions.filter(p => SMALL_SIZES.has(p.size ?? 'small'));
+        if (smallPos.length === 0) continue;
+
+        // If markers span > 50% of width, split into left and right clusters
+        const xs    = smallPos.map(p => p.x);
+        const spanX = Math.max(...xs) - Math.min(...xs);
+        const regions: { label: string; positions: MarkerPos[] }[] =
+          spanX > 0.5 && smallPos.length >= 2
+            ? (() => {
+                const midX     = (Math.min(...xs) + Math.max(...xs)) / 2;
+                const leftPos  = smallPos.filter(p => p.x <= midX);
+                const rightPos = smallPos.filter(p => p.x > midX);
+                const out: { label: string; positions: MarkerPos[] }[] = [];
+                if (leftPos.length)  out.push({ label: `${item.name} — left side`,  positions: leftPos });
+                if (rightPos.length) out.push({ label: `${item.name} — right side`, positions: rightPos });
+                return out;
+              })()
+            : [{ label: item.name, positions: smallPos }];
+
+        for (const region of regions) {
+          if (totalCrops >= MAX_CROPS) break;
+
+          const rxs    = region.positions.map(p => p.x);
+          const rys    = region.positions.map(p => p.y);
+          const left   = Math.max(0,    Math.round((Math.min(...rxs) - CROP_PAD) * imgW));
+          const top    = Math.max(0,    Math.round((Math.min(...rys) - CROP_PAD) * imgH));
+          const right  = Math.min(imgW, Math.round((Math.max(...rxs) + CROP_PAD) * imgW));
+          const bottom = Math.min(imgH, Math.round((Math.max(...rys) + CROP_PAD) * imgH));
+          const width  = Math.max(80, right - left);
+          const height = Math.max(80, bottom - top);
+
+          try {
+            const cropBuf = await sharp(imgBuf)
+              .extract({ left, top, width: Math.min(width, imgW - left), height: Math.min(height, imgH - top) })
+              .jpeg({ quality: 92 })
+              .toBuffer();
+
+            const markerList = region.positions.map(p => p.label).join(', ');
+            contentBlocks.push({
+              type: 'text',
+              text: `Close-up crop: ${region.label} — expected marker${region.positions.length > 1 ? 's' : ''} ${markerList}`,
+            });
+            contentBlocks.push({
+              type: 'image',
+              source: { type: 'base64', media_type: 'image/jpeg', data: cropBuf.toString('base64') },
+            });
+            totalCrops++;
+          } catch (cropErr) {
+            console.error('[crops] Failed for', region.label, cropErr);
+          }
+        }
+      }
+    }
+
     // ── Main inspection prompt ────────────────────────────────────────────────
     contentBlocks.push({
       type: 'text',
@@ -272,7 +377,9 @@ STRICT RULES:
 — If orientation rule is given and ANY unit violates it, status = WRONG_ORIENTATION — this is an immediate FAIL.
 — PASS only when: all REQUIRED components are present with correct count, correct location, correct orientation, and correct alignment.
 — If the image is blurry, too dark, or board not visible: overall = FAIL, explain in summary.
-— Compare against the board reference image for position, zone, and orientation verification.`,
+— Compare against the board reference image for position, zone, and orientation verification.
+— For components with "Precise positions" listed: cross-reference those exact coordinates on the submitted photo.
+— For components with close-up crops provided: examine the crop carefully — empty pads = MISSING, component on pads = PRESENT.`,
     });
 
     const message = await anthropic.messages.create({
