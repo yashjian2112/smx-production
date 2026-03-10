@@ -227,6 +227,13 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [pickSharpen,     setPickSharpen]     = useState(true);
   const [pickShowOrig,    setPickShowOrig]    = useState(false);
   const [pickShowEnhance, setPickShowEnhance] = useState(false);
+
+  // ── Zoom-linked auto clarity (derived, no useState needed) ────────────────
+  // Logarithmic: zoom 1→+0 | zoom 2→+0.15 | zoom 5→+0.35 | zoom 12→+0.54
+  const pickZoomBoost         = Math.log2(Math.max(1, pickZoom)) * 0.15;
+  const pickEffectiveContrast = Math.min(3.0, pickContrast + (pickShowEnhance && !pickShowOrig ? pickZoomBoost : 0));
+  const pickEffectiveSharpen  = pickSharpen || (pickShowEnhance && !pickShowOrig && pickZoom > 1.5);
+
   const pickOuterRef                        = useRef<HTMLDivElement>(null);
   const pickDragRef                         = useRef<{ sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
   const [lastPick, setLastPick]             = useState<{ x: number; y: number; component: ScannedComponent } | null>(null);
@@ -1073,6 +1080,16 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
 
                 {pickShowEnhance && (
                   <>
+                    {/* Auto-boost badge — shows when zoomed in */}
+                    {pickZoom > 1.05 && !pickShowOrig && (
+                      <div
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold tabular-nums"
+                        style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)' }}
+                      >
+                        <span>⟢ {pickZoom.toFixed(1)}× → clarity {pickEffectiveContrast.toFixed(2)}</span>
+                      </div>
+                    )}
+
                     {/* Contrast mini-slider */}
                     <div className="flex items-center gap-1">
                       <span className="text-[9px] text-zinc-500">◑</span>
@@ -1081,9 +1098,11 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                         value={pickContrast}
                         onChange={e => { setPickContrast(parseFloat(e.target.value)); setPickShowOrig(false); }}
                         className="w-16 h-1 accent-sky-400 rounded"
-                        title={`Contrast: ${pickContrast.toFixed(2)}`}
+                        title={`Base contrast: ${pickContrast.toFixed(2)} → effective: ${pickEffectiveContrast.toFixed(2)}`}
                       />
-                      <span className="text-[9px] text-zinc-400 tabular-nums">{pickContrast.toFixed(1)}</span>
+                      <span className="text-[9px] tabular-nums" style={{ color: pickZoom > 1.05 ? '#4ade80' : '#a1a1aa' }}>
+                        {pickEffectiveContrast.toFixed(1)}
+                      </span>
                     </div>
 
                     {/* Brightness mini-slider */}
@@ -1177,10 +1196,10 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                     className="object-contain"
                     style={{
                       pointerEvents: 'none',
-                      // Only apply filter when Enhance is toggled ON and not viewing original
+                      // Enhance ON + auto-boost from zoom — all pure CSS
                       filter: (!pickShowEnhance || pickShowOrig)
                         ? 'none'
-                        : `contrast(${pickContrast}) brightness(${pickBrightness}) saturate(1.1)${pickSharpen ? ' contrast(1.15) saturate(1.2)' : ''}`,
+                        : `contrast(${pickEffectiveContrast.toFixed(3)}) brightness(${pickBrightness}) saturate(1.1)${pickEffectiveSharpen ? ' contrast(1.15) saturate(1.2)' : ''}`,
                     }}
                   />
 

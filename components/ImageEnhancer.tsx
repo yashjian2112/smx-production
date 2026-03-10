@@ -77,10 +77,18 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
   const lastTapCoord = useRef({ x: 0, y: 0 });
   const exportTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Zoom-linked auto clarity ────────────────────────────────────────────
+  // Logarithmic: doubling zoom always adds the same clarity step.
+  // zoom 1→ +0  |  zoom 2→ +0.15  |  zoom 3→ +0.24  |  zoom 5→ +0.35
+  const zoomBoost        = Math.log2(Math.max(1, zoom)) * 0.15;
+  const effectiveContrast = Math.min(3.0, contrast + zoomBoost);
+  // Auto-enable sharpening once zoomed past 1.5× — small components need it
+  const effectiveSharpen  = sharpen || zoom > 1.5;
+
   // ── CSS filter string ───────────────────────────────────────────────────
   const filterStr = showOriginal
     ? 'none'
-    : `contrast(${contrast}) brightness(${brightness}) saturate(1.1)`;
+    : `contrast(${effectiveContrast.toFixed(3)}) brightness(${brightness}) saturate(1.1)${effectiveSharpen ? ' contrast(1.15) saturate(1.2)' : ''}`;
 
   // ── Clamp offset so image never leaves the viewport ─────────────────────
   const clamp = useCallback((ox: number, oy: number, z: number) => {
@@ -108,12 +116,12 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Apply CSS-equivalent filters via canvas
-      ctx.filter = filterStr === 'none' ? 'none' : `contrast(${contrast}) brightness(${brightness}) saturate(1.1)`;
+      // Export uses base contrast (no zoom boost — AI receives the full image, not the zoomed view)
+      ctx.filter = showOriginal ? 'none' : `contrast(${contrast}) brightness(${brightness}) saturate(1.1)`;
       ctx.drawImage(img, 0, 0);
       ctx.filter = 'none';
 
-      if (sharpen && !showOriginal) {
+      if (effectiveSharpen && !showOriginal) {
         const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
         ctx.putImageData(sharpenImageData(id), 0, 0);
       }
@@ -327,15 +335,23 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
         </button>
       </div>
 
-      {/* ── Top-left: zoom badge ────────────────────────────────────────── */}
+      {/* ── Top-left: zoom + auto-boost badge ──────────────────────────── */}
       {zoom > 1.05 && (
-        <div className="absolute top-2 left-2 z-10 pointer-events-none">
+        <div className="absolute top-2 left-2 z-10 pointer-events-none flex items-center gap-1">
           <span
             className="text-[11px] font-black px-2 py-0.5 rounded-full tabular-nums"
             style={{ background: 'rgba(0,0,0,0.72)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)' }}
           >
             {zoom.toFixed(1)}×
           </span>
+          {!showOriginal && (
+            <span
+              className="text-[9px] font-bold px-1.5 py-0.5 rounded-full tabular-nums"
+              style={{ background: 'rgba(0,0,0,0.7)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)' }}
+            >
+              clarity ×{effectiveContrast.toFixed(2)}
+            </span>
+          )}
         </div>
       )}
 
@@ -358,13 +374,14 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
             <div className="w-8 h-0.5 rounded-full bg-zinc-600" />
           </div>
 
-          {/* Contrast */}
+          {/* Contrast — label shows effective value when zoomed */}
           <SliderRow
             label="Contrast"
             icon="◑"
             value={contrast}
             min={0.8} max={3.0} step={0.05}
             onChange={v => { setContrast(v); setShowOriginal(false); }}
+            effectiveValue={zoom > 1.05 ? effectiveContrast : undefined}
           />
 
           {/* Brightness */}
@@ -412,11 +429,13 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
 
 // ─── Reusable slider row ──────────────────────────────────────────────────────
 function SliderRow({
-  label, icon, value, min, max, step, onChange,
+  label, icon, value, min, max, step, onChange, effectiveValue,
 }: {
   label: string; icon: string; value: number;
   min: number; max: number; step: number;
   onChange: (v: number) => void;
+  /** If provided, shows the auto-boosted effective value alongside the base */
+  effectiveValue?: number;
 }) {
   return (
     <div className="flex items-center gap-2">
@@ -428,9 +447,14 @@ function SliderRow({
         className="flex-1 h-1 rounded-full appearance-none accent-sky-400"
         style={{ background: `linear-gradient(to right, #38bdf8 ${((value - min) / (max - min)) * 100}%, rgba(255,255,255,0.1) 0%)` }}
       />
-      <span className="text-[11px] text-zinc-300 w-8 text-right tabular-nums shrink-0">
-        {value.toFixed(2)}
-      </span>
+      <div className="flex flex-col items-end shrink-0" style={{ minWidth: '2.5rem' }}>
+        <span className="text-[11px] text-zinc-300 tabular-nums leading-none">{value.toFixed(2)}</span>
+        {effectiveValue !== undefined && (
+          <span className="text-[9px] tabular-nums leading-none mt-0.5" style={{ color: '#4ade80' }}>
+            →{effectiveValue.toFixed(2)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
