@@ -93,6 +93,12 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const [cameraOpen, setCameraOpen]   = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
 
+  // ── zoom state ─────────────────────────────────────────────────────────────
+  const [zoomLevel,   setZoomLevel]   = useState(1);
+  const [maxZoom,     setMaxZoom]     = useState(5);
+  const [nativeZoom,  setNativeZoom]  = useState(false);   // true = hardware zoom via API
+  const lastPinchRef  = useRef<number | null>(null);       // last pinch distance (px)
+
   // ── auto-capture state ────────────────────────────────────────────────────
   const [autoCapture, setAutoCapture]     = useState(true);
   const [stableMs, setStableMs]           = useState(0);          // 0–1500
@@ -195,6 +201,10 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     prevFrameRef.current = null;
     setStableMs(0);
     setAutoCountdown(null);
+    // Reset zoom
+    setZoomLevel(1);
+    setNativeZoom(false);
+    lastPinchRef.current = null;
     // Stop stream
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
@@ -292,6 +302,39 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraReady, autoCapture]);
 
+  // ── Detect native zoom capability once camera stream is ready ───────────────
+  useEffect(() => {
+    if (!cameraReady || !streamRef.current) return;
+    const track = streamRef.current.getVideoTracks()[0];
+    if (!track) return;
+    // getCapabilities() is not available on all browsers (iOS Safari lacks it)
+    const caps = (track.getCapabilities as (() => Record<string, unknown>) | undefined)?.();
+    if (caps && caps['zoom']) {
+      const z = caps['zoom'] as { min?: number; max?: number };
+      setNativeZoom(true);
+      setMaxZoom(Math.min(z.max ?? 8, 8));
+    } else {
+      // No native zoom — CSS scale fallback, allow up to 5×
+      setNativeZoom(false);
+      setMaxZoom(5);
+    }
+  }, [cameraReady]);
+
+  // ── Apply zoom level — native API or CSS scale on video element ───────────
+  useEffect(() => {
+    if (!cameraReady) return;
+    if (nativeZoom && streamRef.current) {
+      // Hardware zoom via MediaStream API (Android Chrome)
+      const track = streamRef.current.getVideoTracks()[0];
+      if (track) {
+        track.applyConstraints({
+          advanced: [{ zoom: zoomLevel } as MediaTrackConstraintSet],
+        }).catch(() => { /* silently ignore if not supported mid-stream */ });
+      }
+    }
+    // CSS scale is applied directly via inline style on the <video> element below
+  }, [zoomLevel, nativeZoom, cameraReady]);
+
   // videoRefCallback: called by React the instant the <video> DOM element is created.
   // This is more reliable than useEffect because React guarantees it fires synchronously
   // after mount — no timing gap, no null-ref race condition.
@@ -305,6 +348,24 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
       });
     }
   }, []);
+
+  // ── Pinch-to-zoom touch handlers ─────────────────────────────────────────
+  function handlePinchStart(e: React.TouchEvent) {
+    if (e.touches.length !== 2) return;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastPinchRef.current = Math.sqrt(dx * dx + dy * dy);
+  }
+  function handlePinchMove(e: React.TouchEvent) {
+    if (e.touches.length !== 2 || lastPinchRef.current === null) return;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const ratio = dist / lastPinchRef.current;
+    lastPinchRef.current = dist;
+    setZoomLevel(prev => +Math.max(1, Math.min(maxZoom, prev * ratio)).toFixed(2));
+  }
+  function handlePinchEnd() { lastPinchRef.current = null; }
 
   async function openCamera() {
     setError('');
@@ -954,11 +1015,20 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             </div>
 
             {/* Video feed + scanning overlay + shutter button — all in one layer */}
-            <div className="flex-1 relative overflow-hidden bg-black" style={{ minHeight: 0 }}>
+            <div
+              className="flex-1 relative overflow-hidden bg-black"
+              style={{ minHeight: 0 }}
+              onTouchStart={handlePinchStart}
+              onTouchMove={handlePinchMove}
+              onTouchEnd={handlePinchEnd}
+            >
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
                 ref={videoRefCallback}
                 className="w-full h-full object-cover"
+                style={!nativeZoom && zoomLevel > 1
+                  ? { transform: `scale(${zoomLevel})`, transformOrigin: 'center center', transition: 'transform 0.08s ease' }
+                  : undefined}
                 muted
                 playsInline
                 autoPlay
@@ -1070,6 +1140,41 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                           </svg>
                         )}
                       </button>
+                    </div>
+
+                    {/* ── Zoom slider ── */}
+                    <div className="flex items-center gap-2 px-2 w-full max-w-[260px]">
+                      {/* − button */}
+                      <button
+                        type="button"
+                        onPointerDown={e => { e.stopPropagation(); setZoomLevel(p => +Math.max(1, p - 0.5).toFixed(1)); }}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0 select-none"
+                        style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}
+                      >−</button>
+
+                      {/* Slider track */}
+                      <input
+                        type="range"
+                        min={1} max={maxZoom} step={0.1}
+                        value={zoomLevel}
+                        onChange={e => setZoomLevel(+e.target.value)}
+                        className="flex-1 h-1 rounded-full cursor-pointer"
+                        style={{ accentColor: '#38bdf8' }}
+                      />
+
+                      {/* + button */}
+                      <button
+                        type="button"
+                        onPointerDown={e => { e.stopPropagation(); setZoomLevel(p => +Math.min(maxZoom, p + 0.5).toFixed(1)); }}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0 select-none"
+                        style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}
+                      >+</button>
+
+                      {/* Level badge */}
+                      <span
+                        className="text-xs font-bold shrink-0 w-9 text-right"
+                        style={{ color: zoomLevel > 1 ? '#38bdf8' : 'rgba(255,255,255,0.4)' }}
+                      >{zoomLevel.toFixed(1)}×</span>
                     </div>
 
                     {/* Dynamic status label */}
