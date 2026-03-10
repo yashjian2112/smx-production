@@ -4,6 +4,130 @@ import { useState, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { BoardLocationPicker, zonesToText, parseZoneIds } from '@/components/BoardLocationPicker';
+import { blobImgUrl } from '@/lib/blobUrl';
+
+// ── Component preset library ──────────────────────────────────────────────────
+// Select a preset → rules auto-fill → just enter quantity
+type Preset = {
+  id: string;
+  emoji: string;
+  label: string;
+  name: string;
+  orientationRule: string;
+  description: string;
+  required: boolean;
+};
+
+const COMPONENT_PRESETS: Preset[] = [
+  {
+    id: 'mosfet',
+    emoji: '⚡',
+    label: 'MOSFET',
+    name: 'MOSFET',
+    orientationRule: 'Heatsink tab must face outward from board centre',
+    description: 'Reversed MOSFET destroys the board when powered — check every unit individually',
+    required: true,
+  },
+  {
+    id: 'resistor',
+    emoji: '▬',
+    label: 'Resistor',
+    name: 'Resistor',
+    orientationRule: '',
+    description: 'Verify correct value installed, no physical damage or wrong position',
+    required: true,
+  },
+  {
+    id: 'smd-cap',
+    emoji: '▪',
+    label: 'SMD Cap',
+    name: 'SMD Ceramic Capacitor',
+    orientationRule: '',
+    description: 'All capacitors in strip must be present — no missing, cracked, or tombstoned caps',
+    required: true,
+  },
+  {
+    id: 'elec-cap',
+    emoji: '🔋',
+    label: 'Elec. Cap',
+    name: 'Electrolytic Capacitor',
+    orientationRule: 'Negative stripe (white band) must match negative pad marking on PCB silkscreen',
+    description: 'Polarised component — reversed cap will fail or rupture under power',
+    required: true,
+  },
+  {
+    id: 'diode',
+    emoji: '▷',
+    label: 'Diode',
+    name: 'Diode',
+    orientationRule: 'Cathode band (silver/grey stripe) must face the direction marked on PCB',
+    description: 'Reversed diode causes immediate circuit failure',
+    required: true,
+  },
+  {
+    id: 'ic',
+    emoji: '▣',
+    label: 'IC / Chip',
+    name: 'IC',
+    orientationRule: 'Pin 1 dot or notch must align with the triangle marker on PCB silkscreen',
+    description: 'Reversed IC causes immediate damage — verify pin 1 on every unit',
+    required: true,
+  },
+  {
+    id: 'header',
+    emoji: '⬛',
+    label: 'Header',
+    name: 'Header',
+    orientationRule: 'Pins must be straight and connector fully seated into PCB',
+    description: 'Verify connector is not tilted, missing pins, or partially inserted',
+    required: true,
+  },
+  {
+    id: 'bus-bar',
+    emoji: '━',
+    label: 'Bus Bar',
+    name: 'Bus Bar',
+    orientationRule: '',
+    description: 'Must be completely flat against board surface — not lifted, shifted, or angled',
+    required: true,
+  },
+  {
+    id: 'inductor',
+    emoji: '〰',
+    label: 'Inductor',
+    name: 'Inductor',
+    orientationRule: '',
+    description: 'Verify correct value, fully seated, no physical damage',
+    required: true,
+  },
+  {
+    id: 'transformer',
+    emoji: '⊞',
+    label: 'Transformer',
+    name: 'Transformer',
+    orientationRule: 'Pin 1 orientation must match triangle/dot marker on PCB silkscreen',
+    description: 'Verify seating, orientation, and no bent pins',
+    required: true,
+  },
+  {
+    id: 'spacer',
+    emoji: '🔩',
+    label: 'Spacer',
+    name: 'Spacer',
+    orientationRule: '',
+    description: 'All spacers must be present and properly secured at corners',
+    required: false,
+  },
+  {
+    id: 'custom',
+    emoji: '✏️',
+    label: 'Custom',
+    name: '',
+    orientationRule: '',
+    description: '',
+    required: true,
+  },
+];
 
 const STAGES = [
   { key: 'POWERSTAGE_MANUFACTURING', label: 'Powerstage' },
@@ -15,6 +139,7 @@ const STAGES = [
 
 type ChecklistItem = {
   id: string;
+  productId: string | null;
   stage: string;
   name: string;
   description: string | null;
@@ -28,14 +153,22 @@ type ChecklistItem = {
   active: boolean;
 };
 
-type Props = { initialItems: ChecklistItem[] };
+type Product = { id: string; name: string; code: string };
 
-export function ChecklistAdmin({ initialItems }: Props) {
-  const [items, setItems]           = useState(initialItems);
-  const [activeStage, setActiveStage] = useState(STAGES[0].key);
-  const [showAdd, setShowAdd]       = useState(false);
-  const [saving, setSaving]         = useState(false);
-  const [error, setError]           = useState('');
+// null = "Global (all models)" tab
+type ProductTab = string | null;
+
+type Props = { initialItems: ChecklistItem[]; products: Product[] };
+
+export function ChecklistAdmin({ initialItems, products }: Props) {
+  const [items, setItems]               = useState(initialItems);
+  const [activeStage, setActiveStage]   = useState(STAGES[0].key);
+  const [activeProduct, setActiveProduct] = useState<ProductTab>(
+    products.length === 1 ? products[0].id : null
+  );
+  const [showAdd, setShowAdd]           = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const [error, setError]               = useState('');
 
   // Board reference image state
   const boardRefInputRef             = useRef<HTMLInputElement>(null);
@@ -49,11 +182,30 @@ export function ChecklistAdmin({ initialItems }: Props) {
     name: '', description: '', required: true, sortOrder: 0,
     expectedCount: '', orientationRule: '', boardLocation: '',
   });
-  const [refImage, setRefImage]   = useState<File | null>(null);
+  const [refImage, setRefImage]     = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
+  const [showAdvanced, setShowAdvanced]     = useState(false);
 
-  const stageItems    = items.filter((i) => i.stage === activeStage && !i.isBoardReference);
-  const boardRefItem  = items.find((i) => i.stage === activeStage && i.isBoardReference);
+  // Items for current stage + current product tab.
+  // On a product-specific tab we show:
+  //   1. Items specific to that product (productId === activeProduct)
+  //   2. Global items (productId === null) shown with a dimmed "Global" badge
+  // On the "Global" tab we show only global items (productId === null).
+  const stageItems = items.filter((i) =>
+    i.stage === activeStage && !i.isBoardReference &&
+    (i.productId === activeProduct ||
+     (activeProduct !== null && i.productId === null))
+  );
+  // Board ref: prefer product-specific with image, then any product-specific, then global with image, then global
+  // (handles edge case where multiple board refs exist — always show the one with an image)
+  const findBoardRef = (pId: string | null) => {
+    const matches = items.filter((i) => i.stage === activeStage && i.isBoardReference && i.productId === pId);
+    return matches.find((i) => !!i.referenceImageUrl) ?? matches[0];
+  };
+  const boardRefItem =
+    findBoardRef(activeProduct) ??
+    (activeProduct !== null ? findBoardRef(null) : undefined);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -69,7 +221,7 @@ export function ChecklistAdmin({ initialItems }: Props) {
     setBoardRefPreview(URL.createObjectURL(f));
   }
 
-  // Save / replace board reference image for this stage
+  // Save / replace board reference image for this stage + product
   async function saveBoardRef() {
     if (!boardRefFile) return;
     setSavingBoardRef(true); setError('');
@@ -81,17 +233,26 @@ export function ChecklistAdmin({ initialItems }: Props) {
       fd.append('required', 'false');
       fd.append('sortOrder', '-999');
       fd.append('referenceImage', boardRefFile);
+      if (activeProduct) fd.append('productId', activeProduct);
 
       if (boardRefItem) {
         // Update existing board reference
         const res = await fetch(`/api/admin/checklists/${boardRefItem.id}`, { method: 'PATCH', body: fd });
-        if (!res.ok) { setError('Failed to save board reference'); return; }
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          setError(j.error ?? `Failed to save board reference (${res.status})`);
+          return;
+        }
         const updated = await res.json();
         setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
       } else {
         // Create new board reference item
         const res = await fetch('/api/admin/checklists', { method: 'POST', body: fd });
-        if (!res.ok) { setError('Failed to save board reference'); return; }
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          setError(j.error ?? `Failed to save board reference (${res.status})`);
+          return;
+        }
         const item = await res.json();
         setItems((prev) => [...prev, item]);
       }
@@ -115,24 +276,30 @@ export function ChecklistAdmin({ initialItems }: Props) {
     setSaving(true); setError('');
     try {
       const fd = new FormData();
-      fd.append('stage',          activeStage);
-      fd.append('name',           form.name);
-      fd.append('description',    form.description);
-      fd.append('required',       String(form.required));
-      fd.append('sortOrder',      String(form.sortOrder));
-      fd.append('expectedCount',  form.expectedCount);
+      fd.append('stage',           activeStage);
+      fd.append('name',            form.name);
+      fd.append('description',     form.description);
+      fd.append('required',        String(form.required));
+      fd.append('sortOrder',       String(form.sortOrder));
+      fd.append('expectedCount',   form.expectedCount);
       fd.append('orientationRule', form.orientationRule);
       fd.append('boardLocation',   form.boardLocation);
       fd.append('isBoardReference', 'false');
+      if (activeProduct) fd.append('productId', activeProduct);
       if (refImage) fd.append('referenceImage', refImage);
 
       const res = await fetch('/api/admin/checklists', { method: 'POST', body: fd });
-      if (!res.ok) { setError('Failed to save'); return; }
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(j.error ?? `Failed to save (${res.status})`);
+        return;
+      }
       const item = await res.json();
       setItems((prev) => [...prev, item]);
       setShowAdd(false);
       setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' });
       setRefImage(null); setPreviewUrl('');
+      setSelectedPreset(''); setShowAdvanced(false);
     } finally { setSaving(false); }
   }
 
@@ -168,13 +335,16 @@ export function ChecklistAdmin({ initialItems }: Props) {
       {/* Stage tabs */}
       <div className="flex gap-1 p-1 rounded-xl overflow-x-auto" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
         {STAGES.map((s) => {
-          const count = items.filter((i) => i.stage === s.key && i.active && !i.isBoardReference).length;
-          const hasRef = items.some((i) => i.stage === s.key && i.isBoardReference && i.referenceImageUrl);
+          const count  = items.filter((i) => i.stage === s.key && i.active && !i.isBoardReference && (activeProduct ? i.productId === activeProduct : true)).length;
+          // Green dot: has board ref for current product OR has a global board ref (inherited)
+          const hasRef = items.some((i) =>
+            i.stage === s.key && i.isBoardReference && i.referenceImageUrl &&
+            (activeProduct ? (i.productId === activeProduct || i.productId === null) : true));
           return (
             <button
               key={s.key}
               type="button"
-              onClick={() => { setActiveStage(s.key); setShowAdd(false); }}
+              onClick={() => { setActiveStage(s.key); setShowAdd(false); setSelectedPreset(''); setShowAdvanced(false); setActiveProduct(products.length === 1 ? products[0].id : null); }}
               className={`flex-shrink-0 px-3 py-2 text-xs font-medium rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 ${activeStage === s.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
               style={activeStage === s.key ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}
             >
@@ -184,6 +354,48 @@ export function ChecklistAdmin({ initialItems }: Props) {
           );
         })}
       </div>
+
+      {/* ── Product model tabs ───────────────────────────────────────────────── */}
+      {products.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600">Product model</p>
+          <div className="flex gap-1 flex-wrap">
+            {/* "All models / Global" tab — only show when there are multiple products */}
+            {products.length > 1 && (
+              <button
+                type="button"
+                onClick={() => { setActiveProduct(null); setShowAdd(false); setSelectedPreset(''); setShowAdvanced(false); }}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeProduct === null ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                style={activeProduct === null ? { background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)' } : { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+              >
+                🌐 Global (all models)
+              </button>
+            )}
+            {products.map((p) => {
+              const hasRef  = items.some((i) => i.stage === activeStage && i.isBoardReference && i.referenceImageUrl && i.productId === p.id);
+              const count   = items.filter((i) => i.stage === activeStage && i.active && !i.isBoardReference && i.productId === p.id).length;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => { setActiveProduct(p.id); setShowAdd(false); setSelectedPreset(''); setShowAdvanced(false); }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeProduct === p.id ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  style={activeProduct === p.id ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.3)' } : { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+                >
+                  {hasRef && <span className="text-green-400 text-[9px]">●</span>}
+                  SMX{p.code} — {p.name}
+                  {count > 0 && <span className="opacity-50">({count})</span>}
+                </button>
+              );
+            })}
+          </div>
+          {activeProduct === null && products.length > 1 && (
+            <p className="text-[10px] text-zinc-600">
+              Global items apply to ALL product models. Use this for checks common across every board.
+            </p>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
@@ -195,8 +407,22 @@ export function ChecklistAdmin({ initialItems }: Props) {
       <div className="card p-4 space-y-3" style={{ border: '1px solid rgba(251,191,36,0.2)', background: 'rgba(251,191,36,0.03)' }}>
         <div className="flex items-center gap-2">
           <span className="text-amber-400 text-base">📸</span>
-          <div>
-            <p className="text-sm font-semibold text-amber-300">Board Reference Image</p>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-amber-300">Board Reference Image</p>
+              {/* Show product badge only when the board ref is product-specific */}
+              {activeProduct && boardRefItem?.productId === activeProduct && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
+                  {products.find(p => p.id === activeProduct)?.name ?? ''}
+                </span>
+              )}
+              {/* Show Global badge when: on Global tab, OR on product tab but using inherited global ref */}
+              {(!activeProduct || (activeProduct && boardRefItem?.productId === null)) && products.length > 1 && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.25)', color: '#c084fc' }}>
+                  {activeProduct ? '🌐 Inherited from Global' : 'Global'}
+                </span>
+              )}
+            </div>
             <p className="text-[11px] text-zinc-500">Upload a clear top-down photo of a CORRECT completed board. The AI will compare every employee submission against this image.</p>
           </div>
         </div>
@@ -210,7 +436,7 @@ export function ChecklistAdmin({ initialItems }: Props) {
           >
             {(boardRefPreview || boardRefItem?.referenceImageUrl) ? (
               <Image
-                src={boardRefPreview || boardRefItem!.referenceImageUrl!}
+                src={boardRefPreview || blobImgUrl(boardRefItem!.referenceImageUrl)}
                 alt="Board reference"
                 fill
                 className="object-cover"
@@ -299,8 +525,17 @@ export function ChecklistAdmin({ initialItems }: Props) {
         </div>
 
         {stageItems.length === 0 && !showAdd && (
-          <div className="card p-6 text-center text-zinc-500 text-sm">
-            No components defined yet. Add the components the AI should check.
+          <div className="card p-6 text-center space-y-1">
+            <p className="text-zinc-500 text-sm">No components defined yet for this model.</p>
+            {activeProduct === null && products.length > 1 && (
+              <p className="text-zinc-600 text-xs">Global components apply to all product models.</p>
+            )}
+            {activeProduct !== null && (
+              <p className="text-zinc-600 text-xs">
+                These components are specific to{' '}
+                <span className="text-sky-400">{products.find(p => p.id === activeProduct)?.name}</span>.
+              </p>
+            )}
           </div>
         )}
 
@@ -313,7 +548,7 @@ export function ChecklistAdmin({ initialItems }: Props) {
             {/* Reference image */}
             <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
               {item.referenceImageUrl ? (
-                <Image src={item.referenceImageUrl} alt={item.name} width={56} height={56} className="w-full h-full object-cover" />
+                <Image src={blobImgUrl(item.referenceImageUrl)} alt={item.name} width={56} height={56} className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5">
@@ -334,6 +569,10 @@ export function ChecklistAdmin({ initialItems }: Props) {
                 )}
                 {item.required && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-red-400" style={{ background: 'rgba(239,68,68,0.1)' }}>REQUIRED</span>
+                )}
+                {/* Show "Global" badge when viewing a product tab but item is inherited from global */}
+                {activeProduct !== null && item.productId === null && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-purple-400" style={{ background: 'rgba(168,85,247,0.1)' }}>🌐 Global</span>
                 )}
                 <span className="text-[10px] text-zinc-600">#{item.sortOrder}</span>
               </div>
@@ -373,129 +612,260 @@ export function ChecklistAdmin({ initialItems }: Props) {
       {/* ── Add component form ────────────────────────────────────────────────── */}
       {showAdd && (
         <form onSubmit={handleAdd} className="card p-4 space-y-4">
-          <h3 className="text-sm font-semibold">
-            New component — {STAGES.find(s => s.key === activeStage)?.label}
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              New component — {STAGES.find(s => s.key === activeStage)?.label}
+              {activeProduct ? (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
+                  {products.find(p => p.id === activeProduct)?.name}
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.25)', color: '#c084fc' }}>
+                  Global
+                </span>
+              )}
+            </h3>
+            {selectedPreset && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPreset('');
+                  setShowAdvanced(false);
+                  setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' });
+                }}
+                className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                ← Change type
+              </button>
+            )}
+          </div>
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
-          {/* Component name */}
-          <div>
-            <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Component name *</label>
-            <input
-              required
-              value={form.name}
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="e.g. MOSFET, SMD Ceramic Cap, 4R7 Resistor"
-              className="input-field text-sm"
-            />
-          </div>
-
-          {/* Count + Required row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">
-                Expected count *
-              </label>
-              <input
-                type="number"
-                min={1}
-                required
-                value={form.expectedCount}
-                onChange={e => setForm(f => ({ ...f, expectedCount: e.target.value }))}
-                placeholder="e.g. 18"
-                className="input-field text-sm"
-              />
-              <p className="text-[10px] text-zinc-600 mt-1">How many on the board?</p>
+          {/* ── Step 1: Pick component type ──────────────────────────────────── */}
+          {!selectedPreset ? (
+            <div className="space-y-3">
+              <p className="text-[11px] text-zinc-500 uppercase tracking-widest">Pick component type</p>
+              <div className="grid grid-cols-4 gap-2">
+                {COMPONENT_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPreset(preset.id);
+                      setShowAdvanced(false);
+                      setForm(f => ({
+                        ...f,
+                        name:            preset.name,
+                        orientationRule: preset.orientationRule,
+                        description:     preset.description,
+                        required:        preset.required,
+                        expectedCount:   '',   // user must always enter count
+                        boardLocation:   '',   // user must always pick location
+                      }));
+                    }}
+                    className="flex flex-col items-center gap-1.5 rounded-xl py-3 px-2 transition-all hover:scale-105 active:scale-95"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  >
+                    <span className="text-xl leading-none">{preset.emoji}</span>
+                    <span className="text-[10px] font-semibold text-zinc-400 leading-tight text-center">{preset.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div>
-              <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Sort order</label>
-              <input
-                type="number"
-                value={form.sortOrder}
-                onChange={e => setForm(f => ({ ...f, sortOrder: parseInt(e.target.value) || 0 }))}
-                className="input-field text-sm"
-              />
-            </div>
-          </div>
+          ) : (
+            /* ── Step 2: Simplified form ────────────────────────────────────── */
+            <div className="space-y-4">
+              {/* Preset header */}
+              {selectedPreset !== 'custom' && (() => {
+                const preset = COMPONENT_PRESETS.find(p => p.id === selectedPreset)!;
+                return (
+                  <div className="flex items-center gap-2 rounded-lg px-3 py-2"
+                    style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.15)' }}
+                  >
+                    <span className="text-lg">{preset.emoji}</span>
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-sky-300">{preset.label} preset loaded</p>
+                      {preset.orientationRule && (
+                        <p className="text-[10px] text-zinc-500 mt-0.5">🔄 {preset.orientationRule}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
-          {/* Orientation rule */}
-          <div>
-            <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">
-              Orientation rule
-            </label>
-            <input
-              value={form.orientationRule}
-              onChange={e => setForm(f => ({ ...f, orientationRule: e.target.value }))}
-              placeholder="e.g. Heatsink tab must face outward from board centre"
-              className="input-field text-sm"
-            />
-            <p className="text-[10px] text-zinc-600 mt-1">AI will verify this — most important for MOSFETs, ICs, diodes</p>
-          </div>
-
-          {/* Board location — visual zone picker */}
-          <div>
-            <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-2">
-              Board location
-            </label>
-            <BoardLocationPicker
-              value={form.boardLocation}
-              onChange={v => setForm(f => ({ ...f, boardLocation: v }))}
-            />
-          </div>
-
-          {/* Acceptance criteria */}
-          <div>
-            <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">
-              Additional notes for AI
-            </label>
-            <textarea
-              value={form.description}
-              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              placeholder="e.g. All 18 must be present, pins fully through pads, no physical damage"
-              className="input-field text-sm resize-none"
-              rows={2}
-            />
-          </div>
-
-          {/* Required checkbox */}
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="required"
-              checked={form.required}
-              onChange={e => setForm(f => ({ ...f, required: e.target.checked }))}
-              className="w-4 h-4 accent-sky-400"
-            />
-            <label htmlFor="required" className="text-sm text-zinc-300 cursor-pointer">
-              Required — board fails if this component has any issue
-            </label>
-          </div>
-
-          {/* Component reference image */}
-          <div>
-            <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">
-              Component reference image (optional)
-            </label>
-            <div
-              onClick={() => fileRef.current?.click()}
-              className="cursor-pointer rounded-xl border-2 border-dashed p-4 text-center transition-colors"
-              style={{ borderColor: previewUrl ? 'rgba(14,165,233,0.4)' : 'rgba(255,255,255,0.1)' }}
-            >
-              {previewUrl ? (
-                <Image src={previewUrl} alt="Preview" width={200} height={120} className="mx-auto rounded-lg object-cover max-h-32" />
-              ) : (
-                <p className="text-zinc-600 text-sm">Click to upload close-up of this component</p>
+              {/* Custom preset name field — shown only for "Custom" */}
+              {selectedPreset === 'custom' && (
+                <div>
+                  <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Component name *</label>
+                  <input
+                    required
+                    value={form.name}
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    placeholder="e.g. MOSFET IRFB4227, 4R7 Resistor, Gate Driver"
+                    className="input-field text-sm"
+                    autoFocus
+                  />
+                </div>
               )}
-            </div>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-          </div>
 
-          <div className="flex gap-2 pt-1">
-            <button type="submit" disabled={saving} className="btn-primary flex-1 py-2.5 text-sm">
-              {saving ? 'Saving…' : 'Add component'}
+              {/* ── Key fields: count + sort order ───────────────────────────── */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">
+                    Quantity on board *
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={form.expectedCount}
+                    onChange={e => setForm(f => ({ ...f, expectedCount: e.target.value }))}
+                    placeholder="e.g. 18"
+                    className="input-field text-sm"
+                    autoFocus={selectedPreset !== 'custom'}
+                  />
+                  <p className="text-[10px] text-zinc-600 mt-1">How many on this board?</p>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Sort order</label>
+                  <input
+                    type="number"
+                    value={form.sortOrder}
+                    onChange={e => setForm(f => ({ ...f, sortOrder: parseInt(e.target.value) || 0 }))}
+                    className="input-field text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* ── Board location picker ─────────────────────────────────────── */}
+              <div>
+                <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-2">
+                  Board location
+                </label>
+                <BoardLocationPicker
+                  value={form.boardLocation}
+                  onChange={v => setForm(f => ({ ...f, boardLocation: v }))}
+                />
+              </div>
+
+              {/* ── Advanced / override section ───────────────────────────────── */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(v => !v)}
+                  className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  <svg
+                    width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                    style={{ transform: showAdvanced ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  Advanced / override rules
+                </button>
+
+                {showAdvanced && (
+                  <div className="mt-3 space-y-3 rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    {/* Name override (only for non-custom presets) */}
+                    {selectedPreset !== 'custom' && (
+                      <div>
+                        <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Component name</label>
+                        <input
+                          value={form.name}
+                          onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                          placeholder="Override preset name (e.g. MOSFET IRFB4227)"
+                          className="input-field text-sm"
+                        />
+                        <p className="text-[10px] text-zinc-600 mt-1">Leave as-is or add part number for precision</p>
+                      </div>
+                    )}
+
+                    {/* Orientation rule */}
+                    <div>
+                      <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Orientation rule</label>
+                      <input
+                        value={form.orientationRule}
+                        onChange={e => setForm(f => ({ ...f, orientationRule: e.target.value }))}
+                        placeholder="e.g. Heatsink tab must face outward from board centre"
+                        className="input-field text-sm"
+                      />
+                    </div>
+
+                    {/* Additional notes */}
+                    <div>
+                      <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Additional notes for AI</label>
+                      <textarea
+                        value={form.description}
+                        onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                        placeholder="Extra instructions for the AI inspector"
+                        className="input-field text-sm resize-none"
+                        rows={2}
+                      />
+                    </div>
+
+                    {/* Required checkbox */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="required-adv"
+                        checked={form.required}
+                        onChange={e => setForm(f => ({ ...f, required: e.target.checked }))}
+                        className="w-4 h-4 accent-sky-400"
+                      />
+                      <label htmlFor="required-adv" className="text-sm text-zinc-300 cursor-pointer">
+                        Required — board fails if any issue found
+                      </label>
+                    </div>
+
+                    {/* Component reference image */}
+                    <div>
+                      <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">
+                        Component reference image (optional)
+                      </label>
+                      <div
+                        onClick={() => fileRef.current?.click()}
+                        className="cursor-pointer rounded-xl border-2 border-dashed p-4 text-center transition-colors"
+                        style={{ borderColor: previewUrl ? 'rgba(14,165,233,0.4)' : 'rgba(255,255,255,0.1)' }}
+                      >
+                        {previewUrl ? (
+                          <Image src={previewUrl} alt="Preview" width={200} height={120} className="mx-auto rounded-lg object-cover max-h-32" />
+                        ) : (
+                          <p className="text-zinc-600 text-sm">Click to upload close-up of this component</p>
+                        )}
+                      </div>
+                      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {selectedPreset && (
+            <div className="flex gap-2 pt-1">
+              <button type="submit" disabled={saving} className="btn-primary flex-1 py-2.5 text-sm">
+                {saving ? 'Saving…' : 'Add component'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowAdd(false); setSelectedPreset(''); setShowAdvanced(false); setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' }); setRefImage(null); setPreviewUrl(''); }}
+                className="btn-ghost px-4 py-2.5 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {!selectedPreset && (
+            <button
+              type="button"
+              onClick={() => { setShowAdd(false); setSelectedPreset(''); }}
+              className="w-full py-2 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              style={{ background: 'rgba(255,255,255,0.03)' }}
+            >
+              Cancel
             </button>
-            <button type="button" onClick={() => setShowAdd(false)} className="btn-ghost px-4 py-2.5 text-sm">Cancel</button>
-          </div>
+          )}
         </form>
       )}
 

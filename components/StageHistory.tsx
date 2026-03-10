@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
+import { blobImgUrl } from '@/lib/blobUrl';
 
 type Submission = {
   id: string;
@@ -92,7 +93,7 @@ export function StageHistory({ unitId }: Props) {
             {s.imageUrl && (
               <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
                 <Image
-                  src={s.imageUrl}
+                  src={blobImgUrl(s.imageUrl)}
                   alt="Work photo"
                   width={400}
                   height={200}

@@ -52,9 +52,10 @@ model Product {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now()) @map("created_at")
 
-  orders      Order[]
-  units       ControllerUnit[]
-  components  ProductComponent[]
+  orders         Order[]
+  units          ControllerUnit[]
+  components     ProductComponent[]
+  checklistItems StageChecklistItem[]
 }
 
 // ----- Product Components (BOM per model) -----
@@ -328,22 +329,25 @@ model UserPerformanceSummary {
   @@map("user_performance_summaries")
 }
 
-// ----- Stage Checklist Items (admin-managed visual checks per stage) -----
+// ----- Stage Checklist Items (admin-managed visual checks per stage + product) -----
 model StageChecklistItem {
   id                String    @id @default(cuid())
+  productId         String?   @map("product_id")           // null = applies to ALL products
   stage             StageType
-  name              String                          // e.g. "Main capacitor bank"
-  description       String?                         // Acceptance criteria / orientation rules
+  name              String                                  // e.g. "Main capacitor bank"
+  description       String?                                 // Acceptance criteria / orientation rules
   referenceImageUrl String?   @map("reference_image_url")
-  expectedCount     Int?      @map("expected_count")       // How many of this component on the board
-  orientationRule   String?   @map("orientation_rule")     // e.g. "heatsink tab faces outward"
-  boardLocation     String?   @map("board_location")       // e.g. "Left and right sides, 3 groups of 3"
+  expectedCount     Int?      @map("expected_count")        // How many of this component on the board
+  orientationRule   String?   @map("orientation_rule")      // e.g. "heatsink tab faces outward"
+  boardLocation     String?   @map("board_location")        // comma-separated zone IDs
   isBoardReference  Boolean   @default(false) @map("is_board_reference") // Full board reference image
   required          Boolean   @default(true)
   sortOrder         Int       @default(0) @map("sort_order")
   active            Boolean   @default(true)
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  product           Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("stage_checklist_items")
 }

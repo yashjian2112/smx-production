@@ -8,9 +8,21 @@ export default async function ChecklistsPage() {
   if (!session) redirect('/login');
   try { requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER'); } catch { redirect('/dashboard'); }
 
-  const items = await prisma.stageChecklistItem.findMany({
-    orderBy: [{ stage: 'asc' }, { sortOrder: 'asc' }],
-  });
+  const [items, products] = await Promise.all([
+    prisma.stageChecklistItem.findMany({
+      orderBy: [{ stage: 'asc' }, { sortOrder: 'asc' }],
+    }),
+    prisma.product.findMany({
+      where: { active: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, code: true },
+    }),
+  ]);
 
-  return <ChecklistAdmin initialItems={JSON.parse(JSON.stringify(items))} />;
+  return (
+    <ChecklistAdmin
+      initialItems={JSON.parse(JSON.stringify(items))}
+      products={JSON.parse(JSON.stringify(products))}
+    />
+  );
 }

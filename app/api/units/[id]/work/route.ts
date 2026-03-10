@@ -98,7 +98,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // Upload to Vercel Blob
   const blob = await put(`stage-work/${id}/${unit.currentStage}/${Date.now()}.jpg`, file, {
-    access: 'public',
+    access: 'private',
     contentType: file.type || 'image/jpeg',
   });
 
@@ -108,10 +108,28 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     data: { imageUrl: blob.url, analysisStatus: 'ANALYZING', submittedAt: new Date() },
   });
 
-  // Fetch all checklist items for this stage
-  const checklist = await prisma.stageChecklistItem.findMany({
-    where: { stage: unit.currentStage, active: true },
-    orderBy: { sortOrder: 'asc' },
+  // Fetch checklist items for this stage: product-specific + global (null productId)
+  // Product-specific items take precedence (sorted first by having a productId)
+  const checklistRaw = await prisma.stageChecklistItem.findMany({
+    where: {
+      stage: unit.currentStage,
+      active: true,
+      OR: [
+        { productId: unit.productId },  // specific to this unit's product model
+        { productId: null },             // global items (apply to all models)
+      ],
+    },
+    orderBy: [{ sortOrder: 'asc' }],
+  });
+  // If both a product-specific AND a global item share the same name, prefer the product-specific one
+  const seenNames = new Set<string>();
+  const checklist = [
+    ...checklistRaw.filter(c => c.productId !== null),
+    ...checklistRaw.filter(c => c.productId === null),
+  ].filter(c => {
+    if (seenNames.has(c.name)) return false;
+    seenNames.add(c.name);
+    return true;
   });
 
   // Separate board reference item from component items
@@ -154,7 +172,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       : '';
 
     // ── Fetch employee's captured image ───────────────────────────────────────
-    const imgRes    = await fetch(blob.url);
+    // Private Vercel Blob requires Authorization header for server-side fetches
+    const blobAuth = { authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` };
+    const imgRes    = await fetch(blob.url, { headers: blobAuth });
     const imgBuffer = await imgRes.arrayBuffer();
     const base64    = Buffer.from(imgBuffer).toString('base64');
     const mediaType = (file.type || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp';
@@ -170,7 +190,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // Board-level reference image (most important — full correct board)
     if (boardRefItem?.referenceImageUrl) {
       try {
-        const refRes = await fetch(boardRefItem.referenceImageUrl);
+        const refRes = await fetch(boardRefItem.referenceImageUrl, { headers: blobAuth });
         if (refRes.ok) {
           const refBuf     = await refRes.arrayBuffer();
           const refType    = (refRes.headers.get('content-type') || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
@@ -185,7 +205,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     for (const item of componentItems) {
       if (!item.referenceImageUrl) continue;
       try {
-        const refRes = await fetch(item.referenceImageUrl);
+        const refRes = await fetch(item.referenceImageUrl, { headers: blobAuth });
         if (!refRes.ok) continue;
         const refBuf     = await refRes.arrayBuffer();
         const contentType = refRes.headers.get('content-type') || 'image/jpeg';
