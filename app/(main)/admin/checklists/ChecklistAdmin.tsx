@@ -217,7 +217,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [pickTab, setPickTab]               = useState<'ai' | 'manual'>('ai');
   const [picking, setPicking]               = useState(false);
   const [pickError, setPickError]           = useState('');
-  const [pickQueue, setPickQueue]           = useState<Array<{ id: string; x: number; y: number; component: ScannedComponent; qty: number }>>([]);
+  const [pickQueue, setPickQueue]           = useState<Array<{ id: string; x: number; y: number; positions?: InlineMarkerPosition[]; component: ScannedComponent; qty: number }>>([]);
   const [lastPick, setLastPick]             = useState<{ x: number; y: number; component: ScannedComponent } | null>(null);
   const [lastPickQty, setLastPickQty]       = useState(1);
   const [savingQueue, setSavingQueue]       = useState(false);
@@ -226,8 +226,8 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [manualName, setManualName]         = useState('');
   const [manualQty, setManualQty]           = useState(1);
   const [manualStep, setManualStep]         = useState<1 | 2 | 3>(1);
-  const [manualLocXY, setManualLocXY]       = useState<{ x: number; y: number } | null>(null);
-  const [manualLocation, setManualLocation] = useState('');
+  // Individual numbered positions (replaces single zone click)
+  const [manualPositions, setManualPositions] = useState<InlineMarkerPosition[]>([]);
 
   // Component form state
   const fileRef = useRef<HTMLInputElement>(null);
@@ -621,10 +621,13 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top) / rect.height;
 
-    // Manual tab step 3: just mark location, no AI call
+    // Manual tab step 3: place numbered markers for each component instance
     if (pickTab === 'manual' && manualStep === 3) {
-      setManualLocXY({ x, y });
-      setManualLocation(xyToZone(x, y));
+      const preset = COMPONENT_PRESETS.find(p => p.id === manualPreset) ?? COMPONENT_PRESETS[0];
+      const name = manualName.trim() || preset.name;
+      const prefix = name.charAt(0).toUpperCase();
+      const num = manualPositions.length + 1;
+      setManualPositions(prev => [...prev, { x, y, label: `${prefix}${num}` }]);
       return;
     }
 
@@ -661,7 +664,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
     try {
       const newItems: ChecklistItem[] = [];
       for (let idx = 0; idx < pickQueue.length; idx++) {
-        const { component: c, qty } = pickQueue[idx];
+        const { component: c, qty, positions } = pickQueue[idx];
         const fd = new FormData();
         fd.append('stage',           activeStage);
         fd.append('name',            c.name);
@@ -674,7 +677,18 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
         fd.append('isBoardReference', 'false');
         if (activeProduct) fd.append('productId', activeProduct);
         const res = await fetch('/api/admin/checklists', { method: 'POST', body: fd });
-        if (res.ok) newItems.push(await res.json());
+        if (!res.ok) continue;
+        let item = await res.json();
+        // Save individual component positions if they were placed
+        if (positions && positions.length > 0) {
+          const pr = await fetch(`/api/admin/checklists/${item.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ componentPositions: JSON.stringify(positions) }),
+          });
+          if (pr.ok) item = await pr.json();
+        }
+        newItems.push(item);
       }
       setItems(prev => [...prev, ...newItems]);
       setPickQueue([]);
@@ -691,8 +705,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
     setLastPick(null);
     setPickError('');
     setManualStep(1);
-    setManualLocXY(null);
-    setManualLocation('');
+    setManualPositions([]);
     setManualName('');
     setManualQty(1);
   }
@@ -952,7 +965,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
               {/* Board label */}
               {pickTab === 'manual' && manualStep === 3 && (
                 <p className="text-[10px] text-purple-400 mb-1 text-center">
-                  👆 Click once on the image to mark the location
+                  👆 Click image for each component position ({manualPositions.length}{manualQty > 0 ? ` / ${manualQty}` : ''} placed) • right-click on marker to remove
                 </p>
               )}
               <div
@@ -966,6 +979,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   cursor: picking ? 'wait' : 'crosshair',
                 }}
                 onClick={handleImageClick}
+                onContextMenu={e => { if (pickTab === 'manual' && manualStep === 3) e.preventDefault(); }}
               >
                 <Image
                   src={blobImgUrl(boardRefItem.referenceImageUrl)}
@@ -986,13 +1000,21 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                     </g>
                   ))}
 
-                  {/* Manual location marker (purple) */}
-                  {manualLocXY && (
-                    <g>
-                      <circle cx={`${manualLocXY.x * 100}%`} cy={`${manualLocXY.y * 100}%`} r="12" fill="none" stroke="rgba(139,92,246,0.6)" strokeWidth="2" />
-                      <circle cx={`${manualLocXY.x * 100}%`} cy={`${manualLocXY.y * 100}%`} r="6" fill="rgba(139,92,246,0.9)" stroke="white" strokeWidth="1.5" />
+                  {/* Manual position markers — numbered red circles (right-click to remove) */}
+                  {pickTab === 'manual' && manualStep === 3 && manualPositions.map((pos, i) => (
+                    <g key={i} style={{ pointerEvents: 'all', cursor: 'pointer' }}
+                      onContextMenu={e => {
+                        e.preventDefault(); e.stopPropagation();
+                        setManualPositions(prev => {
+                          const next = prev.filter((_, j) => j !== i);
+                          const prefix = (manualName.trim() || COMPONENT_PRESETS.find(p => p.id === manualPreset)?.name || 'C').charAt(0).toUpperCase();
+                          return next.map((p, j) => ({ ...p, label: `${prefix}${j + 1}` }));
+                        });
+                      }}>
+                      <circle cx={`${pos.x * 100}%`} cy={`${pos.y * 100}%`} r="11" fill="rgba(239,68,68,0.9)" stroke="white" strokeWidth="1.5" />
+                      <text x={`${pos.x * 100}%`} y={`${pos.y * 100}%`} textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="800" fill="white" style={{ pointerEvents: 'none' }}>{pos.label}</text>
                     </g>
-                  )}
+                  ))}
 
                   {/* Last pick marker (amber, not yet confirmed) */}
                   {lastPick && (
@@ -1179,49 +1201,88 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                       </div>
                     )}
 
-                    {/* Step 3: Location (click on board image) */}
+                    {/* Step 3: Click board to place numbered position markers */}
                     {manualStep === 3 && (
                       <div className="space-y-2">
+                        {/* Component summary */}
                         <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: 'rgba(139,92,246,0.1)' }}>
                           <span>{selectedPreset.emoji}</span>
                           <p className="text-xs font-semibold text-purple-300">{manualName || selectedPreset.name}</p>
                           <span className="text-[10px] text-zinc-500 ml-auto">×{manualQty}</span>
                         </div>
-                        {manualLocXY ? (
-                          <div className="rounded-lg p-2 text-xs text-teal-300 flex items-center gap-2"
-                            style={{ background: 'rgba(20,184,166,0.08)', border: '1px solid rgba(20,184,166,0.2)' }}>
-                            <span>📍</span>
-                            <span>Zone <strong>{manualLocation}</strong> selected</span>
-                            <button type="button" onClick={() => { setManualLocXY(null); setManualLocation(''); }}
-                              className="ml-auto text-zinc-500 hover:text-zinc-300 text-sm">×</button>
+
+                        {/* Progress indicator */}
+                        <div className="rounded-lg p-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className={`text-[11px] font-bold ${manualPositions.length === manualQty ? 'text-green-400' : manualPositions.length > manualQty ? 'text-red-400' : 'text-amber-400'}`}>
+                              {manualPositions.length} / {manualQty} positions placed
+                            </span>
+                            {manualPositions.length > 0 && (
+                              <button type="button" onClick={() => setManualPositions([])}
+                                className="text-[10px] text-red-400/60 hover:text-red-400 transition-colors">
+                                Clear all
+                              </button>
+                            )}
                           </div>
-                        ) : (
-                          <div className="rounded-lg p-2 text-[11px] text-purple-300/70 text-center"
-                            style={{ border: '1px dashed rgba(139,92,246,0.3)' }}>
-                            👆 Click once on the board image to mark where this component is
+                          {/* Dot progress row */}
+                          <div className="flex flex-wrap gap-1">
+                            {Array.from({ length: manualQty }).map((_, i) => (
+                              <div key={i} className="w-2 h-2 rounded-full transition-colors"
+                                style={{ background: i < manualPositions.length ? '#ef4444' : 'rgba(255,255,255,0.1)' }} />
+                            ))}
                           </div>
-                        )}
+                          {/* Placed markers list */}
+                          {manualPositions.length > 0 && (
+                            <div className="mt-2 space-y-1 max-h-24 overflow-y-auto">
+                              {manualPositions.map((pos, i) => (
+                                <div key={i} className="flex items-center gap-1.5 text-[10px] text-zinc-400">
+                                  <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
+                                    style={{ background: '#ef4444' }}>
+                                    {pos.label}
+                                  </div>
+                                  <span>({Math.round(pos.x * 100)}%, {Math.round(pos.y * 100)}%)</span>
+                                  <button type="button"
+                                    onClick={() => setManualPositions(prev => {
+                                      const next = prev.filter((_, j) => j !== i);
+                                      const prefix = (manualName.trim() || selectedPreset.name).charAt(0).toUpperCase();
+                                      return next.map((p, j) => ({ ...p, label: `${prefix}${j + 1}` }));
+                                    })}
+                                    className="ml-auto text-zinc-600 hover:text-red-400 transition-colors">×</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {manualPositions.length === 0 && (
+                            <p className="text-[10px] text-purple-300/60 mt-1">
+                              👆 Click on the board image (left) to place each marker
+                            </p>
+                          )}
+                        </div>
+
                         <div className="flex gap-2">
-                          <button type="button" onClick={() => setManualStep(2)}
+                          <button type="button" onClick={() => { setManualStep(2); setManualPositions([]); }}
                             className="px-3 py-1.5 rounded-lg text-xs text-zinc-500"
                             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
                             ← Back
                           </button>
                           <button type="button"
+                            disabled={manualPositions.length === 0}
                             onClick={() => {
                               const p = selectedPreset;
                               const id = Math.random().toString(36).slice(2);
                               const name = manualName.trim() || p.name;
+                              const cx = manualPositions.length > 0 ? manualPositions[0].x : 0.5;
+                              const cy = manualPositions.length > 0 ? manualPositions[0].y : 0.5;
                               setPickQueue(prev => [...prev, {
                                 id,
-                                x: manualLocXY?.x ?? 0.5,
-                                y: manualLocXY?.y ?? 0.5,
-                                component: { presetId: p.id, name, expectedCount: manualQty, boardLocation: manualLocation, orientationRule: p.orientationRule, description: p.description, required: p.required },
+                                x: cx, y: cy,
+                                positions: [...manualPositions],
+                                component: { presetId: p.id, name, expectedCount: manualQty, boardLocation: '', orientationRule: p.orientationRule, description: p.description, required: p.required },
                                 qty: manualQty,
                               }]);
-                              setManualName(''); setManualQty(1); setManualLocXY(null); setManualLocation(''); setManualStep(1);
+                              setManualName(''); setManualQty(1); setManualPositions([]); setManualStep(1);
                             }}
-                            className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white"
+                            className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed"
                             style={{ background: 'linear-gradient(135deg,#8b5cf6,#7c3aed)' }}>
                             + Add to list
                           </button>
