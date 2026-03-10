@@ -347,6 +347,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     setCapturedImages(prev => { const n = { ...prev }; delete n[zone]; return n; });
     setPreviewUrls(prev   => { const n = { ...prev }; delete n[zone]; return n; });
     setEnhancedBlobs(prev => { const n = { ...prev }; delete n[zone]; return n; });
+    // Camera auto-opens via useEffect watching capturedImages[zone] becoming undefined
   }
 
   // ── submit to AI ──────────────────────────────────────────────────────────
@@ -590,6 +591,19 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     );
   }
 
+  // ── Auto-open camera when entering a zone with no photo yet ──────────────
+  // Fires when: step becomes 'open', currentZoneIdx changes, or a photo is deleted (retake)
+  const currentZoneHasPhoto = !!capturedImages[requiredZones[currentZoneIdx] ?? 'full'];
+  useEffect(() => {
+    if (step !== 'open') return;
+    if (currentZoneHasPhoto) return;        // already have a photo for this zone
+    if (cameraOpen || streamRef.current) return; // camera already running
+    // Short delay so the panel has time to render before the camera permission dialog
+    const t = setTimeout(() => openCamera(), 300);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, currentZoneIdx, currentZoneHasPhoto]);
+
   // ── open: full-screen work panel ───────────────────────────────────────────
   if (step === 'open') {
     return (
@@ -805,17 +819,15 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                   </div>
                 )}
 
+                {/* Camera auto-opens — show a tap-to-open fallback if it didn't */}
                 <button
                   type="button"
                   onClick={openCamera}
                   className="w-full py-6 rounded-2xl flex flex-col items-center gap-3 text-sky-400 font-semibold text-sm"
                   style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}
                 >
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                    <circle cx="12" cy="13" r="4" />
-                  </svg>
-                  Open Camera
+                  <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+                  Opening camera… · Tap here if it doesn&apos;t open
                 </button>
               </div>
             );
