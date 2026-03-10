@@ -212,12 +212,20 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
 
   // Pick & place state
   const [pickMode, setPickMode]             = useState(false);
+  const [pickTab, setPickTab]               = useState<'ai' | 'manual'>('ai');
   const [picking, setPicking]               = useState(false);
   const [pickError, setPickError]           = useState('');
   const [pickQueue, setPickQueue]           = useState<Array<{ id: string; x: number; y: number; component: ScannedComponent; qty: number }>>([]);
   const [lastPick, setLastPick]             = useState<{ x: number; y: number; component: ScannedComponent } | null>(null);
   const [lastPickQty, setLastPickQty]       = useState(1);
   const [savingQueue, setSavingQueue]       = useState(false);
+  // Manual add state
+  const [manualPreset, setManualPreset]     = useState('mosfet');
+  const [manualName, setManualName]         = useState('');
+  const [manualQty, setManualQty]           = useState(1);
+  const [manualStep, setManualStep]         = useState<1 | 2 | 3>(1);
+  const [manualLocXY, setManualLocXY]       = useState<{ x: number; y: number } | null>(null);
+  const [manualLocation, setManualLocation] = useState('');
 
   // Component form state
   const fileRef = useRef<HTMLInputElement>(null);
@@ -585,25 +593,42 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   }
 
   // ── Pick & place ─────────────────────────────────────────────────────────────
+  function xyToZone(x: number, y: number): string {
+    const col = x < 0.33 ? 'L' : x < 0.67 ? 'C' : 'R';
+    const row = y < 0.33 ? 'T' : y < 0.67 ? 'M' : 'B';
+    return row + col;
+  }
+
   async function handleImageClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (!pickMode || picking) return;
+    if (!pickMode) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top) / rect.height;
-    setPicking(true); setPickError('');
-    try {
-      const res = await fetch('/api/admin/checklists/pick', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl: boardRefItem!.referenceImageUrl, x, y }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setPickError(data.error ?? 'Pick failed'); return; }
-      setLastPick({ x, y, component: data.component });
-      setLastPickQty(1);
-    } catch (err) {
-      setPickError(err instanceof Error ? err.message : 'Pick failed');
-    } finally { setPicking(false); }
+
+    // Manual tab step 3: just mark location, no AI call
+    if (pickTab === 'manual' && manualStep === 3) {
+      setManualLocXY({ x, y });
+      setManualLocation(xyToZone(x, y));
+      return;
+    }
+
+    // AI tab: identify component via Claude
+    if (pickTab === 'ai' && !picking) {
+      setPicking(true); setPickError('');
+      try {
+        const res = await fetch('/api/admin/checklists/pick', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageUrl: boardRefItem!.referenceImageUrl, x, y }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setPickError(data.error ?? 'Pick failed'); return; }
+        setLastPick({ x, y, component: data.component });
+        setLastPickQty(1);
+      } catch (err) {
+        setPickError(err instanceof Error ? err.message : 'Pick failed');
+      } finally { setPicking(false); }
+    }
   }
 
   function confirmLastPick() {
@@ -649,6 +674,11 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
     setPickQueue([]);
     setLastPick(null);
     setPickError('');
+    setManualStep(1);
+    setManualLocXY(null);
+    setManualLocation('');
+    setManualName('');
+    setManualQty(1);
   }
 
   return (
@@ -903,12 +933,20 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
 
             {/* Left: Interactive board image */}
             <div className="flex-1 min-w-0">
+              {/* Board label */}
+              {pickTab === 'manual' && manualStep === 3 && (
+                <p className="text-[10px] text-purple-400 mb-1 text-center">
+                  👆 Click once on the image to mark the location
+                </p>
+              )}
               <div
                 className="relative w-full rounded-xl overflow-hidden select-none"
                 style={{
                   aspectRatio: '16/9',
                   background: 'rgba(0,0,0,0.4)',
-                  border: `1px solid ${picking ? 'rgba(20,184,166,0.6)' : 'rgba(20,184,166,0.3)'}`,
+                  border: pickTab === 'manual' && manualStep === 3
+                    ? '1px solid rgba(139,92,246,0.6)'
+                    : `1px solid ${picking ? 'rgba(20,184,166,0.6)' : 'rgba(20,184,166,0.3)'}`,
                   cursor: picking ? 'wait' : 'crosshair',
                 }}
                 onClick={handleImageClick}
@@ -932,6 +970,14 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                     </g>
                   ))}
 
+                  {/* Manual location marker (purple) */}
+                  {manualLocXY && (
+                    <g>
+                      <circle cx={`${manualLocXY.x * 100}%`} cy={`${manualLocXY.y * 100}%`} r="12" fill="none" stroke="rgba(139,92,246,0.6)" strokeWidth="2" />
+                      <circle cx={`${manualLocXY.x * 100}%`} cy={`${manualLocXY.y * 100}%`} r="6" fill="rgba(139,92,246,0.9)" stroke="white" strokeWidth="1.5" />
+                    </g>
+                  )}
+
                   {/* Last pick marker (amber, not yet confirmed) */}
                   {lastPick && (
                     <g>
@@ -953,7 +999,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 </svg>
 
                 {/* Hint overlay */}
-                {!picking && !lastPick && pickQueue.length === 0 && (
+                {!picking && !lastPick && pickQueue.length === 0 && !(pickTab === 'manual' && manualStep === 3) && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="px-3 py-1.5 rounded-lg text-xs text-teal-300" style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(20,184,166,0.3)' }}>
                       Click on a component
@@ -968,20 +1014,41 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
               )}
             </div>
 
-            {/* Right: Component queue */}
-            <div className="flex flex-col gap-2" style={{ width: '240px', flexShrink: 0 }}>
+            {/* Right: Add panel + queue */}
+            <div className="flex flex-col gap-2" style={{ width: '260px', flexShrink: 0 }}>
 
-              {/* Just-identified component — confirm before adding to queue */}
-              {lastPick && (() => {
+              {/* Mode tabs */}
+              <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+                <button
+                  type="button"
+                  onClick={() => setPickTab('ai')}
+                  className="flex-1 py-1.5 text-[11px] font-semibold transition-all"
+                  style={{ background: pickTab === 'ai' ? 'rgba(20,184,166,0.2)' : 'transparent', color: pickTab === 'ai' ? '#5eead4' : '#71717a' }}
+                >
+                  🤖 AI Pick
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPickTab('manual'); setLastPick(null); }}
+                  className="flex-1 py-1.5 text-[11px] font-semibold transition-all"
+                  style={{ background: pickTab === 'manual' ? 'rgba(139,92,246,0.2)' : 'transparent', color: pickTab === 'manual' ? '#c4b5fd' : '#71717a' }}
+                >
+                  📋 Manual
+                </button>
+              </div>
+
+              {/* AI Pick: just-identified confirm card */}
+              {pickTab === 'ai' && lastPick && (() => {
                 const preset = COMPONENT_PRESETS.find(p => p.id === lastPick.component.presetId);
                 return (
                   <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.3)' }}>
+                    <p className="text-[10px] text-amber-400/70 uppercase tracking-wide font-semibold">AI Identified</p>
                     <div className="flex items-center gap-1.5">
                       <span>{preset?.emoji ?? '🔧'}</span>
                       <p className="text-xs font-semibold text-amber-300 truncate flex-1">{lastPick.component.name}</p>
                     </div>
                     <div>
-                      <label className="block text-[10px] text-zinc-600 mb-1">Quantity</label>
+                      <label className="block text-[10px] text-zinc-600 mb-1">Quantity on board</label>
                       <input
                         type="number" min={1}
                         value={lastPickQty}
@@ -990,20 +1057,14 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                       />
                     </div>
                     <div className="flex gap-1.5">
-                      <button
-                        type="button"
-                        onClick={confirmLastPick}
+                      <button type="button" onClick={confirmLastPick}
                         className="flex-1 py-1.5 rounded-lg text-xs font-bold text-black"
-                        style={{ background: 'linear-gradient(135deg,#fbbf24,#f59e0b)' }}
-                      >
+                        style={{ background: 'linear-gradient(135deg,#fbbf24,#f59e0b)' }}>
                         ✓ Add
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setLastPick(null)}
+                      <button type="button" onClick={() => setLastPick(null)}
                         className="px-3 py-1.5 rounded-lg text-xs text-zinc-500"
-                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-                      >
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
                         Skip
                       </button>
                     </div>
@@ -1011,13 +1072,158 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 );
               })()}
 
-              {/* Queue list */}
-              {pickQueue.length === 0 && !lastPick && (
-                <div className="rounded-xl p-3 text-center text-[11px] text-zinc-600" style={{ border: '1px dashed rgba(255,255,255,0.08)' }}>
-                  No components yet.<br />Click on the board to start.
+              {/* AI Pick: hint when idle */}
+              {pickTab === 'ai' && !lastPick && (
+                <div className="rounded-xl p-3 text-center text-[11px] text-zinc-600" style={{ border: '1px dashed rgba(20,184,166,0.2)' }}>
+                  {picking ? '🤖 Identifying…' : 'Click on the board image to identify a component. Set qty, then add.'}
                 </div>
               )}
 
+              {/* Manual Add panel — 3-step flow */}
+              {pickTab === 'manual' && (() => {
+                const selectedPreset = COMPONENT_PRESETS.find(p => p.id === manualPreset) ?? COMPONENT_PRESETS[0];
+                return (
+                  <div className="rounded-xl p-3 space-y-3" style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.25)' }}>
+
+                    {/* Step indicators */}
+                    <div className="flex items-center gap-1">
+                      {([1,2,3] as const).map(s => (
+                        <div key={s} className="flex items-center gap-1">
+                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                            style={{
+                              background: manualStep === s ? 'rgba(139,92,246,0.8)' : manualStep > s ? 'rgba(20,184,166,0.6)' : 'rgba(255,255,255,0.08)',
+                              color: manualStep >= s ? 'white' : '#52525b',
+                            }}>
+                            {manualStep > s ? '✓' : s}
+                          </div>
+                          {s < 3 && <div className="flex-1 h-px" style={{ background: manualStep > s ? 'rgba(20,184,166,0.4)' : 'rgba(255,255,255,0.08)', width: '16px' }} />}
+                        </div>
+                      ))}
+                      <span className="text-[10px] text-zinc-500 ml-1">
+                        {manualStep === 1 ? 'Select component' : manualStep === 2 ? 'Enter quantity' : 'Click location on board'}
+                      </span>
+                    </div>
+
+                    {/* Step 1: Component type */}
+                    {manualStep === 1 && (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-3 gap-1">
+                          {COMPONENT_PRESETS.map(p => (
+                            <button key={p.id} type="button"
+                              onClick={() => { setManualPreset(p.id); setManualName(''); }}
+                              className="rounded-lg py-1.5 text-center text-[10px] font-semibold transition-all"
+                              style={{
+                                background: manualPreset === p.id ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.04)',
+                                border: `1px solid ${manualPreset === p.id ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.08)'}`,
+                                color: manualPreset === p.id ? '#c4b5fd' : '#71717a',
+                              }}>
+                              <div>{p.emoji}</div>
+                              <div className="truncate">{p.label}</div>
+                            </button>
+                          ))}
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-zinc-600 mb-1">Name (optional)</label>
+                          <input type="text" value={manualName} onChange={e => setManualName(e.target.value)}
+                            placeholder={selectedPreset.name} className="input-field text-xs py-1 w-full" />
+                        </div>
+                        <button type="button" onClick={() => setManualStep(2)}
+                          className="w-full py-1.5 rounded-lg text-xs font-bold text-white"
+                          style={{ background: 'linear-gradient(135deg,#8b5cf6,#7c3aed)' }}>
+                          Next →
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Step 2: Quantity */}
+                    {manualStep === 2 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: 'rgba(139,92,246,0.1)' }}>
+                          <span>{selectedPreset.emoji}</span>
+                          <p className="text-xs font-semibold text-purple-300">{manualName || selectedPreset.name}</p>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-zinc-600 mb-1">How many on the board?</label>
+                          <input type="number" min={1} value={manualQty}
+                            onChange={e => setManualQty(parseInt(e.target.value) || 1)}
+                            className="input-field text-sm py-2 w-full text-center font-bold" />
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => setManualStep(1)}
+                            className="px-3 py-1.5 rounded-lg text-xs text-zinc-500"
+                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            ← Back
+                          </button>
+                          <button type="button" onClick={() => setManualStep(3)}
+                            className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white"
+                            style={{ background: 'linear-gradient(135deg,#8b5cf6,#7c3aed)' }}>
+                            Next →
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step 3: Location (click on board image) */}
+                    {manualStep === 3 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: 'rgba(139,92,246,0.1)' }}>
+                          <span>{selectedPreset.emoji}</span>
+                          <p className="text-xs font-semibold text-purple-300">{manualName || selectedPreset.name}</p>
+                          <span className="text-[10px] text-zinc-500 ml-auto">×{manualQty}</span>
+                        </div>
+                        {manualLocXY ? (
+                          <div className="rounded-lg p-2 text-xs text-teal-300 flex items-center gap-2"
+                            style={{ background: 'rgba(20,184,166,0.08)', border: '1px solid rgba(20,184,166,0.2)' }}>
+                            <span>📍</span>
+                            <span>Zone <strong>{manualLocation}</strong> selected</span>
+                            <button type="button" onClick={() => { setManualLocXY(null); setManualLocation(''); }}
+                              className="ml-auto text-zinc-500 hover:text-zinc-300 text-sm">×</button>
+                          </div>
+                        ) : (
+                          <div className="rounded-lg p-2 text-[11px] text-purple-300/70 text-center"
+                            style={{ border: '1px dashed rgba(139,92,246,0.3)' }}>
+                            👆 Click once on the board image to mark where this component is
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => setManualStep(2)}
+                            className="px-3 py-1.5 rounded-lg text-xs text-zinc-500"
+                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            ← Back
+                          </button>
+                          <button type="button"
+                            onClick={() => {
+                              const p = selectedPreset;
+                              const id = Math.random().toString(36).slice(2);
+                              const name = manualName.trim() || p.name;
+                              setPickQueue(prev => [...prev, {
+                                id,
+                                x: manualLocXY?.x ?? 0.5,
+                                y: manualLocXY?.y ?? 0.5,
+                                component: { presetId: p.id, name, expectedCount: manualQty, boardLocation: manualLocation, orientationRule: p.orientationRule, description: p.description, required: p.required },
+                                qty: manualQty,
+                              }]);
+                              setManualName(''); setManualQty(1); setManualLocXY(null); setManualLocation(''); setManualStep(1);
+                            }}
+                            className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white"
+                            style={{ background: 'linear-gradient(135deg,#8b5cf6,#7c3aed)' }}>
+                            + Add to list
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Divider if queue has items */}
+              {pickQueue.length > 0 && (
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wide font-semibold px-1">
+                  Queue ({pickQueue.length})
+                </p>
+              )}
+
+              {/* Queue list */}
               {pickQueue.map((item, i) => {
                 const preset = COMPONENT_PRESETS.find(p => p.id === item.component.presetId);
                 return (
@@ -1032,8 +1238,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                       className="input-field text-xs py-0.5 text-center"
                       style={{ width: '44px' }}
                     />
-                    <button
-                      type="button"
+                    <button type="button"
                       onClick={() => setPickQueue(prev => prev.filter(q => q.id !== item.id))}
                       className="text-zinc-600 hover:text-red-400 text-sm leading-none shrink-0"
                     >×</button>
