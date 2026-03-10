@@ -3,9 +3,21 @@
 import { useState, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import * as XLSX from 'xlsx';
 import { BoardLocationPicker, zonesToText, parseZoneIds } from '@/components/BoardLocationPicker';
 import { blobImgUrl } from '@/lib/blobUrl';
 import type { ScannedComponent } from '@/app/api/admin/checklists/scan/route';
+
+// ── Bulk import row ────────────────────────────────────────────────────────────
+type BulkRow = {
+  name: string;
+  expectedCount: number;
+  orientationRule: string;
+  boardLocation: string;
+  description: string;
+  required: boolean;
+  error?: string;
+};
 
 // ── Component preset library ──────────────────────────────────────────────────
 // Select a preset → rules auto-fill → just enter quantity
@@ -177,6 +189,12 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [boardRefPreview, setBoardRefPreview] = useState('');
   const [savingBoardRef, setSavingBoardRef]   = useState(false);
 
+  // Bulk spreadsheet import state
+  const bulkInputRef                          = useRef<HTMLInputElement>(null);
+  const [bulkRows, setBulkRows]               = useState<BulkRow[] | null>(null);
+  const [bulkUploading, setBulkUploading]     = useState(false);
+  const [bulkError, setBulkError]             = useState('');
+
   // AI scan state
   const [scanning, setScanning]             = useState(false);
   const [scanResults, setScanResults]       = useState<ScannedComponent[] | null>(null);
@@ -329,6 +347,95 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
     if (!confirm('Delete this checklist item?')) return;
     const res = await fetch(`/api/admin/checklists/${id}`, { method: 'DELETE' });
     if (res.ok) setItems((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  // ── Bulk spreadsheet import ──────────────────────────────────────────────────
+  function downloadTemplate() {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['name', 'count', 'orientation_rule', 'board_location', 'description', 'required'],
+      ['MOSFET IRFB4227', 18, 'Heatsink tab must face outward from board centre', 'TL,TR,BL,BR', 'Power switching MOSFETs — check every unit', 'true'],
+      ['Electrolytic Capacitor 1000uF', 4, 'Negative stripe (white band) must match PCB marking', 'ML,MR', 'DC bus capacitors', 'true'],
+      ['SMD Ceramic Capacitor', 12, '', 'TC,BC', 'All caps must be present — no tombstones', 'true'],
+      ['Diode', 8, 'Cathode band must face direction marked on PCB silkscreen', 'BL,BR', '', 'true'],
+      ['IC Gate Driver', 2, 'Pin 1 dot must align with triangle on PCB silkscreen', 'MC', '', 'true'],
+      ['Header Connector', 3, 'Pins straight and fully seated', 'ML', '', 'true'],
+    ]);
+    const colWidths = [{ wch: 30 }, { wch: 8 }, { wch: 50 }, { wch: 18 }, { wch: 45 }, { wch: 10 }];
+    ws['!cols'] = colWidths;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Components');
+    XLSX.writeFile(wb, 'checklist-template.xlsx');
+  }
+
+  function parseSpreadsheet(file: File) {
+    setBulkError(''); setBulkRows(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer);
+        const wb   = XLSX.read(data, { type: 'array' });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+
+        if (rows.length === 0) { setBulkError('Spreadsheet is empty'); return; }
+
+        // Flexible column name lookup (case-insensitive)
+        const col = (row: Record<string, unknown>, ...keys: string[]): string => {
+          for (const k of keys) {
+            const found = Object.keys(row).find(rk => rk.toLowerCase().replace(/[\s_-]/g, '') === k.toLowerCase().replace(/[\s_-]/g, ''));
+            if (found && row[found] !== undefined && row[found] !== '') return String(row[found]).trim();
+          }
+          return '';
+        };
+
+        const parsed: BulkRow[] = rows.map((row, idx) => {
+          const name         = col(row, 'name', 'component', 'componentname', 'partname', 'part');
+          const countRaw     = col(row, 'count', 'qty', 'quantity', 'expectedcount', 'expected');
+          const expectedCount = parseInt(countRaw, 10) || 1;
+          const orientationRule = col(row, 'orientationrule', 'orientation', 'rule', 'polarity');
+          const boardLocation   = col(row, 'boardlocation', 'location', 'zone', 'boardzone');
+          const description     = col(row, 'description', 'notes', 'note', 'instructions');
+          const reqRaw          = col(row, 'required', 'mandatory', 'critical');
+          const required        = reqRaw === '' ? true : !['false', 'no', '0', 'n'].includes(reqRaw.toLowerCase());
+          const error           = !name ? `Row ${idx + 2}: "name" column is empty` : undefined;
+          return { name, expectedCount, orientationRule, boardLocation, description, required, error };
+        });
+
+        const withErrors = parsed.filter(r => r.error);
+        if (withErrors.length === parsed.length) { setBulkError('No valid rows found. Make sure the sheet has a "name" column.'); return; }
+        setBulkRows(parsed);
+      } catch (err) {
+        setBulkError(`Could not read file: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function addAllBulk() {
+    if (!bulkRows) return;
+    setBulkUploading(true);
+    try {
+      const validRows = bulkRows.filter(r => !r.error && r.name);
+      const added: ChecklistItem[] = [];
+      for (let i = 0; i < validRows.length; i++) {
+        const r = validRows[i];
+        const fd = new FormData();
+        fd.append('stage',            activeStage);
+        fd.append('name',             r.name);
+        fd.append('description',      r.description);
+        fd.append('required',         String(r.required));
+        fd.append('sortOrder',        String(i));
+        fd.append('expectedCount',    String(r.expectedCount));
+        fd.append('orientationRule',  r.orientationRule);
+        fd.append('boardLocation',    r.boardLocation);
+        fd.append('isBoardReference', 'false');
+        if (activeProduct) fd.append('productId', activeProduct);
+        const res = await fetch('/api/admin/checklists', { method: 'POST', body: fd });
+        if (res.ok) added.push(await res.json());
+      }
+      setItems(prev => [...prev, ...added]);
+      setBulkRows(null);
+    } finally { setBulkUploading(false); }
   }
 
   // ── AI board scan ────────────────────────────────────────────────────────────
@@ -1034,14 +1141,138 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
       )}
 
       {!showAdd && (
-        <button
-          type="button"
-          onClick={() => setShowAdd(true)}
-          className="w-full py-3 rounded-xl text-sm text-sky-400 font-medium transition-colors hover:brightness-125"
-          style={{ background: 'rgba(14,165,233,0.08)', border: '1px dashed rgba(14,165,233,0.3)' }}
-        >
-          + Add component to verify
-        </button>
+        <div className="flex gap-2">
+          {/* Manual add */}
+          <button
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="flex-1 py-3 rounded-xl text-sm text-sky-400 font-medium transition-colors hover:brightness-125"
+            style={{ background: 'rgba(14,165,233,0.08)', border: '1px dashed rgba(14,165,233,0.3)' }}
+          >
+            + Add component
+          </button>
+          {/* Bulk spreadsheet import */}
+          <button
+            type="button"
+            onClick={() => bulkInputRef.current?.click()}
+            className="flex-1 py-3 rounded-xl text-sm font-medium transition-colors hover:brightness-125"
+            style={{ background: 'rgba(34,197,94,0.07)', border: '1px dashed rgba(34,197,94,0.3)', color: '#4ade80' }}
+          >
+            📊 Bulk upload spreadsheet
+          </button>
+          <button
+            type="button"
+            onClick={downloadTemplate}
+            title="Download template (.xlsx)"
+            className="px-3 py-3 rounded-xl text-sm transition-colors hover:brightness-125"
+            style={{ background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)', color: '#6b7280' }}
+          >
+            ⬇ Template
+          </button>
+          <input
+            ref={bulkInputRef}
+            type="file"
+            accept=".csv,.xlsx,.xls,.ods"
+            className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) parseSpreadsheet(f); e.target.value = ''; }}
+          />
+        </div>
+      )}
+
+      {/* ── Bulk import error ─────────────────────────────────────────────────── */}
+      {bulkError && (
+        <div className="rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          📊 {bulkError}
+          <button onClick={() => setBulkError('')} className="ml-2 text-zinc-500 hover:text-white">×</button>
+        </div>
+      )}
+
+      {/* ── Bulk import review table ──────────────────────────────────────────── */}
+      {bulkRows && (
+        <div className="card p-4 space-y-3" style={{ border: '1px solid rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.03)' }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-green-300">
+                📊 {bulkRows.filter(r => !r.error).length} components ready to import
+                {bulkRows.some(r => r.error) && <span className="text-red-400 ml-2">({bulkRows.filter(r => r.error).length} skipped)</span>}
+              </p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">Review below — edit any row before importing.</p>
+            </div>
+            <button type="button" onClick={() => setBulkRows(null)} className="text-zinc-600 hover:text-zinc-400 text-lg">×</button>
+          </div>
+
+          {/* Column headers */}
+          <div className="grid gap-1 text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-1" style={{ gridTemplateColumns: '2fr 1fr 3fr 1fr 1fr' }}>
+            <span>Name</span><span>Qty</span><span>Orientation rule</span><span>Location</span><span>Required</span>
+          </div>
+
+          <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
+            {bulkRows.map((row, i) => row.error ? (
+              <div key={i} className="rounded-lg px-3 py-2 text-xs text-red-400" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                ⚠ {row.error}
+              </div>
+            ) : (
+              <div key={i} className="grid gap-1 items-center rounded-lg px-2 py-1.5" style={{ gridTemplateColumns: '2fr 1fr 3fr 1fr 1fr', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(34,197,94,0.08)' }}>
+                <input
+                  value={row.name}
+                  onChange={e => setBulkRows(prev => prev!.map((r, j) => j === i ? { ...r, name: e.target.value } : r))}
+                  className="input-field text-xs py-1 min-w-0"
+                />
+                <input
+                  type="number" min={1}
+                  value={row.expectedCount}
+                  onChange={e => setBulkRows(prev => prev!.map((r, j) => j === i ? { ...r, expectedCount: parseInt(e.target.value) || 1 } : r))}
+                  className="input-field text-xs py-1"
+                />
+                <input
+                  value={row.orientationRule}
+                  onChange={e => setBulkRows(prev => prev!.map((r, j) => j === i ? { ...r, orientationRule: e.target.value } : r))}
+                  placeholder="Orientation rule…"
+                  className="input-field text-xs py-1 min-w-0"
+                />
+                <input
+                  value={row.boardLocation}
+                  onChange={e => setBulkRows(prev => prev!.map((r, j) => j === i ? { ...r, boardLocation: e.target.value } : r))}
+                  placeholder="TL,BR…"
+                  className="input-field text-xs py-1 min-w-0"
+                />
+                <select
+                  value={String(row.required)}
+                  onChange={e => setBulkRows(prev => prev!.map((r, j) => j === i ? { ...r, required: e.target.value === 'true' } : r))}
+                  className="input-field text-xs py-1"
+                >
+                  <option value="true">✓ Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={addAllBulk}
+              disabled={bulkUploading}
+              className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white"
+              style={{ background: bulkUploading ? 'rgba(34,197,94,0.3)' : 'linear-gradient(135deg,#16a34a,#15803d)', border: '1px solid rgba(34,197,94,0.4)' }}
+            >
+              {bulkUploading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Uploading…
+                </span>
+              ) : `✓ Import ${bulkRows.filter(r => !r.error && r.name).length} components`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setBulkRows(null)}
+              className="px-4 py-2.5 rounded-xl text-sm text-zinc-500"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Summary card */}
