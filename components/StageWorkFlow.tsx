@@ -385,6 +385,20 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     }
   }
 
+  // ── Auto-open camera when entering a zone with no photo yet ──────────────
+  // MUST be before any early returns to satisfy React Rules of Hooks.
+  // Fires when: step becomes 'open', currentZoneIdx changes, or a photo is deleted (retake)
+  const currentZoneHasPhoto = !!capturedImages[requiredZones[currentZoneIdx] ?? 'full'];
+  useEffect(() => {
+    if (step !== 'open') return;
+    if (currentZoneHasPhoto) return;        // already have a photo for this zone
+    if (cameraOpen || streamRef.current) return; // camera already running
+    // Short delay so the panel has time to render before the camera permission dialog
+    const t = setTimeout(() => openCamera(), 300);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, currentZoneIdx, currentZoneHasPhoto]);
+
   // ══════════════════════════════════════════════════════════════════════════
   //  RENDER
   // ══════════════════════════════════════════════════════════════════════════
@@ -590,19 +604,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
       </div>
     );
   }
-
-  // ── Auto-open camera when entering a zone with no photo yet ──────────────
-  // Fires when: step becomes 'open', currentZoneIdx changes, or a photo is deleted (retake)
-  const currentZoneHasPhoto = !!capturedImages[requiredZones[currentZoneIdx] ?? 'full'];
-  useEffect(() => {
-    if (step !== 'open') return;
-    if (currentZoneHasPhoto) return;        // already have a photo for this zone
-    if (cameraOpen || streamRef.current) return; // camera already running
-    // Short delay so the panel has time to render before the camera permission dialog
-    const t = setTimeout(() => openCamera(), 300);
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, currentZoneIdx, currentZoneHasPhoto]);
 
   // ── open: full-screen work panel ───────────────────────────────────────────
   if (step === 'open') {
