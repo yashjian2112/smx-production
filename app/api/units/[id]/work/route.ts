@@ -42,6 +42,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     select: { currentStage: true, productId: true },
   });
   let requiredZones: string[] = ['full']; // always need the full-board photo
+  // zoneZooms: suggested zoom level per zone, derived from the smallest component size
+  // in each zone. micro→3.5×  mini→2.5×  small→2×  default→1×
+  const zoneZooms: Record<string, number> = { full: 1 };
+
   if (unitFull) {
     const zoneItems = await prisma.stageChecklistItem.findMany({
       where: {
@@ -51,14 +55,32 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         photoZone: { not: null },
         OR: [{ productId: unitFull.productId }, { productId: null }],
       },
-      select: { photoZone: true },
+      select: { photoZone: true, componentPositions: true },
     });
+
     const zonesRaw   = zoneItems.map(z => z.photoZone).filter((z): z is string => !!z);
     const extraZones = Array.from(new Set(zonesRaw));
     requiredZones = ['full', ...extraZones.filter(z => z !== 'full')];
+
+    // Compute suggested zoom per zone from component size markers
+    const SIZE_ZOOM: Record<string, number> = { micro: 3.5, mini: 2.5, small: 2.0 };
+    for (const item of zoneItems) {
+      if (!item.photoZone || !item.componentPositions) continue;
+      try {
+        const positions: Array<{ size?: string }> = JSON.parse(item.componentPositions as string);
+        for (const pos of positions) {
+          const sz = pos.size ?? 'small';
+          const suggested = SIZE_ZOOM[sz] ?? 2.0;
+          // Keep the highest zoom needed for this zone
+          zoneZooms[item.photoZone] = Math.max(zoneZooms[item.photoZone] ?? 1, suggested);
+        }
+      } catch { /* skip invalid JSON */ }
+      // Default zoom for a strip zone even without positions
+      if (!zoneZooms[item.photoZone]) zoneZooms[item.photoZone] = 2.0;
+    }
   }
 
-  return NextResponse.json({ active, history, stage: unit.currentStage, requiredZones });
+  return NextResponse.json({ active, history, stage: unit.currentStage, requiredZones, zoneZooms });
 }
 
 // ── POST: start work ──────────────────────────────────────────────────────────

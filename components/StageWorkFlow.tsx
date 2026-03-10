@@ -71,6 +71,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   // ── Multi-zone photo state ──────────────────────────────────────────────────
   // requiredZones comes from the API — e.g. ['full', 'top', 'bottom']
   const [requiredZones, setRequiredZones] = useState<string[]>(['full']);
+  // zoneZooms: suggested auto-zoom per zone e.g. { full:1, top:3.5, bottom:2.5 }
+  const [zoneZooms, setZoneZooms] = useState<Record<string, number>>({ full: 1 });
   // currentZoneIndex — which zone we're currently photographing
   const [currentZoneIdx, setCurrentZoneIdx] = useState(0);
   // capturedImages keyed by zone — { full: File, top: File, bottom: File }
@@ -98,6 +100,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const [maxZoom,     setMaxZoom]     = useState(5);
   const [nativeZoom,  setNativeZoom]  = useState(false);   // true = hardware zoom via API
   const lastPinchRef  = useRef<number | null>(null);       // last pinch distance (px)
+  const suggestedZoomRef = useRef(1);                      // auto-zoom target for current zone
 
   // ── auto-capture state ────────────────────────────────────────────────────
   const [autoCapture, setAutoCapture]     = useState(true);
@@ -124,6 +127,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
         const getRes  = await fetch(`/api/units/${unitId}/work`);
         const getData = await getRes.json();
         if (getData.requiredZones) setRequiredZones(getData.requiredZones);
+        if (getData.zoneZooms)     setZoneZooms(getData.zoneZooms);
 
         if (currentStatus === 'IN_PROGRESS') {
           if (getData.active) {
@@ -303,21 +307,28 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   }, [cameraReady, autoCapture]);
 
   // ── Detect native zoom capability once camera stream is ready ───────────────
+  // Also applies the auto-zoom for the current zone immediately after detection.
   useEffect(() => {
     if (!cameraReady || !streamRef.current) return;
     const track = streamRef.current.getVideoTracks()[0];
     if (!track) return;
     // getCapabilities() is not available on all browsers (iOS Safari lacks it)
     const caps = (track.getCapabilities as (() => Record<string, unknown>) | undefined)?.();
+    let detectedMax = 5;
     if (caps && caps['zoom']) {
       const z = caps['zoom'] as { min?: number; max?: number };
       setNativeZoom(true);
-      setMaxZoom(Math.min(z.max ?? 8, 8));
+      detectedMax = Math.min(z.max ?? 8, 8);
+      setMaxZoom(detectedMax);
     } else {
       // No native zoom — CSS scale fallback, allow up to 5×
       setNativeZoom(false);
+      detectedMax = 5;
       setMaxZoom(5);
     }
+    // Auto-zoom: apply the suggested zoom for this zone (clamped to device max)
+    const target = Math.min(suggestedZoomRef.current, detectedMax);
+    if (target > 1) setZoomLevel(target);
   }, [cameraReady]);
 
   // ── Apply zoom level — native API or CSS scale on video element ───────────
@@ -369,8 +380,12 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
   async function openCamera() {
     setError('');
+    const zone = requiredZones[currentZoneIdx] ?? 'full';
     // Store current zone so auto-capture closure can read it without stale ref
-    (window as unknown as Record<string, string>)['__captureZone'] = requiredZones[currentZoneIdx] ?? 'full';
+    (window as unknown as Record<string, string>)['__captureZone'] = zone;
+    // Store suggested zoom for this zone — applied once camera is ready
+    suggestedZoomRef.current = zoneZooms[zone] ?? 1;
+    setZoomLevel(1); // reset first, will be set to suggested once cameraReady fires
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -1143,38 +1158,53 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                     </div>
 
                     {/* ── Zoom slider ── */}
-                    <div className="flex items-center gap-2 px-2 w-full max-w-[260px]">
-                      {/* − button */}
-                      <button
-                        type="button"
-                        onPointerDown={e => { e.stopPropagation(); setZoomLevel(p => +Math.max(1, p - 0.5).toFixed(1)); }}
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0 select-none"
-                        style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}
-                      >−</button>
+                    <div className="flex flex-col items-center gap-1 w-full max-w-[280px] px-2">
+                      {/* Auto-zoom hint badge */}
+                      {suggestedZoomRef.current > 1 && (
+                        <div className="flex items-center gap-1.5 text-[10px] font-semibold"
+                          style={{ color: zoomLevel === suggestedZoomRef.current ? '#4ade80' : 'rgba(251,191,36,0.8)' }}>
+                          <span>⚡</span>
+                          <span>
+                            {zoomLevel === suggestedZoomRef.current
+                              ? `Auto-zoom ${suggestedZoomRef.current.toFixed(1)}× active`
+                              : `Suggested ${suggestedZoomRef.current.toFixed(1)}× — adjust as needed`}
+                          </span>
+                        </div>
+                      )}
 
-                      {/* Slider track */}
-                      <input
-                        type="range"
-                        min={1} max={maxZoom} step={0.1}
-                        value={zoomLevel}
-                        onChange={e => setZoomLevel(+e.target.value)}
-                        className="flex-1 h-1 rounded-full cursor-pointer"
-                        style={{ accentColor: '#38bdf8' }}
-                      />
+                      <div className="flex items-center gap-2 w-full">
+                        {/* − button */}
+                        <button
+                          type="button"
+                          onPointerDown={e => { e.stopPropagation(); setZoomLevel(p => +Math.max(1, p - 0.5).toFixed(1)); }}
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0 select-none"
+                          style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}
+                        >−</button>
 
-                      {/* + button */}
-                      <button
-                        type="button"
-                        onPointerDown={e => { e.stopPropagation(); setZoomLevel(p => +Math.min(maxZoom, p + 0.5).toFixed(1)); }}
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0 select-none"
-                        style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}
-                      >+</button>
+                        {/* Slider track */}
+                        <input
+                          type="range"
+                          min={1} max={maxZoom} step={0.1}
+                          value={zoomLevel}
+                          onChange={e => setZoomLevel(+e.target.value)}
+                          className="flex-1 h-1 rounded-full cursor-pointer"
+                          style={{ accentColor: '#38bdf8' }}
+                        />
 
-                      {/* Level badge */}
-                      <span
-                        className="text-xs font-bold shrink-0 w-9 text-right"
-                        style={{ color: zoomLevel > 1 ? '#38bdf8' : 'rgba(255,255,255,0.4)' }}
-                      >{zoomLevel.toFixed(1)}×</span>
+                        {/* + button */}
+                        <button
+                          type="button"
+                          onPointerDown={e => { e.stopPropagation(); setZoomLevel(p => +Math.min(maxZoom, p + 0.5).toFixed(1)); }}
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0 select-none"
+                          style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}
+                        >+</button>
+
+                        {/* Level badge */}
+                        <span
+                          className="text-xs font-bold shrink-0 w-9 text-right"
+                          style={{ color: zoomLevel > 1 ? '#38bdf8' : 'rgba(255,255,255,0.4)' }}
+                        >{zoomLevel.toFixed(1)}×</span>
+                      </div>
                     </div>
 
                     {/* Dynamic status label */}
