@@ -2,7 +2,27 @@
 
 import { useRef, useCallback, useState, useEffect } from 'react';
 
-export type MarkerPosition = { x: number; y: number; label: string };
+export type MarkerPosition = { x: number; y: number; label: string; size?: ComponentSize };
+
+export type ComponentSize = 'micro' | 'mini' | 'small' | 'big' | 'macro';
+
+/** Maps size name → base SVG radius (scales with zoom) */
+export const SIZE_RADIUS: Record<ComponentSize, number> = {
+  micro: 3,   // SMD 0402 resistors, tiny caps
+  mini:  5,   // SMD 0603 caps, small diodes
+  small: 7,   // Standard SMD, TO-92
+  big:   12,  // MOSFETs, ICs, headers
+  macro: 18,  // Spacers, transformers, large caps
+};
+
+/** Minimum marker spacing per size (prevents accidental overlap) */
+export const SIZE_MIN_DIST: Record<ComponentSize, number> = {
+  micro: 0.008,  // very tight — closely packed strips
+  mini:  0.014,
+  small: 0.022,
+  big:   0.035,
+  macro: 0.055,
+};
 
 type Props = {
   /** Board reference image URL (proxy URL is fine — fetched directly) */
@@ -11,6 +31,8 @@ type Props = {
   componentName: string;
   /** Total expected count — drives the progress indicator */
   expectedCount: number;
+  /** Default size for newly placed markers */
+  defaultSize?: ComponentSize;
   positions: MarkerPosition[];
   onChange: (positions: MarkerPosition[]) => void;
 };
@@ -19,6 +41,7 @@ export function InlineBoardPicker({
   imageUrl,
   componentName,
   expectedCount,
+  defaultSize = 'small',
   positions,
   onChange,
 }: Props) {
@@ -59,7 +82,14 @@ export function InlineBoardPicker({
   function handleImgClick(e: React.MouseEvent<HTMLDivElement>) {
     if (dragging !== null || dragDidMove.current) return;
     const { x, y } = getRelative(e.clientX, e.clientY);
-    onChange(relabel([...positions, { x, y, label: '' }]));
+    // Respect size-based minimum distance
+    const minDist = SIZE_MIN_DIST[defaultSize];
+    const tooClose = positions.some(p => {
+      const dx = p.x - x, dy = p.y - y;
+      return Math.sqrt(dx * dx + dy * dy) < minDist;
+    });
+    if (tooClose) return;
+    onChange(relabel([...positions, { x, y, label: '', size: defaultSize }]));
   }
 
   // ── Drag to reposition ───────────────────────────────────────────────────────
@@ -158,8 +188,10 @@ export function InlineBoardPicker({
             {positions.map((pos, i) => {
               const cx = pos.x * W;
               const cy = pos.y * H;
-              const r  = Math.max(10, Math.round(W * 0.018)); // scale with image
-              const fs = Math.max(7, Math.round(r * 0.7));
+              // Size-based radius: maps to physical image pixels based on component size
+              const baseR = SIZE_RADIUS[pos.size ?? defaultSize];
+              const r  = Math.round(W * baseR / 100); // baseR as % of width
+              const fs = Math.max(4, Math.round(r * 0.65));
 
               return (
                 <g key={i}>

@@ -4,8 +4,8 @@ import { useState, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import * as XLSX from 'xlsx';
-import { InlineBoardPicker } from '@/components/InlineBoardPicker';
-import type { MarkerPosition as InlineMarkerPosition } from '@/components/InlineBoardPicker';
+import { InlineBoardPicker, SIZE_RADIUS, SIZE_MIN_DIST } from '@/components/InlineBoardPicker';
+import type { MarkerPosition as InlineMarkerPosition, ComponentSize } from '@/components/InlineBoardPicker';
 import { zonesToText, parseZoneIds } from '@/lib/boardZones';
 import { blobImgUrl } from '@/lib/blobUrl';
 import type { ScannedComponent } from '@/app/api/admin/checklists/scan/route';
@@ -218,6 +218,11 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [picking, setPicking]               = useState(false);
   const [pickError, setPickError]           = useState('');
   const [pickQueue, setPickQueue]           = useState<Array<{ id: string; x: number; y: number; positions?: InlineMarkerPosition[]; component: ScannedComponent; qty: number }>>([]);
+  // Zoom + pan for board image (allows precise placement on micro components)
+  const [pickZoom, setPickZoom]             = useState(1);
+  const [pickOffset, setPickOffset]         = useState({ x: 0, y: 0 }); // CSS translate in px
+  const pickOuterRef                        = useRef<HTMLDivElement>(null);
+  const pickDragRef                         = useRef<{ sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
   const [lastPick, setLastPick]             = useState<{ x: number; y: number; component: ScannedComponent } | null>(null);
   const [lastPickQty, setLastPickQty]       = useState(1);
   const [savingQueue, setSavingQueue]       = useState(false);
@@ -228,6 +233,8 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [manualStep, setManualStep]         = useState<1 | 2 | 3>(1);
   // Individual numbered positions (replaces single zone click)
   const [manualPositions, setManualPositions] = useState<InlineMarkerPosition[]>([]);
+  // Component size determines circle radius + minimum spacing between markers
+  const [manualSize, setManualSize]           = useState<'micro' | 'mini' | 'small' | 'big' | 'macro'>('small');
 
   // Component form state
   const fileRef = useRef<HTMLInputElement>(null);
@@ -615,28 +622,92 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
     return row + col;
   }
 
-  async function handleImageClick(e: React.MouseEvent<HTMLDivElement>) {
+  // ── Zoom/pan helpers ──────────────────────────────────────────────────────────
+  function clampOffset(ox: number, oy: number, zoom: number) {
+    const el = pickOuterRef.current;
+    if (!el) return { x: ox, y: oy };
+    const W = el.clientWidth, H = el.clientHeight;
+    return {
+      x: Math.max(W * (1 - zoom), Math.min(0, ox)),
+      y: Math.max(H * (1 - zoom), Math.min(0, oy)),
+    };
+  }
+
+  function handlePickWheel(e: React.WheelEvent<HTMLDivElement>) {
     if (!pickMode) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+    e.preventDefault();
+    const el = pickOuterRef.current!;
+    const rect = el.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.3 : 1 / 1.3;
+    const newZoom = Math.max(1, Math.min(12, pickZoom * factor));
+    const scale = newZoom / pickZoom;
+    const raw = { x: sx * (1 - scale) + pickOffset.x * scale, y: sy * (1 - scale) + pickOffset.y * scale };
+    setPickZoom(newZoom);
+    setPickOffset(clampOffset(raw.x, raw.y, newZoom));
+  }
+
+  function getPickCoords(clientX: number, clientY: number) {
+    const el = pickOuterRef.current!;
+    const rect = el.getBoundingClientRect();
+    const imgX = (clientX - rect.left - pickOffset.x) / pickZoom;
+    const imgY = (clientY - rect.top  - pickOffset.y) / pickZoom;
+    return {
+      x: Math.max(0, Math.min(1, imgX / rect.width)),
+      y: Math.max(0, Math.min(1, imgY / rect.height)),
+    };
+  }
+
+  function handlePickMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (!pickMode || e.button !== 0) return;
+    pickDragRef.current = { sx: e.clientX, sy: e.clientY, ox: pickOffset.x, oy: pickOffset.y, moved: false };
+  }
+
+  function handlePickMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    if (!pickDragRef.current || !pickMode) return;
+    const dx = e.clientX - pickDragRef.current.sx;
+    const dy = e.clientY - pickDragRef.current.sy;
+    if (!pickDragRef.current.moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+      pickDragRef.current.moved = true;
+    }
+    if (pickDragRef.current.moved && pickZoom > 1) {
+      setPickOffset(clampOffset(pickDragRef.current.ox + dx, pickDragRef.current.oy + dy, pickZoom));
+    }
+  }
+
+  function handlePickMouseUp(e: React.MouseEvent<HTMLDivElement>) {
+    if (!pickDragRef.current || !pickMode) return;
+    const wasDrag = pickDragRef.current.moved && pickZoom > 1;
+    pickDragRef.current = null;
+    if (!wasDrag) handlePickClick(e.clientX, e.clientY);
+  }
+
+  function resetPickZoom() {
+    setPickZoom(1);
+    setPickOffset({ x: 0, y: 0 });
+  }
+
+  async function handlePickClick(clientX: number, clientY: number) {
+    const { x, y } = getPickCoords(clientX, clientY);
 
     // Manual tab step 3: place numbered markers for each component instance
     if (pickTab === 'manual' && manualStep === 3) {
       // Block if already placed enough markers
       if (manualPositions.length >= manualQty) return;
-      // Block if clicking too close to an existing marker (< 4% of image size)
+      // Block if clicking too close to an existing marker
+      // Threshold is size-aware AND shrinks when zoomed in → enables precise micro-component marking
+      const minDist = SIZE_MIN_DIST[manualSize] / pickZoom;
       const tooClose = manualPositions.some(p => {
-        const dx = (p.x - x) * (p.x - x);
-        const dy = (p.y - y) * (p.y - y);
-        return Math.sqrt(dx + dy) < 0.04;
+        const dx = p.x - x, dy = p.y - y;
+        return Math.sqrt(dx * dx + dy * dy) < minDist;
       });
       if (tooClose) return;
       const preset = COMPONENT_PRESETS.find(p => p.id === manualPreset) ?? COMPONENT_PRESETS[0];
       const name = manualName.trim() || preset.name;
       const prefix = name.charAt(0).toUpperCase();
       const num = manualPositions.length + 1;
-      setManualPositions(prev => [...prev, { x, y, label: `${prefix}${num}` }]);
+      setManualPositions(prev => [...prev, { x, y, label: `${prefix}${num}`, size: manualSize }]);
       return;
     }
 
@@ -717,6 +788,8 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
     setManualPositions([]);
     setManualName('');
     setManualQty(1);
+    setManualSize('small');
+    resetPickZoom();
   }
 
   return (
@@ -977,7 +1050,9 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   👆 Click image for each component position ({manualPositions.length}{manualQty > 0 ? ` / ${manualQty}` : ''} placed) • right-click on marker to remove
                 </p>
               )}
+              {/* Board image — scroll to zoom, drag to pan, click to mark */}
               <div
+                ref={pickOuterRef}
                 className="relative w-full rounded-xl overflow-hidden select-none"
                 style={{
                   aspectRatio: '16/9',
@@ -985,68 +1060,114 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   border: pickTab === 'manual' && manualStep === 3
                     ? '1px solid rgba(139,92,246,0.6)'
                     : `1px solid ${picking ? 'rgba(20,184,166,0.6)' : 'rgba(20,184,166,0.3)'}`,
-                  cursor: picking ? 'wait' : 'crosshair',
+                  cursor: pickZoom > 1
+                    ? (pickDragRef.current?.moved ? 'grabbing' : 'grab')
+                    : picking ? 'wait' : 'crosshair',
                 }}
-                onClick={handleImageClick}
+                onMouseDown={handlePickMouseDown}
+                onMouseMove={handlePickMouseMove}
+                onMouseUp={handlePickMouseUp}
+                onWheel={handlePickWheel}
                 onContextMenu={e => { if (pickTab === 'manual' && manualStep === 3) e.preventDefault(); }}
               >
-                <Image
-                  src={blobImgUrl(boardRefItem.referenceImageUrl)}
-                  alt="Board reference"
-                  fill
-                  unoptimized
-                  className="object-contain"
-                  style={{ pointerEvents: 'none' }}
-                />
+                {/* Zoomable/pannable inner layer */}
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    transform: `translate(${pickOffset.x}px, ${pickOffset.y}px) scale(${pickZoom})`,
+                    transformOrigin: '0 0',
+                    willChange: 'transform',
+                  }}
+                >
+                  <Image
+                    src={blobImgUrl(boardRefItem.referenceImageUrl)}
+                    alt="Board reference"
+                    fill
+                    unoptimized
+                    className="object-contain"
+                    style={{ pointerEvents: 'none' }}
+                  />
 
-                {/* SVG overlay */}
-                <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
-                  {/* Queued markers */}
-                  {pickQueue.map((m, i) => (
-                    <g key={m.id}>
-                      <circle cx={`${m.x * 100}%`} cy={`${m.y * 100}%`} r="10" fill="rgba(20,184,166,0.85)" stroke="white" strokeWidth="2" />
-                      <text x={`${m.x * 100}%`} y={`${m.y * 100}%`} textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="bold" fill="white">{i + 1}</text>
-                    </g>
-                  ))}
+                  {/* SVG overlay — scales with image */}
+                  <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
+                    {/* Queued component markers (teal) */}
+                    {pickQueue.map((m, i) => (
+                      <g key={m.id}>
+                        <circle cx={`${m.x * 100}%`} cy={`${m.y * 100}%`} r={`${6 / pickZoom}`} fill="rgba(20,184,166,0.85)" stroke="white" strokeWidth={1 / pickZoom} />
+                        <text x={`${m.x * 100}%`} y={`${m.y * 100}%`} textAnchor="middle" dominantBaseline="central" fontSize={`${5 / pickZoom}`} fontWeight="bold" fill="white">{i + 1}</text>
+                      </g>
+                    ))}
 
-                  {/* Manual position markers — small numbered red circles (right-click to remove) */}
-                  {pickTab === 'manual' && manualStep === 3 && manualPositions.map((pos, i) => (
-                    <g key={i} style={{ pointerEvents: 'all', cursor: 'pointer' }}
-                      onContextMenu={e => {
-                        e.preventDefault(); e.stopPropagation();
-                        setManualPositions(prev => {
-                          const next = prev.filter((_, j) => j !== i);
-                          const prefix = (manualName.trim() || COMPONENT_PRESETS.find(p => p.id === manualPreset)?.name || 'C').charAt(0).toUpperCase();
-                          return next.map((p, j) => ({ ...p, label: `${prefix}${j + 1}` }));
-                        });
-                      }}>
-                      <circle cx={`${pos.x * 100}%`} cy={`${pos.y * 100}%`} r="6" fill="rgba(239,68,68,0.92)" stroke="white" strokeWidth="1" />
-                      <text x={`${pos.x * 100}%`} y={`${pos.y * 100}%`} textAnchor="middle" dominantBaseline="central" fontSize="6" fontWeight="800" fill="white" style={{ pointerEvents: 'none' }}>{pos.label}</text>
-                    </g>
-                  ))}
+                    {/* Manual position markers — size-aware red circles (right-click to remove) */}
+                    {pickTab === 'manual' && manualStep === 3 && manualPositions.map((pos, i) => {
+                      const r  = SIZE_RADIUS[(pos.size ?? 'small') as ComponentSize] / pickZoom;
+                      const fs = Math.max(2.5, r * 0.65);
+                      return (
+                        <g key={i} style={{ pointerEvents: 'all', cursor: 'pointer' }}
+                          onContextMenu={e => {
+                            e.preventDefault(); e.stopPropagation();
+                            setManualPositions(prev => {
+                              const next = prev.filter((_, j) => j !== i);
+                              const prefix = (manualName.trim() || COMPONENT_PRESETS.find(p => p.id === manualPreset)?.name || 'C').charAt(0).toUpperCase();
+                              return next.map((p, j) => ({ ...p, label: `${prefix}${j + 1}` }));
+                            });
+                          }}>
+                          <circle cx={`${pos.x * 100}%`} cy={`${pos.y * 100}%`} r={r} fill="rgba(239,68,68,0.95)" stroke="white" strokeWidth={0.8 / pickZoom} />
+                          <text x={`${pos.x * 100}%`} y={`${pos.y * 100}%`} textAnchor="middle" dominantBaseline="central" fontSize={fs} fontWeight="800" fill="white" style={{ pointerEvents: 'none' }}>{pos.label}</text>
+                        </g>
+                      );
+                    })}
 
-                  {/* Last pick marker (amber, not yet confirmed) */}
-                  {lastPick && (
-                    <g>
-                      <circle cx={`${lastPick.x * 100}%`} cy={`${lastPick.y * 100}%`} r="12" fill="none" stroke="rgba(251,191,36,0.6)" strokeWidth="2" />
-                      <circle cx={`${lastPick.x * 100}%`} cy={`${lastPick.y * 100}%`} r="6" fill="rgba(251,191,36,0.9)" stroke="white" strokeWidth="1.5" />
-                    </g>
-                  )}
+                    {/* Last AI pick marker (amber) */}
+                    {lastPick && (
+                      <g>
+                        <circle cx={`${lastPick.x * 100}%`} cy={`${lastPick.y * 100}%`} r={`${9 / pickZoom}`} fill="none" stroke="rgba(251,191,36,0.6)" strokeWidth={1.5 / pickZoom} />
+                        <circle cx={`${lastPick.x * 100}%`} cy={`${lastPick.y * 100}%`} r={`${5 / pickZoom}`} fill="rgba(251,191,36,0.9)" stroke="white" strokeWidth={1.2 / pickZoom} />
+                      </g>
+                    )}
 
-                  {/* Loading spinner */}
-                  {picking && (
-                    <g>
-                      <circle cx="50%" cy="50%" r="14" fill="none" stroke="rgba(20,184,166,0.4)" strokeWidth="2" />
-                      <circle cx="50%" cy="50%" r="14" fill="none" stroke="rgba(20,184,166,0.9)" strokeWidth="2"
-                        strokeDasharray="22 66" strokeLinecap="round">
-                        <animateTransform attributeName="transform" type="rotate" from="0 50% 50%" to="360 50% 50%" dur="0.8s" repeatCount="indefinite" />
-                      </circle>
-                    </g>
-                  )}
-                </svg>
+                    {/* Loading spinner */}
+                    {picking && (
+                      <g>
+                        <circle cx="50%" cy="50%" r="14" fill="none" stroke="rgba(20,184,166,0.4)" strokeWidth="2" />
+                        <circle cx="50%" cy="50%" r="14" fill="none" stroke="rgba(20,184,166,0.9)" strokeWidth="2"
+                          strokeDasharray="22 66" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="rotate" from="0 50% 50%" to="360 50% 50%" dur="0.8s" repeatCount="indefinite" />
+                        </circle>
+                      </g>
+                    )}
+                  </svg>
+                </div>
+
+                {/* Zoom indicator + reset (top-right corner) */}
+                {pickZoom > 1.05 && (
+                  <div className="absolute top-2 right-2 flex items-center gap-1.5 pointer-events-auto z-10">
+                    <div className="px-2 py-1 rounded-lg text-[10px] font-bold text-white flex items-center gap-1"
+                      style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                      🔍 {pickZoom.toFixed(1)}×
+                    </div>
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); resetPickZoom(); }}
+                      className="px-2 py-1 rounded-lg text-[10px] text-zinc-300 hover:text-white transition-colors"
+                      style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}
+                    >
+                      ↩ Reset
+                    </button>
+                  </div>
+                )}
+
+                {/* Scroll-to-zoom hint (bottom) */}
+                {pickZoom <= 1.05 && !picking && (
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 pointer-events-none">
+                    <p className="text-[9px] text-zinc-600 px-2 py-0.5 rounded" style={{ background: 'rgba(0,0,0,0.5)' }}>
+                      Scroll to zoom in on micro components
+                    </p>
+                  </div>
+                )}
 
                 {/* Hint overlay */}
-                {!picking && !lastPick && pickQueue.length === 0 && !(pickTab === 'manual' && manualStep === 3) && (
+                {!picking && !lastPick && pickQueue.length === 0 && !(pickTab === 'manual' && manualStep === 3) && pickZoom <= 1.05 && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="px-3 py-1.5 rounded-lg text-xs text-teal-300" style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(20,184,166,0.3)' }}>
                       Click on a component
@@ -1195,19 +1316,49 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                       </div>
                     )}
 
-                    {/* Step 2: Quantity */}
+                    {/* Step 2: Quantity + component size */}
                     {manualStep === 2 && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: 'rgba(139,92,246,0.1)' }}>
                           <span>{selectedPreset.emoji}</span>
                           <p className="text-xs font-semibold text-purple-300">{manualName || selectedPreset.name}</p>
                         </div>
+
+                        {/* Quantity */}
                         <div>
                           <label className="block text-[10px] text-zinc-600 mb-1">How many on the board?</label>
                           <input type="number" min={1} value={manualQty}
                             onChange={e => setManualQty(parseInt(e.target.value) || 1)}
                             className="input-field text-sm py-2 w-full text-center font-bold" />
                         </div>
+
+                        {/* Component size selector */}
+                        <div>
+                          <label className="block text-[10px] text-zinc-600 mb-1">Component size <span className="text-zinc-700">(sets circle size + click spacing)</span></label>
+                          <div className="grid grid-cols-5 gap-1">
+                            {([ 'micro', 'mini', 'small', 'big', 'macro'] as const).map(sz => {
+                              const icons: Record<string, string> = { micro: '·', mini: '○', small: '◯', big: '◉', macro: '⬤' };
+                              const isSelected = manualSize === sz;
+                              return (
+                                <button key={sz} type="button"
+                                  onClick={() => setManualSize(sz)}
+                                  className="rounded-lg py-1.5 text-center transition-all"
+                                  style={{
+                                    background: isSelected ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.04)',
+                                    border: `1px solid ${isSelected ? 'rgba(239,68,68,0.6)' : 'rgba(255,255,255,0.08)'}`,
+                                    color: isSelected ? '#fca5a5' : '#52525b',
+                                  }}>
+                                  <div className="text-base leading-none">{icons[sz]}</div>
+                                  <div className="text-[8px] font-semibold mt-0.5 capitalize">{sz}</div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="text-[9px] text-zinc-700 mt-1">
+                            micro = SMD 0402 caps/resistors · macro = spacers/transformers
+                          </p>
+                        </div>
+
                         <div className="flex gap-2">
                           <button type="button" onClick={() => setManualStep(1)}
                             className="px-3 py-1.5 rounded-lg text-xs text-zinc-500"
