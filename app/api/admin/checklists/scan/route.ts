@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
 
 export type ScannedComponent = {
   presetId: string;      // matches COMPONENT_PRESETS id
@@ -18,7 +18,7 @@ export type ScannedComponent = {
  * POST /api/admin/checklists/scan
  * Body: { imageUrl: string }
  *
- * Sends the board reference image to Claude Vision and returns
+ * Sends the board reference image to Gemini Vision and returns
  * an auto-detected component list for the checklist.
  */
 export async function POST(req: NextRequest) {
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   // Fetch the private blob image
   let imageBase64: string;
-  let mediaType: 'image/jpeg' | 'image/png' | 'image/webp';
+  let mediaType: string;
   try {
     const r = await fetch(imageUrl, {
       headers: { authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
@@ -44,10 +44,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Could not fetch board image: ${err}` }, { status: 500 });
   }
 
-  const systemPrompt = `You are an expert PCB component inspector. You analyze circuit board images and identify electronic components.
-Return ONLY valid JSON — no markdown, no explanation, no code fences.`;
+  const prompt = `You are an expert PCB component inspector. You analyze circuit board images and identify electronic components.
+Return ONLY valid JSON — no markdown, no explanation, no code fences.
 
-  const userPrompt = `Analyze this PCB board image and identify every distinct component type visible on it.
+Analyze this PCB board image and identify every distinct component type visible on it.
 
 For each component type return a JSON object. Return an array of such objects.
 
@@ -73,23 +73,19 @@ Return this exact JSON structure (array, no wrapper):
 ]`;
 
   try {
-    const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: mediaType, data: imageBase64 },
-          },
-          { type: 'text', text: userPrompt },
-        ],
-      }],
-    });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    const raw = (message.content[0] as { text: string }).text.trim();
+    const result = await model.generateContent([
+      prompt,
+      {
+        inlineData: {
+          mimeType: mediaType,
+          data: imageBase64,
+        },
+      },
+    ]);
+
+    const raw = result.response.text().trim();
     // Strip any accidental markdown fences
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 
