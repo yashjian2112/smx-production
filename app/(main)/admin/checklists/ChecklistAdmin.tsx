@@ -351,20 +351,75 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
 
   // ── Bulk spreadsheet import ──────────────────────────────────────────────────
   function downloadTemplate() {
-    const ws = XLSX.utils.aoa_to_sheet([
+    // ── Sheet 1: Sample Data (ready to use) ──────────────────────────────────
+    const sampleRows = [
       ['name', 'count', 'orientation_rule', 'board_location', 'description', 'required'],
-      ['MOSFET IRFB4227', 18, 'Heatsink tab must face outward from board centre', 'TL,TR,BL,BR', 'Power switching MOSFETs — check every unit', 'true'],
-      ['Electrolytic Capacitor 1000uF', 4, 'Negative stripe (white band) must match PCB marking', 'ML,MR', 'DC bus capacitors', 'true'],
-      ['SMD Ceramic Capacitor', 12, '', 'TC,BC', 'All caps must be present — no tombstones', 'true'],
-      ['Diode', 8, 'Cathode band must face direction marked on PCB silkscreen', 'BL,BR', '', 'true'],
-      ['IC Gate Driver', 2, 'Pin 1 dot must align with triangle on PCB silkscreen', 'MC', '', 'true'],
-      ['Header Connector', 3, 'Pins straight and fully seated', 'ML', '', 'true'],
-    ]);
-    const colWidths = [{ wch: 30 }, { wch: 8 }, { wch: 50 }, { wch: 18 }, { wch: 45 }, { wch: 10 }];
-    ws['!cols'] = colWidths;
+      // MOSFETs
+      ['MOSFET IRFB4227',              18, 'Heatsink tab must face outward from board centre',                    'TL,TR,BL,BR', 'Power switching MOSFETs — reversed MOSFET destroys board when powered',         'true'],
+      // Electrolytic caps
+      ['Electrolytic Capacitor 1000uF', 4, 'Negative stripe (white band) must match PCB negative pad marking',   'ML,MR',       'DC bus capacitors — check polarity every unit',                                 'true'],
+      ['Electrolytic Capacitor 100uF',  6, 'Negative stripe (white band) must match PCB negative pad marking',   'TC,BC',       'Gate drive bypass capacitors',                                                   'true'],
+      // SMD ceramic caps
+      ['SMD Ceramic Capacitor 100nF',  24, '',                                                                    'TL,TR,BL,BR', 'Decoupling caps — all must be present, no tombstoning or cracks',               'true'],
+      ['SMD Ceramic Capacitor 10uF',    8, '',                                                                    'ML,MR',       'Bulk decoupling — check for missing or cracked parts',                          'true'],
+      // Diodes
+      ['Schottky Diode SS34',          12, 'Cathode band (grey stripe) must face the direction marked on PCB',    'BL,BR',       'Freewheeling diodes — reversed diode causes immediate failure',                  'true'],
+      ['Zener Diode BZX84',             4, 'Cathode band must face direction marked on PCB silkscreen',           'TC',          'Gate clamp diodes',                                                              'true'],
+      // ICs / gate drivers
+      ['IC Gate Driver IR2110',         2, 'Pin 1 dot or notch must align with triangle marker on PCB',           'MC',          'Half-bridge gate drivers — reversed IC causes immediate damage',                 'true'],
+      ['IC Optocoupler HCPL-314J',      2, 'Pin 1 dot must align with triangle marker on PCB silkscreen',         'ML',          'Isolated gate drive optocouplers',                                               'true'],
+      // Inductors
+      ['Inductor 10uH',                 3, '',                                                                    'TC,BC',       'Output filter inductors — verify correct value and fully seated',                'true'],
+      // Transformers
+      ['Gate Drive Transformer',        1, 'Pin 1 orientation must match triangle/dot marker on PCB silkscreen',  'MC',          'Isolated gate drive transformer — verify seating and no bent pins',             'true'],
+      // Headers / connectors
+      ['Header 2x10 Pin',               2, 'Pins must be straight and connector fully seated into PCB',           'ML',          'Motor phase output connectors',                                                  'true'],
+      ['Header 1x3 Pin',                4, 'Pins must be straight and connector fully seated into PCB',           'TR',          'Temperature sensor connectors',                                                  'false'],
+      // Bus bar
+      ['Copper Bus Bar',                2, '',                                                                    'BL,BR',       'Must be completely flat against board — not lifted, shifted, or angled',         'true'],
+      // Resistors
+      ['Shunt Resistor 1mΩ',            3, '',                                                                    'BC',          'Current sensing shunts — verify correct value, no physical damage',             'true'],
+      ['SMD Resistor 10kΩ',            16, '',                                                                    'TL,TR',       'Gate and bias resistors — verify all present and correct value',                 'true'],
+      // Spacers
+      ['PCB Standoff Spacer M3',        4, '',                                                                    'TL,TR,BL,BR', 'Corner spacers — all must be present and properly secured',                      'false'],
+    ];
+
+    const ws1 = XLSX.utils.aoa_to_sheet(sampleRows);
+    ws1['!cols'] = [{ wch: 32 }, { wch: 7 }, { wch: 58 }, { wch: 18 }, { wch: 52 }, { wch: 10 }];
+
+    // Style the header row bold (xlsx-style, supported in xlsx pro — basic version just sets freeze)
+    ws1['!freeze'] = { xSplit: 0, ySplit: 1 };
+
+    // ── Sheet 2: Instructions ─────────────────────────────────────────────────
+    const instrRows = [
+      ['SMX Drives — Checklist Bulk Upload Template', '', '', '', '', ''],
+      ['', '', '', '', '', ''],
+      ['COLUMN', 'REQUIRED?', 'ACCEPTED VALUES', '', 'NOTES', ''],
+      ['name',             'YES', 'Any text',                            '', 'Component name, e.g. "MOSFET IRFB4227"', ''],
+      ['count',            'YES', 'Number (1, 2, 18 …)',                 '', 'How many of this component are on the board', ''],
+      ['orientation_rule', 'No',  'Any text',                            '', 'Leave blank if component has no polarity', ''],
+      ['board_location',   'No',  'Zone codes: TL TC TR ML MC MR BL BC BR', '', 'Comma-separated, e.g. TL,TR,BL,BR', ''],
+      ['description',      'No',  'Any text',                            '', 'Extra instructions for the AI inspector', ''],
+      ['required',         'No',  'true / false / yes / no',             '', 'Default: true — board fails if issue found', ''],
+      ['', '', '', '', '', ''],
+      ['ZONE MAP (top-down view of board)', '', '', '', '', ''],
+      ['TL  TC  TR', '', '', '', '← TOP of board', ''],
+      ['ML  MC  MR', '', '', '', '← MIDDLE of board', ''],
+      ['BL  BC  BR', '', '', '', '← BOTTOM of board', ''],
+      ['', '', '', '', '', ''],
+      ['TIPS:', '', '', '', '', ''],
+      ['• You can also use column names: component, qty, quantity, orientation, location, zone, notes, mandatory', '', '', '', '', ''],
+      ['• Column names are NOT case-sensitive', '', '', '', '', ''],
+      ['• Delete or clear the sample rows on "Components" sheet and replace with your own data', '', '', '', '', ''],
+      ['• Save as .xlsx or export as .csv before uploading', '', '', '', '', ''],
+    ];
+    const ws2 = XLSX.utils.aoa_to_sheet(instrRows);
+    ws2['!cols'] = [{ wch: 40 }, { wch: 12 }, { wch: 40 }, { wch: 4 }, { wch: 48 }, { wch: 4 }];
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Components');
-    XLSX.writeFile(wb, 'checklist-template.xlsx');
+    XLSX.utils.book_append_sheet(wb, ws1, 'Components');
+    XLSX.utils.book_append_sheet(wb, ws2, 'Instructions');
+    XLSX.writeFile(wb, 'smx-checklist-sample.xlsx');
   }
 
   function parseSpreadsheet(file: File) {
@@ -1163,11 +1218,11 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
           <button
             type="button"
             onClick={downloadTemplate}
-            title="Download template (.xlsx)"
+            title="Download sample file (smx-checklist-sample.xlsx)"
             className="px-3 py-3 rounded-xl text-sm transition-colors hover:brightness-125"
             style={{ background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)', color: '#6b7280' }}
           >
-            ⬇ Template
+            ⬇ Sample
           </button>
           <input
             ref={bulkInputRef}
