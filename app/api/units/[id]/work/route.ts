@@ -35,7 +35,30 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }),
   ]);
 
-  return NextResponse.json({ active, history, stage: unit.currentStage });
+  // Determine which photo zones are needed for this stage + product
+  // (so the worker UI knows how many photos to request)
+  const unitFull = await prisma.controllerUnit.findUnique({
+    where: { id },
+    select: { currentStage: true, productId: true },
+  });
+  let requiredZones: string[] = ['full']; // always need the full-board photo
+  if (unitFull) {
+    const zoneItems = await prisma.stageChecklistItem.findMany({
+      where: {
+        stage: unitFull.currentStage,
+        active: true,
+        isBoardReference: false,
+        photoZone: { not: null },
+        OR: [{ productId: unitFull.productId }, { productId: null }],
+      },
+      select: { photoZone: true },
+    });
+    const zonesRaw   = zoneItems.map(z => z.photoZone).filter((z): z is string => !!z);
+    const extraZones = Array.from(new Set(zonesRaw));
+    requiredZones = ['full', ...extraZones.filter(z => z !== 'full')];
+  }
+
+  return NextResponse.json({ active, history, stage: unit.currentStage, requiredZones });
 }
 
 // ── POST: start work ──────────────────────────────────────────────────────────
@@ -76,7 +99,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
 
   const formData = await req.formData();
-  const file = formData.get('image') as File | null;
+  const file      = formData.get('image')        as File | null;
+  const fileTop   = formData.get('image_top')    as File | null;
+  const fileBottom = formData.get('image_bottom') as File | null;
   const submissionId = formData.get('submissionId') as string | null;
 
   if (!file) return NextResponse.json({ error: 'Image required' }, { status: 400 });
@@ -97,16 +122,39 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!submission) return NextResponse.json({ error: 'No active work submission found' }, { status: 404 });
 
-  // Upload to Vercel Blob
-  const blob = await put(`stage-work/${id}/${unit.currentStage}/${Date.now()}.jpg`, file, {
+  // Upload full-board photo (always required)
+  const ts = Date.now();
+  const blob = await put(`stage-work/${id}/${unit.currentStage}/${ts}.jpg`, file, {
     access: 'private',
     contentType: file.type || 'image/jpeg',
   });
 
+  // Upload zone-specific photos if provided
+  let blobTop: { url: string } | null = null;
+  let blobBottom: { url: string } | null = null;
+  if (fileTop && fileTop.size > 0) {
+    blobTop = await put(`stage-work/${id}/${unit.currentStage}/${ts}_top.jpg`, fileTop, {
+      access: 'private',
+      contentType: fileTop.type || 'image/jpeg',
+    });
+  }
+  if (fileBottom && fileBottom.size > 0) {
+    blobBottom = await put(`stage-work/${id}/${unit.currentStage}/${ts}_bottom.jpg`, fileBottom, {
+      access: 'private',
+      contentType: fileBottom.type || 'image/jpeg',
+    });
+  }
+
   // Mark as ANALYZING
   await prisma.stageWorkSubmission.update({
     where: { id: submission.id },
-    data: { imageUrl: blob.url, analysisStatus: 'ANALYZING', submittedAt: new Date() },
+    data: {
+      imageUrl:  blob.url,
+      imageUrl2: blobTop?.url    ?? null,
+      imageUrl3: blobBottom?.url ?? null,
+      analysisStatus: 'ANALYZING',
+      submittedAt: new Date(),
+    },
   });
 
   // Fetch checklist items for this stage: product-specific + global (null productId)
@@ -159,6 +207,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
               parts.push(`  Board location  : ${readable}`);
             }
             if (c.orientationRule) parts.push(`  Orientation rule: ${c.orientationRule}`);
+            if ((c as { photoZone?: string | null }).photoZone) {
+              const zLabel = { top: 'Top strip close-up', bottom: 'Bottom strip close-up', full: 'Full board photo' };
+              parts.push(`  Photo zone      : ${zLabel[(c as { photoZone: string }).photoZone as keyof typeof zLabel] ?? (c as { photoZone: string }).photoZone} — inspect this component in that photo`);
+            }
             if (c.description)     parts.push(`  Additional notes: ${c.description}`);
             // Include pick-&-place coordinates so Claude knows exactly where to look
             if (c.componentPositions) {
@@ -185,7 +237,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       ? `\nTotal parts expected on this board: ${totalExpected}`
       : '';
 
-    // ── Fetch employee's captured image ───────────────────────────────────────
+    // ── Fetch employee's captured images ──────────────────────────────────────
     // Private Vercel Blob requires Authorization header for server-side fetches
     const blobAuth = { authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` };
     const imgRes    = await fetch(blob.url, { headers: blobAuth });
@@ -198,6 +250,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const imgMeta = await sharp(imgBuf).metadata();
     const imgW    = imgMeta.width  ?? 1000;
     const imgH    = imgMeta.height ?? 1000;
+
+    // Fetch zone-specific photos if present
+    // photoMap: zone → { buf, base64, w, h, mediaType }
+    type ZonePhoto = { buf: Buffer; base64: string; w: number; h: number; mediaType: string };
+    const photoMap: Record<string, ZonePhoto> = { full: { buf: imgBuf, base64, w: imgW, h: imgH, mediaType } };
+
+    const fetchZonePhoto = async (url: string, fileRef: File): Promise<ZonePhoto> => {
+      const res = await fetch(url, { headers: blobAuth });
+      const buf = Buffer.from(await res.arrayBuffer());
+      const meta = await sharp(buf).metadata();
+      return {
+        buf,
+        base64: buf.toString('base64'),
+        w: meta.width ?? 1000,
+        h: meta.height ?? 1000,
+        mediaType: fileRef.type || 'image/jpeg',
+      };
+    };
+
+    if (blobTop && fileTop)    photoMap['top']    = await fetchZonePhoto(blobTop.url,    fileTop);
+    if (blobBottom && fileBottom) photoMap['bottom'] = await fetchZonePhoto(blobBottom.url, fileBottom);
 
     // ── Fetch reference images ────────────────────────────────────────────────
     type ImageBlock = {
@@ -251,9 +324,30 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
 
-    // Employee's submitted photo — always last
-    contentBlocks.push({ type: 'text', text: '══ SUBMITTED PHOTO (inspect this — compare against reference images above) ══' });
-    contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
+    // Employee's submitted photos — full board always shown; zone photos follow with labels
+    const zoneLabels: Record<string, string> = {
+      full:   'FULL BOARD PHOTO',
+      top:    'TOP STRIP CLOSE-UP (edge components)',
+      bottom: 'BOTTOM STRIP CLOSE-UP (edge components)',
+    };
+    const submittedZones = Object.keys(photoMap);
+    contentBlocks.push({
+      type: 'text',
+      text: submittedZones.length > 1
+        ? `══ SUBMITTED PHOTOS (${submittedZones.length} photos — full board + zone close-ups) ══\nUse the matching zone photo when inspecting zone-specific components.`
+        : '══ SUBMITTED PHOTO (inspect this — compare against reference images above) ══',
+    });
+    for (const zone of ['full', 'top', 'bottom']) {
+      const zp = photoMap[zone];
+      if (!zp) continue;
+      if (submittedZones.length > 1) {
+        contentBlocks.push({ type: 'text', text: `── ${zoneLabels[zone] ?? zone.toUpperCase()} ──` });
+      }
+      contentBlocks.push({
+        type: 'image',
+        source: { type: 'base64', media_type: zp.mediaType as 'image/jpeg' | 'image/png' | 'image/webp', data: zp.base64 },
+      });
+    }
 
     // ── Per-position crops for small-footprint components ────────────────────
     // Each marker gets its own tight crop, upscaled 3× + sharpened.
@@ -266,7 +360,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     let   totalPairs   = 0;
 
     // Helper: extract a square CLAHE-enhanced crop from any buffer at normalised (nx, ny)
-    async function makeCrop(buf: Buffer, bW: number, bH: number, nx: number, ny: number): Promise<Buffer> {
+    const makeCrop = async (buf: Buffer, bW: number, bH: number, nx: number, ny: number): Promise<Buffer> => {
       const cx      = Math.round(nx * bW);
       const cy      = Math.round(ny * bH);
       const halfPx  = Math.max(20, Math.round(CROP_HALF * Math.min(bW, bH)));
@@ -280,7 +374,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         .sharpen({ sigma: 1.5, m1: 0.5, m2: 2.5, x1: 2 })
         .jpeg({ quality: 92 })
         .toBuffer();
-    }
+    };
 
     const smallItems = componentItems.filter(item => {
       if (!item.componentPositions) return false;
@@ -330,8 +424,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
               contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refCrop.toString('base64') } });
             }
 
-            // Submitted crop (what worker's photo shows at same position)
-            const subCrop = await makeCrop(imgBuf, imgW, imgH, pos.x, pos.y);
+            // Submitted crop — use zone-specific photo if available, else full board
+            const itemZone = (item as { photoZone?: string | null }).photoZone ?? 'full';
+            const zp = photoMap[itemZone] ?? photoMap['full'];
+            const subCrop = await makeCrop(zp.buf, zp.w, zp.h, pos.x, pos.y);
             contentBlocks.push({ type: 'text', text: `  ${pos.label} SUBMITTED @ (${Math.round(pos.x * 100)}%,${Math.round(pos.y * 100)}%):` });
             contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: subCrop.toString('base64') } });
 

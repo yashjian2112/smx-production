@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
         orientationRule: (form.get('orientationRule') as string) ?? '',
         boardLocation:       (form.get('boardLocation')       as string) ?? '',
         componentPositions:  (form.get('componentPositions')  as string) ?? '',
+        photoZone:           (form.get('photoZone')           as string) ?? '',
         isBoardReference:    (form.get('isBoardReference')    as string) ?? 'false',
       };
       if (file && file.size > 0) {
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
         orientationRule:  body.orientationRule || null,
         boardLocation:       body.boardLocation       || null,
         componentPositions:  body.componentPositions  || null,
+        photoZone:           body.photoZone           || null,
         isBoardReference: isBoardRef,
         required:         body.required !== 'false',
         sortOrder:        parseInt((body.sortOrder ?? '0') as string, 10) || 0,
