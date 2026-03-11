@@ -7,7 +7,7 @@
 ## 📅 Last Updated
 - **Date:** 2026-03-11
 - **Updated By:** Claude (Anthropic)
-- **Session Summary:** Explored full codebase, created this context file for cross-account AI sync.
+- **Session Summary:** Fixed AI Vision inspection — wrong model name, safe error fallback, amber manual-review UI.
 
 ---
 
@@ -175,6 +175,13 @@ photoZone = 'bottom'  → uses imageUrl3 (formData field: 'file3')
 ---
 
 ## ✅ COMPLETED WORK (Most Recent First)
+
+### [2026-03-11] AI Inspection Bug Fixes
+- **Root cause:** Model name `claude-opus-4-5` doesn't exist → API threw error every time
+- **Fix 1 (`route.ts`):** Changed to correct model `claude-3-5-sonnet-20241022`
+- **Fix 2 (`route.ts`):** `catch` block now sets `analysisResult = 'FAIL'` — units can NO longer silently auto-pass when AI errors out. Added full error logging for Vercel logs.
+- **Fix 3 (`StageWorkFlow.tsx`):** Added 3rd result state — amber ⚠️ "Photo Saved — Awaiting Review" screen (distinct from green PASS / red FAIL). Detected via `summary.startsWith('AI_UNAVAILABLE')`. Shows "Waiting for manager review" + optional Retake button.
+- **Action needed by user:** Verify `ANTHROPIC_API_KEY` is set in Vercel dashboard → Settings → Environment Variables
 
 ### [2026-03-11] Zone-Based Multi-Photo AI Inspection
 - **ChecklistAdmin.tsx**: Added photoZone picker (Full/Top/Bottom) + zone badge on item list
