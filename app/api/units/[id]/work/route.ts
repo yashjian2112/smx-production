@@ -209,7 +209,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         const refRes = await fetch(boardRefItem.referenceImageUrl, { headers: blobAuth });
         if (refRes.ok) {
           refImgBuf = Buffer.from(await refRes.arrayBuffer());
-          const m = await sharp(refImgBuf).metadata();
+          const m = await sharp(refImgBuf, { failOn: 'none' }).metadata();
           refImgW = m.width ?? 1000; refImgH = m.height ?? 1000;
         }
       } catch { /* skip */ }
@@ -225,7 +225,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         const ct = r.headers.get('content-type') || 'image/jpeg';
         if (!['image/jpeg','image/png','image/webp','image/gif'].includes(ct)) continue;
         const rawRef = Buffer.from(await r.arrayBuffer());
-        const resizedRef = await sharp(rawRef).resize(1568, 1568, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+        const resizedRef = await sharp(rawRef, { failOn: 'none' }).resize(1568, 1568, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
         compRefImages.push({ name: item.name, base64: resizedRef.toString('base64'), mediaType: 'image/jpeg' });
       } catch { /* skip */ }
     }
@@ -249,7 +249,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       const left   = Math.max(0, cx - halfPx), top = Math.max(0, cy - halfPx);
       const size   = Math.min(halfPx * 2, bW - left, bH - top);
       const isMicro = sizeHint === 'micro';
-      return sharp(buf)
+      return sharp(buf, { failOn: 'none' })
         .extract({ left, top, width: size, height: size })
         .clahe({ width: isMicro ? 4 : 8, height: isMicro ? 4 : 8, maxSlope: isMicro ? 6 : 4 })
         .resize(p.px, p.px, { fit: 'fill', kernel: 'lanczos3' })
@@ -262,8 +262,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // Anthropic rejects base64 images that exceed ~5 MB after encoding.
     // 1568 px max-side + 85 % JPEG keeps every photo well under the limit while
     // retaining enough detail for component-level inspection.
+    // `failOn: 'none'` tolerates minor JPEG corruption from phone cameras / canvas.toBlob()
     const toAiJpeg = (buf: Buffer): Promise<Buffer> =>
-      sharp(buf)
+      sharp(buf, { failOn: 'none' })
         .resize(1568, 1568, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 85 })
         .toBuffer();
@@ -323,7 +324,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       if (!photo) continue;
 
       const { buf: zoneBuf, mediaType: zoneMediaType } = photo;
-      const zm = await sharp(zoneBuf).metadata();
+      const zm = await sharp(zoneBuf, { failOn: 'none' }).metadata();
       const zW = zm.width ?? 1000, zH = zm.height ?? 1000;
 
       const zoneLabel = zone === 'top' ? 'TOP STRIP CLOSE-UP' : zone === 'bottom' ? 'BOTTOM STRIP CLOSE-UP' : 'FULL BOARD';
