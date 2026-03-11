@@ -273,7 +273,7 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full overflow-hidden select-none"
+      className="relative w-full overflow-hidden select-none"
       style={{ minHeight, touchAction: 'none' }}
       onWheel={handleWheel}
       onPointerDown={handlePointerDown}
@@ -290,7 +290,7 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
         src={displaySrc}
         alt="Captured work photo"
         draggable={false}
-        className="w-full h-full object-cover"
+        className="w-full h-auto block"
         style={{
           filter:          filterStr,
           transform:       `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
@@ -299,7 +299,6 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
           cursor:          zoom > 1 ? 'grab' : 'zoom-in',
           userSelect:      'none',
           WebkitUserSelect: 'none',
-          display:         'block',
           minHeight,
         }}
       />
