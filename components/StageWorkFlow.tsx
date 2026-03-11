@@ -84,6 +84,10 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const [autoCapture, setAutoCapture]     = useState(true);
   const [stableMs, setStableMs]           = useState(0);          // 0–1500
   const [autoCountdown, setAutoCountdown] = useState<number | null>(null); // 3,2,1
+
+  // ── PCB check state ────────────────────────────────────────────────────────
+  const [pcbChecking, setPcbChecking] = useState(false);
+  const [pcbError, setPcbError]       = useState('');
   const prevFrameRef    = useRef<ImageData | null>(null);
   const frameTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const cdTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -293,6 +297,29 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraReady, autoCapture]);
 
+  // ── PCB check: fires whenever capturedImage changes ───────────────────────
+  // Sends a cheap thumbnail to /api/check-pcb so worker gets immediate feedback
+  // per zone instead of discovering a bad photo after uploading all 3 zones.
+  useEffect(() => {
+    if (!capturedImage) { setPcbError(''); return; }
+    let cancelled = false;
+    setPcbChecking(true);
+    setPcbError('');
+    const fd = new FormData();
+    fd.append('image', capturedImage);
+    fetch('/api/check-pcb', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return;
+        if (!data.isPcb) {
+          setPcbError('Not a circuit board — please retake with the PCB in frame.');
+        }
+      })
+      .catch(() => { /* on API error, allow through */ })
+      .finally(() => { if (!cancelled) setPcbChecking(false); });
+    return () => { cancelled = true; };
+  }, [capturedImage]);
+
   // videoRefCallback: called by React the instant the <video> DOM element is created.
   // This is more reliable than useEffect because React guarantees it fires synchronously
   // after mount — no timing gap, no null-ref race condition.
@@ -356,6 +383,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   function retakePhoto() {
     setCapturedImage(null);
     setPreviewUrl('');
+    setPcbError('');
   }
 
   // ── multi-zone: confirm current photo and advance to next zone ───────────
@@ -857,8 +885,28 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 />
               </div>
 
-              {/* Single zone → submit directly. Multi zone → next or submit last */}
-              {zones.length === 1 ? (
+              {/* PCB check state / action buttons */}
+              {pcbChecking ? (
+                /* Verifying image is a PCB */
+                <button
+                  type="button"
+                  disabled
+                  className="w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 opacity-70"
+                  style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}
+                >
+                  <div className="w-4 h-4 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+                  Verifying PCB…
+                </button>
+              ) : pcbError ? (
+                /* Not a PCB — show error, only retake available */
+                <div
+                  className="w-full py-3 px-4 rounded-2xl text-sm font-medium text-center"
+                  style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+                >
+                  ⚠️ {pcbError}
+                </div>
+              ) : zones.length === 1 ? (
+                /* Single zone → submit directly */
                 <button
                   type="button"
                   onClick={submitForAI}
@@ -868,6 +916,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                   ✅ Submit — Run AI Check
                 </button>
               ) : photoStep + 1 < zones.length ? (
+                /* Multi zone → confirm and capture next zone */
                 <button
                   type="button"
                   onClick={confirmAndNext}
@@ -877,6 +926,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                   ✓ Use photo → Next: {ZONE_INFO[zones[photoStep + 1]]?.icon} {ZONE_INFO[zones[photoStep + 1]]?.title ?? zones[photoStep + 1]}
                 </button>
               ) : (
+                /* Last zone → submit all */
                 <button
                   type="button"
                   onClick={submitLastZonePhoto}
@@ -889,7 +939,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
               <button
                 type="button"
-                onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); }}
+                onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); setPcbError(''); }}
                 className="w-full py-3 rounded-2xl text-sm font-medium text-zinc-400"
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
               >

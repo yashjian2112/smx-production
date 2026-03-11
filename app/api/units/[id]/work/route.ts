@@ -434,6 +434,7 @@ STRICT RULES:
     MISPLACED      = present but in wrong board zone
 — NEVER use MISSING for small components you simply cannot see — that is CANNOT_CONFIRM.
 — ONLY use MISSING when bare pads are clearly visible at expected position.
+— micro/mini/small sized components: if individual units cannot be clearly counted, always use CANNOT_CONFIRM. These are treated as non-mandatory until high-resolution cameras are installed.
 — CANNOT_CONFIRM does NOT cause FAIL on its own — it flags for supervisor spot-check.
 — overall = FAIL ONLY when a REQUIRED component is MISSING, DEFECTIVE, WRONG_ORIENTATION, SOLDER_ISSUE, or MISPLACED.
 — overall = PASS when all required components are PRESENT or CANNOT_CONFIRM with no confirmed defects.
@@ -453,8 +454,17 @@ STRICT RULES:
         const parsed     = JSON.parse(match[0]);
         const components = (parsed.components ?? []) as Issue[];
         // Re-derive FAIL: CANNOT_CONFIRM never causes a FAIL
+        // Also: components where ALL marker positions are micro/mini/small are treated
+        // as non-mandatory until the RPi high-res camera setup is in place.
+        const isSmallOnly = (item: typeof items[number]): boolean => {
+          if (!item.componentPositions) return false;
+          try {
+            const positions = JSON.parse(item.componentPositions as string) as MarkerPos[];
+            return positions.length > 0 && positions.every(p => SMALL_SIZES.has(p.size ?? ''));
+          } catch { return false; }
+        };
         const FAIL_STATUSES = new Set(['MISSING', 'DEFECTIVE', 'WRONG_ORIENTATION', 'SOLDER_ISSUE', 'MISPLACED']);
-        const requiredNames = items.filter(c => c.required).map(c => c.name.toLowerCase());
+        const requiredNames = items.filter(c => c.required && !isSmallOnly(c)).map(c => c.name.toLowerCase());
         const hasConfirmedFail = components.some(issue => {
           if (!FAIL_STATUSES.has(issue.status)) return false;
           return requiredNames.length === 0 ||
