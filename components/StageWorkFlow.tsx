@@ -69,8 +69,11 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
   // ── multi-zone photo wizard ────────────────────────────────────────────────
   const [zones, setZones]         = useState<string[]>(['full']); // fetched from GET
+  const [zoneZooms, setZoneZooms] = useState<Record<string, number>>({ full: 1 }); // auto-zoom per zone
   const [photoStep, setPhotoStep] = useState(0);                  // current zone index
   const [zonePhotos, setZonePhotos] = useState<Record<string, File>>({}); // zone → captured file
+  // Ref mirror so openCamera (inside stale closures) always reads current zoom
+  const zoneZoomsRef = useRef<Record<string, number>>({ full: 1 });
 
   const cameraRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -91,17 +94,21 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
   // ── zone info lookup ───────────────────────────────────────────────────────
   const ZONE_INFO: Record<string, { title: string; hint: string; icon: string }> = {
-    full:   { icon: '🖼️', title: 'Full Board Photo',         hint: 'Fit the entire PCB in frame from directly above' },
-    top:    { icon: '⬆️', title: 'Top Strip — Close-up',     hint: 'Move camera close to the TOP half of the board' },
-    bottom: { icon: '⬇️', title: 'Bottom Strip — Close-up',  hint: 'Move camera close to the BOTTOM half of the board' },
+    full:   { icon: '🖼️', title: 'Full Board Photo',          hint: 'Hold phone ~40 cm above — fit the entire PCB in frame' },
+    top:    { icon: '⬆️', title: 'Top Close-up',              hint: 'Move in to ~10–15 cm — small components should fill the frame' },
+    bottom: { icon: '⬇️', title: 'Bottom Close-up',           hint: 'Move in to ~10–15 cm — small components should fill the frame' },
   };
 
-  // ── fetch zones for this stage ─────────────────────────────────────────────
+  // ── fetch zones + zoom hints for this stage ───────────────────────────────
   useEffect(() => {
     fetch(`/api/units/${unitId}/work`)
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data.zones) && data.zones.length > 0) setZones(data.zones);
+        if (data.zoneZooms && typeof data.zoneZooms === 'object') {
+          setZoneZooms(data.zoneZooms);
+          zoneZoomsRef.current = data.zoneZooms; // sync ref — avoids stale closure in openCamera
+        }
       })
       .catch(() => {});
   }, [unitId]);
@@ -302,12 +309,25 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
   async function openCamera() {
     setError('');
+    // Store current zone so any closures that fire later can read it without staleness
+    const zone = zones[photoStep] ?? 'full';
+    (window as unknown as Record<string, string>)['__captureZone'] = zone;
+    // Read suggested zoom from ref (never stale even in effect closures)
+    const suggestedZoom = zoneZoomsRef.current[zone] ?? 1;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // On Android Chrome we can request native zoom at capture time
+      const constraints: MediaStreamConstraints = {
         video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-      });
+      };
+      if (suggestedZoom > 1) {
+        (constraints.video as Record<string, unknown>)['zoom'] = suggestedZoom;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia(constraints).catch(() =>
+        // Fallback without zoom constraint (iOS Safari doesn't support it at getUserMedia time)
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } })
+      );
       streamRef.current = stream;
-      setCameraOpen(true); // triggers the useEffect above to attach the stream
+      setCameraOpen(true);
     } catch {
       setError('Camera access denied or unavailable. Please allow camera access and try again.');
     }
@@ -856,6 +876,18 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
+                {/* Auto-zoom badge — only shown when zone has >1× suggested zoom */}
+                {(() => {
+                  const zone = zones[photoStep] ?? 'full';
+                  const zoom = zoneZooms[zone] ?? 1;
+                  return zoom > 1 ? (
+                    <span className="px-2 py-1 rounded-full text-xs font-bold"
+                      style={{ background: 'rgba(14,165,233,0.18)', border: '1px solid rgba(14,165,233,0.35)', color: '#38bdf8' }}>
+                      ⚡ {zoom.toFixed(1)}×
+                    </span>
+                  ) : null;
+                })()}
+
                 {/* AUTO / MANUAL toggle */}
                 <button
                   type="button"
@@ -916,7 +948,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                   {/* Scan frame — centred, sits above the shutter area */}
                   <div
                     className="absolute inset-x-0 top-0 pointer-events-none flex items-center justify-center"
-                    style={{ bottom: 140 }}
+                    style={{ bottom: 320 }}
                   >
                     <div className="relative" style={{ width: 272, height: 200 }}>
                       {/* Top-left */}
@@ -939,9 +971,9 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                   <div
                     className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-3"
                     style={{
-                      paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 100px), 110px)',
-                      background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)',
-                      paddingTop: 52,
+                      paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 160px), 172px)',
+                      background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)',
+                      paddingTop: 24,
                     }}
                   >
                     {/* Button with stability ring overlaid */}

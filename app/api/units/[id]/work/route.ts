@@ -35,7 +35,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }),
   ]);
 
-  // Return required photo zones for this stage (worker UI uses this to build multi-step flow)
+  // Return required photo zones + suggested zoom levels for this stage
   const zoneItems = await prisma.stageChecklistItem.findMany({
     where: {
       stage: unit.currentStage,
@@ -43,11 +43,31 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       isBoardReference: false,
       OR: [{ productId: unit.productId ?? undefined }, { productId: null }],
     },
-    select: { photoZone: true },
+    select: { photoZone: true, componentPositions: true },
   });
-  const zones = Array.from(new Set(zoneItems.map(z => z.photoZone ?? 'full')));
 
-  return NextResponse.json({ active, history, stage: unit.currentStage, zones });
+  // 'full' is ALWAYS required — it's the baseline for every stage
+  const extraZones = Array.from(new Set(
+    zoneItems.map(z => z.photoZone).filter((z): z is string => !!z && z !== 'full'),
+  ));
+  const zones = ['full', ...extraZones];
+
+  // Suggested camera zoom per zone (derived from smallest component size in that zone)
+  const SIZE_ZOOM: Record<string, number> = { micro: 3.5, mini: 2.5, small: 2.0 };
+  const zoneZooms: Record<string, number> = { full: 1 };
+  for (const z of extraZones) zoneZooms[z] = 2.0; // default 2× for close-up zones
+  for (const item of zoneItems) {
+    if (!item.photoZone || !item.componentPositions) continue;
+    try {
+      const positions: Array<{ size?: string }> = JSON.parse(item.componentPositions as string);
+      for (const pos of positions) {
+        const sz = pos.size ?? 'small';
+        zoneZooms[item.photoZone] = Math.max(zoneZooms[item.photoZone] ?? 2.0, SIZE_ZOOM[sz] ?? 2.0);
+      }
+    } catch { /* skip */ }
+  }
+
+  return NextResponse.json({ active, history, stage: unit.currentStage, zones, zoneZooms });
 }
 
 // ── POST: start work ──────────────────────────────────────────────────────────
@@ -208,22 +228,30 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       } catch { /* skip */ }
     }
 
-    // ── Per-position crop helper ───────────────────────────────────────────────
+    // ── Per-position crop helper (SIZE-AWARE) ─────────────────────────────────
+    // micro → 2.5% window / 480px → ~9× zoom   (0402 resistors, tiny SMD)
+    // mini  → 4.0% window / 400px → ~6× zoom   (0603)
+    // small → 6.0% window / 320px → ~3× zoom   (0805, SOT-23)
     type MarkerPos = { x: number; y: number; label: string; size?: string };
     const SMALL_SIZES = new Set(['micro', 'mini', 'small']);
-    const CROP_HALF   = 0.06;
-    const UPSCALE_PX  = 320;
+    const CROP_PARAMS: Record<string, { half: number; px: number }> = {
+      micro: { half: 0.025, px: 480 },
+      mini:  { half: 0.040, px: 400 },
+      small: { half: 0.060, px: 320 },
+    };
 
-    const makeCrop = async (buf: Buffer, bW: number, bH: number, nx: number, ny: number): Promise<Buffer> => {
-      const cx = Math.round(nx * bW), cy = Math.round(ny * bH);
-      const halfPx = Math.max(20, Math.round(CROP_HALF * Math.min(bW, bH)));
-      const left = Math.max(0, cx - halfPx), top = Math.max(0, cy - halfPx);
-      const size = Math.min(halfPx * 2, bW - left, bH - top);
+    const makeCrop = async (buf: Buffer, bW: number, bH: number, nx: number, ny: number, sizeHint = 'small'): Promise<Buffer> => {
+      const p      = CROP_PARAMS[sizeHint] ?? CROP_PARAMS['small'];
+      const cx     = Math.round(nx * bW), cy = Math.round(ny * bH);
+      const halfPx = Math.max(12, Math.round(p.half * Math.min(bW, bH)));
+      const left   = Math.max(0, cx - halfPx), top = Math.max(0, cy - halfPx);
+      const size   = Math.min(halfPx * 2, bW - left, bH - top);
+      const isMicro = sizeHint === 'micro';
       return sharp(buf)
         .extract({ left, top, width: size, height: size })
-        .clahe({ width: 8, height: 8, maxSlope: 4 })
-        .resize(UPSCALE_PX, UPSCALE_PX, { fit: 'fill', kernel: 'lanczos3' })
-        .sharpen({ sigma: 1.5, m1: 0.5, m2: 2.5, x1: 2 })
+        .clahe({ width: isMicro ? 4 : 8, height: isMicro ? 4 : 8, maxSlope: isMicro ? 6 : 4 })
+        .resize(p.px, p.px, { fit: 'fill', kernel: 'lanczos3' })
+        .sharpen({ sigma: isMicro ? 2.0 : 1.5, m1: isMicro ? 0.8 : 0.5, m2: isMicro ? 3.5 : 2.5, x1: 2 })
         .jpeg({ quality: 92 })
         .toBuffer();
     };
@@ -322,17 +350,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           try { positions = JSON.parse(item.componentPositions as string); } catch { continue; }
           const smallPos = positions.filter(p => SMALL_SIZES.has(p.size ?? 'small'));
           if (smallPos.length === 0) continue;
-          blocks.push({ type: 'text', text: `▶ ${item.name} — expect ${item.expectedCount ?? smallPos.length}, checking ${smallPos.length} position${smallPos.length > 1 ? 's' : ''}:` });
+          const dominantSize = smallPos.some(p => p.size === 'micro') ? 'micro'
+            : smallPos.some(p => p.size === 'mini') ? 'mini' : 'small';
+          blocks.push({ type: 'text', text: `▶ ${item.name} [${dominantSize}] — expect ${item.expectedCount ?? smallPos.length}, checking ${smallPos.length} position${smallPos.length > 1 ? 's' : ''}:` });
           for (const pos of smallPos) {
             if (pairCount >= 8) break;
+            const sh = pos.size ?? 'small';
             try {
               if (refImgBuf) {
-                const rc = await makeCrop(refImgBuf, refImgW, refImgH, pos.x, pos.y);
-                blocks.push({ type: 'text', text: `  ${pos.label} REFERENCE:` });
+                const rc = await makeCrop(refImgBuf, refImgW, refImgH, pos.x, pos.y, sh);
+                blocks.push({ type: 'text', text: `  ${pos.label} REFERENCE [${sh}]:` });
                 blocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: rc.toString('base64') } });
               }
-              const sc = await makeCrop(zoneBuf, zW, zH, pos.x, pos.y);
-              blocks.push({ type: 'text', text: `  ${pos.label} SUBMITTED @ (${Math.round(pos.x * 100)}%,${Math.round(pos.y * 100)}%):` });
+              const sc = await makeCrop(zoneBuf, zW, zH, pos.x, pos.y, sh);
+              blocks.push({ type: 'text', text: `  ${pos.label} SUBMITTED @ (${Math.round(pos.x * 100)}%,${Math.round(pos.y * 100)}%) [${sh} zoom]:` });
               blocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: sc.toString('base64') } });
               pairCount++;
             } catch (e) { console.error('[crops]', item.name, pos.label, e); }
@@ -361,14 +392,26 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
 {
   "overall": "PASS" or "FAIL",
   "components": [
-    { "name": "name (e.g. 'Resistor (found 7 of 7)')", "status": "PRESENT"|"MISSING"|"DEFECTIVE"|"WRONG_ORIENTATION"|"SOLDER_ISSUE"|"MISPLACED", "note": "specific finding with count and location", "location": "position on board" }
+    { "name": "name (e.g. 'Resistor (found 7 of 7)')", "status": "PRESENT"|"MISSING"|"DEFECTIVE"|"WRONG_ORIENTATION"|"SOLDER_ISSUE"|"MISPLACED"|"CANNOT_CONFIRM", "note": "specific finding with count and location", "location": "position on board" }
   ],
   "summary": "1–2 sentences with counts and issues"
 }
 
 STRICT RULES:
 — Count every unit individually — do not guess.
-— PASS only when all REQUIRED components present with correct count, orientation, and alignment.
+— CRITICAL status rules:
+    PRESENT        = component body clearly visible on pads ✓
+    MISSING        = bare copper pads visible, NO component body — high confidence part absent
+    CANNOT_CONFIRM = photo scale/angle prevents individual unit verification — DO NOT assume MISSING
+    DEFECTIVE      = present but visibly damaged/burned/cracked
+    WRONG_ORIENTATION = present but rotated incorrectly
+    SOLDER_ISSUE   = visible solder defect (bridge, cold joint, tombstone)
+    MISPLACED      = present but in wrong board zone
+— NEVER use MISSING for small components you simply cannot see — that is CANNOT_CONFIRM.
+— ONLY use MISSING when bare pads are clearly visible at expected position.
+— CANNOT_CONFIRM does NOT cause FAIL on its own — it flags for supervisor spot-check.
+— overall = FAIL ONLY when a REQUIRED component is MISSING, DEFECTIVE, WRONG_ORIENTATION, SOLDER_ISSUE, or MISPLACED.
+— overall = PASS when all required components are PRESENT or CANNOT_CONFIRM with no confirmed defects.
 — If image is blurry or board not visible: overall = FAIL.
 — For pad-level crops: bare copper = MISSING, component body = PRESENT. Sum PRESENT for found count.
 — Crops are ground truth — do NOT override crop evidence with full-photo guessing.` });
@@ -382,10 +425,57 @@ STRICT RULES:
       const rawText = msg.content[0].type === 'text' ? msg.content[0].text : '';
       const match   = rawText.match(/\{[\s\S]*\}/);
       if (match) {
-        const parsed = JSON.parse(match[0]);
-        if (parsed.overall !== 'PASS') anyFail = true;
-        allIssues.push(...(parsed.components ?? []));
-        if (parsed.summary) summaries.push(zone !== 'full' ? `[${zoneLabel}] ${parsed.summary}` : parsed.summary);
+        const parsed     = JSON.parse(match[0]);
+        const components = (parsed.components ?? []) as Issue[];
+        // Re-derive FAIL: CANNOT_CONFIRM never causes a FAIL
+        const FAIL_STATUSES = new Set(['MISSING', 'DEFECTIVE', 'WRONG_ORIENTATION', 'SOLDER_ISSUE', 'MISPLACED']);
+        const requiredNames = items.filter(c => c.required).map(c => c.name.toLowerCase());
+        const hasConfirmedFail = components.some(issue => {
+          if (!FAIL_STATUSES.has(issue.status)) return false;
+          return requiredNames.length === 0 ||
+            requiredNames.some(rn => issue.name.toLowerCase().includes(rn) || rn.includes(issue.name.toLowerCase().split('(')[0].trim()));
+        });
+        if (hasConfirmedFail) anyFail = true;
+        allIssues.push(...components);
+        // Append CANNOT_CONFIRM count to summary if any
+        const unconfirmed = components.filter(i => i.status === 'CANNOT_CONFIRM').length;
+        const summaryText = (parsed.summary ?? '') + (unconfirmed > 0 ? ` (${unconfirmed} unconfirmed — supervisor spot-check recommended)` : '');
+        if (summaryText.trim()) summaries.push(zone !== 'full' ? `[${zoneLabel}] ${summaryText}` : summaryText);
+      }
+    }
+
+    // If no checklist items were configured for this stage, run a generic visual check
+    if (componentsByZone.size === 0) {
+      const genericPhoto = photoMap['full'];
+      if (genericPhoto) {
+        const gBlocks: (IB | TB)[] = [];
+        if (refImgBuf) {
+          gBlocks.push({ type: 'text', text: '══ BOARD REFERENCE (correct completed board) ══' });
+          gBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refImgBuf.toString('base64') } });
+        }
+        gBlocks.push({ type: 'text', text: '══ SUBMITTED PHOTO ══' });
+        gBlocks.push({ type: 'image', source: { type: 'base64', media_type: genericPhoto.mediaType as IB['source']['media_type'], data: genericPhoto.buf.toString('base64') } });
+        gBlocks.push({ type: 'text', text:
+`You are a PCB quality-control AI for SMX Drives.
+Stage: ${unit.currentStage.replace(/_/g, ' ')} | Serial: ${unit.serialNumber}
+No component manifest has been configured for this stage yet.
+${refImgBuf ? 'Compare the submitted photo against the board reference image.' : 'Inspect the board visually.'}
+Check for obvious assembly issues: missing major components, solder bridges, burnt parts, wrong PCB orientation.
+Respond ONLY with valid JSON — no markdown fences:
+{ "overall": "PASS" or "FAIL", "components": [], "summary": "1–2 sentence visual assessment" }
+RULES: If board looks correctly assembled with no obvious defects, overall = PASS. Only FAIL on clear visible problems.` });
+        const gMsg = await anthropic.messages.create({
+          model: 'claude-3-5-sonnet-20241022',
+          max_tokens: 512,
+          messages: [{ role: 'user', content: gBlocks }],
+        });
+        const gText  = gMsg.content[0].type === 'text' ? gMsg.content[0].text : '';
+        const gMatch = gText.match(/\{[\s\S]*\}/);
+        if (gMatch) {
+          const gParsed = JSON.parse(gMatch[0]);
+          if (gParsed.overall !== 'PASS') anyFail = true;
+          if (gParsed.summary) summaries.push(`[Generic check — no manifest] ${gParsed.summary}`);
+        }
       }
     }
 
