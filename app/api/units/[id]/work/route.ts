@@ -224,7 +224,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         if (!r.ok) continue;
         const ct = r.headers.get('content-type') || 'image/jpeg';
         if (!['image/jpeg','image/png','image/webp','image/gif'].includes(ct)) continue;
-        compRefImages.push({ name: item.name, base64: Buffer.from(await r.arrayBuffer()).toString('base64'), mediaType: ct });
+        const rawRef = Buffer.from(await r.arrayBuffer());
+        const resizedRef = await sharp(rawRef).resize(1568, 1568, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+        compRefImages.push({ name: item.name, base64: resizedRef.toString('base64'), mediaType: 'image/jpeg' });
       } catch { /* skip */ }
     }
 
@@ -255,6 +257,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         .jpeg({ quality: 92 })
         .toBuffer();
     };
+
+    // ── Downscale any photo to Claude Vision's safe size ──────────────────────
+    // Anthropic rejects base64 images that exceed ~5 MB after encoding.
+    // 1568 px max-side + 85 % JPEG keeps every photo well under the limit while
+    // retaining enough detail for component-level inspection.
+    const toAiJpeg = (buf: Buffer): Promise<Buffer> =>
+      sharp(buf)
+        .resize(1568, 1568, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
 
     // ── Build manifest text for a subset of items ─────────────────────────────
     const buildManifest = (items: typeof componentItems): string => {
@@ -295,6 +307,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       componentsByZone.set('full', componentItems);
     }
 
+    // Pre-compute AI-safe (downscaled) reference image once for all zones
+    const refImgBufAi: Buffer | null = refImgBuf ? await toAiJpeg(refImgBuf) : null;
+
     // ── Run one Claude Vision call per zone ────────────────────────────────────
     type Issue = { name: string; status: string; note: string; location?: string };
     type IB = { type: 'image'; source: { type: 'base64'; media_type: 'image/jpeg'|'image/png'|'image/webp'|'image/gif'; data: string } };
@@ -315,9 +330,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       const blocks: (IB | TB)[] = [];
 
       // Board reference
-      if (refImgBuf) {
+      if (refImgBufAi) {
         blocks.push({ type: 'text', text: '══ BOARD REFERENCE (correct completed board — gold standard) ══' });
-        blocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refImgBuf.toString('base64') } });
+        blocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refImgBufAi.toString('base64') } });
       }
 
       // Per-component close-up references for this zone
@@ -330,9 +345,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         }
       }
 
-      // Submitted photo for this zone
+      // Submitted photo for this zone (downscaled to stay within Anthropic's 5 MB limit)
+      const zoneBufAi = await toAiJpeg(zoneBuf);
       blocks.push({ type: 'text', text: `══ SUBMITTED PHOTO — ${zoneLabel} ══` });
-      blocks.push({ type: 'image', source: { type: 'base64', media_type: zoneMediaType as IB['source']['media_type'], data: zoneBuf.toString('base64') } });
+      blocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: zoneBufAi.toString('base64') } });
 
       // Pad-level crops for small components in this zone
       const smallItems = items.filter(item => {
@@ -449,12 +465,13 @@ STRICT RULES:
       const genericPhoto = photoMap['full'];
       if (genericPhoto) {
         const gBlocks: (IB | TB)[] = [];
-        if (refImgBuf) {
+        if (refImgBufAi) {
           gBlocks.push({ type: 'text', text: '══ BOARD REFERENCE (correct completed board) ══' });
-          gBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refImgBuf.toString('base64') } });
+          gBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refImgBufAi.toString('base64') } });
         }
+        const genericBufAi = await toAiJpeg(genericPhoto.buf);
         gBlocks.push({ type: 'text', text: '══ SUBMITTED PHOTO ══' });
-        gBlocks.push({ type: 'image', source: { type: 'base64', media_type: genericPhoto.mediaType as IB['source']['media_type'], data: genericPhoto.buf.toString('base64') } });
+        gBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: genericBufAi.toString('base64') } });
         gBlocks.push({ type: 'text', text:
 `You are a PCB quality-control AI for SMX Drives.
 Stage: ${unit.currentStage.replace(/_/g, ' ')} | Serial: ${unit.serialNumber}
