@@ -189,6 +189,10 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [saving, setSaving]             = useState(false);
   const [error, setError]               = useState('');
 
+  // Component reference image inline upload
+  const editRefInputRef  = useRef<HTMLInputElement>(null);
+  const [editRefItemId, setEditRefItemId] = useState<string | null>(null);
+
   // Board reference image state
   const boardRefInputRef             = useRef<HTMLInputElement>(null);
   const [boardRefFile, setBoardRefFile] = useState<File | null>(null);
@@ -410,6 +414,16 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
     if (!confirm('Delete this checklist item?')) return;
     const res = await fetch(`/api/admin/checklists/${id}`, { method: 'DELETE' });
     if (res.ok) setItems((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  async function uploadItemRefImage(itemId: string, file: File) {
+    const fd = new FormData();
+    fd.append('referenceImage', file);
+    const res = await fetch(`/api/admin/checklists/${itemId}`, { method: 'PATCH', body: fd });
+    if (res.ok) {
+      const updated = await res.json();
+      setItems((prev) => prev.map((i) => (i.id === itemId ? updated : i)));
+    }
   }
 
   // ── Bulk spreadsheet import ──────────────────────────────────────────────────
@@ -946,6 +960,19 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
             )}
           </div>
           <input ref={boardRefInputRef} type="file" accept="image/*" className="hidden" onChange={handleBoardRefChange} />
+          {/* Hidden input for per-component reference image upload */}
+          <input
+            ref={editRefInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (f && editRefItemId) await uploadItemRefImage(editRefItemId, f);
+              e.target.value = '';
+              setEditRefItemId(null);
+            }}
+          />
 
           <div className="flex-1 flex flex-col gap-2">
             {boardRefFile ? (
@@ -1755,8 +1782,13 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
             className="card p-4 flex items-start gap-4"
             style={{ opacity: item.active ? 1 : 0.5 }}
           >
-            {/* Reference image */}
-            <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            {/* Reference image — click to upload/replace */}
+            <div
+              className="w-14 h-14 rounded-lg overflow-hidden shrink-0 cursor-pointer relative group"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+              title="Click to upload reference image"
+              onClick={() => { setEditRefItemId(item.id); editRefInputRef.current?.click(); }}
+            >
               {item.referenceImageUrl ? (
                 <Image src={blobImgUrl(item.referenceImageUrl)} alt={item.name} width={56} height={56} unoptimized className="w-full h-full object-cover" />
               ) : (
@@ -1766,6 +1798,9 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   </svg>
                 </div>
               )}
+              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <span className="text-[9px] text-white font-semibold text-center leading-tight px-1">📷 Upload ref</span>
+              </div>
             </div>
 
             {/* Info */}
