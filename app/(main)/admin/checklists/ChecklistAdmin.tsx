@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import * as XLSX from 'xlsx';
@@ -165,7 +165,7 @@ type ChecklistItem = {
   orientationRule: string | null;
   boardLocation: string | null;
   componentPositions: string | null; // JSON MarkerPosition[]
-  photoZone: string | null;          // "full" | "top" | "bottom"
+  photoZone: string | null; // 'full' | 'top' | 'bottom'
   isBoardReference: boolean;
   required: boolean;
   sortOrder: number;
@@ -229,11 +229,6 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const [pickShowOrig,    setPickShowOrig]    = useState(false);
   const [pickShowEnhance, setPickShowEnhance] = useState(false);
 
-  // Server-side CLAHE-enhanced board image (pick & place mode)
-  const [pickEnhancedBoardUrl, setPickEnhancedBoardUrl] = useState<string | null>(null);
-  const [pickEnhancing,        setPickEnhancing]        = useState(false);
-  const [pickEnhanceFailed,    setPickEnhanceFailed]    = useState(false);
-
   // ── Zoom-linked auto clarity (derived, no useState needed) ────────────────
   // Logarithmic: zoom 1→+0 | zoom 2→+0.15 | zoom 5→+0.35 | zoom 12→+0.54
   const pickZoomBoost         = Math.log2(Math.max(1, pickZoom)) * 0.15;
@@ -259,8 +254,9 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     name: '', description: '', required: true, sortOrder: 0,
-    expectedCount: '', orientationRule: '', boardLocation: '', photoZone: '',
+    expectedCount: '', orientationRule: '', boardLocation: '',
   });
+  const [photoZone, setPhotoZone] = useState<'full' | 'top' | 'bottom'>('full');
   const [refImage, setRefImage]     = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [selectedPreset, setSelectedPreset] = useState<string>('');
@@ -287,53 +283,6 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
   const boardRefItem =
     findBoardRef(activeProduct) ??
     (activeProduct !== null ? findBoardRef(null) : undefined);
-
-  // ── Server-side CLAHE enhancement for pick & place board image ────────────
-  // When pick mode is opened + a board reference image exists, run it through
-  // /api/enhance-image (CLAHE + unsharp mask) so SMD pads are clearly visible.
-  useEffect(() => {
-    const url = boardRefItem?.referenceImageUrl;
-    if (!pickMode || !url) {
-      // Reset when pick mode closes or image missing
-      if (!pickMode) {
-        setPickEnhancedBoardUrl(null);
-        setPickEnhanceFailed(false);
-      }
-      return;
-    }
-
-    let cancelled = false;
-    setPickEnhancing(true);
-    setPickEnhanceFailed(false);
-    setPickEnhancedBoardUrl(null);
-
-    (async () => {
-      try {
-        // Fetch the original board image as a blob
-        const rawRes = await fetch(url);
-        if (!rawRes.ok) throw new Error(`Fetch board image ${rawRes.status}`);
-        const rawBlob = await rawRes.blob();
-
-        // POST to enhance-image API
-        const fd = new FormData();
-        fd.append('image', rawBlob, 'board.jpg');
-        const enhRes = await fetch('/api/enhance-image', { method: 'POST', body: fd });
-        if (!enhRes.ok) throw new Error(`enhance-image ${enhRes.status}`);
-
-        const enhBlob = await enhRes.blob();
-        if (cancelled) return;
-        setPickEnhancedBoardUrl(URL.createObjectURL(enhBlob));
-      } catch (err) {
-        console.warn('[pick&place] Board image enhance failed:', err);
-        if (!cancelled) setPickEnhanceFailed(true);
-      } finally {
-        if (!cancelled) setPickEnhancing(false);
-      }
-    })();
-
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickMode, boardRefItem?.referenceImageUrl]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -412,7 +361,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
       fd.append('expectedCount',   form.expectedCount);
       fd.append('orientationRule', form.orientationRule);
       fd.append('boardLocation',   form.boardLocation);
-      fd.append('photoZone',       form.photoZone);
+      fd.append('photoZone',       photoZone);
       fd.append('isBoardReference', 'false');
       if (activeProduct) fd.append('productId', activeProduct);
       if (refImage) fd.append('referenceImage', refImage);
@@ -437,7 +386,8 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
 
       setItems((prev) => [...prev, item]);
       setShowAdd(false);
-      setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '', photoZone: '' });
+      setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' });
+      setPhotoZone('full');
       setRefImage(null); setPreviewUrl('');
       setSelectedPreset(''); setShowAdvanced(false);
       setNewComponentPositions([]);
@@ -1243,47 +1193,19 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   }}
                 >
                   <Image
-                    src={
-                      // Use server-enhanced image when available; fall back to original
-                      (pickShowOrig || !pickEnhancedBoardUrl)
-                        ? blobImgUrl(boardRefItem.referenceImageUrl)
-                        : pickEnhancedBoardUrl
-                    }
+                    src={blobImgUrl(boardRefItem.referenceImageUrl)}
                     alt="Board reference"
                     fill
                     unoptimized
                     className="object-contain"
                     style={{
                       pointerEvents: 'none',
-                      // CSS fine-tuning on top of server-enhanced image
+                      // Enhance ON + auto-boost from zoom — all pure CSS
                       filter: (!pickShowEnhance || pickShowOrig)
                         ? 'none'
                         : `contrast(${pickEffectiveContrast.toFixed(3)}) brightness(${pickBrightness}) saturate(1.1)${pickEffectiveSharpen ? ' contrast(1.15) saturate(1.2)' : ''}`,
                     }}
                   />
-
-                  {/* CLAHE enhancement loading overlay */}
-                  {pickEnhancing && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none"
-                      style={{ background: 'rgba(0,0,0,0.55)', zIndex: 5 }}>
-                      <div className="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-                      <span className="text-[10px] text-sky-400 font-medium">Enhancing pixels…</span>
-                    </div>
-                  )}
-
-                  {/* Badge: deblur status */}
-                  {!pickEnhancing && (
-                    <div
-                      className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold pointer-events-none"
-                      style={{
-                        zIndex: 6,
-                        background: pickEnhanceFailed ? 'rgba(239,68,68,0.8)' : pickEnhancedBoardUrl ? 'rgba(34,197,94,0.8)' : 'rgba(100,100,100,0.7)',
-                        color: 'white',
-                      }}
-                    >
-                      {pickEnhanceFailed ? '⚠ raw' : pickEnhancedBoardUrl ? (pickShowOrig ? '○ original' : '✓ deblurred') : '…'}
-                    </div>
-                  )}
 
                   {/* SVG overlay — scales with image */}
                   <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
@@ -1862,6 +1784,20 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 {activeProduct !== null && item.productId === null && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-purple-400" style={{ background: 'rgba(168,85,247,0.1)' }}>🌐 Global</span>
                 )}
+                {/* Photo zone badge */}
+                {item.photoZone && item.photoZone !== 'full' && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{
+                    background: item.photoZone === 'top' ? 'rgba(14,165,233,0.1)' : 'rgba(139,92,246,0.1)',
+                    color: item.photoZone === 'top' ? '#38bdf8' : '#c084fc',
+                  }}>
+                    {item.photoZone === 'top' ? '⬆️ Top Strip' : '⬇️ Bottom Strip'}
+                  </span>
+                )}
+                {(!item.photoZone || item.photoZone === 'full') && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-zinc-500" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                    🖼️ Full Board
+                  </span>
+                )}
                 {/* Mapped indicator */}
                 {item.componentPositions && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-teal-400" style={{ background: 'rgba(20,184,166,0.1)' }}>
@@ -1878,14 +1814,6 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
               {item.orientationRule && (
                 <p className="text-[11px] text-amber-400/70 mt-0.5 flex items-center gap-1">
                   <span>🔄</span> {item.orientationRule}
-                </p>
-              )}
-              {item.photoZone && (
-                <p className="text-[10px] mt-0.5">
-                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold"
-                    style={{ background: 'rgba(56,189,248,0.12)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.25)' }}>
-                    📷 {item.photoZone === 'top' ? 'Top strip' : item.photoZone === 'bottom' ? 'Bottom strip' : 'Full board'}
-                  </span>
                 </p>
               )}
               {item.description && <p className="text-zinc-500 text-xs mt-0.5">{item.description}</p>}
@@ -1933,7 +1861,8 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 onClick={() => {
                   setSelectedPreset('');
                   setShowAdvanced(false);
-                  setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '', photoZone: '' });
+                  setPhotoZone('full');
+                  setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' });
                   setNewComponentPositions([]);
                 }}
                 className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -2066,6 +1995,35 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 </div>
               )}
 
+              {/* ── Photo zone picker ─────────────────────────────────────────── */}
+              <div>
+                <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-2">
+                  📷 Photo zone — which camera shot covers this component?
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { value: 'full',   emoji: '🖼️',  label: 'Full Board',   desc: 'Wide shot — large components (MOSFETs, caps, ICs)' },
+                    { value: 'top',    emoji: '⬆️',  label: 'Top Strip',    desc: 'Close-up top zone — small SMDs in top half' },
+                    { value: 'bottom', emoji: '⬇️',  label: 'Bottom Strip', desc: 'Close-up bottom zone — small SMDs in bottom half' },
+                  ] as const).map(z => (
+                    <button
+                      key={z.value}
+                      type="button"
+                      onClick={() => setPhotoZone(z.value)}
+                      className="flex flex-col items-center gap-1 rounded-xl py-2.5 px-2 transition-all text-center"
+                      style={{
+                        background: photoZone === z.value ? 'rgba(14,165,233,0.15)' : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${photoZone === z.value ? 'rgba(14,165,233,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                      }}
+                    >
+                      <span className="text-lg leading-none">{z.emoji}</span>
+                      <span className={`text-[10px] font-bold leading-tight ${photoZone === z.value ? 'text-sky-300' : 'text-zinc-500'}`}>{z.label}</span>
+                      <span className="text-[9px] text-zinc-600 leading-tight">{z.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* ── Advanced / override section ───────────────────────────────── */}
               <div>
                 <button
@@ -2107,39 +2065,6 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                         placeholder="e.g. Heatsink tab must face outward from board centre"
                         className="input-field text-sm"
                       />
-                    </div>
-
-                    {/* Photo zone — which photo should cover this component */}
-                    <div>
-                      <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">
-                        Photo zone
-                        <span className="ml-1 text-zinc-600 normal-case font-normal">— which photo covers this component</span>
-                      </label>
-                      <div className="flex gap-1.5">
-                        {[
-                          { value: '',       label: 'Full board',    icon: '🔲', desc: 'Single full-board photo (default)' },
-                          { value: 'top',    label: 'Top strip',     icon: '⬆', desc: 'Close-up of top edge of board' },
-                          { value: 'bottom', label: 'Bottom strip',  icon: '⬇', desc: 'Close-up of bottom edge of board' },
-                        ].map(opt => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            title={opt.desc}
-                            onClick={() => setForm(f => ({ ...f, photoZone: opt.value }))}
-                            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                            style={{
-                              background: form.photoZone === opt.value ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.04)',
-                              border: form.photoZone === opt.value ? '1px solid rgba(56,189,248,0.4)' : '1px solid rgba(255,255,255,0.08)',
-                              color: form.photoZone === opt.value ? '#38bdf8' : '#71717a',
-                            }}
-                          >
-                            {opt.icon} {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-[10px] text-zinc-600 mt-1">
-                        SMDs on the edge of the board → Top / Bottom. Large through-hole parts → Full board.
-                      </p>
                     </div>
 
                     {/* Additional notes */}
@@ -2199,7 +2124,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => { setShowAdd(false); setSelectedPreset(''); setShowAdvanced(false); setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '', photoZone: '' }); setRefImage(null); setPreviewUrl(''); setNewComponentPositions([]); }}
+                onClick={() => { setShowAdd(false); setSelectedPreset(''); setShowAdvanced(false); setPhotoZone('full'); setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' }); setRefImage(null); setPreviewUrl(''); setNewComponentPositions([]); }}
                 className="btn-ghost px-4 py-2.5 text-sm"
               >
                 Cancel

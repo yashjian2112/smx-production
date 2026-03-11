@@ -19,8 +19,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const file = form.get('referenceImage') as File | null;
       body = Object.fromEntries(
         ['name', 'description', 'required', 'sortOrder', 'active', 'expectedCount',
-         'orientationRule', 'boardLocation', 'componentPositions', 'photoZone',
-         'isBoardReference', 'productId']
+         'orientationRule', 'boardLocation', 'isBoardReference', 'productId', 'photoZone']
           .map((k) => [k, form.get(k) as string | null])
       );
       if (file && file.size > 0) {
@@ -49,7 +48,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.orientationRule  !== undefined) data.orientationRule = body.orientationRule || null;
     if (body.boardLocation         !== undefined) data.boardLocation         = body.boardLocation   || null;
     if (body.componentPositions    !== undefined) data.componentPositions    = body.componentPositions || null;
-    if (body.photoZone             !== undefined) data.photoZone             = body.photoZone        || null;
+    if (body.photoZone             !== undefined) data.photoZone             = body.photoZone       || null;
     if (body.isBoardReference != null)  data.isBoardReference = body.isBoardReference === 'true';
     if ('productId' in body)            data.productId        = body.productId || null;
     if (referenceImageUrl)              data.referenceImageUrl = referenceImageUrl;

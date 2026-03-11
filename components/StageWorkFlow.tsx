@@ -26,13 +26,6 @@ type Props = {
   currentStatus: string;
 };
 
-// ── Zone metadata ──────────────────────────────────────────────────────────────
-const ZONE_META: Record<string, { label: string; icon: string; instruction: string; height: string }> = {
-  full:   { label: 'Full Board',    icon: '🔲', instruction: 'Frame the entire PCB — hold phone at ~40 cm', height: '~40 cm' },
-  top:    { label: 'Top Strip',     icon: '⬆',  instruction: 'Move in close — fill frame with the TOP edge of the board', height: '~10 cm' },
-  bottom: { label: 'Bottom Strip',  icon: '⬇',  instruction: 'Move in close — fill frame with the BOTTOM edge of the board', height: '~10 cm' },
-};
-
 function fmtDuration(sec: number) {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
@@ -67,50 +60,27 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   // completed → stage already done
   const [step, setStep] = useState<'loading' | 'idle' | 'working' | 'open' | 'analyzing' | 'result' | 'completed'>('loading');
   const [submission, setSubmission] = useState<Submission | null>(null);
-
-  // ── Multi-zone photo state ──────────────────────────────────────────────────
-  // requiredZones comes from the API — e.g. ['full', 'top', 'bottom']
-  const [requiredZones, setRequiredZones] = useState<string[]>(['full']);
-  // zoneZooms: suggested auto-zoom per zone e.g. { full:1, top:3.5, bottom:2.5 }
-  const [zoneZooms, setZoneZooms] = useState<Record<string, number>>({ full: 1 });
-  // currentZoneIndex — which zone we're currently photographing
-  const [currentZoneIdx, setCurrentZoneIdx] = useState(0);
-  // capturedImages keyed by zone — { full: File, top: File, bottom: File }
-  const [capturedImages, setCapturedImages] = useState<Record<string, File>>({});
-  // Enhanced blobs from server CLAHE (keyed by zone)
-  const [enhancedBlobs, setEnhancedBlobs] = useState<Record<string, Blob>>({});
-  // Preview URLs (keyed by zone)
-  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
-
-  // Legacy shims for single-image refs (used in ImageEnhancer integration)
-  const capturedImage = capturedImages[requiredZones[currentZoneIdx] ?? 'full'] ?? null;
-  const previewUrl    = previewUrls[requiredZones[currentZoneIdx] ?? 'full'] ?? '';
-
+  const [capturedImage, setCapturedImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [enhancedBlob, setEnhancedBlob] = useState<Blob | null>(null);
   const [result, setResult] = useState<{ result: string; issues: Issue[]; summary: string } | null>(null);
   const [error, setError] = useState('');
   const [startingWork, setStartingWork] = useState(false);
+
+  // ── multi-zone photo wizard ────────────────────────────────────────────────
+  const [zones, setZones]         = useState<string[]>(['full']); // fetched from GET
+  const [photoStep, setPhotoStep] = useState(0);                  // current zone index
+  const [zonePhotos, setZonePhotos] = useState<Record<string, File>>({}); // zone → captured file
 
   const cameraRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraOpen, setCameraOpen]   = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
 
-  // ── zoom state ─────────────────────────────────────────────────────────────
-  const [zoomLevel,   setZoomLevel]   = useState(1);
-  const [maxZoom,     setMaxZoom]     = useState(5);
-  const [nativeZoom,  setNativeZoom]  = useState(false);   // true = hardware zoom via API
-  const lastPinchRef   = useRef<number | null>(null);      // last pinch distance (px)
-  const suggestedZoomRef = useRef(1);                      // auto-zoom target for current zone
-  // Ref mirror of zoneZooms — always current even inside stale closures (e.g. auto-open effect)
-  const zoneZoomsRef  = useRef<Record<string, number>>({ full: 1 });
-
   // ── auto-capture state ────────────────────────────────────────────────────
   const [autoCapture, setAutoCapture]     = useState(true);
   const [stableMs, setStableMs]           = useState(0);          // 0–1500
   const [autoCountdown, setAutoCountdown] = useState<number | null>(null); // 3,2,1
-  // ── distance guidance ────────────────────────────────────────────────────
-  // 'closer' | 'back' | 'good' | null — derived from live frame brightness analysis
-  const [distanceHint, setDistanceHint]   = useState<'closer' | 'back' | 'good' | null>(null);
   const prevFrameRef    = useRef<ImageData | null>(null);
   const frameTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const cdTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -119,6 +89,23 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
   const stageLabel = currentStage.replace(/_/g, ' ');
 
+  // ── zone info lookup ───────────────────────────────────────────────────────
+  const ZONE_INFO: Record<string, { title: string; hint: string; icon: string }> = {
+    full:   { icon: '🖼️', title: 'Full Board Photo',         hint: 'Fit the entire PCB in frame from directly above' },
+    top:    { icon: '⬆️', title: 'Top Strip — Close-up',     hint: 'Move camera close to the TOP half of the board' },
+    bottom: { icon: '⬇️', title: 'Bottom Strip — Close-up',  hint: 'Move camera close to the BOTTOM half of the board' },
+  };
+
+  // ── fetch zones for this stage ─────────────────────────────────────────────
+  useEffect(() => {
+    fetch(`/api/units/${unitId}/work`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data.zones) && data.zones.length > 0) setZones(data.zones);
+      })
+      .catch(() => {});
+  }, [unitId]);
+
   // ── auto-start work on mount ───────────────────────────────────────────────
   useEffect(() => {
     if (currentStatus === 'COMPLETED') {
@@ -126,46 +113,37 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
       return;
     }
 
-    const initWork = async () => {
-      try {
-        // Always fetch GET first to get requiredZones
-        const getRes  = await fetch(`/api/units/${unitId}/work`);
-        const getData = await getRes.json();
-        if (getData.requiredZones) setRequiredZones(getData.requiredZones);
-        if (getData.zoneZooms) {
-          setZoneZooms(getData.zoneZooms);
-          zoneZoomsRef.current = getData.zoneZooms; // sync ref immediately — no stale closure
-        }
-
-        if (currentStatus === 'IN_PROGRESS') {
-          if (getData.active) {
-            setSubmission(getData.active);
+    if (currentStatus === 'IN_PROGRESS') {
+      // Try to resume existing submission
+      fetch(`/api/units/${unitId}/work`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.active) {
+            setSubmission(data.active);
             setStep('working');
-            return;
+          } else {
+            // No active submission — create one
+            return fetch(`/api/units/${unitId}/work`, { method: 'POST' })
+              .then(r => r.json())
+              .then(d => { setSubmission(d); setStep('working'); });
           }
-          // No active submission — create one
-          const postRes = await fetch(`/api/units/${unitId}/work`, { method: 'POST' });
-          const postData = await postRes.json();
-          setSubmission(postData);
-          setStep('working');
-          return;
-        }
+        })
+        .catch(() => setStep('idle'));
+      return;
+    }
 
-        // PENDING — auto-start work
-        const postRes  = await fetch(`/api/units/${unitId}/work`, { method: 'POST' });
-        const postData = await postRes.json();
-        if (postData?.id) {
-          setSubmission(postData);
+    // PENDING — auto-start work
+    fetch(`/api/units/${unitId}/work`, { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data?.id) {
+          setSubmission(data);
           setStep('working');
         } else {
           setStep('idle');
         }
-      } catch {
-        setStep('idle');
-      }
-    };
-
-    initWork();
+      })
+      .catch(() => setStep('idle'));
   }, [unitId, currentStatus]);
 
   // ── manual start (fallback) ────────────────────────────────────────────────
@@ -213,11 +191,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     prevFrameRef.current = null;
     setStableMs(0);
     setAutoCountdown(null);
-    // Reset zoom + distance hint
-    setZoomLevel(1);
-    setNativeZoom(false);
-    lastPinchRef.current = null;
-    setDistanceHint(null);
     // Stop stream
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
@@ -251,39 +224,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
       ctx.drawImage(video, 0, 0, 160, 120);
       const curr = ctx.getImageData(0, 0, 160, 120);
-
-      // ── Distance guidance: estimate board coverage via adaptive brightness threshold ──
-      // Algorithm: find max brightness in frame → count pixels above 40% of max
-      // (the PCB is lighter than the dark background/table in most factory setups).
-      // Coverage ratio drives the "move closer / move back" hint.
-      {
-        let maxBright = 0;
-        const grays = new Float32Array(curr.data.length >> 2);
-        for (let i = 0, j = 0; i < curr.data.length; i += 4, j++) {
-          const g = 0.299 * curr.data[i] + 0.587 * curr.data[i + 1] + 0.114 * curr.data[i + 2];
-          grays[j] = g;
-          if (g > maxBright) maxBright = g;
-        }
-        // Adaptive threshold: 40% of the brightest pixel in the frame
-        const thresh = maxBright * 0.40;
-        let brightCount = 0;
-        for (let j = 0; j < grays.length; j++) { if (grays[j] > thresh) brightCount++; }
-        const coverage = brightCount / grays.length; // 0–1
-
-        // Zone-specific coverage targets
-        // full board: PCB should fill 30–72% of the frame
-        // strip (top/bottom): zoomed in, PCB fills 45–88%
-        const captureZone = (window as unknown as Record<string, string>)['__captureZone'] || 'full';
-        const [minCov, maxCov] = captureZone === 'full' ? [0.30, 0.72] : [0.45, 0.88];
-
-        if (coverage < minCov) {
-          setDistanceHint('closer');
-        } else if (coverage > maxCov) {
-          setDistanceHint('back');
-        } else {
-          setDistanceHint('good');
-        }
-      }
 
       if (prevFrameRef.current) {
         const diff = getFrameDiff(prevFrameRef.current, curr);
@@ -319,11 +259,9 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
               cap.getContext('2d')?.drawImage(vid, 0, 0);
               cap.toBlob(blob => {
                 if (!blob) return;
-                // Use a ref-captured zone name to avoid stale closure
-                const zoneName = (window as unknown as Record<string, string>)['__captureZone'] || 'full';
-                const file = new File([blob], `${zoneName}.jpg`, { type: 'image/jpeg' });
-                setCapturedImages(prev => ({ ...prev, [zoneName]: file }));
-                setPreviewUrls(prev   => ({ ...prev, [zoneName]: URL.createObjectURL(file) }));
+                const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
+                setCapturedImage(file);
+                setPreviewUrl(URL.createObjectURL(file));
                 // stop stream inline so we don't depend on stopCamera ref
                 if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null; }
                 streamRef.current?.getTracks().forEach(t => t.stop());
@@ -348,46 +286,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraReady, autoCapture]);
 
-  // ── Detect native zoom capability once camera stream is ready ───────────────
-  // Also applies the auto-zoom for the current zone immediately after detection.
-  useEffect(() => {
-    if (!cameraReady || !streamRef.current) return;
-    const track = streamRef.current.getVideoTracks()[0];
-    if (!track) return;
-    // getCapabilities() is not available on all browsers (iOS Safari lacks it)
-    const caps = (track.getCapabilities as (() => Record<string, unknown>) | undefined)?.();
-    let detectedMax = 5;
-    if (caps && caps['zoom']) {
-      const z = caps['zoom'] as { min?: number; max?: number };
-      setNativeZoom(true);
-      detectedMax = Math.min(z.max ?? 8, 8);
-      setMaxZoom(detectedMax);
-    } else {
-      // No native zoom — CSS scale fallback, allow up to 5×
-      setNativeZoom(false);
-      detectedMax = 5;
-      setMaxZoom(5);
-    }
-    // Auto-zoom: apply the suggested zoom for this zone (clamped to device max)
-    const target = Math.min(suggestedZoomRef.current, detectedMax);
-    if (target > 1) setZoomLevel(target);
-  }, [cameraReady]);
-
-  // ── Apply zoom level — native API or CSS scale on video element ───────────
-  useEffect(() => {
-    if (!cameraReady) return;
-    if (nativeZoom && streamRef.current) {
-      // Hardware zoom via MediaStream API (Android Chrome)
-      const track = streamRef.current.getVideoTracks()[0];
-      if (track) {
-        track.applyConstraints({
-          advanced: [{ zoom: zoomLevel } as MediaTrackConstraintSet],
-        }).catch(() => { /* silently ignore if not supported mid-stream */ });
-      }
-    }
-    // CSS scale is applied directly via inline style on the <video> element below
-  }, [zoomLevel, nativeZoom, cameraReady]);
-
   // videoRefCallback: called by React the instant the <video> DOM element is created.
   // This is more reliable than useEffect because React guarantees it fires synchronously
   // after mount — no timing gap, no null-ref race condition.
@@ -402,32 +300,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     }
   }, []);
 
-  // ── Pinch-to-zoom touch handlers ─────────────────────────────────────────
-  function handlePinchStart(e: React.TouchEvent) {
-    if (e.touches.length !== 2) return;
-    const dx = e.touches[0].clientX - e.touches[1].clientX;
-    const dy = e.touches[0].clientY - e.touches[1].clientY;
-    lastPinchRef.current = Math.sqrt(dx * dx + dy * dy);
-  }
-  function handlePinchMove(e: React.TouchEvent) {
-    if (e.touches.length !== 2 || lastPinchRef.current === null) return;
-    const dx = e.touches[0].clientX - e.touches[1].clientX;
-    const dy = e.touches[0].clientY - e.touches[1].clientY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const ratio = dist / lastPinchRef.current;
-    lastPinchRef.current = dist;
-    setZoomLevel(prev => +Math.max(1, Math.min(maxZoom, prev * ratio)).toFixed(2));
-  }
-  function handlePinchEnd() { lastPinchRef.current = null; }
-
   async function openCamera() {
     setError('');
-    const zone = requiredZones[currentZoneIdx] ?? 'full';
-    // Store current zone so auto-capture closure can read it without stale ref
-    (window as unknown as Record<string, string>)['__captureZone'] = zone;
-    // Store suggested zoom for this zone — read from REF (never stale even in auto-open effect)
-    suggestedZoomRef.current = zoneZoomsRef.current[zone] ?? 1;
-    setZoomLevel(1); // reset first, will be set to suggested once cameraReady fires
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -452,70 +326,81 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     canvas.getContext('2d')?.drawImage(video, 0, 0);
     canvas.toBlob(blob => {
       if (!blob) { setError('Failed to capture photo. Please try again.'); return; }
-      const zone = requiredZones[currentZoneIdx] ?? 'full';
-      const file = new File([blob], `${zone}.jpg`, { type: 'image/jpeg' });
-      setCapturedImages(prev => ({ ...prev, [zone]: file }));
-      setPreviewUrls(prev   => ({ ...prev, [zone]: URL.createObjectURL(file) }));
+      const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
+      setCapturedImage(file);
+      setPreviewUrl(URL.createObjectURL(file));
       stopCamera();
     }, 'image/jpeg', 0.92);
   }
 
   function retakePhoto() {
-    const zone = requiredZones[currentZoneIdx] ?? 'full';
-    setCapturedImages(prev => { const n = { ...prev }; delete n[zone]; return n; });
-    setPreviewUrls(prev   => { const n = { ...prev }; delete n[zone]; return n; });
-    setEnhancedBlobs(prev => { const n = { ...prev }; delete n[zone]; return n; });
-    // Camera auto-opens via useEffect watching capturedImages[zone] becoming undefined
+    setCapturedImage(null);
+    setPreviewUrl('');
   }
 
-  // ── submit to AI ──────────────────────────────────────────────────────────
+  // ── multi-zone: confirm current photo and advance to next zone ───────────
+  function confirmAndNext() {
+    if (!capturedImage) return;
+    const zone = zones[photoStep] ?? 'full';
+    setZonePhotos(prev => ({ ...prev, [zone]: capturedImage }));
+    setCapturedImage(null);
+    setPreviewUrl('');
+    setEnhancedBlob(null);
+    setPhotoStep(p => p + 1);
+  }
+
+  // ── submit to AI (single-zone — backward compatible) ──────────────────────
   async function submitForAI() {
-    if (!submission) return;
-    setStep('analyzing');
-    setError('');
-
+    if (!capturedImage || !submission) return;
+    const fileToSend = enhancedBlob
+      ? new File([enhancedBlob], 'capture.jpg', { type: 'image/jpeg' })
+      : capturedImage;
     const fd = new FormData();
+    fd.append('image', fileToSend);
     fd.append('submissionId', submission.id);
-
-    // Send each zone's photo (enhanced if available, else original)
-    for (const zone of requiredZones) {
-      const enhBlob = enhancedBlobs[zone];
-      const origFile = capturedImages[zone];
-      if (enhBlob) {
-        fd.append(zone === 'full' ? 'image' : `image_${zone}`,
-          new File([enhBlob], `${zone}.jpg`, { type: 'image/jpeg' }));
-      } else if (origFile) {
-        fd.append(zone === 'full' ? 'image' : `image_${zone}`, origFile);
-      }
-    }
-
+    setStep('analyzing'); setError('');
     try {
       const res = await fetch(`/api/units/${unitId}/work`, { method: 'PUT', body: fd });
       const data = await res.json();
       setResult({ result: data.result, issues: data.issues ?? [], summary: data.summary });
       setStep('result');
-      if (data.result === 'PASS') {
-        setTimeout(() => router.refresh(), 2000);
-      }
+      if (data.result === 'PASS') setTimeout(() => router.refresh(), 2000);
     } catch {
       setError('Submission failed. Please try again.');
       setStep('open');
     }
   }
 
-  // ── Auto-open camera when entering a zone with no photo yet ──────────────
-  // MUST be before any early returns to satisfy React Rules of Hooks.
-  // Fires when: step becomes 'open', currentZoneIdx changes, or a photo is deleted (retake)
-  const currentZoneHasPhoto = !!capturedImages[requiredZones[currentZoneIdx] ?? 'full'];
-  useEffect(() => {
-    if (step !== 'open') return;
-    if (currentZoneHasPhoto) return;        // already have a photo for this zone
-    if (cameraOpen || streamRef.current) return; // camera already running
-    // Short delay so the panel has time to render before the camera permission dialog
-    const t = setTimeout(() => openCamera(), 300);
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, currentZoneIdx, currentZoneHasPhoto]);
+  // ── submit all zone photos (multi-zone) ───────────────────────────────────
+  async function submitAllZones(photos: Record<string, File>) {
+    if (!submission || Object.keys(photos).length === 0) return;
+    setStep('analyzing'); setError('');
+    const fd = new FormData();
+    fd.append('submissionId', submission.id);
+    if (photos['full'])   fd.append('image',  photos['full']);
+    if (photos['top'])    fd.append('file2',  photos['top']);
+    if (photos['bottom']) fd.append('file3',  photos['bottom']);
+    try {
+      const res = await fetch(`/api/units/${unitId}/work`, { method: 'PUT', body: fd });
+      const data = await res.json();
+      setResult({ result: data.result, issues: data.issues ?? [], summary: data.summary });
+      setStep('result');
+      if (data.result === 'PASS') setTimeout(() => router.refresh(), 2000);
+    } catch {
+      setError('Submission failed. Please try again.');
+      setStep('open');
+    }
+  }
+
+  // ── last zone: capture + immediately submit ───────────────────────────────
+  function submitLastZonePhoto() {
+    if (!capturedImage || !submission) return;
+    const zone = zones[photoStep] ?? 'full';
+    const finalPhotos = { ...zonePhotos, [zone]: capturedImage };
+    setZonePhotos(finalPhotos);
+    setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null);
+    submitAllZones(finalPhotos);
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   //  RENDER
@@ -595,25 +480,23 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
         {/* Per-component breakdown */}
         {issues.length > 0 && (() => {
-          // Helpers for the 6-status system (inc. CANNOT_CONFIRM)
+          // Helpers for the 5-status system
           const statusMeta: Record<string, { bg: string; border: string; text: string; icon: string; label: string }> = {
-            PRESENT:          { bg: 'rgba(34,197,94,0.06)',   border: 'rgba(34,197,94,0.18)',   text: '#4ade80', icon: '✅', label: 'OK'            },
-            MISSING:          { bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',    text: '#f87171', icon: '❌', label: 'MISSING'       },
-            DEFECTIVE:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '⚠️', label: 'DEFECTIVE'    },
-            WRONG_ORIENTATION:{ bg: 'rgba(251,146,60,0.07)',  border: 'rgba(251,146,60,0.2)',   text: '#fb923c', icon: '🔄', label: 'ORIENTATION'   },
-            SOLDER_ISSUE:     { bg: 'rgba(192,132,252,0.07)', border: 'rgba(192,132,252,0.2)',  text: '#c084fc', icon: '🔧', label: 'SOLDER'        },
-            MISPLACED:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '📍', label: 'MISPLACED'     },
-            CANNOT_CONFIRM:   { bg: 'rgba(251,191,36,0.06)',  border: 'rgba(251,191,36,0.15)',  text: '#fbbf24', icon: '🔍', label: 'UNCONFIRMED'   },
+            PRESENT:          { bg: 'rgba(34,197,94,0.06)',   border: 'rgba(34,197,94,0.18)',   text: '#4ade80', icon: '✅', label: 'OK'          },
+            MISSING:          { bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',    text: '#f87171', icon: '❌', label: 'MISSING'     },
+            DEFECTIVE:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '⚠️', label: 'DEFECTIVE'  },
+            WRONG_ORIENTATION:{ bg: 'rgba(251,146,60,0.07)',  border: 'rgba(251,146,60,0.2)',   text: '#fb923c', icon: '🔄', label: 'ORIENTATION' },
+            SOLDER_ISSUE:     { bg: 'rgba(192,132,252,0.07)', border: 'rgba(192,132,252,0.2)',  text: '#c084fc', icon: '🔧', label: 'SOLDER'     },
+            MISPLACED:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '📍', label: 'MISPLACED'  },
           };
           const getMeta = (s: string) => statusMeta[s] ?? statusMeta['DEFECTIVE'];
 
-          const failIssues    = issues.filter(c => c.status !== 'PRESENT' && c.status !== 'CANNOT_CONFIRM');
-          const unconfirmed   = issues.filter(c => c.status === 'CANNOT_CONFIRM');
-          const okIssues      = issues.filter(c => c.status === 'PRESENT');
+          const failIssues = issues.filter(c => c.status !== 'PRESENT');
+          const okIssues   = issues.filter(c => c.status === 'PRESENT');
 
           return (
             <div className="px-4 pb-4 space-y-4">
-              {/* Confirmed failures first */}
+              {/* Issues first */}
               {failIssues.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-[11px] font-semibold uppercase tracking-widest text-red-400/70">
@@ -644,36 +527,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 </div>
               )}
 
-              {/* Cannot-confirm items (amber, not red) */}
-              {unconfirmed.length > 0 && (
-                <details className="group" open>
-                  <summary className="text-[11px] font-semibold uppercase tracking-widest text-amber-400/80 cursor-pointer select-none list-none flex items-center gap-1.5">
-                    <span className="group-open:rotate-90 inline-block transition-transform">▶</span>
-                    🔍 {unconfirmed.length} could not verify at this photo scale
-                  </summary>
-                  <div className="mt-2 space-y-1.5">
-                    {unconfirmed.map((issue, i) => {
-                      const m = getMeta('CANNOT_CONFIRM');
-                      return (
-                        <div key={i} className="rounded-xl p-3" style={{ background: m.bg, border: `1px solid ${m.border}` }}>
-                          <div className="flex items-start gap-3">
-                            <span className="text-base shrink-0 mt-0.5">🔍</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="text-sm font-medium text-white">{issue.name}</p>
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: m.border, color: m.text }}>UNCONFIRMED</span>
-                              </div>
-                              {issue.note && <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{issue.note}</p>}
-                              <p className="text-[10px] text-amber-400/60 mt-1">Supervisor spot-check recommended for this component</p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </details>
-              )}
-
               {/* OK components collapsed */}
               {okIssues.length > 0 && (
                 <details className="group">
@@ -701,12 +554,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
           {!pass ? (
             <button
               type="button"
-              onClick={() => {
-                // Reset all zone photos and restart from step 0
-                setCapturedImages({}); setPreviewUrls({}); setEnhancedBlobs({});
-                setCurrentZoneIdx(0);
-                setResult(null); setStep('open');
-              }}
+              onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); setZonePhotos({}); setPhotoStep(0); setResult(null); setStep('open'); }}
               className="w-full py-4 rounded-2xl font-bold text-sm"
               style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
             >
@@ -735,20 +583,11 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
         </div>
         <div className="text-center space-y-1">
           <p className="text-white font-semibold text-lg">AI is inspecting…</p>
-          <p className="text-zinc-500 text-sm">
-            {requiredZones.length > 1
-              ? `Analysing ${requiredZones.length} photos · CLAHE · Component matching`
-              : 'Checking component placement and quality'}
-          </p>
+          <p className="text-zinc-500 text-sm">Checking component placement and quality</p>
         </div>
-        {/* Show thumbnails of all submitted zone photos */}
-        {Object.keys(previewUrls).length > 0 && (
-          <div className="flex gap-2 opacity-30">
-            {requiredZones.filter(z => previewUrls[z]).map(z => (
-              <div key={z} className="rounded-lg overflow-hidden relative" style={{ width: 80, height: 60 }}>
-                <Image src={previewUrls[z]} alt={z} fill className="object-cover" />
-              </div>
-            ))}
+        {previewUrl && (
+          <div className="rounded-xl overflow-hidden opacity-30 w-32 h-24 relative">
+            <Image src={previewUrl} alt="Analyzing" fill className="object-cover" />
           </div>
         )}
       </div>
@@ -757,8 +596,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
   // ── open: full-screen work panel ───────────────────────────────────────────
   if (step === 'open') {
-    const allDone = requiredZones.every(z => !!capturedImages[z]);
-
     return (
       <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: '#0a0a0f' }}>
         {/* Header */}
@@ -787,214 +624,162 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
           </button>
         </div>
 
-        {/* Body — extra bottom padding when sticky footer is visible */}
-        <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto" style={{ paddingBottom: allDone ? 96 : 'max(calc(env(safe-area-inset-bottom) + 16px), 24px)' }}>
+        {/* Body */}
+        <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto" style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 16px), 24px)' }}>
           {error && (
             <div className="rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
               {error}
             </div>
           )}
 
-          {/* ── Step progress bar (only when multi-zone) ── */}
-          {requiredZones.length > 1 && (
-            <div className="space-y-2">
+          {/* ── Multi-zone step indicator ───────────────────────────────────── */}
+          {zones.length > 1 && (
+            <div className="space-y-1.5">
               <div className="flex gap-1.5">
-                {requiredZones.map((z, i) => {
-                  const done = !!capturedImages[z];
-                  const active = i === currentZoneIdx;
-                  return (
-                    <div
-                      key={z}
-                      className="flex-1 rounded-full h-1.5 transition-all"
-                      style={{
-                        background: done ? '#22c55e' : active ? '#38bdf8' : 'rgba(255,255,255,0.1)',
-                      }}
-                    />
-                  );
-                })}
+                {zones.map((z, i) => (
+                  <div
+                    key={z}
+                    className="h-1.5 rounded-full flex-1 transition-all duration-300"
+                    style={{
+                      background: i < photoStep
+                        ? '#22c55e'
+                        : i === photoStep
+                        ? '#38bdf8'
+                        : 'rgba(255,255,255,0.1)',
+                    }}
+                  />
+                ))}
               </div>
-              <p className="text-[11px] text-zinc-500 text-center">
-                Photo {Math.min(currentZoneIdx + 1, requiredZones.length)} of {requiredZones.length}
-                {requiredZones.every(z => capturedImages[z]) ? ' — all photos taken ✓' : ''}
+              <p className="text-[10px] text-zinc-500 text-center">
+                {photoStep >= zones.length
+                  ? '✅ All photos captured'
+                  : `Photo ${photoStep + 1} of ${zones.length} — ${ZONE_INFO[zones[photoStep]]?.title ?? zones[photoStep]}`}
               </p>
             </div>
           )}
 
-          {/* ── Current zone capture / preview ── */}
-          {(() => {
-            const zone    = requiredZones[currentZoneIdx] ?? 'full';
-            const meta    = ZONE_META[zone] ?? ZONE_META['full'];
-            const thisUrl = previewUrls[zone];
-
-            return thisUrl ? (
-              /* Photo preview for this zone */
-              <div className="flex-1 flex flex-col gap-3">
-                <div className="flex items-center gap-2 px-1">
-                  <span className="text-base">{meta.icon}</span>
-                  <p className="text-sm font-semibold text-white">{meta.label}</p>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded text-green-400 ml-auto"
-                    style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }}>✓ captured</span>
-                </div>
-
-                <div className="relative rounded-2xl overflow-hidden" style={{ minHeight: 200, border: '1px solid rgba(14,165,233,0.2)' }}>
-                  <ImageEnhancer
-                    src={thisUrl}
-                    onEnhancedBlob={blob => setEnhancedBlobs(prev => ({ ...prev, [zone]: blob }))}
-                    minHeight={200}
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={retakePhoto}
-                    className="flex-1 py-3 rounded-2xl text-sm font-medium text-zinc-400"
-                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-                  >
-                    Retake
-                  </button>
-
-                  {/* Next zone or Submit */}
-                  {currentZoneIdx < requiredZones.length - 1 ? (
-                    <button
-                      type="button"
-                      onClick={() => setCurrentZoneIdx(i => i + 1)}
-                      className="flex-1 py-3 rounded-2xl text-sm font-bold text-sky-400"
-                      style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.3)' }}
-                    >
-                      Next photo →
-                    </button>
-                  ) : null}
-                </div>
-
-                {/* Zone thumbnails strip (multi-zone only) */}
-                {requiredZones.length > 1 && (
-                  <div className="flex gap-2 mt-1">
-                    {requiredZones.map((z, i) => {
-                      const zm   = ZONE_META[z] ?? ZONE_META['full'];
-                      const url  = previewUrls[z];
-                      const done = !!capturedImages[z];
-                      return (
-                        <button
-                          key={z}
-                          type="button"
-                          onClick={() => setCurrentZoneIdx(i)}
-                          className="flex-1 rounded-xl overflow-hidden relative"
-                          style={{
-                            height: 56,
-                            border: i === currentZoneIdx
-                              ? '1.5px solid #38bdf8'
-                              : done ? '1.5px solid rgba(34,197,94,0.4)' : '1.5px solid rgba(255,255,255,0.1)',
-                            background: 'rgba(0,0,0,0.4)',
-                          }}
-                        >
-                          {url ? (
-                            <Image src={url} alt={zm.label} fill className="object-cover opacity-70" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-lg">{zm.icon}</div>
-                          )}
-                          <div className="absolute bottom-0.5 left-0 right-0 text-center text-[8px] font-bold text-white/80 leading-tight px-0.5">
-                            {zm.label}{done && !url ? '' : ''}
-                          </div>
-                          {done && (
-                            <div className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-green-500 flex items-center justify-center">
-                              <span style={{ fontSize: 7, lineHeight: 1 }}>✓</span>
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+          {/* ── All zones captured — summary + submit ──────────────────────── */}
+          {photoStep >= zones.length ? (
+            <div className="flex-1 flex flex-col gap-4">
+              <div className="text-center space-y-1 pt-2">
+                <p className="text-green-400 font-bold text-base">✅ All {zones.length} photos captured</p>
+                <p className="text-zinc-500 text-xs">Ready for AI analysis</p>
               </div>
-            ) : (
-              /* Photo capture prompt for this zone */
-              <div className="flex-1 flex flex-col items-center justify-center gap-5">
-                <div className="text-center space-y-2">
-                  <div
-                    className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto text-4xl"
-                    style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.2)' }}
-                  >
-                    {meta.icon}
-                  </div>
-                  <p className="text-white font-semibold">{meta.label}</p>
-                  <p className="text-zinc-400 text-sm leading-relaxed max-w-xs">{meta.instruction}</p>
-                  <p className="text-zinc-600 text-xs">Hold phone at {meta.height}</p>
+              {/* Thumbnails */}
+              <div className={`grid gap-2 ${zones.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                {zones.map(z => {
+                  const photo = zonePhotos[z];
+                  const url   = photo ? URL.createObjectURL(photo) : null;
+                  const info  = ZONE_INFO[z] ?? { icon: '📷', title: z };
+                  return (
+                    <div key={z} className="relative rounded-xl overflow-hidden flex flex-col">
+                      <div className="relative w-full" style={{ aspectRatio: '4/3', background: 'rgba(255,255,255,0.04)' }}>
+                        {url && <Image src={url} alt={z} fill className="object-cover" unoptimized />}
+                      </div>
+                      <p className="text-[10px] text-center py-1 text-zinc-400 font-medium">{info.icon} {info.title.split('—')[0].trim()}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={() => submitAllZones(zonePhotos)}
+                className="w-full py-4 rounded-2xl font-bold text-base"
+                style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
+              >
+                ✅ Submit All — Run AI Check
+              </button>
+              <button
+                type="button"
+                onClick={() => { setZonePhotos({}); setPhotoStep(0); setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); }}
+                className="w-full py-3 rounded-2xl text-sm font-medium text-zinc-400"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                Retake all photos
+              </button>
+            </div>
+          ) : !previewUrl ? (
+            /* ── Photo capture area ─────────────────────────────────────────── */
+            <div className="flex-1 flex flex-col items-center justify-center gap-6">
+              <div className="text-center space-y-2">
+                <div
+                  className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto text-4xl"
+                  style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.2)' }}
+                >
+                  {ZONE_INFO[zones[photoStep] ?? 'full']?.icon ?? '📷'}
                 </div>
+                <p className="text-white font-semibold">
+                  {ZONE_INFO[zones[photoStep] ?? 'full']?.title ?? 'Take a photo'}
+                </p>
+                <p className="text-zinc-500 text-xs px-4">
+                  {ZONE_INFO[zones[photoStep] ?? 'full']?.hint ?? 'The AI will verify component placement and quality'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openCamera}
+                className="w-full py-6 rounded-2xl flex flex-col items-center gap-3 text-sky-400 font-semibold text-sm"
+                style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}
+              >
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+                Open Camera
+              </button>
+            </div>
+          ) : (
+            /* ── Photo preview + action buttons ─────────────────────────────── */
+            <div className="flex-1 flex flex-col gap-3">
+              <div className="relative rounded-2xl overflow-hidden" style={{ minHeight: 220, border: '1px solid rgba(14,165,233,0.2)' }}>
+                <ImageEnhancer
+                  src={previewUrl}
+                  onEnhancedBlob={setEnhancedBlob}
+                  minHeight={220}
+                />
+              </div>
 
-                {/* Zone thumbnails strip (multi-zone only) — shows already-captured zones */}
-                {requiredZones.length > 1 && (
-                  <div className="flex gap-2 w-full">
-                    {requiredZones.map((z, i) => {
-                      const zm   = ZONE_META[z] ?? ZONE_META['full'];
-                      const url  = previewUrls[z];
-                      const done = !!capturedImages[z];
-                      return (
-                        <button
-                          key={z}
-                          type="button"
-                          onClick={() => setCurrentZoneIdx(i)}
-                          className="flex-1 rounded-xl overflow-hidden relative"
-                          style={{
-                            height: 48,
-                            border: i === currentZoneIdx
-                              ? '1.5px solid #38bdf8'
-                              : done ? '1.5px solid rgba(34,197,94,0.4)' : '1.5px solid rgba(255,255,255,0.1)',
-                            background: 'rgba(0,0,0,0.4)',
-                          }}
-                        >
-                          {url ? (
-                            <Image src={url} alt={zm.label} fill className="object-cover opacity-60" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-base">{zm.icon}</div>
-                          )}
-                          {done && (
-                            <div className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-green-500 flex items-center justify-center">
-                              <span style={{ fontSize: 7, lineHeight: 1 }}>✓</span>
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Camera auto-opens — show a tap-to-open fallback if it didn't */}
+              {/* Single zone → submit directly. Multi zone → next or submit last */}
+              {zones.length === 1 ? (
                 <button
                   type="button"
-                  onClick={openCamera}
-                  className="w-full py-6 rounded-2xl flex flex-col items-center gap-3 text-sky-400 font-semibold text-sm"
-                  style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}
+                  onClick={submitForAI}
+                  className="w-full py-4 rounded-2xl font-bold text-base"
+                  style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
                 >
-                  <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-                  Opening camera… · Tap here if it doesn&apos;t open
+                  ✅ Submit — Run AI Check
                 </button>
-              </div>
-            );
-          })()}
-        </div>
+              ) : photoStep + 1 < zones.length ? (
+                <button
+                  type="button"
+                  onClick={confirmAndNext}
+                  className="w-full py-4 rounded-2xl font-bold text-base"
+                  style={{ background: 'linear-gradient(135deg, #0ea5e9, #6366f1)', color: 'white' }}
+                >
+                  ✓ Use photo → Next: {ZONE_INFO[zones[photoStep + 1]]?.icon} {ZONE_INFO[zones[photoStep + 1]]?.title ?? zones[photoStep + 1]}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={submitLastZonePhoto}
+                  className="w-full py-4 rounded-2xl font-bold text-base"
+                  style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
+                >
+                  ✅ Submit All — Run AI Check
+                </button>
+              )}
 
-        {/* ── Sticky Submit footer — always visible at bottom when all photos done ── */}
-        {allDone && !cameraOpen && (
-          <div
-            className="flex-shrink-0 px-4 pb-safe"
-            style={{
-              paddingBottom: 'max(env(safe-area-inset-bottom), 16px)',
-              paddingTop: 12,
-              borderTop: '1px solid rgba(255,255,255,0.07)',
-              background: 'rgba(10,10,15,0.96)',
-            }}
-          >
-            <button
-              type="button"
-              onClick={submitForAI}
-              className="w-full py-4 rounded-2xl font-bold text-base"
-              style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
-            >
-              ✅ Submit {requiredZones.length > 1 ? `all ${requiredZones.length} photos` : 'photo'} — Run AI Check
-            </button>
-          </div>
-        )}
+              <button
+                type="button"
+                onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); }}
+                className="w-full py-3 rounded-2xl text-sm font-medium text-zinc-400"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                Retake photo
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Live camera overlay — fixed + z-[200] so it covers the bottom nav (z-50) */}
         {cameraOpen && (
@@ -1072,20 +857,11 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             </div>
 
             {/* Video feed + scanning overlay + shutter button — all in one layer */}
-            <div
-              className="flex-1 relative overflow-hidden bg-black"
-              style={{ minHeight: 0 }}
-              onTouchStart={handlePinchStart}
-              onTouchMove={handlePinchMove}
-              onTouchEnd={handlePinchEnd}
-            >
+            <div className="flex-1 relative overflow-hidden bg-black" style={{ minHeight: 0 }}>
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
                 ref={videoRefCallback}
                 className="w-full h-full object-cover"
-                style={!nativeZoom && zoomLevel > 1
-                  ? { transform: `scale(${zoomLevel})`, transformOrigin: 'center center', transition: 'transform 0.08s ease' }
-                  : undefined}
                 muted
                 playsInline
                 autoPlay
@@ -1108,29 +884,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                     className="absolute inset-0 pointer-events-none"
                     style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 50%, rgba(0,0,0,0.68) 100%)' }}
                   />
-
-                  {/* ── Distance guidance banner ── */}
-                  {distanceHint && distanceHint !== 'good' && (
-                    <div
-                      className="absolute top-3 left-0 right-0 flex justify-center pointer-events-none z-10"
-                    >
-                      <div
-                        className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold"
-                        style={{
-                          background: 'rgba(0,0,0,0.72)',
-                          border: `1px solid ${distanceHint === 'closer' ? 'rgba(251,191,36,0.6)' : 'rgba(251,146,60,0.6)'}`,
-                          color:  distanceHint === 'closer' ? '#fbbf24' : '#fb923c',
-                          backdropFilter: 'blur(8px)',
-                        }}
-                      >
-                        {distanceHint === 'closer' ? (
-                          <><span className="text-lg">↓</span> Move closer</>
-                        ) : (
-                          <><span className="text-lg">↑</span> Move back a little</>
-                        )}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Scan frame — centred, sits above the shutter area */}
                   <div
@@ -1222,56 +975,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                       </button>
                     </div>
 
-                    {/* ── Zoom slider ── */}
-                    <div className="flex flex-col items-center gap-1 w-full max-w-[280px] px-2">
-                      {/* Auto-zoom hint badge */}
-                      {suggestedZoomRef.current > 1 && (
-                        <div className="flex items-center gap-1.5 text-[10px] font-semibold"
-                          style={{ color: zoomLevel === suggestedZoomRef.current ? '#4ade80' : 'rgba(251,191,36,0.8)' }}>
-                          <span>⚡</span>
-                          <span>
-                            {zoomLevel === suggestedZoomRef.current
-                              ? `Auto-zoom ${suggestedZoomRef.current.toFixed(1)}× active`
-                              : `Suggested ${suggestedZoomRef.current.toFixed(1)}× — adjust as needed`}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2 w-full">
-                        {/* − button */}
-                        <button
-                          type="button"
-                          onPointerDown={e => { e.stopPropagation(); setZoomLevel(p => +Math.max(1, p - 0.5).toFixed(1)); }}
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0 select-none"
-                          style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}
-                        >−</button>
-
-                        {/* Slider track */}
-                        <input
-                          type="range"
-                          min={1} max={maxZoom} step={0.1}
-                          value={zoomLevel}
-                          onChange={e => setZoomLevel(+e.target.value)}
-                          className="flex-1 h-1 rounded-full cursor-pointer"
-                          style={{ accentColor: '#38bdf8' }}
-                        />
-
-                        {/* + button */}
-                        <button
-                          type="button"
-                          onPointerDown={e => { e.stopPropagation(); setZoomLevel(p => +Math.min(maxZoom, p + 0.5).toFixed(1)); }}
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0 select-none"
-                          style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}
-                        >+</button>
-
-                        {/* Level badge */}
-                        <span
-                          className="text-xs font-bold shrink-0 w-9 text-right"
-                          style={{ color: zoomLevel > 1 ? '#38bdf8' : 'rgba(255,255,255,0.4)' }}
-                        >{zoomLevel.toFixed(1)}×</span>
-                      </div>
-                    </div>
-
                     {/* Dynamic status label */}
                     <span className="text-xs font-medium text-center px-4" style={{ color: 'rgba(255,255,255,0.65)' }}>
                       {autoCapture
@@ -1281,12 +984,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                           ? 'Hold perfectly still!'
                           : stableMs >= 600
                           ? 'Almost steady — keep holding…'
-                          : distanceHint === 'closer'
-                          ? '↓ Move closer to fill the frame'
-                          : distanceHint === 'back'
-                          ? '↑ Move back a little'
-                          : distanceHint === 'good'
-                          ? '✓ Good distance — hold steady'
                           : 'Align PCB · hold steady to auto-capture'
                         : 'Tap button to capture'}
                     </span>
