@@ -319,7 +319,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const summaries: string[] = [];
     let anyFail = false;
 
-    for (const [zone, items] of Array.from(componentsByZone.entries())) {
+    // Sizes to skip until RPi high-res cameras arrive.
+    // Remove 'mini' and 'micro' from this set once hardware is in place.
+    const SKIP_SIZES = new Set(['micro', 'mini']);
+    const isSkippedSize = (item: typeof componentItems[number]): boolean => {
+      if (!item.componentPositions) return false;
+      try {
+        const positions = JSON.parse(item.componentPositions as string) as MarkerPos[];
+        return positions.length > 0 && positions.every(p => SKIP_SIZES.has(p.size ?? ''));
+      } catch { return false; }
+    };
+
+    for (const [zone, zoneItemsAll] of Array.from(componentsByZone.entries())) {
+      // Skip micro/mini-only components entirely — phone cameras can't resolve them reliably
+      const items = zoneItemsAll.filter(item => !isSkippedSize(item));
+
       const photo = photoMap[zone] ?? photoMap['full'];
       if (!photo) continue;
 
