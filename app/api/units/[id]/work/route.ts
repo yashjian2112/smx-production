@@ -433,7 +433,7 @@ STRICT RULES:
 — Crops are ground truth — do NOT override crop evidence with full-photo guessing.` });
 
       const msg = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-5',
         max_tokens: 2048,
         messages: [{ role: 'user', content: blocks }],
       });
@@ -482,7 +482,7 @@ Respond ONLY with valid JSON — no markdown fences:
 { "overall": "PASS" or "FAIL", "components": [], "summary": "1–2 sentence visual assessment" }
 RULES: If board looks correctly assembled with no obvious defects, overall = PASS. Only FAIL on clear visible problems.` });
         const gMsg = await anthropic.messages.create({
-          model: 'claude-3-5-sonnet-20241022',
+          model: 'claude-sonnet-4-5',
           max_tokens: 512,
           messages: [{ role: 'user', content: gBlocks }],
         });
