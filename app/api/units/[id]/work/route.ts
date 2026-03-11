@@ -374,7 +374,7 @@ STRICT RULES:
 — Crops are ground truth — do NOT override crop evidence with full-photo guessing.` });
 
       const msg = await anthropic.messages.create({
-        model: 'claude-opus-4-5',
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 2048,
         messages: [{ role: 'user', content: blocks }],
       });
@@ -394,8 +394,12 @@ STRICT RULES:
     analysisSummary = summaries.join(' | ') || 'Analysis complete.';
 
   } catch (err) {
-    console.error('Vision error:', err);
-    analysisSummary = 'AI analysis unavailable — image saved, manual review required.';
+    // Log full error so it appears in Vercel Function Logs
+    console.error('[AI Vision ERROR]', err instanceof Error ? err.message : err);
+    if (err instanceof Error && err.stack) console.error(err.stack);
+    // IMPORTANT: default to FAIL — never silently pass a unit when AI couldn't run
+    analysisResult  = 'FAIL';
+    analysisSummary = 'AI_UNAVAILABLE: image saved, manual review required by manager.';
   }
 
   const now          = new Date();

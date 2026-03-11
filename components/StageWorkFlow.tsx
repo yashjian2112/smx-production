@@ -458,8 +458,12 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
   // ── result screen (full-screen) ────────────────────────────────────────────
   if (step === 'result' && result) {
-    const pass = result.result === 'PASS';
-    const issues = result.issues as Issue[];
+    const pass       = result.result === 'PASS';
+    const aiError    = result.summary?.startsWith('AI_UNAVAILABLE');
+    const issues     = result.issues as Issue[];
+    const displaySummary = aiError
+      ? 'Photo saved successfully. The AI inspection service is currently unavailable — a manager must review this manually.'
+      : result.summary;
 
     return (
       <div
@@ -468,12 +472,18 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
       >
         {/* Result banner */}
         <div className="p-6 text-center flex-shrink-0">
-          <div className="text-5xl mb-3">{pass ? '✅' : '❌'}</div>
-          <p className={`text-xl font-bold ${pass ? 'text-green-400' : 'text-red-400'}`}>
-            {pass ? 'All Clear — Stage Complete!' : 'Component Issues Found'}
+          <div className="text-5xl mb-3">{aiError ? '⚠️' : pass ? '✅' : '❌'}</div>
+          <p className={`text-xl font-bold ${aiError ? 'text-amber-400' : pass ? 'text-green-400' : 'text-red-400'}`}>
+            {aiError ? 'Photo Saved — Awaiting Review' : pass ? 'All Clear — Stage Complete!' : 'Component Issues Found'}
           </p>
-          <p className="text-zinc-400 text-sm mt-2 max-w-sm mx-auto leading-relaxed">{result.summary}</p>
-          {pass && submission?.buildTimeSec && (
+          <p className="text-zinc-400 text-sm mt-2 max-w-sm mx-auto leading-relaxed">{displaySummary}</p>
+          {aiError && (
+            <div className="mt-3 mx-auto max-w-xs rounded-xl px-4 py-2 text-xs font-medium text-amber-300"
+              style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+              📋 Unit held for manager approval
+            </div>
+          )}
+          {pass && !aiError && submission?.buildTimeSec && (
             <p className="text-zinc-500 text-xs mt-2">Build time: {fmtDuration(submission.buildTimeSec)}</p>
           )}
         </div>
@@ -550,8 +560,26 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
         })()}
 
         {/* Actions */}
-        <div className="p-4 pb-safe mt-auto" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
-          {!pass ? (
+        <div className="p-4 pb-safe mt-auto space-y-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
+          {aiError ? (
+            /* AI unavailable — photo saved, manager will review */
+            <>
+              <div
+                className="w-full py-4 rounded-2xl text-center text-sm font-semibold text-amber-400"
+                style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)' }}
+              >
+                ⏳ Waiting for manager review
+              </div>
+              <button
+                type="button"
+                onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); setZonePhotos({}); setPhotoStep(0); setResult(null); setStep('open'); }}
+                className="w-full py-3 rounded-2xl font-semibold text-sm text-zinc-400"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                Retake photo
+              </button>
+            </>
+          ) : !pass ? (
             <button
               type="button"
               onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); setZonePhotos({}); setPhotoStep(0); setResult(null); setStep('open'); }}
