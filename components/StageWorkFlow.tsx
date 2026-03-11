@@ -481,8 +481,10 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     const pass       = result.result === 'PASS';
     const aiError    = result.summary?.startsWith('AI_UNAVAILABLE');
     const issues     = result.issues as Issue[];
+    // Extract the error hint from the summary (everything after 'AI_UNAVAILABLE: ')
+    const aiErrorDetail = aiError ? (result.summary ?? '').replace('AI_UNAVAILABLE: ', '') : '';
     const displaySummary = aiError
-      ? 'Photo saved successfully. The AI inspection service is currently unavailable — a manager must review this manually.'
+      ? 'Photo saved. AI inspection failed — a manager must review this unit manually.'
       : result.summary;
 
     return (
@@ -498,9 +500,17 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
           </p>
           <p className="text-zinc-400 text-sm mt-2 max-w-sm mx-auto leading-relaxed">{displaySummary}</p>
           {aiError && (
-            <div className="mt-3 mx-auto max-w-xs rounded-xl px-4 py-2 text-xs font-medium text-amber-300"
-              style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
-              📋 Unit held for manager approval
+            <div className="mt-3 mx-auto max-w-xs space-y-2">
+              <div className="rounded-xl px-4 py-2 text-xs font-medium text-amber-300"
+                style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+                📋 Unit held for manager approval
+              </div>
+              {aiErrorDetail && (
+                <div className="rounded-xl px-3 py-2 text-[11px] text-zinc-500 text-left leading-relaxed"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  🔧 {aiErrorDetail}
+                </div>
+              )}
             </div>
           )}
           {pass && !aiError && submission?.buildTimeSec && (

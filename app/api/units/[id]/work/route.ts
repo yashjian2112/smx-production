@@ -485,11 +485,18 @@ RULES: If board looks correctly assembled with no obvious defects, overall = PAS
 
   } catch (err) {
     // Log full error so it appears in Vercel Function Logs
-    console.error('[AI Vision ERROR]', err instanceof Error ? err.message : err);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error('[AI Vision ERROR]', errMsg);
     if (err instanceof Error && err.stack) console.error(err.stack);
     // IMPORTANT: default to FAIL — never silently pass a unit when AI couldn't run
     analysisResult  = 'FAIL';
-    analysisSummary = 'AI_UNAVAILABLE: image saved, manual review required by manager.';
+    // Include error hint so the manager screen shows what went wrong
+    const isAuthErr  = errMsg.toLowerCase().includes('auth') || errMsg.toLowerCase().includes('api key') || errMsg.toLowerCase().includes('401');
+    const isTimeout  = errMsg.toLowerCase().includes('timeout') || errMsg.toLowerCase().includes('timed out');
+    const errHint    = isAuthErr ? 'API key issue — check ANTHROPIC_API_KEY in Vercel env vars.'
+      : isTimeout ? 'AI request timed out — try a smaller photo or retry.'
+      : `Error: ${errMsg.slice(0, 120)}`;
+    analysisSummary = `AI_UNAVAILABLE: ${errHint}`;
   }
 
   const now          = new Date();
