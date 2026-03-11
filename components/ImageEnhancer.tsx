@@ -273,7 +273,7 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
   return (
     <div
       ref={containerRef}
-      className="relative w-full overflow-hidden select-none"
+      className="relative w-full h-full overflow-hidden select-none"
       style={{ minHeight, touchAction: 'none' }}
       onWheel={handleWheel}
       onPointerDown={handlePointerDown}
