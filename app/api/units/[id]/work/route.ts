@@ -392,6 +392,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       const zoneExpected   = items.reduce((s: number, c: typeof componentItems[number]) => s + (c.expectedCount ?? 1), 0);
       blocks.push({ type: 'text', text:
 `You are a precision PCB quality-control AI for SMX Drives electronic controller manufacturing.
+
+CRITICAL FIRST CHECK — BOARD VERIFICATION:
+Before inspecting components, verify the submitted photo shows an electronic PCB/circuit board.
+If the photo does NOT show a PCB (e.g. random object, person, wall, fan, ceiling, hand, etc.):
+  → overall = "FAIL", components = [], summary = "[NOT_A_BOARD] Photo does not show a PCB — retake with the correct board in frame."
+  Do NOT proceed with component inspection. Return immediately.
+${refImgBuf ? 'Also verify the submitted board matches the reference board type (same PCB layout). If it is a completely different board type, include this in the summary.' : ''}
+
 Inspect the SUBMITTED PHOTO (${zoneLabel}) and verify every component in the manifest below.
 ${refImgBuf ? 'A board reference image has been provided — use it as the gold standard.' : ''}
 ${zone !== 'full' ? `Note: this is a CLOSE-UP photo of the ${zone.toUpperCase()} section — components are larger and more visible.` : ''}
@@ -460,39 +468,53 @@ STRICT RULES:
       }
     }
 
-    // If no checklist items were configured for this stage, run a generic visual check
+    // If no checklist items were configured for this stage
     if (componentsByZone.size === 0) {
-      const genericPhoto = photoMap['full'];
-      if (genericPhoto) {
-        const gBlocks: (IB | TB)[] = [];
-        if (refImgBufAi) {
+      if (refImgBufAi) {
+        // Case A: Board reference exists but no component items — run board-identity check
+        const genericPhoto = photoMap['full'];
+        if (genericPhoto) {
+          const gBlocks: (IB | TB)[] = [];
           gBlocks.push({ type: 'text', text: '══ BOARD REFERENCE (correct completed board) ══' });
           gBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refImgBufAi.toString('base64') } });
-        }
-        const genericBufAi = await toAiJpeg(genericPhoto.buf);
-        gBlocks.push({ type: 'text', text: '══ SUBMITTED PHOTO ══' });
-        gBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: genericBufAi.toString('base64') } });
-        gBlocks.push({ type: 'text', text:
+          const genericBufAi = await toAiJpeg(genericPhoto.buf);
+          gBlocks.push({ type: 'text', text: '══ SUBMITTED PHOTO ══' });
+          gBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: genericBufAi.toString('base64') } });
+          gBlocks.push({ type: 'text', text:
 `You are a PCB quality-control AI for SMX Drives.
 Stage: ${unit.currentStage.replace(/_/g, ' ')} | Serial: ${unit.serialNumber}
-No component manifest has been configured for this stage yet.
-${refImgBuf ? 'Compare the submitted photo against the board reference image.' : 'Inspect the board visually.'}
-Check for obvious assembly issues: missing major components, solder bridges, burnt parts, wrong PCB orientation.
+
+CRITICAL FIRST CHECK:
+1. Verify the submitted photo shows an electronic PCB/circuit board.
+   If NOT a PCB (e.g. random object, person, wall, fan, ceiling, hand, etc.):
+   → overall = "FAIL", components = [], summary = "[NOT_A_BOARD] Photo does not show a PCB — retake with the correct board in frame."
+2. Verify the submitted board matches the reference board (same PCB layout/type).
+   If it is a completely different board type:
+   → overall = "FAIL", components = [], summary = "[NOT_A_BOARD] Submitted board does not match the reference board type."
+
+If the board matches the reference, check for obvious assembly issues: missing major components, solder bridges, burnt parts, wrong orientation.
+No component manifest has been configured yet, so only check for obvious visual defects.
+
 Respond ONLY with valid JSON — no markdown fences:
 { "overall": "PASS" or "FAIL", "components": [], "summary": "1–2 sentence visual assessment" }
-RULES: If board looks correctly assembled with no obvious defects, overall = PASS. Only FAIL on clear visible problems.` });
-        const gMsg = await anthropic.messages.create({
-          model: 'claude-sonnet-4-5',
-          max_tokens: 512,
-          messages: [{ role: 'user', content: gBlocks }],
-        });
-        const gText  = gMsg.content[0].type === 'text' ? gMsg.content[0].text : '';
-        const gMatch = gText.match(/\{[\s\S]*\}/);
-        if (gMatch) {
-          const gParsed = JSON.parse(gMatch[0]);
-          if (gParsed.overall !== 'PASS') anyFail = true;
-          if (gParsed.summary) summaries.push(`[Generic check — no manifest] ${gParsed.summary}`);
+RULES: FAIL if photo is not a PCB or doesn't match reference. FAIL on clear visible defects. PASS only if correct board with no obvious issues.` });
+          const gMsg = await anthropic.messages.create({
+            model: 'claude-sonnet-4-5',
+            max_tokens: 512,
+            messages: [{ role: 'user', content: gBlocks }],
+          });
+          const gText  = gMsg.content[0].type === 'text' ? gMsg.content[0].text : '';
+          const gMatch = gText.match(/\{[\s\S]*\}/);
+          if (gMatch) {
+            const gParsed = JSON.parse(gMatch[0]);
+            if (gParsed.overall !== 'PASS') anyFail = true;
+            if (gParsed.summary) summaries.push(gParsed.summary);
+          }
         }
+      } else {
+        // Case B: No board reference AND no component items — cannot inspect, fail immediately
+        anyFail = true;
+        summaries.push('[NO_CRITERIA] No inspection criteria configured for this stage. Ask an admin to set up the checklist.');
       }
     }
 

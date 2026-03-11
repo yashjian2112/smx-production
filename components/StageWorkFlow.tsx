@@ -480,10 +480,16 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   if (step === 'result' && result) {
     const pass       = result.result === 'PASS';
     const aiError    = result.summary?.startsWith('AI_UNAVAILABLE');
+    const notABoard  = result.summary?.includes('[NOT_A_BOARD]');
+    const noCriteria = result.summary?.startsWith('[NO_CRITERIA]');
     const issues     = result.issues as Issue[];
     // Extract the error hint from the summary (everything after 'AI_UNAVAILABLE: ')
     const aiErrorDetail = aiError ? (result.summary ?? '').replace('AI_UNAVAILABLE: ', '') : '';
-    const displaySummary = aiError
+    const displaySummary = noCriteria
+      ? 'No inspection checklist has been configured for this stage yet. Contact an admin to set up the checklist items.'
+      : notABoard
+      ? 'The photo doesn\'t appear to show a circuit board. Please retake with the correct PCB in the camera frame.'
+      : aiError
       ? 'Photo saved. AI inspection failed — a manager must review this unit manually.'
       : result.summary;
 
@@ -494,11 +500,27 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
       >
         {/* Result banner */}
         <div className="p-6 text-center flex-shrink-0">
-          <div className="text-5xl mb-3">{aiError ? '⚠️' : pass ? '✅' : '❌'}</div>
-          <p className={`text-xl font-bold ${aiError ? 'text-amber-400' : pass ? 'text-green-400' : 'text-red-400'}`}>
-            {aiError ? 'Photo Saved — Awaiting Review' : pass ? 'All Clear — Stage Complete!' : 'Component Issues Found'}
+          <div className="text-5xl mb-3">{noCriteria ? '⚙️' : notABoard ? '🚫' : aiError ? '⚠️' : pass ? '✅' : '❌'}</div>
+          <p className={`text-xl font-bold ${noCriteria ? 'text-amber-400' : notABoard ? 'text-orange-400' : aiError ? 'text-amber-400' : pass ? 'text-green-400' : 'text-red-400'}`}>
+            {noCriteria ? 'No Checklist Configured' : notABoard ? 'Invalid Photo' : aiError ? 'Photo Saved — Awaiting Review' : pass ? 'All Clear — Stage Complete!' : 'Component Issues Found'}
           </p>
           <p className="text-zinc-400 text-sm mt-2 max-w-sm mx-auto leading-relaxed">{displaySummary}</p>
+          {noCriteria && (
+            <div className="mt-3 mx-auto max-w-xs">
+              <div className="rounded-xl px-4 py-2 text-xs font-medium text-amber-300"
+                style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+                ⚙️ Go to Admin &rarr; Checklists to configure inspection items for this stage
+              </div>
+            </div>
+          )}
+          {notABoard && !noCriteria && (
+            <div className="mt-3 mx-auto max-w-xs">
+              <div className="rounded-xl px-4 py-2 text-xs font-medium text-orange-300"
+                style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.2)' }}>
+                📷 Point the camera at the PCB board and ensure it fills the frame
+              </div>
+            </div>
+          )}
           {aiError && (
             <div className="mt-3 mx-auto max-w-xs space-y-2">
               <div className="rounded-xl px-4 py-2 text-xs font-medium text-amber-300"
@@ -591,7 +613,43 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
         {/* Actions */}
         <div className="p-4 pb-safe mt-auto space-y-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
-          {aiError ? (
+          {noCriteria ? (
+            /* No checklist configured — admin needs to set it up */
+            <>
+              <div
+                className="w-full py-4 rounded-2xl text-center text-sm font-semibold text-amber-400"
+                style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)' }}
+              >
+                ⚙️ Admin must configure checklist first
+              </div>
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="w-full py-3 rounded-2xl font-semibold text-sm text-zinc-400"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                Back to Unit
+              </button>
+            </>
+          ) : notABoard ? (
+            /* Photo doesn't show a PCB — retake required */
+            <>
+              <div
+                className="w-full py-4 rounded-2xl text-center text-sm font-semibold text-orange-400"
+                style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.25)' }}
+              >
+                🚫 Photo must show a circuit board
+              </div>
+              <button
+                type="button"
+                onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); setZonePhotos({}); setPhotoStep(0); setResult(null); setStep('open'); }}
+                className="w-full py-4 rounded-2xl font-bold text-sm"
+                style={{ background: 'rgba(251,146,60,0.15)', border: '1px solid rgba(251,146,60,0.3)', color: '#fb923c' }}
+              >
+                Retake Photo →
+              </button>
+            </>
+          ) : aiError ? (
             /* AI unavailable — photo saved, manager will review */
             <>
               <div
