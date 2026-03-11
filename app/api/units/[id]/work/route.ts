@@ -467,7 +467,9 @@ STRICT RULES:
       if (match) {
         const parsed     = JSON.parse(match[0]);
         const components = (parsed.components ?? []) as Issue[];
-        const FAIL_STATUSES = new Set(['MISSING', 'DEFECTIVE', 'WRONG_ORIENTATION', 'SOLDER_ISSUE', 'MISPLACED']);
+        // DEFECTIVE excluded until RPi high-res cameras arrive — phone cameras
+        // can't reliably distinguish discoloration/oxidation from shadows/glare.
+        const FAIL_STATUSES = new Set(['MISSING', 'WRONG_ORIENTATION', 'SOLDER_ISSUE', 'MISPLACED']);
         // Primary: trust the AI's own overall judgment.
         // The AI has the full manifest and is explicitly instructed to set overall=FAIL
         // only when a REQUIRED component has a confirmed issue.
