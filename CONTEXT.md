@@ -6,8 +6,8 @@
 
 ## 📅 Last Updated
 - **Date:** 2026-03-11
-- **Updated By:** Claude (Anthropic)
-- **Session Summary:** Fixed AI Vision inspection — wrong model name, safe error fallback, amber manual-review UI.
+- **Updated By:** Claude (Anthropic) — syncing both accounts
+- **Session Summary:** Full AI inspection pipeline now working. 6 bug-fix commits landed today covering model name, photo size, CANNOT_CONFIRM logic, capture button position, portrait preview, and reference image upload.
 
 ---
 
@@ -42,7 +42,7 @@
 | **Database** | Supabase (PostgreSQL) + Prisma ORM v6 |
 | **Auth** | JWT (jose), bcryptjs, HTTP-only cookie sessions |
 | **File Storage** | Vercel Blob |
-| **AI Vision** | Anthropic Claude 3.5 Sonnet (claude-3-5-sonnet-20241022) |
+| **AI Vision** | Anthropic `claude-sonnet-4-5` (this is the model available on the project API key) |
 | **Face Auth** | face.js (face descriptor, 128-float array in DB) |
 | **Image Processing** | sharp (CLAHE, crop, upscale, sharpen) |
 | **Barcode/QR** | jsbarcode, qrcode |
@@ -166,22 +166,36 @@ photoZone = 'bottom'  → uses imageUrl3 (formData field: 'file3')
 ```
 
 ### Image Processing (per component):
-- Crop centered on component position (x,y normalized)
-- Crop size based on component size category:
-  - `micro` → 80px, `mini` → 120px, `small` → 160px, `standard` → 200px, `large` → 280px
-- CLAHE contrast enhancement
-- 5× upscale (min 320px) for Claude Vision
+- All full photos downscaled to **1568px max-side, 85% JPEG** before sending to Claude (stays under 5MB Anthropic limit)
+- Pad-level crops are size-aware (NOT downscaled — kept at full quality):
+  - `micro` → 2.5% crop window → 480px upscale (~9× effective zoom)
+  - `mini`  → 4.0% crop window → 400px upscale (~6× effective zoom)
+  - `small` → 6.0% crop window → 320px upscale (~3× effective zoom)
+- CLAHE contrast enhancement per crop (stronger for micro: 4×4 tiles, slope 6)
+- `CANNOT_CONFIRM` status: AI uses this when it can't see a small component clearly — does **NOT** cause FAIL
+- Only `MISSING / DEFECTIVE / WRONG_ORIENTATION / SOLDER_ISSUE / MISPLACED` on **required** components causes FAIL
+
+### Auto-Zoom (camera):
+- GET API returns `zoneZooms` map computed from smallest component size in each zone
+- `SIZE_ZOOM`: micro → 3.5×, mini → 2.5×, small → 2.0×; extra zones default 2.0×
+- Camera opens with native zoom applied (Android Chrome `getUserMedia` zoom constraint)
 
 ---
 
 ## ✅ COMPLETED WORK (Most Recent First)
 
-### [2026-03-11] AI Inspection Bug Fixes
-- **Root cause:** Model name `claude-opus-4-5` doesn't exist → API threw error every time
-- **Fix 1 (`route.ts`):** Changed to correct model `claude-3-5-sonnet-20241022`
-- **Fix 2 (`route.ts`):** `catch` block now sets `analysisResult = 'FAIL'` — units can NO longer silently auto-pass when AI errors out. Added full error logging for Vercel logs.
-- **Fix 3 (`StageWorkFlow.tsx`):** Added 3rd result state — amber ⚠️ "Photo Saved — Awaiting Review" screen (distinct from green PASS / red FAIL). Detected via `summary.startsWith('AI_UNAVAILABLE')`. Shows "Waiting for manager review" + optional Retake button.
-- **Action needed by user:** Verify `ANTHROPIC_API_KEY` is set in Vercel dashboard → Settings → Environment Variables
+### [2026-03-11] AI Inspection — Full Fix Pass (6 commits, both accounts)
+All AI inspection issues are now resolved. The full pipeline works end-to-end.
+
+| Commit | What was fixed |
+|--------|---------------|
+| `9c0c9fa` | Portrait photo preview capped at `min(45vh,340px)` so Submit button never gets pushed off screen |
+| `2f05bc5` | Admin checklist thumbnails now clickable → upload reference image (PATCH to `/api/admin/checklists/[id]`) |
+| `6f8c5ca` | Model changed to `claude-sonnet-4-5` — the correct model for this API key (resolves `not_found_error`) |
+| `816b410` | All photos downscaled to 1568px/85% JPEG before sending to Anthropic (resolves 400 payload-too-large errors) |
+| `6e9d67f` | Amber "AI unavailable" screen shows actual error reason (API key / timeout / raw error) |
+| `2f9e28d` | `full` zone always required; size-aware CLAHE crops restored; `CANNOT_CONFIRM` status added; generic visual check for stages with no manifest; auto-zoom badge + native camera zoom |
+| `092238b` | Catch block defaults to FAIL (not PASS) when AI errors; amber ⚠️ third result state added to worker UI |
 
 ### [2026-03-11] Zone-Based Multi-Photo AI Inspection
 - **ChecklistAdmin.tsx**: Added photoZone picker (Full/Top/Bottom) + zone badge on item list
