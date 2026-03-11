@@ -877,7 +877,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             <div className="flex-1 flex flex-col gap-3">
               {/* Explicit height so h-full inside ImageEnhancer resolves correctly.
                   Caps at 45 vh so portrait photos don't push buttons off-screen. */}
-              <div className="relative rounded-2xl overflow-hidden" style={{ maxHeight: 'min(55vh, 480px)', border: '1px solid rgba(14,165,233,0.2)' }}>
+              <div className="relative rounded-2xl overflow-hidden" style={{ maxHeight: 'min(65vh, 500px)', border: '1px solid rgba(14,165,233,0.2)' }}>
                 <ImageEnhancer
                   src={previewUrl}
                   onEnhancedBlob={setEnhancedBlob}

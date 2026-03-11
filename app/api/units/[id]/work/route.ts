@@ -467,9 +467,15 @@ STRICT RULES:
       if (match) {
         const parsed     = JSON.parse(match[0]);
         const components = (parsed.components ?? []) as Issue[];
-        // Re-derive FAIL: CANNOT_CONFIRM never causes a FAIL
-        // Also: components where ALL marker positions are micro/mini/small are treated
-        // as non-mandatory until the RPi high-res camera setup is in place.
+        const FAIL_STATUSES = new Set(['MISSING', 'DEFECTIVE', 'WRONG_ORIENTATION', 'SOLDER_ISSUE', 'MISPLACED']);
+        // Primary: trust the AI's own overall judgment.
+        // The AI has the full manifest and is explicitly instructed to set overall=FAIL
+        // only when a REQUIRED component has a confirmed issue.
+        // Safety gate: require at least one actual fail-status component so a
+        // CANNOT_CONFIRM-only response can never trigger a FAIL.
+        const hasAnyFailStatus = components.some(issue => FAIL_STATUSES.has(issue.status));
+        if (parsed.overall === 'FAIL' && hasAnyFailStatus) anyFail = true;
+        // Belt-and-suspenders: also fail if a required (non-small) component is flagged.
         const isSmallOnly = (item: typeof items[number]): boolean => {
           if (!item.componentPositions) return false;
           try {
@@ -477,7 +483,6 @@ STRICT RULES:
             return positions.length > 0 && positions.every(p => SMALL_SIZES.has(p.size ?? ''));
           } catch { return false; }
         };
-        const FAIL_STATUSES = new Set(['MISSING', 'DEFECTIVE', 'WRONG_ORIENTATION', 'SOLDER_ISSUE', 'MISPLACED']);
         const requiredNames = items.filter(c => c.required && !isSmallOnly(c)).map(c => c.name.toLowerCase());
         const hasConfirmedFail = components.some(issue => {
           if (!FAIL_STATUSES.has(issue.status)) return false;
