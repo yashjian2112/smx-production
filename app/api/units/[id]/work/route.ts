@@ -18,7 +18,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const unit = await prisma.controllerUnit.findUnique({
     where: { id },
-    select: { currentStage: true, currentStatus: true },
+    select: { currentStage: true, currentStatus: true, productId: true },
   });
   if (!unit) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
@@ -35,7 +35,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }),
   ]);
 
-  return NextResponse.json({ active, history, stage: unit.currentStage });
+  // Return required photo zones for this stage (worker UI uses this to build multi-step flow)
+  const zoneItems = await prisma.stageChecklistItem.findMany({
+    where: {
+      stage: unit.currentStage,
+      active: true,
+      isBoardReference: false,
+      OR: [{ productId: unit.productId ?? undefined }, { productId: null }],
+    },
+    select: { photoZone: true },
+  });
+  const zones = Array.from(new Set(zoneItems.map(z => z.photoZone ?? 'full')));
+
+  return NextResponse.json({ active, history, stage: unit.currentStage, zones });
 }
 
 // ── POST: start work ──────────────────────────────────────────────────────────
@@ -76,7 +88,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
 
   const formData = await req.formData();
-  const file = formData.get('image') as File | null;
+  const file  = formData.get('image') as File | null;
+  const file2 = (formData.get('file2') ?? formData.get('image2')) as File | null;  // top-strip close-up
+  const file3 = (formData.get('file3') ?? formData.get('image3')) as File | null;  // bottom-strip close-up
   const submissionId = formData.get('submissionId') as string | null;
 
   if (!file) return NextResponse.json({ error: 'Image required' }, { status: 400 });
@@ -97,16 +111,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!submission) return NextResponse.json({ error: 'No active work submission found' }, { status: 404 });
 
-  // Upload to Vercel Blob
-  const blob = await put(`stage-work/${id}/${unit.currentStage}/${Date.now()}.jpg`, file, {
-    access: 'private',
-    contentType: file.type || 'image/jpeg',
-  });
+  // Upload photos to Vercel Blob (upload in parallel)
+  const ts = Date.now();
+  const [blob, blob2, blob3] = await Promise.all([
+    put(`stage-work/${id}/${unit.currentStage}/${ts}-1.jpg`, file,  { access: 'private', contentType: file.type  || 'image/jpeg' }),
+    file2 ? put(`stage-work/${id}/${unit.currentStage}/${ts}-2.jpg`, file2, { access: 'private', contentType: file2.type || 'image/jpeg' }) : null,
+    file3 ? put(`stage-work/${id}/${unit.currentStage}/${ts}-3.jpg`, file3, { access: 'private', contentType: file3.type || 'image/jpeg' }) : null,
+  ]);
 
   // Mark as ANALYZING
   await prisma.stageWorkSubmission.update({
     where: { id: submission.id },
-    data: { imageUrl: blob.url, analysisStatus: 'ANALYZING', submittedAt: new Date() },
+    data: {
+      imageUrl:  blob.url,
+      imageUrl2: blob2?.url ?? null,
+      imageUrl3: blob3?.url ?? null,
+      analysisStatus: 'ANALYZING',
+      submittedAt: new Date(),
+    },
   });
 
   // Fetch checklist items for this stage: product-specific + global (null productId)
@@ -137,142 +159,66 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const boardRefItem    = checklist.find(c => c.isBoardReference);
   const componentItems  = checklist.filter(c => !c.isBoardReference);
 
-  // ── Claude Vision ────────────────────────────────────────────────────────────
+  // ── Claude Vision — zone-based multi-photo analysis ─────────────────────────
   let analysisResult: 'PASS' | 'FAIL' = 'PASS';
   let analysisIssues: { name: string; status: string; note: string; location?: string }[] = [];
   let analysisSummary = 'Analysis complete.';
 
   try {
-    // ── Build structured COMPONENT MANIFEST ──────────────────────────────────
-    // This is the key accuracy improvement: give Claude exact counts,
-    // orientation rules, and location info per component type.
-    const manifest = componentItems.length > 0
-      ? componentItems
-          .map((c, i) => {
-            const parts: string[] = [];
-            parts.push(`${i + 1}. ${c.name}`);
-            if (c.expectedCount)   parts.push(`  Expected count  : ${c.expectedCount}`);
-            if (c.boardLocation) {
-              // Convert zone IDs to readable text; fall back to raw value for legacy entries
-              const zoneIds  = parseZoneIds(c.boardLocation);
-              const readable = zoneIds.length > 0 ? zonesToText(zoneIds) : c.boardLocation;
-              parts.push(`  Board location  : ${readable}`);
-            }
-            if (c.orientationRule) parts.push(`  Orientation rule: ${c.orientationRule}`);
-            if (c.description)     parts.push(`  Additional notes: ${c.description}`);
-            // Include pick-&-place coordinates so Claude knows exactly where to look
-            if (c.componentPositions) {
-              try {
-                const positions: Array<{ x: number; y: number; label: string; size?: string }> =
-                  JSON.parse(c.componentPositions as string);
-                if (positions.length > 0) {
-                  const coordHints = positions
-                    .map(p => `${p.label}@(${Math.round(p.x * 100)}%,${Math.round(p.y * 100)}%)`)
-                    .join('  ');
-                  parts.push(`  Precise positions: ${coordHints}  ← x% from left, y% from top`);
-                }
-              } catch { /* invalid JSON, skip */ }
-            }
-            parts.push(`  Required        : ${c.required ? 'YES — board FAILS if any issue found' : 'NO'}`);
-            return parts.join('\n');
-          })
-          .join('\n\n')
-      : 'No specific component manifest defined — verify overall build quality.';
-
-    // Total expected parts for count validation
-    const totalExpected = componentItems.reduce((sum, c) => sum + (c.expectedCount ?? 1), 0);
-    const countSummary  = componentItems.length > 0
-      ? `\nTotal parts expected on this board: ${totalExpected}`
-      : '';
-
-    // ── Fetch employee's captured image ───────────────────────────────────────
-    // Private Vercel Blob requires Authorization header for server-side fetches
     const blobAuth = { authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` };
-    const imgRes    = await fetch(blob.url, { headers: blobAuth });
-    const imgBuffer = await imgRes.arrayBuffer();
-    const imgBuf    = Buffer.from(imgBuffer);          // reuse buffer for crops
-    const base64    = imgBuf.toString('base64');
-    const mediaType = (file.type || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp';
 
-    // Get pixel dimensions — needed to convert normalized (0–1) positions to pixel coords
-    const imgMeta = await sharp(imgBuf).metadata();
-    const imgW    = imgMeta.width  ?? 1000;
-    const imgH    = imgMeta.height ?? 1000;
+    // ── Fetch all submitted photo buffers in parallel ─────────────────────────
+    const [imgBuf, imgBuf2, imgBuf3] = await Promise.all([
+      fetch(blob.url,  { headers: blobAuth }).then(r => r.arrayBuffer()).then(b => Buffer.from(b)),
+      blob2 ? fetch(blob2.url, { headers: blobAuth }).then(r => r.arrayBuffer()).then(b => Buffer.from(b)) : null,
+      blob3 ? fetch(blob3.url, { headers: blobAuth }).then(r => r.arrayBuffer()).then(b => Buffer.from(b)) : null,
+    ]);
 
-    // ── Fetch reference images ────────────────────────────────────────────────
-    type ImageBlock = {
-      type: 'image';
-      source: { type: 'base64'; media_type: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; data: string };
+    // Map zone → { buf, mediaType }
+    const photoMap: Record<string, { buf: Buffer; mediaType: string }> = {
+      full: { buf: imgBuf, mediaType: file.type  || 'image/jpeg' },
+      ...(imgBuf2 ? { top:    { buf: imgBuf2, mediaType: file2?.type || 'image/jpeg' } } : {}),
+      ...(imgBuf3 ? { bottom: { buf: imgBuf3, mediaType: file3?.type || 'image/jpeg' } } : {}),
     };
-    type TextBlock = { type: 'text'; text: string };
-    const contentBlocks: (ImageBlock | TextBlock)[] = [];
 
-    // Board-level reference image — also keep buffer for per-position comparison crops
+    // ── Fetch board reference image ───────────────────────────────────────────
     let refImgBuf: Buffer | null = null;
-    let refImgW = 1000;
-    let refImgH = 1000;
+    let refImgW = 1000, refImgH = 1000;
     if (boardRefItem?.referenceImageUrl) {
       try {
         const refRes = await fetch(boardRefItem.referenceImageUrl, { headers: blobAuth });
         if (refRes.ok) {
           refImgBuf = Buffer.from(await refRes.arrayBuffer());
-          const refMeta = await sharp(refImgBuf).metadata();
-          refImgW = refMeta.width  ?? 1000;
-          refImgH = refMeta.height ?? 1000;
-          const refType = (refRes.headers.get('content-type') || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
-          contentBlocks.push({ type: 'text', text: '══ BOARD REFERENCE IMAGE (correct completed board — use this as the gold standard) ══' });
-          contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: refType, data: refImgBuf.toString('base64') } });
+          const m = await sharp(refImgBuf).metadata();
+          refImgW = m.width ?? 1000; refImgH = m.height ?? 1000;
         }
-      } catch { /* skip silently */ }
+      } catch { /* skip */ }
     }
 
-    // Per-component reference images (close-up reference photos)
+    // ── Fetch per-component reference images ──────────────────────────────────
     const compRefImages: { name: string; base64: string; mediaType: string }[] = [];
     for (const item of componentItems) {
       if (!item.referenceImageUrl) continue;
       try {
-        const refRes = await fetch(item.referenceImageUrl, { headers: blobAuth });
-        if (!refRes.ok) continue;
-        const refBuf     = await refRes.arrayBuffer();
-        const contentType = refRes.headers.get('content-type') || 'image/jpeg';
-        if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(contentType)) continue;
-        compRefImages.push({ name: item.name, base64: Buffer.from(refBuf).toString('base64'), mediaType: contentType });
+        const r = await fetch(item.referenceImageUrl, { headers: blobAuth });
+        if (!r.ok) continue;
+        const ct = r.headers.get('content-type') || 'image/jpeg';
+        if (!['image/jpeg','image/png','image/webp','image/gif'].includes(ct)) continue;
+        compRefImages.push({ name: item.name, base64: Buffer.from(await r.arrayBuffer()).toString('base64'), mediaType: ct });
       } catch { /* skip */ }
     }
 
-    if (compRefImages.length > 0) {
-      contentBlocks.push({ type: 'text', text: `══ COMPONENT REFERENCE IMAGES (${compRefImages.length} close-up samples) ══` });
-      for (const ref of compRefImages) {
-        contentBlocks.push({ type: 'text', text: `Component reference: ${ref.name}` });
-        contentBlocks.push({
-          type: 'image',
-          source: { type: 'base64', media_type: ref.mediaType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif', data: ref.base64 },
-        });
-      }
-    }
-
-    // Employee's submitted photo — always last
-    contentBlocks.push({ type: 'text', text: '══ SUBMITTED PHOTO (inspect this — compare against reference images above) ══' });
-    contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
-
-    // ── Per-position crops for small-footprint components ────────────────────
-    // Each marker gets its own tight crop, upscaled 3× + sharpened.
-    // This lets Claude inspect individual pads without any ambiguity.
+    // ── Per-position crop helper ───────────────────────────────────────────────
     type MarkerPos = { x: number; y: number; label: string; size?: string };
-    const SMALL_SIZES  = new Set(['micro', 'mini', 'small']);
-    const CROP_HALF    = 0.06;   // 6% of shorter dim — wider window tolerates perspective offset
-    const UPSCALE_PX   = 320;    // 320px per crop (pairs sent together, keep total size down)
-    const MAX_PAIRS    = 8;      // max marker positions to show (each = 1 or 2 crops)
-    let   totalPairs   = 0;
+    const SMALL_SIZES = new Set(['micro', 'mini', 'small']);
+    const CROP_HALF   = 0.06;
+    const UPSCALE_PX  = 320;
 
-    // Helper: extract a square CLAHE-enhanced crop from any buffer at normalised (nx, ny)
-    async function makeCrop(buf: Buffer, bW: number, bH: number, nx: number, ny: number): Promise<Buffer> {
-      const cx      = Math.round(nx * bW);
-      const cy      = Math.round(ny * bH);
-      const halfPx  = Math.max(20, Math.round(CROP_HALF * Math.min(bW, bH)));
-      const left    = Math.max(0, cx - halfPx);
-      const top     = Math.max(0, cy - halfPx);
-      const size    = Math.min(halfPx * 2, bW - left, bH - top);
+    const makeCrop = async (buf: Buffer, bW: number, bH: number, nx: number, ny: number): Promise<Buffer> => {
+      const cx = Math.round(nx * bW), cy = Math.round(ny * bH);
+      const halfPx = Math.max(20, Math.round(CROP_HALF * Math.min(bW, bH)));
+      const left = Math.max(0, cx - halfPx), top = Math.max(0, cy - halfPx);
+      const size = Math.min(halfPx * 2, bW - left, bH - top);
       return sharp(buf)
         .extract({ left, top, width: size, height: size })
         .clahe({ width: 8, height: 8, maxSlope: 4 })
@@ -280,132 +226,173 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         .sharpen({ sigma: 1.5, m1: 0.5, m2: 2.5, x1: 2 })
         .jpeg({ quality: 92 })
         .toBuffer();
+    };
+
+    // ── Build manifest text for a subset of items ─────────────────────────────
+    const buildManifest = (items: typeof componentItems): string => {
+      if (items.length === 0) return 'No components for this zone.';
+      return items.map((c: typeof componentItems[number], i: number) => {
+        const p: string[] = [];
+        p.push(`${i + 1}. ${c.name}`);
+        if (c.expectedCount)   p.push(`  Expected count  : ${c.expectedCount}`);
+        if (c.boardLocation) {
+          const ids = parseZoneIds(c.boardLocation);
+          p.push(`  Board location  : ${ids.length > 0 ? zonesToText(ids) : c.boardLocation}`);
+        }
+        if (c.orientationRule) p.push(`  Orientation rule: ${c.orientationRule}`);
+        if (c.description)     p.push(`  Additional notes: ${c.description}`);
+        if (c.componentPositions) {
+          try {
+            const positions = JSON.parse(c.componentPositions as string) as MarkerPos[];
+            if (positions.length > 0) {
+              const hints = positions.map(q => `${q.label}@(${Math.round(q.x * 100)}%,${Math.round(q.y * 100)}%)`).join('  ');
+              p.push(`  Precise positions: ${hints}  ← x% from left, y% from top`);
+            }
+          } catch { /* skip */ }
+        }
+        p.push(`  Required        : ${c.required ? 'YES — board FAILS if any issue found' : 'NO'}`);
+        return p.join('\n');
+      }).join('\n\n');
+    };
+
+    // ── Group components by photo zone ────────────────────────────────────────
+    const componentsByZone = new Map<string, typeof componentItems>();
+    for (const item of componentItems) {
+      const zone = (item.photoZone as string | null) ?? 'full';
+      if (!componentsByZone.has(zone)) componentsByZone.set(zone, []);
+      componentsByZone.get(zone)!.push(item);
+    }
+    // Backward compat: if no zone assignments, put all in 'full'
+    if (componentsByZone.size === 0 && componentItems.length > 0) {
+      componentsByZone.set('full', componentItems);
     }
 
-    const smallItems = componentItems.filter(item => {
-      if (!item.componentPositions) return false;
-      try {
-        const pos: MarkerPos[] = JSON.parse(item.componentPositions as string);
-        return pos.some(p => SMALL_SIZES.has(p.size ?? 'small'));
-      } catch { return false; }
-    });
+    // ── Run one Claude Vision call per zone ────────────────────────────────────
+    type Issue = { name: string; status: string; note: string; location?: string };
+    type IB = { type: 'image'; source: { type: 'base64'; media_type: 'image/jpeg'|'image/png'|'image/webp'|'image/gif'; data: string } };
+    type TB = { type: 'text'; text: string };
+    const allIssues: Issue[] = [];
+    const summaries: string[] = [];
+    let anyFail = false;
 
-    if (smallItems.length > 0) {
-      const hasRef = refImgBuf !== null;
-      contentBlocks.push({
-        type: 'text',
-        text: [
-          '══ PAD-LEVEL COMPARISON CROPS (CLAHE + sharpened, ~5× zoom) ══',
-          hasRef
-            ? 'For each position: REFERENCE crop (correct board) is shown first, then SUBMITTED crop.'
-            : 'Each crop is centred on one expected component position from the submitted photo.',
-          'PRESENT = component body visible on pads.  MISSING = bare copper pads only.',
-          'Sum PRESENT count per component group for the JSON response.',
-        ].join('\n'),
+    for (const [zone, items] of Array.from(componentsByZone.entries())) {
+      const photo = photoMap[zone] ?? photoMap['full'];
+      if (!photo) continue;
+
+      const { buf: zoneBuf, mediaType: zoneMediaType } = photo;
+      const zm = await sharp(zoneBuf).metadata();
+      const zW = zm.width ?? 1000, zH = zm.height ?? 1000;
+
+      const zoneLabel = zone === 'top' ? 'TOP STRIP CLOSE-UP' : zone === 'bottom' ? 'BOTTOM STRIP CLOSE-UP' : 'FULL BOARD';
+      const blocks: (IB | TB)[] = [];
+
+      // Board reference
+      if (refImgBuf) {
+        blocks.push({ type: 'text', text: '══ BOARD REFERENCE (correct completed board — gold standard) ══' });
+        blocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refImgBuf.toString('base64') } });
+      }
+
+      // Per-component close-up references for this zone
+      const zoneRefs = compRefImages.filter(r => items.some((c: typeof componentItems[number]) => c.name === r.name));
+      if (zoneRefs.length > 0) {
+        blocks.push({ type: 'text', text: `══ COMPONENT REFERENCE IMAGES (${zoneRefs.length} close-ups) ══` });
+        for (const ref of zoneRefs) {
+          blocks.push({ type: 'text', text: `Reference: ${ref.name}` });
+          blocks.push({ type: 'image', source: { type: 'base64', media_type: ref.mediaType as IB['source']['media_type'], data: ref.base64 } });
+        }
+      }
+
+      // Submitted photo for this zone
+      blocks.push({ type: 'text', text: `══ SUBMITTED PHOTO — ${zoneLabel} ══` });
+      blocks.push({ type: 'image', source: { type: 'base64', media_type: zoneMediaType as IB['source']['media_type'], data: zoneBuf.toString('base64') } });
+
+      // Pad-level crops for small components in this zone
+      const smallItems = items.filter(item => {
+        if (!item.componentPositions) return false;
+        try { return (JSON.parse(item.componentPositions as string) as MarkerPos[]).some(p => SMALL_SIZES.has(p.size ?? 'small')); }
+        catch { return false; }
       });
 
-      for (const item of smallItems) {
-        if (totalPairs >= MAX_PAIRS) break;
-
-        let positions: MarkerPos[];
-        try { positions = JSON.parse(item.componentPositions as string); }
-        catch { continue; }
-
-        const smallPos = positions.filter(p => SMALL_SIZES.has(p.size ?? 'small'));
-        if (smallPos.length === 0) continue;
-
-        contentBlocks.push({
-          type: 'text',
-          text: `▶ ${item.name} — expect ${item.expectedCount ?? smallPos.length}, checking ${smallPos.length} pad${smallPos.length > 1 ? 's' : ''}:`,
-        });
-
-        for (const pos of smallPos) {
-          if (totalPairs >= MAX_PAIRS) break;
-
-          try {
-            // Reference crop (what a correct board looks like at this position)
-            if (refImgBuf) {
-              const refCrop = await makeCrop(refImgBuf, refImgW, refImgH, pos.x, pos.y);
-              contentBlocks.push({ type: 'text', text: `  ${pos.label} REFERENCE:` });
-              contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refCrop.toString('base64') } });
-            }
-
-            // Submitted crop (what worker's photo shows at same position)
-            const subCrop = await makeCrop(imgBuf, imgW, imgH, pos.x, pos.y);
-            contentBlocks.push({ type: 'text', text: `  ${pos.label} SUBMITTED @ (${Math.round(pos.x * 100)}%,${Math.round(pos.y * 100)}%):` });
-            contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: subCrop.toString('base64') } });
-
-            totalPairs++;
-          } catch (cropErr) {
-            console.error('[crops] Failed for', item.name, pos.label, cropErr);
+      if (smallItems.length > 0) {
+        blocks.push({ type: 'text', text: ['══ PAD-LEVEL CROPS (CLAHE + 5× zoom) ══', refImgBuf ? 'REFERENCE crop first, then SUBMITTED crop.' : 'Crops centred on expected component positions.', 'PRESENT = component body on pads. MISSING = bare copper only.'].join('\n') });
+        let pairCount = 0;
+        for (const item of smallItems) {
+          if (pairCount >= 8) break;
+          let positions: MarkerPos[];
+          try { positions = JSON.parse(item.componentPositions as string); } catch { continue; }
+          const smallPos = positions.filter(p => SMALL_SIZES.has(p.size ?? 'small'));
+          if (smallPos.length === 0) continue;
+          blocks.push({ type: 'text', text: `▶ ${item.name} — expect ${item.expectedCount ?? smallPos.length}, checking ${smallPos.length} position${smallPos.length > 1 ? 's' : ''}:` });
+          for (const pos of smallPos) {
+            if (pairCount >= 8) break;
+            try {
+              if (refImgBuf) {
+                const rc = await makeCrop(refImgBuf, refImgW, refImgH, pos.x, pos.y);
+                blocks.push({ type: 'text', text: `  ${pos.label} REFERENCE:` });
+                blocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: rc.toString('base64') } });
+              }
+              const sc = await makeCrop(zoneBuf, zW, zH, pos.x, pos.y);
+              blocks.push({ type: 'text', text: `  ${pos.label} SUBMITTED @ (${Math.round(pos.x * 100)}%,${Math.round(pos.y * 100)}%):` });
+              blocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: sc.toString('base64') } });
+              pairCount++;
+            } catch (e) { console.error('[crops]', item.name, pos.label, e); }
           }
         }
       }
-    }
 
-    // ── Main inspection prompt ────────────────────────────────────────────────
-    contentBlocks.push({
-      type: 'text',
-      text: `You are a precision PCB quality-control AI for SMX Drives electronic controller manufacturing.
-Your job: inspect the SUBMITTED PHOTO and verify every component against the COMPONENT MANIFEST below.
-${boardRefItem?.referenceImageUrl ? 'A board reference image (correct completed board) has been provided — use it as the primary visual comparison.' : ''}
+      // Prompt for this zone
+      const zoneManifest   = buildManifest(items);
+      const zoneExpected   = items.reduce((s: number, c: typeof componentItems[number]) => s + (c.expectedCount ?? 1), 0);
+      blocks.push({ type: 'text', text:
+`You are a precision PCB quality-control AI for SMX Drives electronic controller manufacturing.
+Inspect the SUBMITTED PHOTO (${zoneLabel}) and verify every component in the manifest below.
+${refImgBuf ? 'A board reference image has been provided — use it as the gold standard.' : ''}
+${zone !== 'full' ? `Note: this is a CLOSE-UP photo of the ${zone.toUpperCase()} section — components are larger and more visible.` : ''}
 
-Stage   : ${unit.currentStage.replace(/_/g, ' ')}
-Serial  : ${unit.serialNumber}
-Product : ${unit.product?.name ?? 'Unknown'}
+Stage: ${unit.currentStage.replace(/_/g, ' ')} | Serial: ${unit.serialNumber} | Product: ${unit.product?.name ?? 'Unknown'}
 
-══ COMPONENT MANIFEST ══
-${manifest}
-${countSummary}
+══ COMPONENT MANIFEST (${zoneLabel}) ══
+${zoneManifest}
+Total parts expected in this zone: ${zoneExpected}
 
-For EACH component in the manifest, verify ALL of the following:
-1. COUNT       — Are ALL expected units present? (count them individually)
-2. LOCATION    — Are they in the correct board zone as specified in "Board location"?
-3. ORIENTATION — Does every unit follow the orientation rule exactly?
-4. ALIGNMENT   — Are they seated correctly on pads, not shifted/tilted/tombstoned?
-5. DAMAGE      — Any cracked, burned, or visibly defective units?
+Verify for EACH component: COUNT, LOCATION, ORIENTATION, ALIGNMENT, DAMAGE.
 
 Respond ONLY with valid JSON — no markdown fences, no extra text:
 {
   "overall": "PASS" or "FAIL",
   "components": [
-    {
-      "name": "component name from manifest (include count found, e.g. 'MOSFET (found 17 of 18)')",
-      "status": "PRESENT" | "MISSING" | "DEFECTIVE" | "WRONG_ORIENTATION" | "SOLDER_ISSUE" | "MISPLACED",
-      "note": "specific finding — include count if mismatch, exact location of problem, orientation issue detail",
-      "location": "board position, e.g. 'top-left group, 3rd unit' or 'bottom-center strip'"
-    }
+    { "name": "name (e.g. 'Resistor (found 7 of 7)')", "status": "PRESENT"|"MISSING"|"DEFECTIVE"|"WRONG_ORIENTATION"|"SOLDER_ISSUE"|"MISPLACED", "note": "specific finding with count and location", "location": "position on board" }
   ],
-  "summary": "1–2 sentences: overall assessment with counts verified and any issues found"
+  "summary": "1–2 sentences with counts and issues"
 }
 
 STRICT RULES:
-— Count every visible unit individually — do not guess.
-— If expected count is 18 and you can only see 17, status = MISSING with note explaining which position is empty.
-— If a component is found in the WRONG ZONE (not matching board location), status = MISPLACED.
-— If orientation rule is given and ANY unit violates it, status = WRONG_ORIENTATION — this is an immediate FAIL.
-— PASS only when: all REQUIRED components are present with correct count, correct location, correct orientation, and correct alignment.
-— If the image is blurry, too dark, or board not visible: overall = FAIL, explain in summary.
-— Compare against the board reference image for position, zone, and orientation verification.
-— For components with "Precise positions" listed: cross-reference those exact coordinates on the submitted photo.
-— For components with pad-level crops: check EACH crop individually — bare copper pads = MISSING at that position, component body on pads = PRESENT. Sum the PRESENT pads to get your found count.
-— Do NOT guess from the full board photo for components that have pad-level crops — use the crops as ground truth.`,
-    });
+— Count every unit individually — do not guess.
+— PASS only when all REQUIRED components present with correct count, orientation, and alignment.
+— If image is blurry or board not visible: overall = FAIL.
+— For pad-level crops: bare copper = MISSING, component body = PRESENT. Sum PRESENT for found count.
+— Crops are ground truth — do NOT override crop evidence with full-photo guessing.` });
 
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
-      max_tokens: 2048,
-      messages: [{ role: 'user', content: contentBlocks }],
-    });
+      const msg = await anthropic.messages.create({
+        model: 'claude-opus-4-5',
+        max_tokens: 2048,
+        messages: [{ role: 'user', content: blocks }],
+      });
 
-    const rawText = message.content[0].type === 'text' ? message.content[0].text : '';
-    const match   = rawText.match(/\{[\s\S]*\}/);
-    if (match) {
-      const parsed        = JSON.parse(match[0]);
-      analysisResult      = parsed.overall === 'PASS' ? 'PASS' : 'FAIL';
-      analysisIssues      = parsed.components ?? [];
-      analysisSummary     = parsed.summary ?? '';
+      const rawText = msg.content[0].type === 'text' ? msg.content[0].text : '';
+      const match   = rawText.match(/\{[\s\S]*\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        if (parsed.overall !== 'PASS') anyFail = true;
+        allIssues.push(...(parsed.components ?? []));
+        if (parsed.summary) summaries.push(zone !== 'full' ? `[${zoneLabel}] ${parsed.summary}` : parsed.summary);
+      }
     }
+
+    analysisResult  = anyFail ? 'FAIL' : 'PASS';
+    analysisIssues  = allIssues;
+    analysisSummary = summaries.join(' | ') || 'Analysis complete.';
+
   } catch (err) {
     console.error('Vision error:', err);
     analysisSummary = 'AI analysis unavailable — image saved, manual review required.';

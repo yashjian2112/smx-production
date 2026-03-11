@@ -67,6 +67,11 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const [error, setError] = useState('');
   const [startingWork, setStartingWork] = useState(false);
 
+  // ── multi-zone photo wizard ────────────────────────────────────────────────
+  const [zones, setZones]         = useState<string[]>(['full']); // fetched from GET
+  const [photoStep, setPhotoStep] = useState(0);                  // current zone index
+  const [zonePhotos, setZonePhotos] = useState<Record<string, File>>({}); // zone → captured file
+
   const cameraRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraOpen, setCameraOpen]   = useState(false);
@@ -83,6 +88,23 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const autoCapturedRef = useRef(false);
 
   const stageLabel = currentStage.replace(/_/g, ' ');
+
+  // ── zone info lookup ───────────────────────────────────────────────────────
+  const ZONE_INFO: Record<string, { title: string; hint: string; icon: string }> = {
+    full:   { icon: '🖼️', title: 'Full Board Photo',         hint: 'Fit the entire PCB in frame from directly above' },
+    top:    { icon: '⬆️', title: 'Top Strip — Close-up',     hint: 'Move camera close to the TOP half of the board' },
+    bottom: { icon: '⬇️', title: 'Bottom Strip — Close-up',  hint: 'Move camera close to the BOTTOM half of the board' },
+  };
+
+  // ── fetch zones for this stage ─────────────────────────────────────────────
+  useEffect(() => {
+    fetch(`/api/units/${unitId}/work`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data.zones) && data.zones.length > 0) setZones(data.zones);
+      })
+      .catch(() => {});
+  }, [unitId]);
 
   // ── auto-start work on mount ───────────────────────────────────────────────
   useEffect(() => {
@@ -316,33 +338,68 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     setPreviewUrl('');
   }
 
-  // ── submit to AI ──────────────────────────────────────────────────────────
+  // ── multi-zone: confirm current photo and advance to next zone ───────────
+  function confirmAndNext() {
+    if (!capturedImage) return;
+    const zone = zones[photoStep] ?? 'full';
+    setZonePhotos(prev => ({ ...prev, [zone]: capturedImage }));
+    setCapturedImage(null);
+    setPreviewUrl('');
+    setEnhancedBlob(null);
+    setPhotoStep(p => p + 1);
+  }
+
+  // ── submit to AI (single-zone — backward compatible) ──────────────────────
   async function submitForAI() {
     if (!capturedImage || !submission) return;
-    setStep('analyzing');
-    setError('');
-
-    // Use the enhanced blob if available (sharpened + contrast boosted)
     const fileToSend = enhancedBlob
       ? new File([enhancedBlob], 'capture.jpg', { type: 'image/jpeg' })
       : capturedImage;
-
     const fd = new FormData();
     fd.append('image', fileToSend);
     fd.append('submissionId', submission.id);
-
+    setStep('analyzing'); setError('');
     try {
       const res = await fetch(`/api/units/${unitId}/work`, { method: 'PUT', body: fd });
       const data = await res.json();
       setResult({ result: data.result, issues: data.issues ?? [], summary: data.summary });
       setStep('result');
-      if (data.result === 'PASS') {
-        setTimeout(() => router.refresh(), 2000);
-      }
+      if (data.result === 'PASS') setTimeout(() => router.refresh(), 2000);
     } catch {
       setError('Submission failed. Please try again.');
       setStep('open');
     }
+  }
+
+  // ── submit all zone photos (multi-zone) ───────────────────────────────────
+  async function submitAllZones(photos: Record<string, File>) {
+    if (!submission || Object.keys(photos).length === 0) return;
+    setStep('analyzing'); setError('');
+    const fd = new FormData();
+    fd.append('submissionId', submission.id);
+    if (photos['full'])   fd.append('image',  photos['full']);
+    if (photos['top'])    fd.append('file2',  photos['top']);
+    if (photos['bottom']) fd.append('file3',  photos['bottom']);
+    try {
+      const res = await fetch(`/api/units/${unitId}/work`, { method: 'PUT', body: fd });
+      const data = await res.json();
+      setResult({ result: data.result, issues: data.issues ?? [], summary: data.summary });
+      setStep('result');
+      if (data.result === 'PASS') setTimeout(() => router.refresh(), 2000);
+    } catch {
+      setError('Submission failed. Please try again.');
+      setStep('open');
+    }
+  }
+
+  // ── last zone: capture + immediately submit ───────────────────────────────
+  function submitLastZonePhoto() {
+    if (!capturedImage || !submission) return;
+    const zone = zones[photoStep] ?? 'full';
+    const finalPhotos = { ...zonePhotos, [zone]: capturedImage };
+    setZonePhotos(finalPhotos);
+    setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null);
+    submitAllZones(finalPhotos);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -497,7 +554,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
           {!pass ? (
             <button
               type="button"
-              onClick={() => { retakePhoto(); setResult(null); setStep('open'); }}
+              onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); setZonePhotos({}); setPhotoStep(0); setResult(null); setStep('open'); }}
               className="w-full py-4 rounded-2xl font-bold text-sm"
               style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
             >
@@ -575,21 +632,88 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             </div>
           )}
 
-          {!previewUrl ? (
-            /* Photo capture area */
+          {/* ── Multi-zone step indicator ───────────────────────────────────── */}
+          {zones.length > 1 && (
+            <div className="space-y-1.5">
+              <div className="flex gap-1.5">
+                {zones.map((z, i) => (
+                  <div
+                    key={z}
+                    className="h-1.5 rounded-full flex-1 transition-all duration-300"
+                    style={{
+                      background: i < photoStep
+                        ? '#22c55e'
+                        : i === photoStep
+                        ? '#38bdf8'
+                        : 'rgba(255,255,255,0.1)',
+                    }}
+                  />
+                ))}
+              </div>
+              <p className="text-[10px] text-zinc-500 text-center">
+                {photoStep >= zones.length
+                  ? '✅ All photos captured'
+                  : `Photo ${photoStep + 1} of ${zones.length} — ${ZONE_INFO[zones[photoStep]]?.title ?? zones[photoStep]}`}
+              </p>
+            </div>
+          )}
+
+          {/* ── All zones captured — summary + submit ──────────────────────── */}
+          {photoStep >= zones.length ? (
+            <div className="flex-1 flex flex-col gap-4">
+              <div className="text-center space-y-1 pt-2">
+                <p className="text-green-400 font-bold text-base">✅ All {zones.length} photos captured</p>
+                <p className="text-zinc-500 text-xs">Ready for AI analysis</p>
+              </div>
+              {/* Thumbnails */}
+              <div className={`grid gap-2 ${zones.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                {zones.map(z => {
+                  const photo = zonePhotos[z];
+                  const url   = photo ? URL.createObjectURL(photo) : null;
+                  const info  = ZONE_INFO[z] ?? { icon: '📷', title: z };
+                  return (
+                    <div key={z} className="relative rounded-xl overflow-hidden flex flex-col">
+                      <div className="relative w-full" style={{ aspectRatio: '4/3', background: 'rgba(255,255,255,0.04)' }}>
+                        {url && <Image src={url} alt={z} fill className="object-cover" unoptimized />}
+                      </div>
+                      <p className="text-[10px] text-center py-1 text-zinc-400 font-medium">{info.icon} {info.title.split('—')[0].trim()}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={() => submitAllZones(zonePhotos)}
+                className="w-full py-4 rounded-2xl font-bold text-base"
+                style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
+              >
+                ✅ Submit All — Run AI Check
+              </button>
+              <button
+                type="button"
+                onClick={() => { setZonePhotos({}); setPhotoStep(0); setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); }}
+                className="w-full py-3 rounded-2xl text-sm font-medium text-zinc-400"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                Retake all photos
+              </button>
+            </div>
+          ) : !previewUrl ? (
+            /* ── Photo capture area ─────────────────────────────────────────── */
             <div className="flex-1 flex flex-col items-center justify-center gap-6">
               <div className="text-center space-y-2">
                 <div
-                  className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto"
+                  className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto text-4xl"
                   style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.2)' }}
                 >
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                    <circle cx="12" cy="13" r="4" />
-                  </svg>
+                  {ZONE_INFO[zones[photoStep] ?? 'full']?.icon ?? '📷'}
                 </div>
-                <p className="text-white font-semibold">Take a photo of your work</p>
-                <p className="text-zinc-500 text-xs">The AI will verify component placement and quality</p>
+                <p className="text-white font-semibold">
+                  {ZONE_INFO[zones[photoStep] ?? 'full']?.title ?? 'Take a photo'}
+                </p>
+                <p className="text-zinc-500 text-xs px-4">
+                  {ZONE_INFO[zones[photoStep] ?? 'full']?.hint ?? 'The AI will verify component placement and quality'}
+                </p>
               </div>
               <button
                 type="button"
@@ -605,9 +729,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
               </button>
             </div>
           ) : (
-            /* Photo preview + action buttons */
+            /* ── Photo preview + action buttons ─────────────────────────────── */
             <div className="flex-1 flex flex-col gap-3">
-              {/* Enhanced image viewer — double-tap to zoom, pinch to zoom, drag to pan */}
               <div className="relative rounded-2xl overflow-hidden" style={{ minHeight: 220, border: '1px solid rgba(14,165,233,0.2)' }}>
                 <ImageEnhancer
                   src={previewUrl}
@@ -616,15 +739,36 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 />
               </div>
 
-              {/* Action buttons — always visible directly below the preview */}
-              <button
-                type="button"
-                onClick={submitForAI}
-                className="w-full py-4 rounded-2xl font-bold text-base"
-                style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
-              >
-                ✅ Submit — Run AI Check
-              </button>
+              {/* Single zone → submit directly. Multi zone → next or submit last */}
+              {zones.length === 1 ? (
+                <button
+                  type="button"
+                  onClick={submitForAI}
+                  className="w-full py-4 rounded-2xl font-bold text-base"
+                  style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
+                >
+                  ✅ Submit — Run AI Check
+                </button>
+              ) : photoStep + 1 < zones.length ? (
+                <button
+                  type="button"
+                  onClick={confirmAndNext}
+                  className="w-full py-4 rounded-2xl font-bold text-base"
+                  style={{ background: 'linear-gradient(135deg, #0ea5e9, #6366f1)', color: 'white' }}
+                >
+                  ✓ Use photo → Next: {ZONE_INFO[zones[photoStep + 1]]?.icon} {ZONE_INFO[zones[photoStep + 1]]?.title ?? zones[photoStep + 1]}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={submitLastZonePhoto}
+                  className="w-full py-4 rounded-2xl font-bold text-base"
+                  style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
+                >
+                  ✅ Submit All — Run AI Check
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); }}

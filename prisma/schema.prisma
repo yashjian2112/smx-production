@@ -341,6 +341,7 @@ model StageChecklistItem {
   orientationRule   String?   @map("orientation_rule")      // e.g. "heatsink tab faces outward"
   boardLocation     String?   @map("board_location")        // comma-separated zone IDs
   componentPositions String?  @map("component_positions")   // JSON [{x,y,label}] — precise marker coords (0-1)
+  photoZone         String?   @map("photo_zone")             // "full" | "top" | "bottom" — which capture step checks this component
   isBoardReference  Boolean   @default(false) @map("is_board_reference") // Full board reference image
   required          Boolean   @default(true)
   sortOrder         Int       @default(0) @map("sort_order")
@@ -364,6 +365,8 @@ model StageWorkSubmission {
   completedAt     DateTime?         @map("completed_at")
   buildTimeSec    Int?              @map("build_time_sec")
   imageUrl        String?           @map("image_url")
+  imageUrl2       String?           @map("image_url_2")     // Top-strip close-up photo
+  imageUrl3       String?           @map("image_url_3")     // Bottom-strip close-up photo
   analysisStatus  SubmissionStatus  @default(IN_PROGRESS) @map("analysis_status")
   analysisResult  SubmissionResult? @map("analysis_result")
   analysisIssues  String?           @map("analysis_issues")   // JSON [{name,status,note}]

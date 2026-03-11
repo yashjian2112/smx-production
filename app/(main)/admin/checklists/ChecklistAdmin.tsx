@@ -165,6 +165,7 @@ type ChecklistItem = {
   orientationRule: string | null;
   boardLocation: string | null;
   componentPositions: string | null; // JSON MarkerPosition[]
+  photoZone: string | null; // 'full' | 'top' | 'bottom'
   isBoardReference: boolean;
   required: boolean;
   sortOrder: number;
@@ -255,6 +256,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
     name: '', description: '', required: true, sortOrder: 0,
     expectedCount: '', orientationRule: '', boardLocation: '',
   });
+  const [photoZone, setPhotoZone] = useState<'full' | 'top' | 'bottom'>('full');
   const [refImage, setRefImage]     = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [selectedPreset, setSelectedPreset] = useState<string>('');
@@ -359,6 +361,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
       fd.append('expectedCount',   form.expectedCount);
       fd.append('orientationRule', form.orientationRule);
       fd.append('boardLocation',   form.boardLocation);
+      fd.append('photoZone',       photoZone);
       fd.append('isBoardReference', 'false');
       if (activeProduct) fd.append('productId', activeProduct);
       if (refImage) fd.append('referenceImage', refImage);
@@ -384,6 +387,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
       setItems((prev) => [...prev, item]);
       setShowAdd(false);
       setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' });
+      setPhotoZone('full');
       setRefImage(null); setPreviewUrl('');
       setSelectedPreset(''); setShowAdvanced(false);
       setNewComponentPositions([]);
@@ -1780,6 +1784,20 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 {activeProduct !== null && item.productId === null && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-purple-400" style={{ background: 'rgba(168,85,247,0.1)' }}>🌐 Global</span>
                 )}
+                {/* Photo zone badge */}
+                {item.photoZone && item.photoZone !== 'full' && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{
+                    background: item.photoZone === 'top' ? 'rgba(14,165,233,0.1)' : 'rgba(139,92,246,0.1)',
+                    color: item.photoZone === 'top' ? '#38bdf8' : '#c084fc',
+                  }}>
+                    {item.photoZone === 'top' ? '⬆️ Top Strip' : '⬇️ Bottom Strip'}
+                  </span>
+                )}
+                {(!item.photoZone || item.photoZone === 'full') && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-zinc-500" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                    🖼️ Full Board
+                  </span>
+                )}
                 {/* Mapped indicator */}
                 {item.componentPositions && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-teal-400" style={{ background: 'rgba(20,184,166,0.1)' }}>
@@ -1843,6 +1861,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 onClick={() => {
                   setSelectedPreset('');
                   setShowAdvanced(false);
+                  setPhotoZone('full');
                   setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' });
                   setNewComponentPositions([]);
                 }}
@@ -1976,6 +1995,35 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 </div>
               )}
 
+              {/* ── Photo zone picker ─────────────────────────────────────────── */}
+              <div>
+                <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-2">
+                  📷 Photo zone — which camera shot covers this component?
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { value: 'full',   emoji: '🖼️',  label: 'Full Board',   desc: 'Wide shot — large components (MOSFETs, caps, ICs)' },
+                    { value: 'top',    emoji: '⬆️',  label: 'Top Strip',    desc: 'Close-up top zone — small SMDs in top half' },
+                    { value: 'bottom', emoji: '⬇️',  label: 'Bottom Strip', desc: 'Close-up bottom zone — small SMDs in bottom half' },
+                  ] as const).map(z => (
+                    <button
+                      key={z.value}
+                      type="button"
+                      onClick={() => setPhotoZone(z.value)}
+                      className="flex flex-col items-center gap-1 rounded-xl py-2.5 px-2 transition-all text-center"
+                      style={{
+                        background: photoZone === z.value ? 'rgba(14,165,233,0.15)' : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${photoZone === z.value ? 'rgba(14,165,233,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                      }}
+                    >
+                      <span className="text-lg leading-none">{z.emoji}</span>
+                      <span className={`text-[10px] font-bold leading-tight ${photoZone === z.value ? 'text-sky-300' : 'text-zinc-500'}`}>{z.label}</span>
+                      <span className="text-[9px] text-zinc-600 leading-tight">{z.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* ── Advanced / override section ───────────────────────────────── */}
               <div>
                 <button
@@ -2076,7 +2124,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => { setShowAdd(false); setSelectedPreset(''); setShowAdvanced(false); setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' }); setRefImage(null); setPreviewUrl(''); setNewComponentPositions([]); }}
+                onClick={() => { setShowAdd(false); setSelectedPreset(''); setShowAdvanced(false); setPhotoZone('full'); setForm({ name: '', description: '', required: true, sortOrder: 0, expectedCount: '', orientationRule: '', boardLocation: '' }); setRefImage(null); setPreviewUrl(''); setNewComponentPositions([]); }}
                 className="btn-ghost px-4 py-2.5 text-sm"
               >
                 Cancel
