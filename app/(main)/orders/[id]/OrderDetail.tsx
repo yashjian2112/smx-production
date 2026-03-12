@@ -14,10 +14,10 @@ function AssemblySelectModal({
   onSelect: (unitId: string) => void;
   onClose: () => void;
 }) {
-  // Only show units that are at Assembly stage and actionable
+  // Only show units that are ACTUALLY at Assembly stage right now and can be worked on
   const eligible = units.filter((u) => {
-    const st = u.derivedStatus ?? u.currentStatus;
-    return st === 'IN_PROGRESS' || st === 'PENDING';
+    if (u.currentStage !== 'CONTROLLER_ASSEMBLY') return false; // not here yet, or already past
+    return u.currentStatus === 'IN_PROGRESS' || u.currentStatus === 'PENDING';
   });
 
   return (
