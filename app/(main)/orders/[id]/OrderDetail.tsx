@@ -11,7 +11,7 @@ function AssemblySelectModal({
   onClose,
 }: {
   units: UnitData[];
-  onSelect: (unitId: string) => void;
+  onSelect: (psUnitId: string, psBarcode: string, bbBarcode: string) => void;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState('');
@@ -37,8 +37,8 @@ function AssemblySelectModal({
 
   function handleConfirm() {
     if (!canStart) return;
-    // Navigate to the unit identified by the PS barcode (primary component)
-    onSelect(selectedPS!.id);
+    // Pass PS unit ID + both barcodes so the pairing can be saved to DB
+    onSelect(selectedPS!.id, selectedPS!.barcode, selectedBB!.barcode);
   }
 
   return (
@@ -621,27 +621,28 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
     }
   }
 
-  async function handleAssemblySelect(unitId: string) {
+  async function handleAssemblySelect(psUnitId: string, psBarcode: string, bbBarcode: string) {
     setAssemblySelect(false);
-    setScanStatus({ msg: 'Opening unit…', type: 'info' });
+    setScanStatus({ msg: 'Recording assembly pairing…', type: 'info' });
 
     try {
-      // Find the unit data to check its status
       const asmUnits = asmStage?.units ?? [];
-      const unit = asmUnits.find((u) => u.id === unitId);
+      const unit = asmUnits.find((u) => u.id === psUnitId);
       const status = unit?.derivedStatus ?? unit?.currentStatus;
 
-      // Auto-start: mark PENDING unit as IN_PROGRESS
-      if (status === 'PENDING') {
-        await fetch(`/api/units/${unitId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'IN_PROGRESS' }),
-        });
-      }
+      // Save the PS+BB pairing to the unit record and start it in one call
+      await fetch(`/api/units/${psUnitId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(status === 'PENDING' ? { status: 'IN_PROGRESS' } : {}),
+          assemblyPowerstageBarcode: psBarcode,
+          assemblyBrainboardBarcode: bbBarcode,
+        }),
+      });
 
       setScanStatus(null);
-      router.push(`/units/${unitId}`);
+      router.push(`/units/${psUnitId}`);
     } catch {
       setScanStatus({ msg: 'Network error. Please try again.', type: 'error' });
     }
@@ -748,7 +749,7 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
       {assemblySelect && asmStage && (
         <AssemblySelectModal
           units={asmStage.units}
-          onSelect={handleAssemblySelect}
+          onSelect={(psUnitId, psBarcode, bbBarcode) => handleAssemblySelect(psUnitId, psBarcode, bbBarcode)}
           onClose={() => setAssemblySelect(false)}
         />
       )}
