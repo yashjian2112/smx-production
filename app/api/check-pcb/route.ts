@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
           },
           {
             type: 'text',
-            text: 'Does this image show a PCB (printed circuit board / electronic board)? Answer only with valid JSON: {"isPcb": true} or {"isPcb": false}. No other text.',
+            text: 'Is any printed circuit board (PCB) or electronic circuit board visible anywhere in this image? PCBs come in many colours: green, blue, white, silver, aluminium/metal substrate, yellow, or black. They have electronic components mounted on them (chips, MOSFETs, capacitors, resistors, connectors, solder pads, traces). Even if the board is small or surrounded by background, answer YES if a PCB is anywhere in the frame. Answer only with valid JSON: {"isPcb": true} or {"isPcb": false}. No other text.',
           },
         ],
       }],

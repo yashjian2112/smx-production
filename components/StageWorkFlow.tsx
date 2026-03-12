@@ -47,6 +47,104 @@ function LiveTimer({ startedAt }: { startedAt: string }) {
   return <span className="font-mono text-amber-400 font-bold">{fmtDuration(elapsed)}</span>;
 }
 
+// ── Smart PCB framing ──────────────────────────────────────────────────────
+// Detects the PCB rectangle by comparing each pixel against the average
+// background colour (sampled from the four image corners) and crops to the
+// bounding box of pixels that differ enough.  Falls back to the original blob
+// when detection fails or the board already fills most of the frame.
+async function smartCropPCB(blob: Blob): Promise<Blob> {
+  return new Promise<Blob>((resolve) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const W = img.naturalWidth;
+      const H = img.naturalHeight;
+
+      // Down-sample to ≤320 px for speed
+      const SCALE = Math.min(1, 320 / Math.max(W, H));
+      const sw = Math.round(W * SCALE);
+      const sh = Math.round(H * SCALE);
+
+      const cv = document.createElement('canvas');
+      cv.width = sw; cv.height = sh;
+      const cx = cv.getContext('2d', { willReadFrequently: true });
+      if (!cx) { resolve(blob); return; }
+      cx.drawImage(img, 0, 0, sw, sh);
+      const { data } = cx.getImageData(0, 0, sw, sh);
+
+      // Average the TOP two corners + a thin top-edge strip for background.
+      // We deliberately ignore bottom corners because workers often hold the
+      // phone over the PCB — their legs/floor appear at the bottom and would
+      // contaminate the background estimate.
+      const P = 10;
+      // Top-left, top-right corners + centre strip at very top
+      const bgSamples: [number, number][] = [
+        [0, 0], [sw - P, 0],
+        // additional horizontal strip along top edge (every 8th column)
+        ...Array.from({ length: Math.floor(sw / 8) }, (_, k): [number, number] => [k * 8, 0]),
+      ];
+      let br = 0, bg = 0, bb = 0;
+      let n = 0;
+      for (const [sx, sy] of bgSamples) {
+        for (let y = sy; y < sy + P && y < sh; y++) {
+          for (let x = sx; x < sx + P && x < sw; x++) {
+            const i = (y * sw + x) * 4;
+            br += data[i]; bg += data[i + 1]; bb += data[i + 2];
+            n++;
+          }
+        }
+      }
+      br /= n; bg /= n; bb /= n;
+
+      // Bounding box of foreground pixels (differ from background by > threshold)
+      const THRESH = 35;
+      let x0 = sw, y0 = sh, x1 = 0, y1 = 0;
+      for (let y = 0; y < sh; y++) {
+        for (let x = 0; x < sw; x++) {
+          const i = (y * sw + x) * 4;
+          if (Math.abs(data[i] - br) + Math.abs(data[i + 1] - bg) + Math.abs(data[i + 2] - bb) > THRESH) {
+            if (x < x0) x0 = x;
+            if (x > x1) x1 = x;
+            if (y < y0) y0 = y;
+            if (y > y1) y1 = y;
+          }
+        }
+      }
+
+      const cropW = x1 - x0;
+      const cropH = y1 - y0;
+      // Skip crop if: detection failed, PCB fills almost the entire width AND
+      // height (already well-framed), or detected area is suspiciously tiny.
+      // Use separate thresholds: 92% width AND 88% height — if jeans/floor
+      // extend the height bounding box the width check still triggers a crop.
+      if (
+        x0 >= x1 || y0 >= y1 ||
+        (cropW / sw > 0.92 && cropH / sh > 0.88) ||
+        (cropW * cropH) / (sw * sh) < 0.04
+      ) {
+        resolve(blob);
+        return;
+      }
+
+      // 8% padding, clamped to image bounds, scaled back to original resolution
+      const padX = Math.round(cropW * 0.08);
+      const padY = Math.round(cropH * 0.08);
+      const fx0 = Math.max(0, Math.round((x0 - padX) / SCALE));
+      const fy0 = Math.max(0, Math.round((y0 - padY) / SCALE));
+      const fw  = Math.min(W, Math.round((x1 + padX) / SCALE)) - fx0;
+      const fh  = Math.min(H, Math.round((y1 + padY) / SCALE)) - fy0;
+
+      const out = document.createElement('canvas');
+      out.width = fw; out.height = fh;
+      out.getContext('2d')!.drawImage(img, fx0, fy0, fw, fh, 0, 0, fw, fh);
+      out.toBlob(b => resolve(b ?? blob), 'image/jpeg', 0.92);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(blob); };
+    img.src = url;
+  });
+}
+
 export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const router = useRouter();
 
@@ -86,8 +184,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   const [autoCountdown, setAutoCountdown] = useState<number | null>(null); // 3,2,1
 
   // ── PCB check state ────────────────────────────────────────────────────────
-  const [pcbChecking, setPcbChecking] = useState(false);
-  const [pcbError, setPcbError]       = useState('');
+  // pcbChecking / pcbError disabled until RPi high-res cameras arrive —
+  // phone cameras can't reliably gate on PCB presence. Re-enable with hardware.
   const prevFrameRef    = useRef<ImageData | null>(null);
   const frameTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const cdTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -98,9 +196,9 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
 
   // ── zone info lookup ───────────────────────────────────────────────────────
   const ZONE_INFO: Record<string, { title: string; hint: string; icon: string }> = {
-    full:   { icon: '🖼️', title: 'Full Board Photo',          hint: 'Hold phone ~40 cm above — fit the entire PCB in frame' },
-    top:    { icon: '⬆️', title: 'Top Close-up',              hint: 'Move in to ~10–15 cm — small components should fill the frame' },
-    bottom: { icon: '⬇️', title: 'Bottom Close-up',           hint: 'Move in to ~10–15 cm — small components should fill the frame' },
+    full:   { icon: '', title: 'Full Board Photo',   hint: 'Hold phone ~40 cm above — fit the entire PCB in frame' },
+    top:    { icon: '', title: 'Top Close-up',       hint: 'Move in to ~10–15 cm — small components should fill the frame' },
+    bottom: { icon: '', title: 'Bottom Close-up',    hint: 'Move in to ~10–15 cm — small components should fill the frame' },
   };
 
   // ── fetch zones + zoom hints for this stage ───────────────────────────────
@@ -268,9 +366,10 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
               const cap = document.createElement('canvas');
               cap.width = vid.videoWidth; cap.height = vid.videoHeight;
               cap.getContext('2d')?.drawImage(vid, 0, 0);
-              cap.toBlob(blob => {
+              cap.toBlob(async (blob) => {
                 if (!blob) return;
-                const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
+                const cropped = await smartCropPCB(blob);
+                const file = new File([cropped], 'capture.jpg', { type: 'image/jpeg' });
                 setCapturedImage(file);
                 setPreviewUrl(URL.createObjectURL(file));
                 // stop stream inline so we don't depend on stopCamera ref
@@ -296,29 +395,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraReady, autoCapture]);
-
-  // ── PCB check: fires whenever capturedImage changes ───────────────────────
-  // Sends a cheap thumbnail to /api/check-pcb so worker gets immediate feedback
-  // per zone instead of discovering a bad photo after uploading all 3 zones.
-  useEffect(() => {
-    if (!capturedImage) { setPcbError(''); return; }
-    let cancelled = false;
-    setPcbChecking(true);
-    setPcbError('');
-    const fd = new FormData();
-    fd.append('image', capturedImage);
-    fetch('/api/check-pcb', { method: 'POST', body: fd })
-      .then(r => r.json())
-      .then(data => {
-        if (cancelled) return;
-        if (!data.isPcb) {
-          setPcbError('Not a circuit board — please retake with the PCB in frame.');
-        }
-      })
-      .catch(() => { /* on API error, allow through */ })
-      .finally(() => { if (!cancelled) setPcbChecking(false); });
-    return () => { cancelled = true; };
-  }, [capturedImage]);
 
   // videoRefCallback: called by React the instant the <video> DOM element is created.
   // This is more reliable than useEffect because React guarantees it fires synchronously
@@ -371,9 +447,10 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
     canvas.width  = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d')?.drawImage(video, 0, 0);
-    canvas.toBlob(blob => {
+    canvas.toBlob(async (blob) => {
       if (!blob) { setError('Failed to capture photo. Please try again.'); return; }
-      const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
+      const cropped = await smartCropPCB(blob);
+      const file = new File([cropped], 'capture.jpg', { type: 'image/jpeg' });
       setCapturedImage(file);
       setPreviewUrl(URL.createObjectURL(file));
       stopCamera();
@@ -383,7 +460,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   function retakePhoto() {
     setCapturedImage(null);
     setPreviewUrl('');
-    setPcbError('');
   }
 
   // ── multi-zone: confirm current photo and advance to next zone ───────────
@@ -468,7 +544,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
   if (step === 'completed') {
     return (
       <div className="rounded-2xl p-5 text-center" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
-        <div className="text-3xl mb-2">✅</div>
         <p className="text-green-400 font-semibold">Stage completed</p>
         <p className="text-zinc-500 text-xs mt-1">This unit has moved to the next stage.</p>
       </div>
@@ -528,7 +603,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
       >
         {/* Result banner */}
         <div className="p-6 text-center flex-shrink-0">
-          <div className="text-5xl mb-3">{noCriteria ? '⚙️' : notABoard ? '🚫' : aiError ? '⚠️' : pass ? '✅' : '❌'}</div>
           <p className={`text-xl font-bold ${noCriteria ? 'text-amber-400' : notABoard ? 'text-orange-400' : aiError ? 'text-amber-400' : pass ? 'text-green-400' : 'text-red-400'}`}>
             {noCriteria ? 'No Checklist Configured' : notABoard ? 'Invalid Photo' : aiError ? 'Photo Saved — Awaiting Review' : pass ? 'All Clear — Stage Complete!' : 'Component Issues Found'}
           </p>
@@ -537,7 +611,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             <div className="mt-3 mx-auto max-w-xs">
               <div className="rounded-xl px-4 py-2 text-xs font-medium text-amber-300"
                 style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
-                ⚙️ Go to Admin &rarr; Checklists to configure inspection items for this stage
+                Go to Admin &rarr; Checklists to configure inspection items for this stage
               </div>
             </div>
           )}
@@ -545,7 +619,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             <div className="mt-3 mx-auto max-w-xs">
               <div className="rounded-xl px-4 py-2 text-xs font-medium text-orange-300"
                 style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.2)' }}>
-                📷 Point the camera at the PCB board and ensure it fills the frame
+                Point the camera at the PCB board and ensure it fills the frame
               </div>
             </div>
           )}
@@ -553,12 +627,12 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             <div className="mt-3 mx-auto max-w-xs space-y-2">
               <div className="rounded-xl px-4 py-2 text-xs font-medium text-amber-300"
                 style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
-                📋 Unit held for manager approval
+                Unit held for manager approval
               </div>
               {aiErrorDetail && (
                 <div className="rounded-xl px-3 py-2 text-[11px] text-zinc-500 text-left leading-relaxed"
                   style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                  🔧 {aiErrorDetail}
+                  {aiErrorDetail}
                 </div>
               )}
             </div>
@@ -572,12 +646,12 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
         {issues.length > 0 && (() => {
           // Helpers for the 5-status system
           const statusMeta: Record<string, { bg: string; border: string; text: string; icon: string; label: string }> = {
-            PRESENT:          { bg: 'rgba(34,197,94,0.06)',   border: 'rgba(34,197,94,0.18)',   text: '#4ade80', icon: '✅', label: 'OK'          },
-            MISSING:          { bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',    text: '#f87171', icon: '❌', label: 'MISSING'     },
-            DEFECTIVE:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '⚠️', label: 'DEFECTIVE'  },
-            WRONG_ORIENTATION:{ bg: 'rgba(251,146,60,0.07)',  border: 'rgba(251,146,60,0.2)',   text: '#fb923c', icon: '🔄', label: 'ORIENTATION' },
-            SOLDER_ISSUE:     { bg: 'rgba(192,132,252,0.07)', border: 'rgba(192,132,252,0.2)',  text: '#c084fc', icon: '🔧', label: 'SOLDER'     },
-            MISPLACED:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '📍', label: 'MISPLACED'  },
+            PRESENT:          { bg: 'rgba(34,197,94,0.06)',   border: 'rgba(34,197,94,0.18)',   text: '#4ade80', icon: '·', label: 'OK'          },
+            MISSING:          { bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',    text: '#f87171', icon: '·', label: 'MISSING'     },
+            DEFECTIVE:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '·', label: 'DEFECTIVE'  },
+            WRONG_ORIENTATION:{ bg: 'rgba(251,146,60,0.07)',  border: 'rgba(251,146,60,0.2)',   text: '#fb923c', icon: '·', label: 'ORIENTATION' },
+            SOLDER_ISSUE:     { bg: 'rgba(192,132,252,0.07)', border: 'rgba(192,132,252,0.2)',  text: '#c084fc', icon: '·', label: 'SOLDER'     },
+            MISPLACED:        { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',   text: '#fbbf24', icon: '·', label: 'MISPLACED'  },
           };
           const getMeta = (s: string) => statusMeta[s] ?? statusMeta['DEFECTIVE'];
 
@@ -606,7 +680,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                             {issue.note && <p className="text-xs text-zinc-300 mt-1 leading-relaxed">{issue.note}</p>}
                             {issue.location && (
                               <p className="text-[11px] text-zinc-500 mt-1 flex items-center gap-1">
-                                <span>📍</span>{issue.location}
+                                {issue.location}
                               </p>
                             )}
                           </div>
@@ -627,7 +701,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                   <div className="mt-2 space-y-1.5">
                     {okIssues.map((issue, i) => (
                       <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.1)' }}>
-                        <span className="text-sm">✅</span>
+                        <span className="text-sm text-green-500">·</span>
                         <p className="text-xs text-zinc-400 font-medium flex-1">{issue.name}</p>
                         {issue.location && <p className="text-[10px] text-zinc-600">{issue.location}</p>}
                       </div>
@@ -648,7 +722,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 className="w-full py-4 rounded-2xl text-center text-sm font-semibold text-amber-400"
                 style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)' }}
               >
-                ⚙️ Admin must configure checklist first
+                Admin must configure checklist first
               </div>
               <button
                 type="button"
@@ -666,7 +740,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 className="w-full py-4 rounded-2xl text-center text-sm font-semibold text-orange-400"
                 style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.25)' }}
               >
-                🚫 Photo must show a circuit board
+                Photo must show a circuit board
               </div>
               <button
                 type="button"
@@ -684,7 +758,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 className="w-full py-4 rounded-2xl text-center text-sm font-semibold text-amber-400"
                 style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)' }}
               >
-                ⏳ Waiting for manager review
+                Waiting for manager review
               </div>
               <button
                 type="button"
@@ -726,8 +800,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
           <div className="absolute inset-0 w-20 h-20 border-4 border-sky-400 border-t-transparent rounded-full animate-spin" />
         </div>
         <div className="text-center space-y-1">
-          <p className="text-white font-semibold text-lg">AI is inspecting…</p>
-          <p className="text-zinc-500 text-sm">Checking component placement and quality</p>
+          <p className="text-white font-semibold text-lg">Processing photo…</p>
+          <p className="text-zinc-500 text-sm">Uploading and running quality check</p>
         </div>
         {previewUrl && (
           <div className="rounded-xl overflow-hidden opacity-30 w-32 h-24 relative">
@@ -796,7 +870,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
               </div>
               <p className="text-[10px] text-zinc-500 text-center">
                 {photoStep >= zones.length
-                  ? '✅ All photos captured'
+                  ? 'All photos captured'
                   : `Photo ${photoStep + 1} of ${zones.length} — ${ZONE_INFO[zones[photoStep]]?.title ?? zones[photoStep]}`}
               </p>
             </div>
@@ -806,8 +880,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
           {photoStep >= zones.length ? (
             <div className="flex-1 flex flex-col gap-4">
               <div className="text-center space-y-1 pt-2">
-                <p className="text-green-400 font-bold text-base">✅ All {zones.length} photos captured</p>
-                <p className="text-zinc-500 text-xs">Ready for AI analysis</p>
+                <p className="text-green-400 font-bold text-base">All {zones.length} photos captured</p>
+                <p className="text-zinc-500 text-xs">Ready to submit</p>
               </div>
               {/* Thumbnails */}
               <div className={`grid gap-2 ${zones.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
@@ -820,7 +894,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                       <div className="relative w-full" style={{ aspectRatio: '4/3', background: 'rgba(255,255,255,0.04)' }}>
                         {url && <Image src={url} alt={z} fill className="object-cover" unoptimized />}
                       </div>
-                      <p className="text-[10px] text-center py-1 text-zinc-400 font-medium">{info.icon} {info.title.split('—')[0].trim()}</p>
+                      <p className="text-[10px] text-center py-1 text-zinc-400 font-medium">{info.title.split('—')[0].trim()}</p>
                     </div>
                   );
                 })}
@@ -831,7 +905,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 className="w-full py-4 rounded-2xl font-bold text-base"
                 style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
               >
-                ✅ Submit All — Run AI Check
+                Submit Photos
               </button>
               <button
                 type="button"
@@ -846,17 +920,11 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
             /* ── Photo capture area ─────────────────────────────────────────── */
             <div className="flex-1 flex flex-col items-center justify-center gap-6">
               <div className="text-center space-y-2">
-                <div
-                  className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto text-4xl"
-                  style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.2)' }}
-                >
-                  {ZONE_INFO[zones[photoStep] ?? 'full']?.icon ?? '📷'}
-                </div>
-                <p className="text-white font-semibold">
+                <p className="text-white font-semibold text-base">
                   {ZONE_INFO[zones[photoStep] ?? 'full']?.title ?? 'Take a photo'}
                 </p>
                 <p className="text-zinc-500 text-xs px-4">
-                  {ZONE_INFO[zones[photoStep] ?? 'full']?.hint ?? 'The AI will verify component placement and quality'}
+                  {ZONE_INFO[zones[photoStep] ?? 'full']?.hint ?? 'Photo will be saved to production record'}
                 </p>
               </div>
               <button
@@ -885,61 +953,39 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                 />
               </div>
 
-              {/* PCB check state / action buttons */}
-              {pcbChecking ? (
-                /* Verifying image is a PCB */
-                <button
-                  type="button"
-                  disabled
-                  className="w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 opacity-70"
-                  style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}
-                >
-                  <div className="w-4 h-4 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-                  Verifying PCB…
-                </button>
-              ) : pcbError ? (
-                /* Not a PCB — show error, only retake available */
-                <div
-                  className="w-full py-3 px-4 rounded-2xl text-sm font-medium text-center"
-                  style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
-                >
-                  ⚠️ {pcbError}
-                </div>
-              ) : zones.length === 1 ? (
-                /* Single zone → submit directly */
+              {/* Action buttons — PCB gate removed until RPi hardware arrives */}
+              {zones.length === 1 ? (
                 <button
                   type="button"
                   onClick={submitForAI}
                   className="w-full py-4 rounded-2xl font-bold text-base"
                   style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
                 >
-                  ✅ Submit — Run AI Check
+                  Submit Photo
                 </button>
               ) : photoStep + 1 < zones.length ? (
-                /* Multi zone → confirm and capture next zone */
                 <button
                   type="button"
                   onClick={confirmAndNext}
                   className="w-full py-4 rounded-2xl font-bold text-base"
                   style={{ background: 'linear-gradient(135deg, #0ea5e9, #6366f1)', color: 'white' }}
                 >
-                  ✓ Use photo → Next: {ZONE_INFO[zones[photoStep + 1]]?.icon} {ZONE_INFO[zones[photoStep + 1]]?.title ?? zones[photoStep + 1]}
+                  Use photo → Next: {ZONE_INFO[zones[photoStep + 1]]?.title ?? zones[photoStep + 1]}
                 </button>
               ) : (
-                /* Last zone → submit all */
                 <button
                   type="button"
                   onClick={submitLastZonePhoto}
                   className="w-full py-4 rounded-2xl font-bold text-base"
                   style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white' }}
                 >
-                  ✅ Submit All — Run AI Check
+                  Submit Photos
                 </button>
               )}
 
               <button
                 type="button"
-                onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); setPcbError(''); }}
+                onClick={() => { setCapturedImage(null); setPreviewUrl(''); setEnhancedBlob(null); }}
                 className="w-full py-3 rounded-2xl text-sm font-medium text-zinc-400"
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
               >
@@ -1003,7 +1049,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                   return zoom > 1 ? (
                     <span className="px-2 py-1 rounded-full text-xs font-bold"
                       style={{ background: 'rgba(14,165,233,0.18)', border: '1px solid rgba(14,165,233,0.35)', color: '#38bdf8' }}>
-                      ⚡ {zoom.toFixed(1)}×
+                      {zoom.toFixed(1)}×
                     </span>
                   ) : null;
                 })()}
@@ -1019,7 +1065,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
                     color: autoCapture ? '#4ade80' : 'rgba(255,255,255,0.45)',
                   }}
                 >
-                  {autoCapture ? '⚡ Auto' : 'Manual'}
+                  {autoCapture ? 'Auto' : 'Manual'}
                 </button>
 
                 {/* Close */}
@@ -1213,7 +1259,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
         Open Work
       </button>
 
-      <p className="text-zinc-600 text-xs text-center">Take a photo when done · AI will verify placement</p>
+      <p className="text-zinc-600 text-xs text-center">Take a photo when done — saved to production record</p>
     </div>
   );
 }

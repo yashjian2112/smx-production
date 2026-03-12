@@ -6,8 +6,8 @@
 
 ## 📅 Last Updated
 - **Date:** 2026-03-11
-- **Updated By:** Claude (Anthropic) — syncing both accounts
-- **Session Summary:** Full AI inspection pipeline now working. 6 bug-fix commits landed today covering model name, photo size, CANNOT_CONFIRM logic, capture button position, portrait preview, and reference image upload.
+- **Updated By:** Claude (Anthropic)
+- **Session Summary:** PCB detection per-photo, micro/mini components skipped until RPi arrives, image storage confirmed.
 
 ---
 
@@ -158,6 +158,11 @@ PENDING | IN_PROGRESS | COMPLETED | WAITING_APPROVAL | APPROVED | REJECTED_BACK 
 
 4. **Result:** Unit auto-advances (PASS) or gets BLOCKED (FAIL) with issue list
 
+### Image Storage:
+- Every submitted photo is saved to Vercel Blob: `stage-work/{unitId}/{stage}/{timestamp}-1/2/3.jpg` (private access)
+- URLs stored in `StageWorkSubmission.imageUrl / imageUrl2 / imageUrl3`
+- RPi station will upload to the same endpoint — images stored identically
+
 ### Photo Zone Logic:
 ```
 photoZone = 'full'    → uses imageUrl  (formData field: 'image')
@@ -183,6 +188,12 @@ photoZone = 'bottom'  → uses imageUrl3 (formData field: 'file3')
 ---
 
 ## ✅ COMPLETED WORK (Most Recent First)
+
+### [2026-03-11] PCB Detection + Small Component Skip
+| Commit | What was fixed |
+|--------|---------------|
+| `203a62c` | `micro` and `mini` dot sizes skipped entirely from AI manifest until RPi arrives. Remove from `SKIP_SIZES` in `work/route.ts` to re-enable. |
+| `3b676ee` | New `/api/check-pcb` (claude-haiku, 512px thumb) called after each zone photo capture — shows "Verifying PCB…" spinner, blocks confirm if not a board. `small` components non-mandatory in FAIL logic (`isSmallOnly` guard). |
 
 ### [2026-03-11] AI Inspection — Full Fix Pass (6 commits, both accounts)
 All AI inspection issues are now resolved. The full pipeline works end-to-end.
@@ -229,6 +240,7 @@ All AI inspection issues are now resolved. The full pipeline works end-to-end.
 
 ### HIGH PRIORITY
 > (Waiting for Raspberry Pi hardware to arrive — ordered 2026-03-11)
+> When RPi arrives: remove `'micro'` and `'mini'` from `SKIP_SIZES` in `app/api/units/[id]/work/route.ts` to re-enable small component inspection.
 
 | Task | Description | Files to Create/Edit |
 |------|------------|---------------------|
