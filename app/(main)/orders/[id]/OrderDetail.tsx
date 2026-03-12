@@ -326,6 +326,30 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
         return;
       }
 
+      // Guard: block re-scanning units already completed or past this stage
+      const stageKey = currentStage?.stageKey;
+      if (stageKey) {
+        const pipeline = [
+          'POWERSTAGE_MANUFACTURING',
+          'BRAINBOARD_MANUFACTURING',
+          'CONTROLLER_ASSEMBLY',
+          'QC_AND_SOFTWARE',
+          'FINAL_ASSEMBLY',
+        ];
+        const unitIdx = pipeline.indexOf(data.currentStage);
+        const scanIdx = pipeline.indexOf(stageKey);
+        const alreadyDone =
+          unitIdx > scanIdx ||
+          (unitIdx === scanIdx && ['COMPLETED', 'WAITING_APPROVAL', 'APPROVED'].includes(data.currentStatus));
+        if (alreadyDone) {
+          setScanStatus({
+            msg: `${data.serialNumber} has already completed ${currentStage?.stageLabel ?? stageKey}. Cannot re-scan.`,
+            type: 'error',
+          });
+          return;
+        }
+      }
+
       const unitId: string = data.id;
 
       // Auto-start: mark unit IN_PROGRESS if still PENDING

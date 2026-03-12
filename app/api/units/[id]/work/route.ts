@@ -146,6 +146,20 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Unit is not available for work' }, { status: 409 });
   }
 
+  // One-unit-at-a-time: if already assigned to a different employee, block
+  if (unit.currentStatus === UnitStatus.IN_PROGRESS) {
+    const existingAssignment = await prisma.stageAssignment.findUnique({
+      where: { unitId_stage: { unitId: id, stage: unit.currentStage } },
+      select: { userId: true },
+    });
+    if (existingAssignment && existingAssignment.userId !== session.id) {
+      return NextResponse.json(
+        { error: 'This unit is already assigned to another employee' },
+        { status: 409 }
+      );
+    }
+  }
+
   // Return existing active submission for this employee if any
   const existing = await prisma.stageWorkSubmission.findFirst({
     where: { unitId: id, stage: unit.currentStage, employeeId: session.id, analysisStatus: 'IN_PROGRESS' },
