@@ -132,7 +132,7 @@ export async function POST(
       await appendTimeline({
         unitId: id,
         userId: session.id,
-        action: 'qc_rejected',
+        action: 'qc_failed',
         stage: StageType.QC_AND_SOFTWARE,
         remarks,
         metadata: {
