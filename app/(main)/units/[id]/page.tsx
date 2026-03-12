@@ -27,6 +27,10 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
       componentChecks: {
         include: { component: true, checker: { select: { id: true, name: true } } },
       },
+      workSubmissions: {
+        select: { stage: true, employeeId: true, buildTimeSec: true, submittedAt: true },
+        orderBy: { submittedAt: 'asc' },
+      },
     },
   });
 
@@ -107,6 +111,37 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
           })()}
         </div>
       </div>
+
+      {/* Build Team — who worked on each stage */}
+      {unit.assignments.length > 0 && (
+        <div className="card p-4">
+          <h3 className="font-medium text-sm mb-3">Build Team</h3>
+          <div className="space-y-3">
+            {(['POWERSTAGE_MANUFACTURING','BRAINBOARD_MANUFACTURING','CONTROLLER_ASSEMBLY','QC_AND_SOFTWARE','FINAL_ASSEMBLY','REWORK'] as const)
+              .map((stage) => {
+                const assignment = unit.assignments.find((a) => a.stage === stage);
+                if (!assignment) return null;
+                const submission = unit.workSubmissions.find(
+                  (w) => w.stage === stage && w.employeeId === assignment.userId
+                );
+                const buildMins = submission?.buildTimeSec ? Math.round(submission.buildTimeSec / 60) : null;
+                return (
+                  <div key={stage} className="flex items-center gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-wide">{stageLabels[stage] ?? stage}</p>
+                      <p className="text-sm font-medium text-zinc-200">{assignment.user.name}</p>
+                    </div>
+                    {buildMins !== null && (
+                      <span className="text-xs text-zinc-600 shrink-0">{buildMins} min</span>
+                    )}
+                  </div>
+                );
+              })
+              .filter(Boolean)}
+          </div>
+        </div>
+      )}
 
       {/* Stage barcodes — hidden for employees, they don't need to see these */}
       {!isEmployee && (

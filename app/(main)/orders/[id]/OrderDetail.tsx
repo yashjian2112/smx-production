@@ -179,7 +179,7 @@ function StageCard({
       {isExpanded && !isEmployee && total > 0 && (
         <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <ul>
-            {stage.units.map((u) => {
+            {stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) !== 'PENDING').map((u) => {
               const status = u.derivedStatus ?? u.currentStatus;
               const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
               return (
@@ -228,7 +228,7 @@ function StageCard({
       {isExpanded && isEmployee && isAccessible && total > 0 && (
         <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <ul>
-            {stage.units.map((u) => {
+            {stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) !== 'PENDING').map((u) => {
               const status = u.derivedStatus ?? u.currentStatus;
               const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
               const canWork = status === 'PENDING' || status === 'IN_PROGRESS';
