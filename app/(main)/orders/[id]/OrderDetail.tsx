@@ -14,16 +14,27 @@ function AssemblySelectModal({
   onSelect: (unitId: string) => void;
   onClose: () => void;
 }) {
-  // Only show units that are ACTUALLY at Assembly stage right now and can be worked on
+  const [search, setSearch] = useState('');
+
+  // Only units physically at Assembly right now
   const eligible = units.filter((u) => {
-    if (u.currentStage !== 'CONTROLLER_ASSEMBLY') return false; // not here yet, or already past
+    if (u.currentStage !== 'CONTROLLER_ASSEMBLY') return false;
     return u.currentStatus === 'IN_PROGRESS' || u.currentStatus === 'PENDING';
   });
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? eligible.filter(
+        (u) =>
+          (u.powerstageBarcode ?? '').toLowerCase().includes(q) ||
+          (u.brainboardBarcode ?? '').toLowerCase().includes(q)
+      )
+    : eligible;
 
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col"
-      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(0,0,0,0.90)', backdropFilter: 'blur(4px)' }}
     >
       {/* Header */}
       <div
@@ -33,7 +44,7 @@ function AssemblySelectModal({
         <div>
           <p className="text-sm font-semibold text-sky-400">Select Unit — Assembly</p>
           <p className="text-[11px] text-zinc-500 mt-0.5">
-            Identify your unit by its Powerstage or Brainboard barcode
+            Find your unit by its Powerstage or Brainboard barcode
           </p>
         </div>
         <button
@@ -47,79 +58,112 @@ function AssemblySelectModal({
         </button>
       </div>
 
-      {/* Unit list */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {/* Search */}
+      <div className="px-4 py-3 shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="relative">
+          <svg
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+          >
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search barcode…"
+            className="w-full rounded-lg pl-9 pr-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 outline-none"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+            autoFocus
+          />
+        </div>
+      </div>
+
+      {/* Sections */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {eligible.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-zinc-500 text-sm">No units waiting at Assembly.</p>
-            <p className="text-zinc-600 text-xs mt-1">Check that at least one Powerstage and one Brainboard are complete.</p>
+            <p className="text-zinc-600 text-xs mt-1">Complete at least one Powerstage and one Brainboard first.</p>
           </div>
         ) : (
-          eligible.map((u) => (
-            <button
-              key={u.id}
-              type="button"
-              onClick={() => onSelect(u.id)}
-              className="w-full text-left rounded-xl p-4 transition-all hover:brightness-110 active:scale-[0.98]"
-              style={{
-                background: 'rgba(14,165,233,0.06)',
-                border: '1px solid rgba(14,165,233,0.2)',
-              }}
-            >
-              {/* Serial number */}
-              <div className="flex items-center justify-between mb-3">
-                <span className="font-mono text-sky-400 font-bold text-base">{u.serialNumber}</span>
+          <>
+            {/* ── Powerstage ── */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
                 <div
-                  className="flex items-center gap-1.5 text-[10px] font-semibold uppercase px-2 py-1 rounded-full"
-                  style={{ background: 'rgba(56,189,248,0.12)', color: '#38bdf8' }}
+                  className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
+                  style={{ background: 'rgba(99,102,241,0.2)', color: '#818cf8' }}
                 >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <path d="M9 18l6-6-6-6" />
-                  </svg>
-                  Select
+                  PS
                 </div>
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#818cf8' }}>
+                  Powerstage
+                </p>
               </div>
-
-              {/* Barcode chips */}
-              <div className="flex flex-col gap-2">
-                {/* Powerstage barcode */}
-                <div
-                  className="flex items-center gap-2 rounded-lg px-3 py-2"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-                >
-                  <div
-                    className="shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(99,102,241,0.2)', color: '#818cf8' }}
-                  >
-                    PS
-                  </div>
-                  {u.powerstageBarcode ? (
-                    <span className="font-mono text-xs text-zinc-300">{u.powerstageBarcode}</span>
-                  ) : (
-                    <span className="text-xs text-zinc-600 italic">Not assigned</span>
-                  )}
-                </div>
-
-                {/* Brainboard barcode */}
-                <div
-                  className="flex items-center gap-2 rounded-lg px-3 py-2"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-                >
-                  <div
-                    className="shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(245,158,11,0.2)', color: '#fbbf24' }}
-                  >
-                    BB
-                  </div>
-                  {u.brainboardBarcode ? (
-                    <span className="font-mono text-xs text-zinc-300">{u.brainboardBarcode}</span>
-                  ) : (
-                    <span className="text-xs text-zinc-600 italic">Not assigned</span>
-                  )}
-                </div>
+              <div className="flex flex-wrap gap-2">
+                {filtered.filter((u) => u.powerstageBarcode).length === 0 ? (
+                  <p className="text-zinc-600 text-xs italic">No match</p>
+                ) : (
+                  filtered
+                    .filter((u) => u.powerstageBarcode)
+                    .map((u) => (
+                      <button
+                        key={`ps-${u.id}`}
+                        type="button"
+                        onClick={() => onSelect(u.id)}
+                        className="font-mono text-sm font-medium px-4 py-2 rounded-lg transition-all active:scale-95 hover:brightness-125"
+                        style={{
+                          background: 'rgba(99,102,241,0.12)',
+                          border: '1px solid rgba(99,102,241,0.3)',
+                          color: '#a5b4fc',
+                        }}
+                      >
+                        {u.powerstageBarcode}
+                      </button>
+                    ))
+                )}
               </div>
-            </button>
-          ))
+            </div>
+
+            {/* ── Brainboard ── */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div
+                  className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
+                  style={{ background: 'rgba(245,158,11,0.2)', color: '#fbbf24' }}
+                >
+                  BB
+                </div>
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#fbbf24' }}>
+                  Brainboard
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {filtered.filter((u) => u.brainboardBarcode).length === 0 ? (
+                  <p className="text-zinc-600 text-xs italic">No match</p>
+                ) : (
+                  filtered
+                    .filter((u) => u.brainboardBarcode)
+                    .map((u) => (
+                      <button
+                        key={`bb-${u.id}`}
+                        type="button"
+                        onClick={() => onSelect(u.id)}
+                        className="font-mono text-sm font-medium px-4 py-2 rounded-lg transition-all active:scale-95 hover:brightness-125"
+                        style={{
+                          background: 'rgba(245,158,11,0.1)',
+                          border: '1px solid rgba(245,158,11,0.3)',
+                          color: '#fcd34d',
+                        }}
+                      >
+                        {u.brainboardBarcode}
+                      </button>
+                    ))
+                )}
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>
