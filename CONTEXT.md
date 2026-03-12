@@ -5,9 +5,9 @@
 ---
 
 ## 📅 Last Updated
-- **Date:** 2026-03-11
+- **Date:** 2026-03-12
 - **Updated By:** Claude (Anthropic)
-- **Session Summary:** PCB detection per-photo, micro/mini components skipped until RPi arrives, image storage confirmed.
+- **Session Summary:** Disabled AI component analysis until external hardware (RPi cameras) arrives. Simplified `/api/units/[id]/work` PUT endpoint to save photos without Claude Vision inspection. All submissions now auto-pass and photos are stored for future analysis when hardware is available.
 
 ---
 
@@ -17,7 +17,7 @@
 
 ### Core Purpose:
 - Track units through 6 manufacturing stages (Powerstage → Brainboard → Assembly → QC → Rework → Final Assembly)
-- AI-powered photo inspection using Claude Vision (detect missing/wrong/defective components)
+- **Photo-based documentation** (AI inspection disabled until external RPi camera hardware arrives)
 - BOM (Bill of Materials) component verification via barcode scanning
 - Role-based workforce management (Admin, Manager, Employee)
 - Permanent audit trail for regulatory compliance
@@ -42,7 +42,7 @@
 | **Database** | Supabase (PostgreSQL) + Prisma ORM v6 |
 | **Auth** | JWT (jose), bcryptjs, HTTP-only cookie sessions |
 | **File Storage** | Vercel Blob |
-| **AI Vision** | Anthropic `claude-sonnet-4-5` (this is the model available on the project API key) |
+| **AI Vision** | ~~Anthropic `claude-sonnet-4-5`~~ (disabled until external hardware arrives) |
 | **Face Auth** | face.js (face descriptor, 128-float array in DB) |
 | **Image Processing** | sharp (CLAHE, crop, upscale, sharpen) |
 | **Barcode/QR** | jsbarcode, qrcode |
@@ -67,7 +67,7 @@
 ### Key API Routes
 | Method + Route | File | Purpose |
 |---------------|------|---------|
-| `GET/PUT /api/units/[id]/work` | `app/api/units/[id]/work/route.ts` | **Main AI inspection route** — fetch zones, submit photos, Claude Vision analysis |
+| `GET/PUT /api/units/[id]/work` | `app/api/units/[id]/work/route.ts` | **Main work route** — fetch zones, submit/save photos (AI analysis disabled until hardware arrives) |
 | `POST /api/admin/checklists` | `app/api/admin/checklists/route.ts` | Create checklist item (photoZone, positions, etc.) |
 | `POST /api/admin/checklists/locate` | `app/api/admin/checklists/locate/route.ts` | Claude Vision: auto-locate component on board |
 | `POST /api/units/[id]/qc` | `app/api/units/[id]/qc/route.ts` | Record QC result |
