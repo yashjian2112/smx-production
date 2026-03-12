@@ -12,9 +12,11 @@ type Props = {
   currentStatus: string;
   isEmployee: boolean;
   orderId: string | null;
+  powerstageBarcode?: string | null;
+  brainboardBarcode?: string | null;
 };
 
-export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, isEmployee, orderId }: Props) {
+export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, isEmployee, orderId, powerstageBarcode, brainboardBarcode }: Props) {
   const [tab, setTab] = useState<'work' | 'history'>(isEmployee ? 'work' : 'history');
 
   return (
@@ -51,6 +53,8 @@ export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, curre
             currentStage={currentStage}
             currentStatus={currentStatus}
             orderId={orderId}
+            powerstageBarcode={powerstageBarcode}
+            brainboardBarcode={brainboardBarcode}
           />
         )}
         {tab === 'history' && (

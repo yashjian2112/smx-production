@@ -25,9 +25,12 @@ type Props = {
   currentStage: string;
   currentStatus: string;
   orderId: string | null;
+  powerstageBarcode?: string | null;
+  brainboardBarcode?: string | null;
 };
 
 function fmtDuration(sec: number) {
+  if (!sec || isNaN(sec) || sec < 0) return '0s';
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
@@ -40,6 +43,7 @@ function LiveTimer({ startedAt }: { startedAt: string }) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     const start = new Date(startedAt).getTime();
+    if (isNaN(start)) return;
     const tick = () => setElapsed(Math.floor((Date.now() - start) / 1000));
     tick();
     const t = setInterval(tick, 1000);
@@ -146,7 +150,7 @@ async function smartCropPCB(blob: Blob): Promise<Blob> {
   });
 }
 
-export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: Props) {
+export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, powerstageBarcode, brainboardBarcode }: Props) {
   const router = useRouter();
 
   // ── state machine ──────────────────────────────────────────────────────────
@@ -235,7 +239,10 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
             // No active submission — create one
             return fetch(`/api/units/${unitId}/work`, { method: 'POST' })
               .then(r => r.json())
-              .then(d => { setSubmission(d); setStep('working'); });
+              .then(d => {
+                if (d?.id) { setSubmission(d); setStep('working'); }
+                else { setStep('idle'); }
+              });
           }
         })
         .catch(() => setStep('idle'));
@@ -1257,6 +1264,33 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
           <span className="text-zinc-500 text-xs">Working</span>
           <LiveTimer startedAt={submission.startedAt} />
+        </div>
+      )}
+
+      {/* Assembly stage: read-only pairing confirmation — barcodes already saved via selector */}
+      {currentStage === 'CONTROLLER_ASSEMBLY' && (powerstageBarcode || brainboardBarcode) && (
+        <div
+          className="rounded-xl p-3 space-y-2"
+          style={{ background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.2)' }}
+        >
+          <div className="flex items-center gap-2">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-green-400">
+              Board Pairing Recorded
+            </p>
+          </div>
+          <div className="flex gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded" style={{ background: 'rgba(99,102,241,0.2)', color: '#818cf8' }}>PS</span>
+              <span className="font-mono text-xs text-indigo-300">{powerstageBarcode ?? '—'}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.2)', color: '#fbbf24' }}>BB</span>
+              <span className="font-mono text-xs text-amber-300">{brainboardBarcode ?? '—'}</span>
+            </div>
+          </div>
         </div>
       )}
 

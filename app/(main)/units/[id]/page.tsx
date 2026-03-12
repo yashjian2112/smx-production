@@ -201,6 +201,8 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
           currentStatus={unit.currentStatus}
           isEmployee={isEmployee}
           orderId={unit.order?.id ?? null}
+          powerstageBarcode={unit.powerstageBarcode ?? null}
+          brainboardBarcode={unit.brainboardBarcode ?? null}
         />
       )}
 
