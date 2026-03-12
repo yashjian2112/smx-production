@@ -51,10 +51,6 @@ export function QcChecklist({
   const [error, setError] = useState<string | null>(null);
   const [submittedResult, setSubmittedResult] = useState<'PASS' | 'FAIL' | null>(null);
 
-  // Assembly serial — tech must scan/type the unit serial to confirm identity before starting
-  const [assemblySerial, setAssemblySerial] = useState('');
-  const serialMatch = assemblySerial.trim().toUpperCase() === serialNumber.toUpperCase();
-
   const completedCount = QC_ITEMS.filter((i) => checks[i.key]).length;
   const currentItem = QC_ITEMS[currentIdx];
 
@@ -67,14 +63,6 @@ export function QcChecklist({
 
   // ── Start QC work ──────────────────────────────────────────────────────────
   async function startQC() {
-    if (!assemblySerial.trim()) {
-      setError('Scan or enter the controller serial number before starting.');
-      return;
-    }
-    if (!serialMatch) {
-      setError('Serial number does not match this unit. Please check the label and try again.');
-      return;
-    }
     setPhase('starting');
     setError(null);
     try {
@@ -194,31 +182,18 @@ export function QcChecklist({
             ))}
           </div>
 
-          {/* ── Unit Identification ──────────────────────────────────────── */}
+          {/* ── Unit Identification — read-only, serial already known ────── */}
           <div
-            className="rounded-xl p-3 mb-4"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+            className="rounded-xl p-3 mb-4 flex items-center gap-3"
+            style={{ background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.2)' }}
           >
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">
-              Unit Identification — scan the serial label on the controller
-            </p>
-            <label className="block text-[11px] text-zinc-500 mb-1">
-              Assembly Serial Number <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              value={assemblySerial}
-              onChange={(e) => { setAssemblySerial(e.target.value.toUpperCase()); setError(null); }}
-              placeholder={serialNumber}
-              className="w-full px-3 py-2.5 rounded-lg text-sm font-mono text-white placeholder-zinc-700 outline-none"
-              style={{
-                background: serialMatch ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.04)',
-                border: serialMatch ? '1px solid rgba(34,197,94,0.25)' : '1px solid rgba(255,255,255,0.1)',
-              }}
-            />
-            {serialMatch && (
-              <p className="text-green-400 text-[11px] mt-1.5">✓ Serial verified</p>
-            )}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-green-400">Unit Selected</p>
+              <p className="font-mono text-sm text-white mt-0.5">{serialNumber}</p>
+            </div>
           </div>
 
           {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
