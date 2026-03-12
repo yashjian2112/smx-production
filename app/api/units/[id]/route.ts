@@ -52,6 +52,9 @@ const updateSchema = z.object({
   assignUserId: z.string().optional(),
   firmwareVersion: z.string().optional(),
   softwareVersion: z.string().optional(),
+  /** Set when Assembly employee confirms which PS+BB boards they are physically combining */
+  assemblyBrainboardBarcode: z.string().optional(),
+  assemblyPowerstageBarcode: z.string().optional(),
 });
 
 export async function PATCH(
@@ -66,12 +69,19 @@ export async function PATCH(
     if (!parsed.success) {
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
-    const { status, remarks, assignUserId, firmwareVersion, softwareVersion } = parsed.data;
+    const { status, remarks, assignUserId, firmwareVersion, softwareVersion, assemblyBrainboardBarcode, assemblyPowerstageBarcode } = parsed.data;
 
     const unit = await prisma.controllerUnit.findUnique({ where: { id } });
     if (!unit) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    const updates: { currentStatus?: UnitStatus; currentStage?: StageType; firmwareVersion?: string; softwareVersion?: string } = {};
+    const updates: {
+      currentStatus?: UnitStatus;
+      currentStage?: StageType;
+      firmwareVersion?: string;
+      softwareVersion?: string;
+      brainboardBarcode?: string;
+      powerstageBarcode?: string;
+    } = {};
     let statusFrom = unit.currentStatus;
     let statusTo = unit.currentStatus;
 
@@ -81,6 +91,26 @@ export async function PATCH(
     }
     if (firmwareVersion !== undefined) updates.firmwareVersion = firmwareVersion;
     if (softwareVersion !== undefined) updates.softwareVersion = softwareVersion;
+
+    // Assembly stage: record which PS + BB boards were physically combined
+    if (assemblyBrainboardBarcode) {
+      updates.brainboardBarcode = assemblyBrainboardBarcode.trim().toUpperCase();
+    }
+    if (assemblyPowerstageBarcode) {
+      updates.powerstageBarcode = assemblyPowerstageBarcode.trim().toUpperCase();
+    }
+    // Log the assembly pairing as its own timeline event (separate from status change)
+    if (assemblyBrainboardBarcode || assemblyPowerstageBarcode) {
+      const psLabel = assemblyPowerstageBarcode ?? unit.powerstageBarcode ?? '—';
+      const bbLabel = assemblyBrainboardBarcode ?? unit.brainboardBarcode ?? '—';
+      await appendTimeline({
+        unitId: id,
+        userId: session.id,
+        action: 'assembly_pairing_recorded',
+        stage: StageType.CONTROLLER_ASSEMBLY,
+        remarks: `PS: ${psLabel}  |  BB: ${bbLabel}`,
+      });
+    }
 
     if (assignUserId && isManager(session)) {
       await prisma.stageAssignment.upsert({
