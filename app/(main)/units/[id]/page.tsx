@@ -9,6 +9,7 @@ import { Barcode128 } from '@/components/Barcode128';
 import { ComponentChecklist } from './ComponentChecklist';
 import { WorkTabs } from './WorkTabs';
 import { QcChecklist } from './QcChecklist';
+import { DispatchSection } from './DispatchSection';
 
 export default async function UnitPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -231,6 +232,28 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
           date={new Date(unit.qcRecords[0].createdAt).toLocaleString()}
         />
       )}
+
+      {/* Dispatch section — shown once Final Assembly is complete */}
+      {(unit.currentStage === 'FINAL_ASSEMBLY' &&
+        (unit.currentStatus === 'COMPLETED' || unit.currentStatus === 'APPROVED')) ||
+        unit.readyForDispatch ? (
+        <DispatchSection
+          unitId={unit.id}
+          serialNumber={unit.serialNumber}
+          productName={unit.product?.name ?? ''}
+          productCode={unit.product?.code ?? ''}
+          orderNumber={unit.order?.orderNumber ?? ''}
+          finalAssemblyBarcode={unit.finalAssemblyBarcode ?? null}
+          readyForDispatch={unit.readyForDispatch}
+          dispatchedAt={
+            unit.timelineLogs.find((l) => l.action === 'dispatched')?.createdAt.toISOString() ?? null
+          }
+          dispatchedBy={
+            unit.timelineLogs.find((l) => l.action === 'dispatched')?.user?.name ?? null
+          }
+          sessionRole={session.role}
+        />
+      ) : null}
 
       <UnitActions unit={JSON.parse(JSON.stringify(unit))} sessionRole={session.role} />
 

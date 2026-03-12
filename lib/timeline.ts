@@ -19,7 +19,8 @@ type TimelineAction =
   | 'final_assembly_completed'
   | 'unit_blocked'
   | 'status_changed'
-  | 'assembly_pairing_recorded';
+  | 'assembly_pairing_recorded'
+  | 'dispatched';
 
 export async function appendTimeline(params: {
   unitId?: string | null;
