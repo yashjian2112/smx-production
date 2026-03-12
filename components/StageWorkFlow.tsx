@@ -24,6 +24,7 @@ type Props = {
   stageBarcode: string | null;
   currentStage: string;
   currentStatus: string;
+  orderId: string | null;
 };
 
 function fmtDuration(sec: number) {
@@ -145,7 +146,7 @@ async function smartCropPCB(blob: Blob): Promise<Blob> {
   });
 }
 
-export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
+export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: Props) {
   const router = useRouter();
 
   // ── state machine ──────────────────────────────────────────────────────────
@@ -238,6 +239,12 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
           }
         })
         .catch(() => setStep('idle'));
+      return;
+    }
+
+    if (currentStatus !== 'PENDING') {
+      // BLOCKED, WAITING_APPROVAL, REJECTED_BACK, etc. — cannot start work
+      setStep('idle');
       return;
     }
 
@@ -488,7 +495,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
       const data = await res.json();
       setResult({ result: data.result, issues: data.issues ?? [], summary: data.summary });
       setStep('result');
-      if (data.result === 'PASS') setTimeout(() => router.refresh(), 2000);
+      if (data.result === 'PASS') setTimeout(() => orderId ? router.push(`/orders/${orderId}`) : router.refresh(), 2000);
     } catch {
       setError('Submission failed. Please try again.');
       setStep('open');
@@ -509,7 +516,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus }: Props) {
       const data = await res.json();
       setResult({ result: data.result, issues: data.issues ?? [], summary: data.summary });
       setStep('result');
-      if (data.result === 'PASS') setTimeout(() => router.refresh(), 2000);
+      if (data.result === 'PASS') setTimeout(() => orderId ? router.push(`/orders/${orderId}`) : router.refresh(), 2000);
     } catch {
       setError('Submission failed. Please try again.');
       setStep('open');

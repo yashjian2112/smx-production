@@ -70,7 +70,6 @@ export async function GET() {
     const reworkPending = await prisma.reworkRecord.count({
       where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
     });
-    const waitingApproval = 0;
     const blocked = await prisma.controllerUnit.count({
       where: { currentStatus: 'BLOCKED', order: { status: 'ACTIVE' } },
     });
@@ -90,7 +89,6 @@ export async function GET() {
       qcPass,
       qcFail,
       reworkPending,
-      waitingApproval,
       blockedCount: blocked,
     });
   } catch (e) {

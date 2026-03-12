@@ -97,13 +97,28 @@ export default function SerialPage() {
         data = await res.json().catch(() => ({}));
       }
       if (res.ok && data?.id) {
-        setFound({
-          id:            data.id,
-          serialNumber:  data.serialNumber ?? val,
-          currentStage:  data.currentStage ?? '',
-          currentStatus: data.currentStatus ?? '',
-        });
-        setCountdown(5);
+        const status = data.currentStatus ?? '';
+        if (status === 'COMPLETED') {
+          setError('This unit has already completed its current stage.');
+          setQuery('');
+          inputRef.current?.focus();
+        } else if (status === 'BLOCKED') {
+          setError('This unit is blocked — contact your manager before proceeding.');
+          setQuery('');
+          inputRef.current?.focus();
+        } else if (status === 'WAITING_APPROVAL') {
+          setError('This unit is waiting for manager approval.');
+          setQuery('');
+          inputRef.current?.focus();
+        } else {
+          setFound({
+            id:            data.id,
+            serialNumber:  data.serialNumber ?? val,
+            currentStage:  data.currentStage ?? '',
+            currentStatus: status,
+          });
+          setCountdown(5);
+        }
       } else {
         setError(data?.error || 'No unit found with that barcode. Try again.');
         setQuery('');

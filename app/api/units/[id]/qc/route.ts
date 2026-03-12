@@ -70,7 +70,16 @@ export async function POST(
         data: {
           ...updateData,
           currentStage: StageType.FINAL_ASSEMBLY,
-          currentStatus: 'PENDING',
+          currentStatus: UnitStatus.PENDING,
+        },
+      });
+      await prisma.stageLog.create({
+        data: {
+          unitId: id,
+          userId: session.id,
+          stage: StageType.QC_AND_SOFTWARE,
+          statusFrom: UnitStatus.IN_PROGRESS,
+          statusTo: UnitStatus.COMPLETED,
         },
       });
       await appendTimeline({
@@ -85,6 +94,15 @@ export async function POST(
       await prisma.controllerUnit.update({
         where: { id },
         data: updateData,
+      });
+      await prisma.stageLog.create({
+        data: {
+          unitId: id,
+          userId: session.id,
+          stage: StageType.QC_AND_SOFTWARE,
+          statusFrom: UnitStatus.IN_PROGRESS,
+          statusTo: UnitStatus.BLOCKED,
+        },
       });
       await prisma.reworkRecord.create({
         data: {

@@ -144,6 +144,7 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
         currentStage={unit.currentStage}
         currentStatus={unit.currentStatus}
         isEmployee={isEmployee}
+        orderId={unit.order?.id ?? null}
       />
 
       {/* QC Results */}

@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { put } from '@vercel/blob';
+import { UnitStatus } from '@prisma/client';
 
 // ── GET ───────────────────────────────────────────────────────────────────────
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -76,6 +77,17 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!unit) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
 
+  // Block work on non-workable statuses
+  if (unit.currentStatus === UnitStatus.COMPLETED) {
+    return NextResponse.json({ error: 'Stage already completed' }, { status: 409 });
+  }
+  if (unit.currentStatus === UnitStatus.BLOCKED) {
+    return NextResponse.json({ error: 'Unit is blocked — contact your manager' }, { status: 409 });
+  }
+  if (unit.currentStatus !== UnitStatus.PENDING && unit.currentStatus !== UnitStatus.IN_PROGRESS) {
+    return NextResponse.json({ error: 'Unit is not available for work' }, { status: 409 });
+  }
+
   // Return existing active submission if any
   const existing = await prisma.stageWorkSubmission.findFirst({
     where: { unitId: id, stage: unit.currentStage, employeeId: session.id, analysisStatus: 'IN_PROGRESS' },
@@ -86,7 +98,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (unit.currentStatus === 'PENDING') {
     await prisma.controllerUnit.update({ where: { id }, data: { currentStatus: 'IN_PROGRESS' } });
     await prisma.stageLog.create({
-      data: { unitId: id, userId: session.id, stage: unit.currentStage, statusFrom: 'PENDING', statusTo: 'IN_PROGRESS' },
+      data: { unitId: id, userId: session.id, stage: unit.currentStage, statusFrom: UnitStatus.PENDING, statusTo: UnitStatus.IN_PROGRESS },
     });
   }
 
@@ -157,13 +169,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // Auto-complete unit stage on successful photo submission
   try {
-    await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/units/${id}`, {
+    const completeRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/units/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: req.headers.get('cookie') ?? '' },
       body: JSON.stringify({ status: 'COMPLETED', userId: session.id }),
     });
+    if (!completeRes.ok) {
+      const errData = await completeRes.json().catch(() => ({}));
+      console.error('Auto-complete failed:', completeRes.status, errData);
+      return NextResponse.json({ error: 'Photo saved but stage completion failed. Please refresh and try again.' }, { status: 500 });
+    }
   } catch (e) {
-    console.error('Auto-complete failed:', e);
+    console.error('Auto-complete network error:', e);
+    return NextResponse.json({ error: 'Photo saved but stage completion failed. Please refresh and try again.' }, { status: 500 });
   }
 
   return NextResponse.json({ submission: updated, result: 'PASS', issues: [], summary: updated.analysisSummary });

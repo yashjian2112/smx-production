@@ -15,6 +15,7 @@ export function UnitActions({ unit, sessionRole }: { unit: Unit; sessionRole: st
   const [loading, setLoading] = useState('');
   const [remarks, setRemarks] = useState('');
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
   const isEmployee = sessionRole === 'PRODUCTION_EMPLOYEE';
 
@@ -24,13 +25,21 @@ export function UnitActions({ unit, sessionRole }: { unit: Unit; sessionRole: st
   async function runAction(action: string) {
     setPendingAction(null);
     setLoading(action);
+    setError('');
     try {
-      await fetch(`/api/units/${unit.id}`, {
+      const res = await fetch(`/api/units/${unit.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: action, remarks: remarks || undefined }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? `Failed (${res.status})`);
+        return;
+      }
       router.refresh();
+    } catch {
+      setError('Network error — please try again.');
     } finally { setLoading(''); }
   }
 
@@ -74,6 +83,9 @@ export function UnitActions({ unit, sessionRole }: { unit: Unit; sessionRole: st
         </div>
       )}
 
+      {error && (
+        <p className="text-sm text-red-400">{error}</p>
+      )}
       {pendingAction && (
         <FaceGate
           mode="verify"
