@@ -87,6 +87,13 @@ export default function SerialPage() {
     e.preventDefault();
     const val = query.trim().toUpperCase();
     if (!val) return;
+    // Component barcodes (COMP-…) are for board identification during Assembly — not valid here
+    if (val.startsWith('COMP-')) {
+      setError('Component barcodes are not valid here. Scan the unit serial or stage barcode (PS / BB / QC / FA).');
+      setQuery('');
+      inputRef.current?.focus();
+      return;
+    }
     setError('');
     setLoading(true);
     try {
