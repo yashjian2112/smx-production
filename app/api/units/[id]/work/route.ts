@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
+import { generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
 import { put } from '@vercel/blob';
 import { StageType, UnitStatus } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
@@ -189,7 +190,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const unit = await prisma.controllerUnit.findUnique({
     where: { id },
-    select: { currentStage: true, currentStatus: true },
+    include: { product: { select: { code: true } } },
   });
   if (!unit) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
 
@@ -268,10 +269,33 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     if (next) {
-      // Advance to next stage, reset to IN_PROGRESS
+      // QC and Final Assembly start as PENDING so the tech must scan the
+      // pre-generated barcode to begin — other stages continue IN_PROGRESS.
+      const nextStatus =
+        next === StageType.QC_AND_SOFTWARE || next === StageType.FINAL_ASSEMBLY
+          ? UnitStatus.PENDING
+          : UnitStatus.IN_PROGRESS;
+
+      // Pre-generate the stage barcode so it can be printed / scanned before
+      // the tech starts that stage (QC barcode on assembly completion, FA barcode
+      // on QC pass). The QC route also generates the barcode as a fallback.
+      const barcodeUpdates: { qcBarcode?: string; finalAssemblyBarcode?: string } = {};
+      if (next === StageType.QC_AND_SOFTWARE && unit.product?.code) {
+        // Only generate if not already set (idempotent)
+        const existing = await prisma.controllerUnit.findUnique({ where: { id }, select: { qcBarcode: true } });
+        if (!existing?.qcBarcode) {
+          barcodeUpdates.qcBarcode = await generateNextQCBarcode(unit.product.code);
+        }
+      } else if (next === StageType.FINAL_ASSEMBLY && unit.product?.code) {
+        const existing = await prisma.controllerUnit.findUnique({ where: { id }, select: { finalAssemblyBarcode: true } });
+        if (!existing?.finalAssemblyBarcode) {
+          barcodeUpdates.finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(unit.product.code);
+        }
+      }
+
       await prisma.controllerUnit.update({
         where: { id },
-        data: { currentStage: next, currentStatus: UnitStatus.IN_PROGRESS },
+        data: { currentStage: next, currentStatus: nextStatus, ...barcodeUpdates },
       });
     } else {
       // Final stage — mark fully complete

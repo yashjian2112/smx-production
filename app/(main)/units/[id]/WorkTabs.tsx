@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { StageWorkFlow } from '@/components/StageWorkFlow';
 import { StageHistory } from '@/components/StageHistory';
+import { QcChecklist } from './QcChecklist';
 
 type Props = {
   unitId: string;
@@ -43,7 +44,15 @@ export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, curre
 
       {/* Content */}
       <div className="p-4">
-        {tab === 'work' && isEmployee && (
+        {tab === 'work' && isEmployee && currentStage === 'QC_AND_SOFTWARE' && (
+          // QC stage uses a dedicated checklist flow, not the camera/photo workflow
+          <QcChecklist
+            unitId={unitId}
+            currentStatus={currentStatus}
+            orderId={orderId}
+          />
+        )}
+        {tab === 'work' && isEmployee && currentStage !== 'QC_AND_SOFTWARE' && (
           <StageWorkFlow
             unitId={unitId}
             unitSerial={unitSerial}

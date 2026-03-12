@@ -41,6 +41,8 @@ const STATUS_STYLES: Record<string, { dot: string; text: string; label: string }
 const EMPLOYEE_ACCESSIBLE_STAGES = new Set([
   'POWERSTAGE_MANUFACTURING',
   'BRAINBOARD_MANUFACTURING',
+  'QC_AND_SOFTWARE',
+  'FINAL_ASSEMBLY',
 ]);
 
 function MiniProgress({ units }: { units: UnitData[] }) {
@@ -224,45 +226,45 @@ function StageCard({
         </div>
       )}
 
-      {/* Expanded unit list — employees see serial + status on their accessible stages */}
-      {isExpanded && isEmployee && isAccessible && total > 0 && (
-        <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-          <ul>
-            {stage.units.map((u) => {
-              const status = u.derivedStatus ?? u.currentStatus;
-              const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
-              const canWork = status === 'PENDING' || status === 'IN_PROGRESS';
-              const inner = (
-                <>
-                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-                  <span className="font-mono text-sky-400 text-sm flex-1 truncate">{u.serialNumber}</span>
-                  <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${s.text}`}>
-                    {s.label}
-                  </span>
-                  {canWork && (
-                    <svg className="text-zinc-600 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M9 18l6-6-6-6" />
-                    </svg>
-                  )}
-                </>
-              );
-              return (
-                <li key={u.id} className="border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                  {canWork ? (
-                    <a href={`/units/${u.id}`} className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/5 transition-colors">
-                      {inner}
-                    </a>
-                  ) : (
-                    <div className="flex items-center gap-2.5 px-3 py-2.5 opacity-40">
-                      {inner}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      {/* Expanded unit list — employees see serial + status on their accessible stages.
+          Only shows assigned (IN_PROGRESS / COMPLETED) units — PENDING = unassigned, hidden. */}
+      {isExpanded && isEmployee && isAccessible && total > 0 && (() => {
+        const assignedUnits = stage.units.filter(
+          (u) => (u.derivedStatus ?? u.currentStatus) !== 'PENDING',
+        );
+        return (
+          <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            {assignedUnits.length === 0 ? (
+              <p className="px-3 py-3 text-xs text-zinc-600">No units assigned yet — scan a barcode to start.</p>
+            ) : (
+              <ul>
+                {assignedUnits.map((u) => {
+                  const status = u.derivedStatus ?? u.currentStatus;
+                  const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
+                  const isCompleted = status === 'COMPLETED';
+                  return (
+                    <li key={u.id} className="border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                      {/* All assigned units are tappable:
+                          IN_PROGRESS → open work page
+                          COMPLETED   → open unit page to view history */}
+                      <a href={`/units/${u.id}`} className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/5 transition-colors">
+                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+                        <span className="font-mono text-sky-400 text-sm flex-1 truncate">{u.serialNumber}</span>
+                        <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${s.text}`}>
+                          {isCompleted ? 'Done ✓' : s.label}
+                        </span>
+                        <svg className="text-zinc-600 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
