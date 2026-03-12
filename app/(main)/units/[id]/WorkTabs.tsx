@@ -13,10 +13,10 @@ type Props = {
   currentStatus: string;
   isEmployee: boolean;
   orderId: string | null;
-  // Extra props for QC checklist
-  productName: string;
-  orderNumber: string;
-  qcBarcode: string | null;
+  // Extra props for QC checklist (optional — QC employees handled directly in page.tsx)
+  productName?: string;
+  orderNumber?: string;
+  qcBarcode?: string | null;
   powerstageBarcode?: string | null;
   brainboardBarcode?: string | null;
 };
@@ -56,9 +56,9 @@ export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, curre
             unitId={unitId}
             currentStatus={currentStatus}
             serialNumber={unitSerial}
-            productName={productName}
-            orderNumber={orderNumber}
-            qcBarcode={qcBarcode}
+            productName={productName ?? ''}
+            orderNumber={orderNumber ?? ''}
+            qcBarcode={qcBarcode ?? null}
           />
         )}
         {tab === 'work' && isEmployee && currentStage !== 'QC_AND_SOFTWARE' && (
