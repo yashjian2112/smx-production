@@ -29,6 +29,8 @@ export function QcChecklist({
   productName,
   orderNumber,
   qcBarcode,
+  psBoardBarcode,
+  bbBoardBarcode,
 }: {
   unitId: string;
   currentStatus: string;
@@ -36,6 +38,8 @@ export function QcChecklist({
   productName: string;
   orderNumber: string;
   qcBarcode: string | null;
+  psBoardBarcode: string | null;
+  bbBoardBarcode: string | null;
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -51,6 +55,10 @@ export function QcChecklist({
   const [error, setError] = useState<string | null>(null);
   const [submittedResult, setSubmittedResult] = useState<'PASS' | 'FAIL' | null>(null);
 
+  // Board barcodes — pre-filled from unit record, confirmed / corrected by tech
+  const [psBoard, setPsBoard] = useState(psBoardBarcode ?? '');
+  const [bbBoard, setBbBoard] = useState(bbBoardBarcode ?? '');
+
   const completedCount = QC_ITEMS.filter((i) => checks[i.key]).length;
   const currentItem = QC_ITEMS[currentIdx];
 
@@ -63,6 +71,14 @@ export function QcChecklist({
 
   // ── Start QC work ──────────────────────────────────────────────────────────
   async function startQC() {
+    if (!psBoard.trim()) {
+      setError('Scan or enter the Powerstage board barcode before starting.');
+      return;
+    }
+    if (!bbBoard.trim()) {
+      setError('Scan or enter the Brainboard barcode before starting.');
+      return;
+    }
     setPhase('starting');
     setError(null);
     try {
@@ -137,6 +153,8 @@ export function QcChecklist({
           checklistData: checks,
           firmwareVersion: firmwareVersion || undefined,
           softwareVersion: softwareVersion || undefined,
+          psBoardBarcode: psBoard.trim() || undefined,
+          bbBoardBarcode: bbBoard.trim() || undefined,
         }),
       });
       if (!res.ok) {
@@ -181,6 +199,53 @@ export function QcChecklist({
               </div>
             ))}
           </div>
+
+          {/* ── Board Identification ─────────────────────────────────────── */}
+          <div
+            className="rounded-xl p-3 mb-4 space-y-3"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+              Board Identification — scan both labels inside the unit
+            </p>
+            <div>
+              <label className="block text-[11px] text-zinc-500 mb-1">
+                Powerstage Board Barcode <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={psBoard}
+                onChange={(e) => { setPsBoard(e.target.value); setError(null); }}
+                placeholder={psBoardBarcode ?? 'e.g. 1000PS26001'}
+                className="w-full px-3 py-2.5 rounded-lg text-sm font-mono text-white placeholder-zinc-700 outline-none"
+                style={{
+                  background: psBoard.trim() ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.04)',
+                  border: psBoard.trim()
+                    ? '1px solid rgba(34,197,94,0.25)'
+                    : '1px solid rgba(255,255,255,0.1)',
+                }}
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-zinc-500 mb-1">
+                Brainboard Barcode <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={bbBoard}
+                onChange={(e) => { setBbBoard(e.target.value); setError(null); }}
+                placeholder={bbBoardBarcode ?? 'e.g. 1000BB26001'}
+                className="w-full px-3 py-2.5 rounded-lg text-sm font-mono text-white placeholder-zinc-700 outline-none"
+                style={{
+                  background: bbBoard.trim() ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.04)',
+                  border: bbBoard.trim()
+                    ? '1px solid rgba(34,197,94,0.25)'
+                    : '1px solid rgba(255,255,255,0.1)',
+                }}
+              />
+            </div>
+          </div>
+
           {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
           <button
             onClick={startQC}
@@ -526,7 +591,7 @@ export function QcChecklist({
               {qcBarcode && <p style={{ margin: '2px 0 0' }}>QC Code: {qcBarcode}</p>}
             </div>
           </div>
-          <div style={{ marginTop: 8, display: 'flex', gap: 24, fontSize: 13 }}>
+          <div style={{ marginTop: 8, display: 'flex', gap: 24, fontSize: 13, flexWrap: 'wrap' }}>
             <div>
               <span style={{ color: '#666' }}>Serial: </span>
               <strong>{serialNumber}</strong>
@@ -544,6 +609,34 @@ export function QcChecklist({
               </div>
             )}
           </div>
+          {/* Board identification row */}
+          {(psBoard.trim() || bbBoard.trim()) && (
+            <div
+              style={{
+                marginTop: 8,
+                padding: '6px 10px',
+                background: '#f0f7ff',
+                border: '1px solid #bfd7f0',
+                borderRadius: 4,
+                display: 'flex',
+                gap: 32,
+                fontSize: 12,
+              }}
+            >
+              {psBoard.trim() && (
+                <div>
+                  <span style={{ color: '#555' }}>Powerstage Board: </span>
+                  <strong style={{ fontFamily: 'monospace' }}>{psBoard.trim()}</strong>
+                </div>
+              )}
+              {bbBoard.trim() && (
+                <div>
+                  <span style={{ color: '#555' }}>Brainboard: </span>
+                  <strong style={{ fontFamily: 'monospace' }}>{bbBoard.trim()}</strong>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Checklist table */}

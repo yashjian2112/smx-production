@@ -191,6 +191,8 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
           productName={unit.product?.name ?? ''}
           orderNumber={unit.order?.orderNumber ?? ''}
           qcBarcode={unit.qcBarcode ?? null}
+          psBoardBarcode={unit.powerstageBarcode ?? null}
+          bbBoardBarcode={unit.brainboardBarcode ?? null}
         />
       ) : (
         <WorkTabs
@@ -204,6 +206,8 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
           productName={unit.product?.name ?? ''}
           orderNumber={unit.order?.orderNumber ?? ''}
           qcBarcode={unit.qcBarcode ?? null}
+          psBoardBarcode={unit.powerstageBarcode ?? null}
+          bbBoardBarcode={unit.brainboardBarcode ?? null}
         />
       )}
 
