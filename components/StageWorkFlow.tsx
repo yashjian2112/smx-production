@@ -166,6 +166,10 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
   const [error, setError] = useState('');
   const [startingWork, setStartingWork] = useState(false);
 
+  // Assembly stage: track which PS and BB boards are going into the unit
+  const [psBoard, setPsBoard] = useState('');
+  const [bbBoard, setBbBoard] = useState('');
+
   // ── multi-zone photo wizard ────────────────────────────────────────────────
   const [zones, setZones]         = useState<string[]>(['full']); // fetched from GET
   const [zoneZooms, setZoneZooms] = useState<Record<string, number>>({ full: 1 }); // auto-zoom per zone
@@ -483,12 +487,20 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
   // ── submit to AI (single-zone — backward compatible) ──────────────────────
   async function submitForAI() {
     if (!capturedImage || !submission) return;
+    if (currentStage === 'CONTROLLER_ASSEMBLY') {
+      if (!psBoard.trim()) { setError('Scan or enter the Powerstage board barcode before submitting.'); return; }
+      if (!bbBoard.trim()) { setError('Scan or enter the Brainboard barcode before submitting.'); return; }
+    }
     const fileToSend = enhancedBlob
       ? new File([enhancedBlob], 'capture.jpg', { type: 'image/jpeg' })
       : capturedImage;
     const fd = new FormData();
     fd.append('image', fileToSend);
     fd.append('submissionId', submission.id);
+    if (currentStage === 'CONTROLLER_ASSEMBLY') {
+      if (psBoard.trim()) fd.append('psBoardBarcode', psBoard.trim());
+      if (bbBoard.trim()) fd.append('bbBoardBarcode', bbBoard.trim());
+    }
     setStep('analyzing'); setError('');
     try {
       const res = await fetch(`/api/units/${unitId}/work`, { method: 'PUT', body: fd });
@@ -511,9 +523,17 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
   // ── submit all zone photos (multi-zone) ───────────────────────────────────
   async function submitAllZones(photos: Record<string, File>) {
     if (!submission || Object.keys(photos).length === 0) return;
+    if (currentStage === 'CONTROLLER_ASSEMBLY') {
+      if (!psBoard.trim()) { setError('Scan or enter the Powerstage board barcode before submitting.'); return; }
+      if (!bbBoard.trim()) { setError('Scan or enter the Brainboard barcode before submitting.'); return; }
+    }
     setStep('analyzing'); setError('');
     const fd = new FormData();
     fd.append('submissionId', submission.id);
+    if (currentStage === 'CONTROLLER_ASSEMBLY') {
+      if (psBoard.trim()) fd.append('psBoardBarcode', psBoard.trim());
+      if (bbBoard.trim()) fd.append('bbBoardBarcode', bbBoard.trim());
+    }
     if (photos['full'])   fd.append('image',  photos['full']);
     if (photos['top'])    fd.append('file2',  photos['top']);
     if (photos['bottom']) fd.append('file3',  photos['bottom']);
@@ -1260,10 +1280,60 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
         </div>
       )}
 
+      {/* Assembly stage: board identification */}
+      {currentStage === 'CONTROLLER_ASSEMBLY' && (
+        <div
+          className="rounded-xl p-3 space-y-3"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+            Board Identification — scan both labels before taking photo
+          </p>
+          <div>
+            <label className="block text-[11px] text-zinc-500 mb-1">
+              Powerstage Board Barcode <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={psBoard}
+              onChange={(e) => { setPsBoard(e.target.value); setError(''); }}
+              placeholder="e.g. 1000PS26001"
+              className="w-full px-3 py-2.5 rounded-lg text-sm font-mono text-white placeholder-zinc-700 outline-none"
+              style={{
+                background: psBoard.trim() ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.04)',
+                border: psBoard.trim() ? '1px solid rgba(34,197,94,0.25)' : '1px solid rgba(255,255,255,0.1)',
+              }}
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-zinc-500 mb-1">
+              Brainboard Barcode <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={bbBoard}
+              onChange={(e) => { setBbBoard(e.target.value); setError(''); }}
+              placeholder="e.g. 1000BB26001"
+              className="w-full px-3 py-2.5 rounded-lg text-sm font-mono text-white placeholder-zinc-700 outline-none"
+              style={{
+                background: bbBoard.trim() ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.04)',
+                border: bbBoard.trim() ? '1px solid rgba(34,197,94,0.25)' : '1px solid rgba(255,255,255,0.1)',
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Open Work button */}
       <button
         type="button"
-        onClick={() => setStep('open')}
+        onClick={() => {
+          if (currentStage === 'CONTROLLER_ASSEMBLY') {
+            if (!psBoard.trim()) { setError('Scan or enter the Powerstage board barcode first.'); return; }
+            if (!bbBoard.trim()) { setError('Scan or enter the Brainboard barcode first.'); return; }
+          }
+          setStep('open');
+        }}
         className="w-full py-5 rounded-2xl font-bold text-base flex items-center justify-center gap-3"
         style={{
           background: 'linear-gradient(135deg, rgba(14,165,233,0.15), rgba(99,102,241,0.15))',

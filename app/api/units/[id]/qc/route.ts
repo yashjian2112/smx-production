@@ -21,8 +21,6 @@ export async function POST(
       firmwareVersion,
       softwareVersion,
       checklistData,
-      psBoardBarcode,
-      bbBoardBarcode,
     } = body as {
       result: 'PASS' | 'FAIL';
       sourceStage?: string;
@@ -31,8 +29,6 @@ export async function POST(
       firmwareVersion?: string;
       softwareVersion?: string;
       checklistData?: Record<string, { status: string; value: string }>;
-      psBoardBarcode?: string;
-      bbBoardBarcode?: string;
     };
 
     if (!result || !['PASS', 'FAIL'].includes(result)) {
@@ -74,14 +70,9 @@ export async function POST(
       currentStatus?: UnitStatus;
       firmwareVersion?: string;
       softwareVersion?: string;
-      powerstageBarcode?: string;
-      brainboardBarcode?: string;
     } = {};
     if (firmwareVersion !== undefined) updateData.firmwareVersion = firmwareVersion;
     if (softwareVersion !== undefined) updateData.softwareVersion = softwareVersion;
-    // Confirm board barcodes: tech scans the actual boards inside the unit at QC time
-    if (psBoardBarcode) updateData.powerstageBarcode = psBoardBarcode;
-    if (bbBoardBarcode) updateData.brainboardBarcode = bbBoardBarcode;
 
     if (result === 'PASS') {
       await prisma.controllerUnit.update({

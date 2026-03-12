@@ -198,7 +198,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const file  = formData.get('image') as File | null;
   const file2 = (formData.get('file2') ?? formData.get('image2')) as File | null;
   const file3 = (formData.get('file3') ?? formData.get('image3')) as File | null;
-  const submissionId = formData.get('submissionId') as string | null;
+  const submissionId   = formData.get('submissionId')   as string | null;
+  const psBoardBarcode = formData.get('psBoardBarcode') as string | null;
+  const bbBoardBarcode = formData.get('bbBoardBarcode') as string | null;
 
   if (!file) return NextResponse.json({ error: 'Image required' }, { status: 400 });
 
@@ -260,6 +262,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       buildTimeSec,
     },
   });
+
+  // ── Save board barcodes recorded at Assembly ──────────────────────────────
+  if (unit.currentStage === StageType.CONTROLLER_ASSEMBLY && (psBoardBarcode || bbBoardBarcode)) {
+    const boardData: { powerstageBarcode?: string; brainboardBarcode?: string } = {};
+    if (psBoardBarcode) boardData.powerstageBarcode = psBoardBarcode;
+    if (bbBoardBarcode) boardData.brainboardBarcode = bbBoardBarcode;
+    await prisma.controllerUnit.update({ where: { id }, data: boardData });
+  }
 
   // ── Auto-complete: advance unit stage directly (no internal HTTP fetch) ────
   // Using direct Prisma calls avoids cookie-forwarding auth issues in production.

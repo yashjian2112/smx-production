@@ -17,11 +17,9 @@ type Props = {
   productName: string;
   orderNumber: string;
   qcBarcode: string | null;
-  psBoardBarcode: string | null;
-  bbBoardBarcode: string | null;
 };
 
-export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, isEmployee, orderId, productName, orderNumber, qcBarcode, psBoardBarcode, bbBoardBarcode }: Props) {
+export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, isEmployee, orderId, productName, orderNumber, qcBarcode }: Props) {
   const [tab, setTab] = useState<'work' | 'history'>(isEmployee ? 'work' : 'history');
 
   return (
@@ -59,8 +57,6 @@ export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, curre
             productName={productName}
             orderNumber={orderNumber}
             qcBarcode={qcBarcode}
-            psBoardBarcode={psBoardBarcode}
-            bbBoardBarcode={bbBoardBarcode}
           />
         )}
         {tab === 'work' && isEmployee && currentStage !== 'QC_AND_SOFTWARE' && (
