@@ -49,18 +49,18 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
 }
 
 export default function SerialPage() {
-  const [query,     setQuery]     = useState('');
-  const [error,     setError]     = useState('');
-  const [loading,   setLoading]   = useState(false);
-  const [found,     setFound]     = useState<FoundUnit | null>(null);
-  const [countdown, setCountdown] = useState(5);
+  const [query,      setQuery]      = useState('');
+  const [error,      setError]      = useState('');
+  const [loading,    setLoading]    = useState(false);
+  const [found,      setFound]      = useState<FoundUnit | null>(null);
+  const [countdown,  setCountdown]  = useState(5);
   const [activeWork, setActiveWork] = useState<ActiveWork | null>(null);
   const [workLoading, setWorkLoading] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const router   = useRouter();
 
-  // Auto-focus on mount
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  // Auto-focus on mount (only when no active work)
+  useEffect(() => { if (!activeWork) inputRef.current?.focus(); }, [activeWork]);
 
   // Check for active work session on mount
   useEffect(() => {
@@ -98,27 +98,27 @@ export default function SerialPage() {
       }
       if (res.ok && data?.id) {
         const status = data.currentStatus ?? '';
+
+        // ── Status guards ──────────────────────────────────────────────────
         if (status === 'COMPLETED') {
           setError('This unit has already completed its current stage.');
-          setQuery('');
-          inputRef.current?.focus();
-        } else if (status === 'BLOCKED') {
-          setError('This unit is blocked — contact your manager before proceeding.');
-          setQuery('');
-          inputRef.current?.focus();
-        } else if (status === 'WAITING_APPROVAL') {
-          setError('This unit is waiting for manager approval.');
-          setQuery('');
-          inputRef.current?.focus();
-        } else {
-          setFound({
-            id:            data.id,
-            serialNumber:  data.serialNumber ?? val,
-            currentStage:  data.currentStage ?? '',
-            currentStatus: status,
-          });
-          setCountdown(5);
+          setQuery(''); inputRef.current?.focus(); return;
         }
+        if (status === 'BLOCKED') {
+          setError('This unit is blocked — contact your manager before proceeding.');
+          setQuery(''); inputRef.current?.focus(); return;
+        }
+        if (status === 'WAITING_APPROVAL') {
+          setError('This unit is waiting for manager approval.');
+          setQuery(''); inputRef.current?.focus(); return;
+        }
+        setFound({
+          id:            data.id,
+          serialNumber:  data.serialNumber ?? val,
+          currentStage:  data.currentStage ?? '',
+          currentStatus: status,
+        });
+        setCountdown(5);
       } else {
         setError(data?.error || 'No unit found with that barcode. Try again.');
         setQuery('');
@@ -182,19 +182,39 @@ export default function SerialPage() {
     );
   }
 
-  // ── SCAN page ──────────────────────────────────────────────────────────────
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 px-4">
+  // ── Loading ────────────────────────────────────────────────────────────────
+  if (workLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
-      {/* ── Active Work Resume Card ── */}
-      {!workLoading && activeWork && (
+  // ── Employee already has active work → MUST finish it first ───────────────
+  if (activeWork) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 gap-6">
+
+        {/* Lock banner */}
+        <div
+          className="w-full max-w-sm rounded-2xl px-4 py-3 flex items-center gap-3"
+          style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)' }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <p className="text-red-400 text-sm font-medium">One unit at a time — finish your current unit first.</p>
+        </div>
+
+        {/* Resume card */}
         <button
           type="button"
           onClick={() => router.push(`/units/${activeWork.unit.id}`)}
           className="w-full max-w-sm rounded-2xl p-4 text-left"
           style={{ background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.25)' }}
         >
-          {/* Header row */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
@@ -208,7 +228,6 @@ export default function SerialPage() {
             </span>
           </div>
 
-          {/* Unit info */}
           <p className="font-mono text-xl font-bold text-white tracking-wider">
             {activeWork.unit.serialNumber}
           </p>
@@ -217,7 +236,6 @@ export default function SerialPage() {
             {activeWork.unit.order ? ` · ${activeWork.unit.order.orderNumber}` : ''}
           </p>
 
-          {/* Stage badge */}
           <div className="flex items-center gap-2 mt-3">
             <span
               className="text-xs px-2.5 py-1 rounded-full font-medium text-sky-300"
@@ -225,49 +243,41 @@ export default function SerialPage() {
             >
               {STAGE_LABELS[activeWork.unit.currentStage] ?? activeWork.unit.currentStage}
             </span>
-            <span className="text-zinc-500 text-xs">Tap to resume →</span>
+            <span className="text-zinc-500 text-xs">Tap to continue →</span>
           </div>
         </button>
-      )}
 
-      {/* Divider */}
-      {!workLoading && activeWork && (
-        <div className="w-full max-w-sm flex items-center gap-3">
-          <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
-          <span className="text-zinc-600 text-xs">or scan a new unit</span>
-          <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
-        </div>
-      )}
-
-      {/* Icon — only show when no active work */}
-      {!activeWork && (
-        <div
-          className="w-20 h-20 rounded-2xl flex items-center justify-center"
-          style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.2)' }}
-        >
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(56,189,248,0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-            <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-            <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-            <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-            <line x1="7" y1="9" x2="7" y2="15" />
-            <line x1="10" y1="9" x2="10" y2="15" />
-            <line x1="13" y1="9" x2="13" y2="15" />
-            <line x1="16" y1="9" x2="16" y2="15" />
-          </svg>
-        </div>
-      )}
-
-      {/* Heading */}
-      <div className="text-center">
-        <h2 className="text-xl font-bold text-white">
-          {activeWork ? 'Scan Another Unit' : 'Scan Unit Barcode'}
-        </h2>
-        <p className="text-zinc-500 text-sm mt-1">
-          {activeWork
-            ? 'Enter a barcode to start work on a different unit'
-            : 'Point your scanner at the unit barcode or type it below.'}
+        <p className="text-zinc-600 text-xs text-center max-w-xs">
+          Complete and submit your photo to unlock scanning a new unit.
         </p>
+      </div>
+    );
+  }
+
+  // ── SCAN page (no active work) ─────────────────────────────────────────────
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 px-4">
+
+      {/* Icon */}
+      <div
+        className="w-20 h-20 rounded-2xl flex items-center justify-center"
+        style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.2)' }}
+      >
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(56,189,248,0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+          <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+          <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+          <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+          <line x1="7" y1="9" x2="7" y2="15" />
+          <line x1="10" y1="9" x2="10" y2="15" />
+          <line x1="13" y1="9" x2="13" y2="15" />
+          <line x1="16" y1="9" x2="16" y2="15" />
+        </svg>
+      </div>
+
+      <div className="text-center">
+        <h2 className="text-xl font-bold text-white">Scan Unit Barcode</h2>
+        <p className="text-zinc-500 text-sm mt-1">Point your scanner at the stage barcode or type it below.</p>
       </div>
 
       {/* Scan input */}
@@ -278,7 +288,7 @@ export default function SerialPage() {
             type="text"
             value={query}
             onChange={(e) => { setQuery(e.target.value.toUpperCase()); setError(''); }}
-            placeholder="SMX100026001 or barcode…"
+            placeholder="SMX100026001 or stage barcode…"
             disabled={loading}
             className="w-full px-4 py-4 rounded-2xl font-mono text-lg text-white placeholder-zinc-600 focus:outline-none text-center tracking-widest disabled:opacity-50"
             style={{
@@ -306,12 +316,12 @@ export default function SerialPage() {
           className="w-full py-4 rounded-2xl text-base font-bold transition-all disabled:opacity-40"
           style={{ background: 'linear-gradient(135deg, #0ea5e9, #6366f1)', color: 'white' }}
         >
-          {loading ? 'Looking up…' : 'Open Unit →'}
+          {loading ? 'Looking up…' : 'Start Work →'}
         </button>
       </form>
 
       <p className="text-zinc-700 text-xs text-center max-w-xs">
-        Accepts serial numbers and stage barcodes (PS, BB, QC).
+        Accepts serial numbers and stage barcodes (PS, BB, QC, FA).
       </p>
     </div>
   );

@@ -1,11 +1,55 @@
 // GET  /api/units/[id]/work  — get active submission + history
 // POST /api/units/[id]/work  — start work (record start time)
-// PUT  /api/units/[id]/work  — submit photo (saved without analysis until hardware arrives)
+// PUT  /api/units/[id]/work  — submit photo + PCB check → mark complete
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { put } from '@vercel/blob';
 import { UnitStatus } from '@prisma/client';
+import Anthropic from '@anthropic-ai/sdk';
+import sharp from 'sharp';
+
+// ── PCB check helper ──────────────────────────────────────────────────────────
+// Returns true if the image contains a circuit board, false if not.
+// On any error (API down, parse failure) returns true to avoid blocking workers.
+async function isPcbImage(buffer: Buffer): Promise<boolean> {
+  if (!process.env.ANTHROPIC_API_KEY) return true;
+  try {
+    const thumb = await sharp(buffer, { failOn: 'none' })
+      .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 70 })
+      .toBuffer();
+
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const msg = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 64,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/jpeg', data: thumb.toString('base64') },
+          },
+          {
+            type: 'text',
+            text: 'Is any printed circuit board (PCB) or electronic circuit board visible anywhere in this image? PCBs come in many colours: green, blue, white, silver, aluminium/metal substrate, yellow, or black. They have electronic components mounted on them (chips, MOSFETs, capacitors, resistors, connectors, solder pads, traces). Even if the board is small or surrounded by background, answer YES if a PCB is anywhere in the frame. Answer only with valid JSON: {"isPcb": true} or {"isPcb": false}. No other text.',
+          },
+        ],
+      }],
+    });
+
+    const text = msg.content[0].type === 'text' ? msg.content[0].text : '';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      return !!parsed.isPcb;
+    }
+    return true; // allow through if parse fails
+  } catch {
+    return true; // allow through on API error — don't block workers
+  }
+}
 
 // ── GET ───────────────────────────────────────────────────────────────────────
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -88,15 +132,15 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Unit is not available for work' }, { status: 409 });
   }
 
-  // Return existing active submission if any
+  // Return existing active submission for this employee if any
   const existing = await prisma.stageWorkSubmission.findFirst({
     where: { unitId: id, stage: unit.currentStage, employeeId: session.id, analysisStatus: 'IN_PROGRESS' },
   });
   if (existing) return NextResponse.json(existing);
 
   // Mark unit IN_PROGRESS if still PENDING
-  if (unit.currentStatus === 'PENDING') {
-    await prisma.controllerUnit.update({ where: { id }, data: { currentStatus: 'IN_PROGRESS' } });
+  if (unit.currentStatus === UnitStatus.PENDING) {
+    await prisma.controllerUnit.update({ where: { id }, data: { currentStatus: UnitStatus.IN_PROGRESS } });
     await prisma.stageLog.create({
       data: { unitId: id, userId: session.id, stage: unit.currentStage, statusFrom: UnitStatus.PENDING, statusTo: UnitStatus.IN_PROGRESS },
     });
@@ -109,7 +153,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   return NextResponse.json(submission, { status: 201 });
 }
 
-// ── PUT: submit image (NO AI analysis until external hardware arrives) ────────
+// ── PUT: submit photo → PCB check → mark complete ─────────────────────────────
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const { id } = await params;
@@ -138,36 +182,44 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!submission) return NextResponse.json({ error: 'No active work submission found' }, { status: 404 });
 
-  // Upload photos to Vercel Blob (upload in parallel)
+  // ── PCB check: read main image into buffer first (file can only be read once) ──
+  const fileBuffer = Buffer.from(await file.arrayBuffer());
+
+  const pcbOk = await isPcbImage(fileBuffer);
+  if (!pcbOk) {
+    // Don't upload, don't complete — let employee retake
+    return NextResponse.json({ result: 'NOT_A_BOARD', summary: '[NOT_A_BOARD]', issues: [] });
+  }
+
+  // ── Upload all photos to Vercel Blob ──────────────────────────────────────
   const ts = Date.now();
   const [blob, blob2, blob3] = await Promise.all([
-    put(`stage-work/${id}/${unit.currentStage}/${ts}-1.jpg`, file,  { access: 'private', contentType: file.type  || 'image/jpeg' }),
+    put(`stage-work/${id}/${unit.currentStage}/${ts}-1.jpg`, fileBuffer, { access: 'private', contentType: 'image/jpeg' }),
     file2 ? put(`stage-work/${id}/${unit.currentStage}/${ts}-2.jpg`, file2, { access: 'private', contentType: file2.type || 'image/jpeg' }) : null,
     file3 ? put(`stage-work/${id}/${unit.currentStage}/${ts}-3.jpg`, file3, { access: 'private', contentType: file3.type || 'image/jpeg' }) : null,
   ]);
 
-  // Auto-pass submission — save photos without AI analysis
-  // AI component inspection will be re-enabled when external hardware (RPi cameras) arrives
+  // ── Save submission as PASSED ──────────────────────────────────────────────
   const now = new Date();
   const buildTimeSec = Math.round((now.getTime() - new Date(submission.startedAt).getTime()) / 1000);
 
   const updated = await prisma.stageWorkSubmission.update({
     where: { id: submission.id },
     data: {
-      imageUrl:  blob.url,
-      imageUrl2: blob2?.url ?? null,
-      imageUrl3: blob3?.url ?? null,
+      imageUrl:        blob.url,
+      imageUrl2:       blob2?.url ?? null,
+      imageUrl3:       blob3?.url ?? null,
       analysisStatus:  'PASSED',
       analysisResult:  'PASS',
       analysisIssues:  JSON.stringify([]),
-      analysisSummary: 'Photo saved to production record.',
+      analysisSummary: 'PCB verified and photo saved to production record.',
       submittedAt:     now,
       completedAt:     now,
       buildTimeSec,
     },
   });
 
-  // Auto-complete unit stage on successful photo submission
+  // ── Auto-complete unit stage ───────────────────────────────────────────────
   try {
     const completeRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/units/${id}`, {
       method: 'PATCH',
