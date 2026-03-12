@@ -107,6 +107,16 @@ button, a {
   #qc-test-report .text-sky-400 { color: #0ea5e9; }
   #qc-test-report .text-green-400 { color: #16a34a; }
   #qc-test-report .text-red-400 { color: #dc2626; }
+
+  /* QC checklist print isolation */
+  body.print-qc * { visibility: hidden; }
+  body.print-qc #qc-print-report,
+  body.print-qc #qc-print-report * { visibility: visible; }
+  body.print-qc #qc-print-report {
+    position: fixed; top: 0; left: 0; width: 100%;
+    background: white; color: #111; padding: 24px;
+    font-family: 'Courier New', monospace;
+  }
 }
 
 /* ── Face scan animation ────────────────────────── */

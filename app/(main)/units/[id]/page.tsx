@@ -8,6 +8,7 @@ import { QRCodeCanvas } from '@/components/QRCode';
 import { Barcode128 } from '@/components/Barcode128';
 import { ComponentChecklist } from './ComponentChecklist';
 import { WorkTabs } from './WorkTabs';
+import { QcChecklist } from './QcChecklist';
 
 export default async function UnitPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -181,16 +182,27 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
         />
       )}
 
-      {/* Work + History tabs */}
-      <WorkTabs
-        unitId={unit.id}
-        unitSerial={unit.serialNumber}
-        stageBarcode={currentStageBarcode}
-        currentStage={unit.currentStage}
-        currentStatus={unit.currentStatus}
-        isEmployee={isEmployee}
-        orderId={unit.order?.id ?? null}
-      />
+      {/* QC Checklist — replaces work tabs for employees at QC stage */}
+      {unit.currentStage === 'QC_AND_SOFTWARE' && isEmployee ? (
+        <QcChecklist
+          unitId={unit.id}
+          currentStatus={unit.currentStatus}
+          serialNumber={unit.serialNumber}
+          productName={unit.product?.name ?? ''}
+          orderNumber={unit.order?.orderNumber ?? ''}
+          qcBarcode={unit.qcBarcode ?? null}
+        />
+      ) : (
+        <WorkTabs
+          unitId={unit.id}
+          unitSerial={unit.serialNumber}
+          stageBarcode={currentStageBarcode}
+          currentStage={unit.currentStage}
+          currentStatus={unit.currentStatus}
+          isEmployee={isEmployee}
+          orderId={unit.order?.id ?? null}
+        />
+      )}
 
       {/* QC Results */}
       {unit.qcRecords && unit.qcRecords.length > 0 && (

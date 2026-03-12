@@ -20,6 +20,7 @@ export async function POST(
       remarks,
       firmwareVersion,
       softwareVersion,
+      checklistData,
     } = body as {
       result: 'PASS' | 'FAIL';
       sourceStage?: string;
@@ -27,13 +28,17 @@ export async function POST(
       remarks?: string;
       firmwareVersion?: string;
       softwareVersion?: string;
+      checklistData?: Record<string, { status: string; value: string }>;
     };
 
     if (!result || !['PASS', 'FAIL'].includes(result)) {
       return NextResponse.json({ error: 'result must be PASS or FAIL' }, { status: 400 });
     }
 
-    const unit = await prisma.controllerUnit.findUnique({ where: { id }, include: { product: true } });
+    const unit = await prisma.controllerUnit.findUnique({
+      where: { id },
+      include: { product: true },
+    });
     if (!unit) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     if (unit.currentStage !== StageType.QC_AND_SOFTWARE) {
       return NextResponse.json({ error: 'Unit not at QC stage' }, { status: 400 });
@@ -57,10 +62,15 @@ export async function POST(
         remarks: remarks || undefined,
         firmwareVersion: firmwareVersion ?? unit.firmwareVersion,
         softwareVersion: softwareVersion ?? unit.softwareVersion,
+        checklistData: checklistData ?? undefined,
       },
     });
 
-    const updateData: { currentStatus?: UnitStatus; firmwareVersion?: string; softwareVersion?: string } = {};
+    const updateData: {
+      currentStatus?: UnitStatus;
+      firmwareVersion?: string;
+      softwareVersion?: string;
+    } = {};
     if (firmwareVersion !== undefined) updateData.firmwareVersion = firmwareVersion;
     if (softwareVersion !== undefined) updateData.softwareVersion = softwareVersion;
 
@@ -90,6 +100,12 @@ export async function POST(
         remarks,
       });
     } else {
+      // ── REJECT: find Assembly employee and assign rework to them ──────────
+      const assemblyAssignment = await prisma.stageAssignment.findUnique({
+        where: { unitId_stage: { unitId: id, stage: StageType.CONTROLLER_ASSEMBLY } },
+        select: { userId: true },
+      });
+
       updateData.currentStatus = UnitStatus.BLOCKED;
       await prisma.controllerUnit.update({
         where: { id },
@@ -109,15 +125,20 @@ export async function POST(
           unitId: id,
           status: 'OPEN',
           rootCauseStage: sourceStage as StageType | undefined,
+          // Assign rework to the employee who built the controller
+          assignedUserId: assemblyAssignment?.userId ?? undefined,
         },
       });
       await appendTimeline({
         unitId: id,
         userId: session.id,
-        action: 'qc_failed',
+        action: 'qc_rejected',
         stage: StageType.QC_AND_SOFTWARE,
         remarks,
-        metadata: { sourceStage: sourceStage ?? undefined },
+        metadata: {
+          sourceStage: sourceStage ?? undefined,
+          assignedBackTo: assemblyAssignment?.userId ?? null,
+        },
       });
     }
 
@@ -129,6 +150,7 @@ export async function POST(
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    console.error('[QC route]', e);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
