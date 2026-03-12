@@ -37,11 +37,27 @@ const STATUS_STYLES: Record<string, { dot: string; text: string; label: string }
   REJECTED_BACK:    { dot: 'bg-red-400',    text: 'text-red-300',    label: 'Rejected'   },
 };
 
-// Stages employees are allowed to scan and work on
-const EMPLOYEE_ACCESSIBLE_STAGES = new Set([
+// Pipeline order — used to derive dynamic stage accessibility
+const STAGE_PIPELINE = [
   'POWERSTAGE_MANUFACTURING',
   'BRAINBOARD_MANUFACTURING',
-]);
+  'CONTROLLER_ASSEMBLY',
+  'QC_AND_SOFTWARE',
+  'FINAL_ASSEMBLY',
+];
+
+/**
+ * A stage is accessible to employees when:
+ *  - PS / BB: always accessible (they're the entry-point parallel stages)
+ *  - Assembly and beyond: unlocked once at least 1 unit has reached that stage
+ *    (meaning it has completed all prior stages)
+ */
+function isStageAccessible(stageKey: string, units: UnitData[]): boolean {
+  if (stageKey === 'POWERSTAGE_MANUFACTURING' || stageKey === 'BRAINBOARD_MANUFACTURING') return true;
+  const stageIdx = STAGE_PIPELINE.indexOf(stageKey);
+  if (stageIdx < 0) return false;
+  return units.some((u) => STAGE_PIPELINE.indexOf(u.currentStage) >= stageIdx);
+}
 
 function MiniProgress({ units }: { units: UnitData[] }) {
   const total = units.length;
@@ -304,6 +320,9 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
   const faStage  = stages.find((s) => s.key === 'FINAL_ASSEMBLY');
   const rwStage  = stages.find((s) => s.key === 'REWORK');
 
+  // All units are the same set across any non-rework stage group
+  const allUnits = (psStage ?? bbStage ?? asmStage ?? qcStage ?? faStage)?.units ?? [];
+
   async function handleScan(code: string) {
     const currentStage = scanning; // capture before clearing
     setScanning(null);
@@ -442,7 +461,7 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
                   onToggle={() => toggle(psStage.key)}
                   onScanStart={() => setScanning({ stageKey: psStage.key, stageLabel: psStage.label })}
                   isEmployee={isEmployee}
-                  isAccessible={EMPLOYEE_ACCESSIBLE_STAGES.has(psStage.key)}
+                  isAccessible={isStageAccessible(psStage.key, allUnits)}
                   accent="blue"
                 />
               )}
@@ -453,7 +472,7 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
                   onToggle={() => toggle(bbStage.key)}
                   onScanStart={() => setScanning({ stageKey: bbStage.key, stageLabel: bbStage.label })}
                   isEmployee={isEmployee}
-                  isAccessible={EMPLOYEE_ACCESSIBLE_STAGES.has(bbStage.key)}
+                  isAccessible={isStageAccessible(bbStage.key, allUnits)}
                   accent="blue"
                 />
               )}
@@ -477,7 +496,7 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
                   onToggle={() => toggle(stage.key)}
                   onScanStart={() => setScanning({ stageKey: stage.key, stageLabel: stage.label })}
                   isEmployee={isEmployee}
-                  isAccessible={EMPLOYEE_ACCESSIBLE_STAGES.has(stage.key)}
+                  isAccessible={isStageAccessible(stage.key, allUnits)}
                   accent={accent}
                 />
               ))}
