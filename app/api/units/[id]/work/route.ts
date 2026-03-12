@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
+import { generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
 import { put } from '@vercel/blob';
 import { StageType, UnitStatus } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
@@ -203,7 +204,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const unit = await prisma.controllerUnit.findUnique({
     where: { id },
-    select: { currentStage: true, currentStatus: true },
+    select: {
+      currentStage: true,
+      currentStatus: true,
+      qcBarcode: true,
+      finalAssemblyBarcode: true,
+      product: { select: { code: true } },
+    },
   });
   if (!unit) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
 
@@ -282,10 +289,29 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     if (next) {
-      // Advance to next stage, reset to IN_PROGRESS
+      // Pre-generate stage barcodes when entering QC or Final Assembly
+      // so the tech can scan the label to pull up the unit immediately.
+      const stageBarcode: { qcBarcode?: string; finalAssemblyBarcode?: string } = {};
+      const productCode = unit.product?.code;
+      if (productCode) {
+        if (next === StageType.QC_AND_SOFTWARE && !unit.qcBarcode) {
+          stageBarcode.qcBarcode = await generateNextQCBarcode(productCode);
+        }
+        if (next === StageType.FINAL_ASSEMBLY && !unit.finalAssemblyBarcode) {
+          stageBarcode.finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(productCode);
+        }
+      }
+
+      // QC and FA start as PENDING — tech must scan the pre-generated barcode to start.
+      // Earlier manufacturing stages (PS→BB, BB→Assembly) keep IN_PROGRESS for fast handoff.
+      const nextStatus =
+        next === StageType.QC_AND_SOFTWARE || next === StageType.FINAL_ASSEMBLY
+          ? UnitStatus.PENDING
+          : UnitStatus.IN_PROGRESS;
+
       await prisma.controllerUnit.update({
         where: { id },
-        data: { currentStage: next, currentStatus: UnitStatus.IN_PROGRESS },
+        data: { currentStage: next, currentStatus: nextStatus, ...stageBarcode },
       });
     } else {
       // Final stage — mark fully complete
