@@ -543,143 +543,177 @@ export function QcChecklist({
       )}
 
       {/* ── Print-only report (isolated by body.print-qc CSS) ──────────────── */}
-      <div id="qc-print-report" style={{ display: 'none' }}>
-        {/* Header */}
-        <div
-          style={{
-            borderBottom: '2px solid #111',
-            paddingBottom: 12,
-            marginBottom: 16,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <h1 style={{ fontSize: 18, fontWeight: 'bold', margin: 0 }}>
-                SMX Drives — QC Test Report
-              </h1>
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#444' }}>
-                {productName} · Order {orderNumber}
-              </p>
-            </div>
-            <div style={{ textAlign: 'right', fontSize: 11, color: '#555' }}>
-              <p style={{ margin: 0 }}>Date: {new Date().toLocaleString('en-IN')}</p>
-              {qcBarcode && <p style={{ margin: '2px 0 0' }}>QC Code: {qcBarcode}</p>}
-            </div>
+      <div id="qc-print-report" style={{ display: 'none', fontFamily: 'Arial, sans-serif', color: '#111', fontSize: 11, lineHeight: 1.4 }}>
+
+        {/* ── TOP HEADER BAR ─────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '3px solid #1e40af', paddingBottom: 10, marginBottom: 0 }}>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: -0.5, color: '#1e40af' }}>SMX DRIVES</div>
+            <div style={{ fontSize: 10, color: '#555', letterSpacing: 1, textTransform: 'uppercase', marginTop: 2 }}>Manufacturing Quality Control</div>
           </div>
-          <div style={{ marginTop: 8, display: 'flex', gap: 24, fontSize: 13, flexWrap: 'wrap' }}>
-            <div>
-              <span style={{ color: '#666' }}>Serial: </span>
-              <strong>{serialNumber}</strong>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e3a8a', letterSpacing: 0.5 }}>QC TEST REPORT</div>
+            <div style={{ fontSize: 9, color: '#666', marginTop: 3 }}>
+              Doc Ref: {qcBarcode ?? serialNumber} &nbsp;|&nbsp; Rev: A
             </div>
-            {firmwareVersion && (
-              <div>
-                <span style={{ color: '#666' }}>FW: </span>
-                <strong>{firmwareVersion}</strong>
-              </div>
-            )}
-            {softwareVersion && (
-              <div>
-                <span style={{ color: '#666' }}>SW: </span>
-                <strong>{softwareVersion}</strong>
-              </div>
-            )}
+            <div style={{ fontSize: 9, color: '#666', marginTop: 1 }}>
+              Issued: {new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </div>
           </div>
         </div>
 
-        {/* Checklist table */}
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #888', background: '#f5f5f5' }}>
-              <th style={{ textAlign: 'left', padding: '6px 10px', width: '40%' }}>Test</th>
-              <th style={{ textAlign: 'left', padding: '6px 10px', width: '40%' }}>Value</th>
-              <th style={{ textAlign: 'center', padding: '6px 10px', width: '20%' }}>Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {QC_ITEMS.map((item, i) => {
-              const check = checks[item.key];
-              return (
-                <tr
-                  key={item.key}
-                  style={{
-                    borderBottom: '1px solid #ddd',
-                    background: i % 2 === 0 ? '#fafafa' : '#fff',
-                  }}
-                >
-                  <td style={{ padding: '6px 10px', fontWeight: 500 }}>{item.label}</td>
-                  <td style={{ padding: '6px 10px', fontFamily: 'monospace', color: '#333' }}>
-                    {check?.value ?? '—'}
-                  </td>
-                  <td
-                    style={{
-                      padding: '6px 10px',
+        {/* ── RESULT BANNER ──────────────────────────────────────────────── */}
+        <div style={{
+          margin: '10px 0',
+          padding: '10px 16px',
+          background: submittedResult === 'PASS' ? '#f0fdf4' : submittedResult === 'FAIL' ? '#fef2f2' : '#f8fafc',
+          border: `2px solid ${submittedResult === 'PASS' ? '#16a34a' : submittedResult === 'FAIL' ? '#dc2626' : '#94a3b8'}`,
+          borderRadius: 4,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: '#555', textTransform: 'uppercase' }}>Final QC Determination</div>
+            <div style={{ fontSize: 20, fontWeight: 900, marginTop: 2, color: submittedResult === 'PASS' ? '#15803d' : submittedResult === 'FAIL' ? '#b91c1c' : '#475569', letterSpacing: 1 }}>
+              {submittedResult === 'PASS' ? '✓  PASSED — APPROVED FOR NEXT STAGE' : submittedResult === 'FAIL' ? '✗  REJECTED — RETURN TO REWORK' : 'PENDING'}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right', fontSize: 9, color: '#666' }}>
+            <div style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: '#333' }}>{serialNumber}</div>
+            <div style={{ marginTop: 2 }}>Unit Serial</div>
+          </div>
+        </div>
+
+        {/* ── UNIT TRACEABILITY ───────────────────────────────────────────── */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ background: '#1e3a8a', color: '#fff', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', padding: '4px 8px' }}>
+            Unit Traceability
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <tbody>
+              <tr style={{ background: '#f8fafc' }}>
+                <td style={{ padding: '5px 8px', fontWeight: 700, width: '18%', borderBottom: '1px solid #e2e8f0', color: '#374151' }}>Product</td>
+                <td style={{ padding: '5px 8px', borderBottom: '1px solid #e2e8f0', width: '32%' }}>{productName}</td>
+                <td style={{ padding: '5px 8px', fontWeight: 700, width: '18%', borderBottom: '1px solid #e2e8f0', color: '#374151' }}>Order No.</td>
+                <td style={{ padding: '5px 8px', borderBottom: '1px solid #e2e8f0', fontFamily: 'monospace', width: '32%' }}>{orderNumber}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '5px 8px', fontWeight: 700, borderBottom: '1px solid #e2e8f0', color: '#374151' }}>Serial No.</td>
+                <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontWeight: 700, borderBottom: '1px solid #e2e8f0', color: '#1e40af' }}>{serialNumber}</td>
+                <td style={{ padding: '5px 8px', fontWeight: 700, borderBottom: '1px solid #e2e8f0', color: '#374151' }}>QC Barcode</td>
+                <td style={{ padding: '5px 8px', fontFamily: 'monospace', borderBottom: '1px solid #e2e8f0' }}>{qcBarcode ?? '—'}</td>
+              </tr>
+              <tr style={{ background: '#f8fafc' }}>
+                <td style={{ padding: '5px 8px', fontWeight: 700, borderBottom: '1px solid #e2e8f0', color: '#374151' }}>Firmware</td>
+                <td style={{ padding: '5px 8px', fontFamily: 'monospace', borderBottom: '1px solid #e2e8f0' }}>{firmwareVersion || '—'}</td>
+                <td style={{ padding: '5px 8px', fontWeight: 700, borderBottom: '1px solid #e2e8f0', color: '#374151' }}>Software</td>
+                <td style={{ padding: '5px 8px', fontFamily: 'monospace', borderBottom: '1px solid #e2e8f0' }}>{softwareVersion || '—'}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '5px 8px', fontWeight: 700, color: '#374151' }}>Test Date</td>
+                <td style={{ padding: '5px 8px' }} colSpan={3}>{new Date().toLocaleString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* ── TEST RESULTS TABLE ──────────────────────────────────────────── */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ background: '#1e3a8a', color: '#fff', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', padding: '4px 8px' }}>
+            Test Parameters &amp; Results
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr style={{ background: '#dbeafe' }}>
+                <th style={{ padding: '5px 8px', textAlign: 'center', width: '6%', borderBottom: '2px solid #93c5fd', fontWeight: 700, color: '#1e40af' }}>No.</th>
+                <th style={{ padding: '5px 8px', textAlign: 'left', width: '34%', borderBottom: '2px solid #93c5fd', fontWeight: 700, color: '#1e40af' }}>Test Parameter</th>
+                <th style={{ padding: '5px 8px', textAlign: 'left', width: '40%', borderBottom: '2px solid #93c5fd', fontWeight: 700, color: '#1e40af' }}>Measured Value</th>
+                <th style={{ padding: '5px 8px', textAlign: 'center', width: '20%', borderBottom: '2px solid #93c5fd', fontWeight: 700, color: '#1e40af' }}>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {QC_ITEMS.map((item, i) => {
+                const check = checks[item.key];
+                const isNA = check?.status === 'NA';
+                const isPass = check?.status === 'PASS';
+                return (
+                  <tr key={item.key} style={{ background: i % 2 === 0 ? '#f8fafc' : '#fff', borderBottom: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '5px 8px', textAlign: 'center', color: '#64748b', fontWeight: 600 }}>{i + 1}</td>
+                    <td style={{ padding: '5px 8px', fontWeight: 600, color: '#1e293b' }}>{item.label}</td>
+                    <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: isNA ? '#94a3b8' : '#0f172a' }}>
+                      {check?.value ?? '—'}
+                    </td>
+                    <td style={{
+                      padding: '5px 8px',
                       textAlign: 'center',
-                      fontWeight: 'bold',
-                      color:
-                        check?.status === 'PASS'
-                          ? '#16a34a'
-                          : check?.status === 'NA'
-                          ? '#888'
-                          : '#111',
-                    }}
-                  >
-                    {check?.status ?? '—'}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {/* Overall result */}
-        <div
-          style={{
-            marginTop: 20,
-            padding: '10px 14px',
-            border: '2px solid #111',
-            borderRadius: 4,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <span style={{ fontSize: 14, fontWeight: 'bold' }}>Overall Result</span>
-          <span
-            style={{
-              fontSize: 16,
-              fontWeight: 'bold',
-              color:
-                submittedResult === 'PASS'
-                  ? '#16a34a'
-                  : submittedResult === 'FAIL'
-                  ? '#dc2626'
-                  : '#111',
-            }}
-          >
-            {submittedResult === 'PASS'
-              ? '✓ PASS'
-              : submittedResult === 'FAIL'
-              ? '✗ REJECTED'
-              : 'PENDING'}
-          </span>
+                      fontWeight: 800,
+                      fontSize: 10,
+                      color: isNA ? '#94a3b8' : isPass ? '#15803d' : '#b91c1c',
+                    }}>
+                      {isNA ? 'N/A' : isPass ? '✓ PASS' : check?.status ?? '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
 
-        {/* Signature row */}
-        <div
-          style={{
-            marginTop: 32,
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: 11,
-            color: '#666',
-          }}
-        >
-          <div>
-            QC Technician: ___________________________
+        {/* ── SUMMARY ROW ─────────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, fontSize: 11 }}>
+          <div style={{ flex: 1, padding: '6px 10px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 3, textAlign: 'center' }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#15803d' }}>
+              {QC_ITEMS.filter(i => checks[i.key]?.status === 'PASS').length}
+            </div>
+            <div style={{ fontSize: 9, color: '#166534', textTransform: 'uppercase', letterSpacing: 0.5 }}>Passed</div>
           </div>
-          <div>
-            Signature: ___________________________
+          <div style={{ flex: 1, padding: '6px 10px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 3, textAlign: 'center' }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#475569' }}>
+              {QC_ITEMS.filter(i => checks[i.key]?.status === 'NA').length}
+            </div>
+            <div style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>N/A</div>
           </div>
+          <div style={{ flex: 1, padding: '6px 10px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 3, textAlign: 'center' }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#b91c1c' }}>
+              {QC_ITEMS.filter(i => checks[i.key] && checks[i.key]?.status !== 'PASS' && checks[i.key]?.status !== 'NA').length}
+            </div>
+            <div style={{ fontSize: 9, color: '#991b1b', textTransform: 'uppercase', letterSpacing: 0.5 }}>Failed</div>
+          </div>
+          <div style={{ flex: 3, padding: '6px 10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 3 }}>
+            <div style={{ fontSize: 9, color: '#92400e', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Certification Statement</div>
+            <div style={{ fontSize: 10, color: '#44403c', lineHeight: 1.5 }}>
+              {submittedResult === 'PASS'
+                ? 'This unit has been tested against all specified quality parameters and is certified compliant. It is approved to proceed to the next manufacturing stage.'
+                : submittedResult === 'FAIL'
+                ? 'This unit has failed one or more quality control parameters and is NOT approved to proceed. It must be returned to the Assembly team for rework before re-testing.'
+                : 'QC result pending submission.'}
+            </div>
+          </div>
+        </div>
+
+        {/* ── SIGN-OFF SECTION ────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+          {[
+            { role: 'QC Technician', note: 'Performed the test' },
+            { role: 'QA Supervisor', note: 'Reviewed & approved' },
+          ].map(({ role, note }) => (
+            <div key={role} style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: 3, padding: '8px 10px' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: '#1e3a8a', marginBottom: 6 }}>{role}</div>
+              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 12 }}>{note}</div>
+              <div style={{ borderBottom: '1px solid #94a3b8', marginBottom: 4 }} />
+              <div style={{ fontSize: 9, color: '#94a3b8' }}>Signature &amp; Date</div>
+              <div style={{ marginTop: 8, borderBottom: '1px solid #94a3b8', marginBottom: 4 }} />
+              <div style={{ fontSize: 9, color: '#94a3b8' }}>Name (Print)</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── FOOTER ──────────────────────────────────────────────────────── */}
+        <div style={{ borderTop: '2px solid #1e40af', paddingTop: 5, display: 'flex', justifyContent: 'space-between', fontSize: 8, color: '#64748b' }}>
+          <span>SMX Drives Pvt. Ltd. — Proprietary &amp; Confidential</span>
+          <span>Form: QCR-001 | Rev A | This document is valid only with authorised signatures</span>
+          <span>Serial: {serialNumber}</span>
         </div>
       </div>
     </>

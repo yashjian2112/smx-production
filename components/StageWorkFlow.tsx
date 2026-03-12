@@ -28,6 +28,7 @@ type Props = {
 };
 
 function fmtDuration(sec: number) {
+  if (!sec || isNaN(sec) || sec < 0) return '0s';
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
@@ -40,6 +41,7 @@ function LiveTimer({ startedAt }: { startedAt: string }) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     const start = new Date(startedAt).getTime();
+    if (isNaN(start)) return;
     const tick = () => setElapsed(Math.floor((Date.now() - start) / 1000));
     tick();
     const t = setInterval(tick, 1000);
@@ -239,7 +241,10 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
             // No active submission — create one
             return fetch(`/api/units/${unitId}/work`, { method: 'POST' })
               .then(r => r.json())
-              .then(d => { setSubmission(d); setStep('working'); });
+              .then(d => {
+                if (d?.id) { setSubmission(d); setStep('working'); }
+                else { setStep('idle'); }
+              });
           }
         })
         .catch(() => setStep('idle'));
