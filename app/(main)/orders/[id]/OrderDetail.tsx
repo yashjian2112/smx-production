@@ -321,6 +321,13 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
   async function handleScan(code: string) {
     const currentStage = scanning; // capture before clearing
     setScanning(null);
+
+    // Component barcodes (COMP-…) are for board identification during Assembly only
+    if (code.startsWith('COMP-')) {
+      setScanStatus({ msg: 'Component barcodes are not valid here. Scan the unit serial or stage barcode (PS / BB / QC / FA).', type: 'error' });
+      return;
+    }
+
     setScanStatus({ msg: 'Looking up unit…', type: 'info' });
 
     try {
