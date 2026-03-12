@@ -12,6 +12,7 @@ type TimelineAction =
   | 'rejected_back'
   | 'qc_passed'
   | 'qc_failed'
+  | 'qc_rejected'
   | 'rework_opened'
   | 'rework_completed'
   | 'retest_passed'

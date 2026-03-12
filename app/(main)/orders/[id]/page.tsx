@@ -119,6 +119,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           currentStatus: u.currentStatus,
           barcodeForStage: field ? (u[field] ?? null) : null,
           derivedStatus: derivedStageStatus(u, key),
+          // Pass PS + BB barcodes for Assembly multi-select modal
+          powerstageBarcode: key === 'CONTROLLER_ASSEMBLY' ? (u.powerstageBarcode ?? null) : undefined,
+          brainboardBarcode: key === 'CONTROLLER_ASSEMBLY' ? (u.brainboardBarcode ?? null) : undefined,
         };
       }),
     };

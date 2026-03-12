@@ -4,6 +4,128 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 
+// ── Assembly Unit Selector ─────────────────────────────────────────────────
+function AssemblySelectModal({
+  units,
+  onSelect,
+  onClose,
+}: {
+  units: UnitData[];
+  onSelect: (unitId: string) => void;
+  onClose: () => void;
+}) {
+  // Only show units that are at Assembly stage and actionable
+  const eligible = units.filter((u) => {
+    const st = u.derivedStatus ?? u.currentStatus;
+    return st === 'IN_PROGRESS' || st === 'PENDING';
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col"
+      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-4 py-3 shrink-0"
+        style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+      >
+        <div>
+          <p className="text-sm font-semibold text-sky-400">Select Unit — Assembly</p>
+          <p className="text-[11px] text-zinc-500 mt-0.5">
+            Identify your unit by its Powerstage or Brainboard barcode
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Unit list */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {eligible.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-zinc-500 text-sm">No units waiting at Assembly.</p>
+            <p className="text-zinc-600 text-xs mt-1">Check that at least one Powerstage and one Brainboard are complete.</p>
+          </div>
+        ) : (
+          eligible.map((u) => (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => onSelect(u.id)}
+              className="w-full text-left rounded-xl p-4 transition-all hover:brightness-110 active:scale-[0.98]"
+              style={{
+                background: 'rgba(14,165,233,0.06)',
+                border: '1px solid rgba(14,165,233,0.2)',
+              }}
+            >
+              {/* Serial number */}
+              <div className="flex items-center justify-between mb-3">
+                <span className="font-mono text-sky-400 font-bold text-base">{u.serialNumber}</span>
+                <div
+                  className="flex items-center gap-1.5 text-[10px] font-semibold uppercase px-2 py-1 rounded-full"
+                  style={{ background: 'rgba(56,189,248,0.12)', color: '#38bdf8' }}
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                  Select
+                </div>
+              </div>
+
+              {/* Barcode chips */}
+              <div className="flex flex-col gap-2">
+                {/* Powerstage barcode */}
+                <div
+                  className="flex items-center gap-2 rounded-lg px-3 py-2"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                >
+                  <div
+                    className="shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
+                    style={{ background: 'rgba(99,102,241,0.2)', color: '#818cf8' }}
+                  >
+                    PS
+                  </div>
+                  {u.powerstageBarcode ? (
+                    <span className="font-mono text-xs text-zinc-300">{u.powerstageBarcode}</span>
+                  ) : (
+                    <span className="text-xs text-zinc-600 italic">Not assigned</span>
+                  )}
+                </div>
+
+                {/* Brainboard barcode */}
+                <div
+                  className="flex items-center gap-2 rounded-lg px-3 py-2"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                >
+                  <div
+                    className="shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
+                    style={{ background: 'rgba(245,158,11,0.2)', color: '#fbbf24' }}
+                  >
+                    BB
+                  </div>
+                  {u.brainboardBarcode ? (
+                    <span className="font-mono text-xs text-zinc-300">{u.brainboardBarcode}</span>
+                  ) : (
+                    <span className="text-xs text-zinc-600 italic">Not assigned</span>
+                  )}
+                </div>
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export type UnitData = {
   id: string;
   serialNumber: string;
@@ -11,6 +133,8 @@ export type UnitData = {
   currentStatus: string;
   barcodeForStage?: string | null;   // the physical label barcode for this station
   derivedStatus?: string;            // COMPLETED / IN_PROGRESS / PENDING / BLOCKED / REWORK
+  powerstageBarcode?: string | null; // for Assembly multi-barcode select
+  brainboardBarcode?: string | null; // for Assembly multi-barcode select
 };
 
 export type StageGroup = {
@@ -94,6 +218,7 @@ function StageCard({
   isEmployee,
   isAccessible,
   accent = 'blue',
+  scanLabel = 'Scan',
 }: {
   stage: StageGroup;
   isExpanded: boolean;
@@ -102,6 +227,7 @@ function StageCard({
   isEmployee: boolean;
   isAccessible: boolean;
   accent?: 'blue' | 'amber' | 'green' | 'red';
+  scanLabel?: string;
 }) {
   const total      = stage.units.length;
   const completed  = stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) === 'COMPLETED').length;
@@ -163,7 +289,7 @@ function StageCard({
           )}
         </button>
 
-        {/* Scan button — employees only on accessible stages */}
+        {/* Scan / Select button — employees only on accessible stages */}
         {isEmployee && isAccessible && total > 0 && (
           <button
             type="button"
@@ -176,17 +302,30 @@ function StageCard({
               minWidth: 56,
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-              <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-              <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-              <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-              <line x1="7" y1="9" x2="7" y2="15" />
-              <line x1="10" y1="9" x2="10" y2="15" />
-              <line x1="13" y1="9" x2="13" y2="15" />
-              <line x1="16" y1="9" x2="16" y2="15" />
-            </svg>
-            <span className="text-[10px]">Scan</span>
+            {scanLabel === 'Select' ? (
+              /* List / select icon for Assembly */
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6" />
+                <line x1="8" y1="12" x2="21" y2="12" />
+                <line x1="8" y1="18" x2="21" y2="18" />
+                <circle cx="3" cy="6" r="1" fill="currentColor" />
+                <circle cx="3" cy="12" r="1" fill="currentColor" />
+                <circle cx="3" cy="18" r="1" fill="currentColor" />
+              </svg>
+            ) : (
+              /* Barcode scan icon for other stages */
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+                <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+                <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+                <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+                <line x1="7" y1="9" x2="7" y2="15" />
+                <line x1="10" y1="9" x2="10" y2="15" />
+                <line x1="13" y1="9" x2="13" y2="15" />
+                <line x1="16" y1="9" x2="16" y2="15" />
+              </svg>
+            )}
+            <span className="text-[10px]">{scanLabel}</span>
           </button>
         )}
       </div>
@@ -290,6 +429,7 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
   const router = useRouter();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [scanning, setScanning] = useState<{ stageKey: string; stageLabel: string } | null>(null);
+  const [assemblySelect, setAssemblySelect] = useState(false);
   const [scanStatus, setScanStatus] = useState<{ msg: string; type: 'error' | 'info' } | null>(null);
   const [genLoading, setGenLoading] = useState(false);
 
@@ -308,6 +448,32 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
       setScanStatus({ msg: 'Network error. Please try again.', type: 'error' });
     } finally {
       setGenLoading(false);
+    }
+  }
+
+  async function handleAssemblySelect(unitId: string) {
+    setAssemblySelect(false);
+    setScanStatus({ msg: 'Opening unit…', type: 'info' });
+
+    try {
+      // Find the unit data to check its status
+      const asmUnits = asmStage?.units ?? [];
+      const unit = asmUnits.find((u) => u.id === unitId);
+      const status = unit?.derivedStatus ?? unit?.currentStatus;
+
+      // Auto-start: mark PENDING unit as IN_PROGRESS
+      if (status === 'PENDING') {
+        await fetch(`/api/units/${unitId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'IN_PROGRESS' }),
+        });
+      }
+
+      setScanStatus(null);
+      router.push(`/units/${unitId}`);
+    } catch {
+      setScanStatus({ msg: 'Network error. Please try again.', type: 'error' });
     }
   }
 
@@ -408,6 +574,15 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
         />
       )}
 
+      {/* Assembly unit selector modal */}
+      {assemblySelect && asmStage && (
+        <AssemblySelectModal
+          units={asmStage.units}
+          onSelect={handleAssemblySelect}
+          onClose={() => setAssemblySelect(false)}
+        />
+      )}
+
       <div className="space-y-4">
         {/* Generate Barcodes — admin/manager only */}
         {!isEmployee && (
@@ -494,10 +669,15 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
                   stage={stage}
                   isExpanded={expanded === stage.key}
                   onToggle={() => toggle(stage.key)}
-                  onScanStart={() => setScanning({ stageKey: stage.key, stageLabel: stage.label })}
+                  onScanStart={
+                    stage.key === 'CONTROLLER_ASSEMBLY'
+                      ? () => setAssemblySelect(true)
+                      : () => setScanning({ stageKey: stage.key, stageLabel: stage.label })
+                  }
                   isEmployee={isEmployee}
                   isAccessible={isStageAccessible(stage.key, allUnits)}
                   accent={accent}
+                  scanLabel={stage.key === 'CONTROLLER_ASSEMBLY' ? 'Select' : 'Scan'}
                 />
               ))}
             </div>
