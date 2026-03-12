@@ -19,6 +19,9 @@ export default async function PrintQCPage({ params }: { params: Promise<{ unitId
 
   if (!unit) notFound();
 
+  // Latest record's checklist data (JSON stored per test item)
+  const latestChecklist = unit.qcRecords[0]?.checklistData ?? null;
+
   return (
     <PrintQC
       serialNumber={unit.serialNumber}
@@ -26,8 +29,9 @@ export default async function PrintQCPage({ params }: { params: Promise<{ unitId
       productName={unit.product?.name ?? ''}
       productCode={unit.product?.code ?? ''}
       qcBarcode={unit.qcBarcode ?? ''}
-      firmwareVersion={unit.firmwareVersion ?? ''}
-      softwareVersion={unit.softwareVersion ?? ''}
+      firmwareVersion={unit.firmwareVersion ?? unit.qcRecords[0]?.firmwareVersion ?? ''}
+      softwareVersion={unit.softwareVersion ?? unit.qcRecords[0]?.softwareVersion ?? ''}
+      checklistData={latestChecklist as Record<string, { status: string; value: string }> | null}
       qcRecords={unit.qcRecords.map((r) => ({
         id: r.id,
         result: r.result,
