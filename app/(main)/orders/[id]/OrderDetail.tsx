@@ -230,7 +230,7 @@ function StageCard({
           <ul>
             {stage.units.filter((u) => {
               const st = u.derivedStatus ?? u.currentStatus;
-              return st === 'IN_PROGRESS' || st === 'BLOCKED' || st === 'WAITING_APPROVAL';
+              return st !== 'PENDING';
             }).map((u) => {
               const status = u.derivedStatus ?? u.currentStatus;
               const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
