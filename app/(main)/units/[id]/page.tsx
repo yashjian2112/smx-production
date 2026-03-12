@@ -225,7 +225,7 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
       {/* QC test report — only visible once QC has been performed */}
       {unit.qcBarcode && unit.qcRecords && unit.qcRecords.length > 0 && (
         <QcReportPrint
-          serialNumber={unit.serialNumber}
+          unitId={unit.id}
           qcBarcode={unit.qcBarcode}
           result={unit.qcRecords[0].result ?? '—'}
           date={new Date(unit.qcRecords[0].createdAt).toLocaleString()}
