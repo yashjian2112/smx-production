@@ -15,6 +15,8 @@ function AssemblySelectModal({
   onClose: () => void;
 }) {
   const [search, setSearch] = useState('');
+  const [selectedPS, setSelectedPS] = useState<{ id: string; barcode: string } | null>(null);
+  const [selectedBB, setSelectedBB] = useState<{ id: string; barcode: string } | null>(null);
 
   // Only units physically at Assembly right now
   const eligible = units.filter((u) => {
@@ -31,10 +33,18 @@ function AssemblySelectModal({
       )
     : eligible;
 
+  const canStart = selectedPS !== null && selectedBB !== null;
+
+  function handleConfirm() {
+    if (!canStart) return;
+    // Navigate to the unit identified by the PS barcode (primary component)
+    onSelect(selectedPS!.id);
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col"
-      style={{ background: 'rgba(0,0,0,0.90)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(4px)' }}
     >
       {/* Header */}
       <div
@@ -42,9 +52,9 @@ function AssemblySelectModal({
         style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
       >
         <div>
-          <p className="text-sm font-semibold text-sky-400">Select Unit — Assembly</p>
+          <p className="text-sm font-semibold text-sky-400">Assembly — Select PS &amp; BB</p>
           <p className="text-[11px] text-zinc-500 mt-0.5">
-            Find your unit by its Powerstage or Brainboard barcode
+            Select one Powerstage and one Brainboard to begin
           </p>
         </div>
         <button
@@ -56,6 +66,76 @@ function AssemblySelectModal({
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         </button>
+      </div>
+
+      {/* Selection summary strip */}
+      <div
+        className="flex items-center gap-3 px-4 py-2.5 shrink-0"
+        style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        {/* PS selection pill */}
+        <div
+          className="flex-1 flex items-center gap-2 rounded-lg px-3 py-1.5 min-w-0"
+          style={{
+            background: selectedPS ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)',
+            border: `1px solid ${selectedPS ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.08)'}`,
+          }}
+        >
+          <span
+            className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
+            style={{ background: 'rgba(99,102,241,0.2)', color: '#818cf8' }}
+          >PS</span>
+          {selectedPS ? (
+            <span className="font-mono text-xs text-indigo-300 truncate">{selectedPS.barcode}</span>
+          ) : (
+            <span className="text-xs text-zinc-600 italic">not selected</span>
+          )}
+          {selectedPS && (
+            <button
+              type="button"
+              onClick={() => setSelectedPS(null)}
+              className="ml-auto shrink-0 text-zinc-600 hover:text-zinc-400"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-zinc-700 shrink-0">
+          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+
+        {/* BB selection pill */}
+        <div
+          className="flex-1 flex items-center gap-2 rounded-lg px-3 py-1.5 min-w-0"
+          style={{
+            background: selectedBB ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.03)',
+            border: `1px solid ${selectedBB ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.08)'}`,
+          }}
+        >
+          <span
+            className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
+            style={{ background: 'rgba(245,158,11,0.2)', color: '#fbbf24' }}
+          >BB</span>
+          {selectedBB ? (
+            <span className="font-mono text-xs text-amber-300 truncate">{selectedBB.barcode}</span>
+          ) : (
+            <span className="text-xs text-zinc-600 italic">not selected</span>
+          )}
+          {selectedBB && (
+            <button
+              type="button"
+              onClick={() => setSelectedBB(null)}
+              className="ml-auto shrink-0 text-zinc-600 hover:text-zinc-400"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Search */}
@@ -107,21 +187,34 @@ function AssemblySelectModal({
                 ) : (
                   filtered
                     .filter((u) => u.powerstageBarcode)
-                    .map((u) => (
-                      <button
-                        key={`ps-${u.id}`}
-                        type="button"
-                        onClick={() => onSelect(u.id)}
-                        className="font-mono text-sm font-medium px-4 py-2 rounded-lg transition-all active:scale-95 hover:brightness-125"
-                        style={{
-                          background: 'rgba(99,102,241,0.12)',
-                          border: '1px solid rgba(99,102,241,0.3)',
-                          color: '#a5b4fc',
-                        }}
-                      >
-                        {u.powerstageBarcode}
-                      </button>
-                    ))
+                    .map((u) => {
+                      const isSelected = selectedPS?.id === u.id;
+                      return (
+                        <button
+                          key={`ps-${u.id}`}
+                          type="button"
+                          onClick={() =>
+                            setSelectedPS(
+                              isSelected ? null : { id: u.id, barcode: u.powerstageBarcode! }
+                            )
+                          }
+                          className="font-mono text-sm font-medium px-4 py-2 rounded-lg transition-all active:scale-95 flex items-center gap-1.5"
+                          style={{
+                            background: isSelected ? 'rgba(99,102,241,0.30)' : 'rgba(99,102,241,0.12)',
+                            border: `1px solid ${isSelected ? 'rgba(99,102,241,0.7)' : 'rgba(99,102,241,0.3)'}`,
+                            color: isSelected ? '#c7d2fe' : '#a5b4fc',
+                            boxShadow: isSelected ? '0 0 0 2px rgba(99,102,241,0.25)' : 'none',
+                          }}
+                        >
+                          {isSelected && (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                          {u.powerstageBarcode}
+                        </button>
+                      );
+                    })
                 )}
               </div>
             </div>
@@ -145,26 +238,59 @@ function AssemblySelectModal({
                 ) : (
                   filtered
                     .filter((u) => u.brainboardBarcode)
-                    .map((u) => (
-                      <button
-                        key={`bb-${u.id}`}
-                        type="button"
-                        onClick={() => onSelect(u.id)}
-                        className="font-mono text-sm font-medium px-4 py-2 rounded-lg transition-all active:scale-95 hover:brightness-125"
-                        style={{
-                          background: 'rgba(245,158,11,0.1)',
-                          border: '1px solid rgba(245,158,11,0.3)',
-                          color: '#fcd34d',
-                        }}
-                      >
-                        {u.brainboardBarcode}
-                      </button>
-                    ))
+                    .map((u) => {
+                      const isSelected = selectedBB?.id === u.id;
+                      return (
+                        <button
+                          key={`bb-${u.id}`}
+                          type="button"
+                          onClick={() =>
+                            setSelectedBB(
+                              isSelected ? null : { id: u.id, barcode: u.brainboardBarcode! }
+                            )
+                          }
+                          className="font-mono text-sm font-medium px-4 py-2 rounded-lg transition-all active:scale-95 flex items-center gap-1.5"
+                          style={{
+                            background: isSelected ? 'rgba(245,158,11,0.28)' : 'rgba(245,158,11,0.1)',
+                            border: `1px solid ${isSelected ? 'rgba(245,158,11,0.7)' : 'rgba(245,158,11,0.3)'}`,
+                            color: isSelected ? '#fde68a' : '#fcd34d',
+                            boxShadow: isSelected ? '0 0 0 2px rgba(245,158,11,0.2)' : 'none',
+                          }}
+                        >
+                          {isSelected && (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                          {u.brainboardBarcode}
+                        </button>
+                      );
+                    })
                 )}
               </div>
             </div>
           </>
         )}
+      </div>
+
+      {/* Footer — Start button */}
+      <div
+        className="px-4 py-3 shrink-0"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}
+      >
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={!canStart}
+          className="w-full py-3 rounded-xl font-semibold text-sm transition-all"
+          style={
+            canStart
+              ? { background: 'rgba(14,165,233,0.2)', border: '1px solid rgba(14,165,233,0.4)', color: '#38bdf8' }
+              : { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#3f3f46', cursor: 'not-allowed' }
+          }
+        >
+          {canStart ? `Start Assembly — ${selectedPS!.barcode} + ${selectedBB!.barcode}` : 'Select both PS and BB to continue'}
+        </button>
       </div>
     </div>
   );
