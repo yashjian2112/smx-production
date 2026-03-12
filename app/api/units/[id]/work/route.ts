@@ -4,10 +4,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { appendTimeline } from '@/lib/timeline';
 import { put } from '@vercel/blob';
-import { UnitStatus } from '@prisma/client';
+import { StageType, UnitStatus } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
 import sharp from 'sharp';
+
+const STAGE_ORDER: StageType[] = [
+  StageType.POWERSTAGE_MANUFACTURING,
+  StageType.BRAINBOARD_MANUFACTURING,
+  StageType.CONTROLLER_ASSEMBLY,
+  StageType.QC_AND_SOFTWARE,
+  StageType.FINAL_ASSEMBLY,
+];
+
+function getNextStage(current: StageType): StageType | null {
+  const i = STAGE_ORDER.indexOf(current);
+  return i >= 0 && i < STAGE_ORDER.length - 1 ? STAGE_ORDER[i + 1] : null;
+}
 
 // ── PCB check helper ──────────────────────────────────────────────────────────
 // Returns true if the image contains a circuit board, false if not.
@@ -219,21 +233,61 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     },
   });
 
-  // ── Auto-complete unit stage ───────────────────────────────────────────────
+  // ── Auto-complete: advance unit stage directly (no internal HTTP fetch) ────
+  // Using direct Prisma calls avoids cookie-forwarding auth issues in production.
   try {
-    const completeRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/units/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Cookie: req.headers.get('cookie') ?? '' },
-      body: JSON.stringify({ status: 'COMPLETED', userId: session.id }),
+    const completedStage = unit.currentStage;
+    const next = getNextStage(completedStage);
+
+    // Log the stage completion
+    await prisma.stageLog.create({
+      data: {
+        unitId:     id,
+        userId:     session.id,
+        stage:      completedStage,
+        statusFrom: unit.currentStatus,
+        statusTo:   UnitStatus.COMPLETED,
+      },
     });
-    if (!completeRes.ok) {
-      const errData = await completeRes.json().catch(() => ({}));
-      console.error('Auto-complete failed:', completeRes.status, errData);
-      return NextResponse.json({ error: 'Photo saved but stage completion failed. Please refresh and try again.' }, { status: 500 });
+
+    await appendTimeline({
+      unitId:     id,
+      userId:     session.id,
+      action:     'stage_completed',
+      stage:      completedStage,
+      statusFrom: unit.currentStatus,
+      statusTo:   UnitStatus.COMPLETED,
+      remarks:    next ? `Advanced to ${next}` : 'Unit fully assembled',
+    });
+
+    if (next) {
+      // Advance to next stage, reset to IN_PROGRESS
+      await prisma.controllerUnit.update({
+        where: { id },
+        data: { currentStage: next, currentStatus: UnitStatus.IN_PROGRESS },
+      });
+    } else {
+      // Final stage — mark fully complete
+      await prisma.controllerUnit.update({
+        where: { id },
+        data: { currentStatus: UnitStatus.COMPLETED },
+      });
+      await appendTimeline({
+        unitId:     id,
+        userId:     session.id,
+        action:     'final_assembly_completed',
+        stage:      completedStage,
+        statusFrom: UnitStatus.COMPLETED,
+        statusTo:   UnitStatus.COMPLETED,
+        remarks:    'Unit fully assembled and ready for dispatch',
+      });
     }
   } catch (e) {
-    console.error('Auto-complete network error:', e);
-    return NextResponse.json({ error: 'Photo saved but stage completion failed. Please refresh and try again.' }, { status: 500 });
+    console.error('Stage auto-advance error:', e);
+    return NextResponse.json(
+      { error: 'Photo saved but stage completion failed. Please contact your manager.' },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ submission: updated, result: 'PASS', issues: [], summary: updated.analysisSummary });
