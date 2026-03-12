@@ -24,7 +24,7 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
       stageLogs: { include: { user: true, approvedBy: true }, orderBy: { createdAt: 'desc' }, take: 20 },
       qcRecords: { include: { issueCategory: true }, orderBy: { createdAt: 'desc' } },
       reworkRecords: { include: { rootCauseCategory: true, assignedUser: true }, orderBy: { createdAt: 'desc' } },
-      timelineLogs: { include: { user: true }, orderBy: { createdAt: 'desc' }, take: 30 },
+      timelineLogs: { include: { user: true }, orderBy: { createdAt: 'desc' } },
       componentChecks: {
         include: { component: true, checker: { select: { id: true, name: true } } },
       },
@@ -232,20 +232,95 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
 
       <UnitActions unit={JSON.parse(JSON.stringify(unit))} sessionRole={session.role} />
 
-      {/* Timeline */}
-      <div>
-        <h3 className="font-medium text-sm mb-3">Timeline</h3>
-        <ul className="space-y-2">
-          {unit.timelineLogs.map((log) => (
-            <li key={log.id} className="text-sm border-l-2 pl-3 py-1" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-              <span className="text-zinc-600 text-xs">{new Date(log.createdAt).toLocaleString()}</span>
-              <span className="text-zinc-400 ml-2">{log.action}</span>
-              {log.user && <span className="text-zinc-600 ml-1">· {log.user.name}</span>}
-              {log.remarks && <span className="block text-zinc-600 text-xs">{log.remarks}</span>}
-            </li>
-          ))}
-        </ul>
-      </div>
+      {/* Timeline — full audit trail, all events */}
+      {unit.timelineLogs.length > 0 && (
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-medium text-sm">Timeline</h3>
+            <span className="text-[11px] text-zinc-600">{unit.timelineLogs.length} event{unit.timelineLogs.length !== 1 ? 's' : ''}</span>
+          </div>
+          <ol className="relative space-y-0">
+            {unit.timelineLogs.map((log, idx) => {
+              /* ── colour coding by action category ── */
+              const action = log.action ?? '';
+              const dotColor =
+                action.includes('completed') || action.includes('approved') || action.includes('passed')
+                  ? '#4ade80'
+                  : action.includes('rejected') || action.includes('blocked') || action.includes('failed')
+                  ? '#f87171'
+                  : action.includes('rework')
+                  ? '#fb923c'
+                  : action.includes('started') || action.includes('assigned') || action.includes('in_progress')
+                  ? '#fbbf24'
+                  : '#38bdf8';
+
+              const actionLabel = action.replace(/_/g, ' ');
+
+              const stageLabel: Record<string, string> = {
+                POWERSTAGE_MANUFACTURING: 'Powerstage',
+                BRAINBOARD_MANUFACTURING: 'Brainboard',
+                CONTROLLER_ASSEMBLY: 'Assembly',
+                QC_AND_SOFTWARE: 'QC & Software',
+                FINAL_ASSEMBLY: 'Final Assembly',
+                REWORK: 'Rework',
+              };
+
+              const isLast = idx === unit.timelineLogs.length - 1;
+
+              return (
+                <li key={log.id} className="flex gap-3 pb-4 last:pb-0">
+                  {/* Dot + vertical line */}
+                  <div className="flex flex-col items-center shrink-0" style={{ width: 14 }}>
+                    <div
+                      className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5"
+                      style={{ background: dotColor, boxShadow: `0 0 0 2px rgba(0,0,0,0.6)` }}
+                    />
+                    {!isLast && (
+                      <div className="flex-1 w-px mt-1" style={{ background: 'rgba(255,255,255,0.07)', minHeight: 16 }} />
+                    )}
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0 pb-0.5">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="text-zinc-200 text-sm font-medium capitalize">{actionLabel}</span>
+                      {log.stage && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
+                          style={{ background: 'rgba(255,255,255,0.06)', color: '#94a3b8' }}
+                        >
+                          {stageLabel[log.stage] ?? log.stage}
+                        </span>
+                      )}
+                      {(log.statusFrom || log.statusTo) && (
+                        <span className="text-[10px] text-zinc-600 shrink-0">
+                          {log.statusFrom && log.statusFrom.replace(/_/g, ' ')}
+                          {log.statusFrom && log.statusTo && ' → '}
+                          {log.statusTo && <span className="text-zinc-400">{log.statusTo.replace(/_/g, ' ')}</span>}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2 mt-0.5">
+                      <span className="text-[11px] text-zinc-600">
+                        {new Date(log.createdAt).toLocaleString('en-IN', {
+                          day: 'numeric', month: 'short', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </span>
+                      {log.user && (
+                        <span className="text-[11px] text-zinc-500">· {log.user.name}</span>
+                      )}
+                    </div>
+                    {log.remarks && (
+                      <p className="text-xs text-zinc-500 mt-1 italic">{log.remarks}</p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
     </div>
   );
 }

@@ -504,7 +504,7 @@ function StageCard({
       {isExpanded && !isEmployee && total > 0 && (
         <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <ul>
-            {stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) !== 'PENDING').map((u) => {
+            {stage.units.map((u) => {
               const status = u.derivedStatus ?? u.currentStatus;
               const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
               return (
@@ -522,7 +522,7 @@ function StageCard({
                     <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${s.text}`}>
                       {s.label}
                     </span>
-                    <svg className="text-zinc-700 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg className="text-zinc-700 shrink-0 ml-auto" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M9 18l6-6-6-6" />
                     </svg>
                   </a>
