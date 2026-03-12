@@ -95,6 +95,16 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
             {stageLabels[unit.currentStage] ?? unit.currentStage}
           </span>
+          {(() => {
+            const assigned = unit.assignments.find(a => a.stage === unit.currentStage);
+            if (!assigned) return null;
+            return (
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium text-violet-400"
+                style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)' }}>
+                {assigned.user.name}
+              </span>
+            );
+          })()}
         </div>
       </div>
 

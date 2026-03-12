@@ -164,6 +164,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     data: { unitId: id, employeeId: session.id, stage: unit.currentStage },
   });
 
+  // Bind this unit's current stage to the employee immediately on scan
+  await prisma.stageAssignment.upsert({
+    where:  { unitId_stage: { unitId: id, stage: unit.currentStage } },
+    create: { unitId: id, userId: session.id, stage: unit.currentStage },
+    update: { userId: session.id },
+  });
+
   return NextResponse.json(submission, { status: 201 });
 }
 
