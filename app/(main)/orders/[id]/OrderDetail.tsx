@@ -190,7 +190,7 @@ function StageCard({
                     className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/5 transition-colors flex-1 min-w-0"
                   >
                     <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-                    <span className="font-mono text-sky-400 text-sm flex-1 truncate">{u.serialNumber}</span>
+                    <span className="font-mono text-sky-400 text-sm">{u.serialNumber}</span>
                     {u.barcodeForStage && (
                       <span className="font-mono text-[10px] text-zinc-600 shrink-0 hidden sm:block">{u.barcodeForStage}</span>
                     )}
@@ -228,14 +228,17 @@ function StageCard({
       {isExpanded && isEmployee && isAccessible && total > 0 && (
         <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <ul>
-            {stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) !== 'PENDING').map((u) => {
+            {stage.units.filter((u) => {
+              const st = u.derivedStatus ?? u.currentStatus;
+              return st === 'IN_PROGRESS' || st === 'BLOCKED' || st === 'WAITING_APPROVAL';
+            }).map((u) => {
               const status = u.derivedStatus ?? u.currentStatus;
               const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
-              const canWork = status === 'PENDING' || status === 'IN_PROGRESS';
+              const canWork = status === 'IN_PROGRESS';
               const inner = (
                 <>
                   <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-                  <span className="font-mono text-sky-400 text-sm flex-1 truncate">{u.serialNumber}</span>
+                  <span className="font-mono text-sky-400 text-sm">{u.serialNumber}</span>
                   <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${s.text}`}>
                     {s.label}
                   </span>
