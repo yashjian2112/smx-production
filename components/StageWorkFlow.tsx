@@ -493,6 +493,12 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
     try {
       const res = await fetch(`/api/units/${unitId}/work`, { method: 'PUT', body: fd });
       const data = await res.json();
+      if (!res.ok) {
+        // Server returned an error — show it and let the worker retry
+        setError(data.error ?? `Submission failed (${res.status}). Please try again.`);
+        setStep('open');
+        return;
+      }
       setResult({ result: data.result, issues: data.issues ?? [], summary: data.summary });
       setStep('result');
       if (data.result === 'PASS') setTimeout(() => orderId ? router.push(`/orders/${orderId}`) : router.refresh(), 2000);
@@ -514,6 +520,12 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
     try {
       const res = await fetch(`/api/units/${unitId}/work`, { method: 'PUT', body: fd });
       const data = await res.json();
+      if (!res.ok) {
+        // Server returned an error — show it and let the worker retry
+        setError(data.error ?? `Submission failed (${res.status}). Please try again.`);
+        setStep('open');
+        return;
+      }
       setResult({ result: data.result, issues: data.issues ?? [], summary: data.summary });
       setStep('result');
       if (data.result === 'PASS') setTimeout(() => orderId ? router.push(`/orders/${orderId}`) : router.refresh(), 2000);
@@ -601,6 +613,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
       ? 'The photo doesn\'t appear to show a circuit board. Please retake with the correct PCB in the camera frame.'
       : aiError
       ? 'Photo saved. AI inspection failed — a manager must review this unit manually.'
+      : !pass
+      ? (result.summary ?? 'Something went wrong. Please retake the photo and try again.')
       : result.summary;
 
     return (
@@ -611,7 +625,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
         {/* Result banner */}
         <div className="p-6 text-center flex-shrink-0">
           <p className={`text-xl font-bold ${noCriteria ? 'text-amber-400' : notABoard ? 'text-orange-400' : aiError ? 'text-amber-400' : pass ? 'text-green-400' : 'text-red-400'}`}>
-            {noCriteria ? 'No Checklist Configured' : notABoard ? 'Invalid Photo' : aiError ? 'Photo Saved — Awaiting Review' : pass ? 'All Clear — Stage Complete!' : 'Component Issues Found'}
+            {noCriteria ? 'No Checklist Configured' : notABoard ? 'Invalid Photo' : aiError ? 'Photo Saved — Awaiting Review' : pass ? 'All Clear — Stage Complete!' : 'Submission Failed'}
           </p>
           <p className="text-zinc-400 text-sm mt-2 max-w-sm mx-auto leading-relaxed">{displaySummary}</p>
           {noCriteria && (
@@ -783,7 +797,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId }: 
               className="w-full py-4 rounded-2xl font-bold text-sm"
               style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
             >
-              Fix issues and retake photo →
+              Retake Photo →
             </button>
           ) : (
             <div
