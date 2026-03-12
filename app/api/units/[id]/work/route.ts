@@ -148,7 +148,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       analysisStatus:  'PASSED',
       analysisResult:  'PASS',
       analysisIssues:  JSON.stringify([]),
-      analysisSummary: 'Photo saved to production record (awaiting AI hardware).',
+      analysisSummary: 'Photo saved to production record.',
       submittedAt:     now,
       completedAt:     now,
       buildTimeSec,

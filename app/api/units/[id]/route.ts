@@ -111,36 +111,21 @@ export async function PATCH(
         remarks: remarks ?? undefined,
       });
 
-      // Auto-advance to next stage when current stage is COMPLETED
-      // REWORK stage is handled separately via /rework route — skip here
-      if (statusTo === 'COMPLETED' && unit.currentStage !== StageType.REWORK) {
-        const next = nextStage(unit.currentStage);
-        if (next) {
-          // Advance to next stage
-          updates.currentStage = next;
-          updates.currentStatus = UnitStatus.PENDING;
-          await appendTimeline({
-            unitId: id,
-            userId: session.id,
-            action: 'stage_completed',
-            stage: next,
-            statusFrom: UnitStatus.COMPLETED,
-            statusTo: UnitStatus.PENDING,
-            remarks: `Advanced to ${next}`,
-          });
-        } else {
-          // Final stage (FINAL_ASSEMBLY) completed — mark unit as fully done
-          updates.currentStatus = UnitStatus.COMPLETED;
-          await appendTimeline({
-            unitId: id,
-            userId: session.id,
-            action: 'final_assembly_completed',
-            stage: unit.currentStage,
-            statusFrom: UnitStatus.COMPLETED,
-            statusTo: UnitStatus.COMPLETED,
-            remarks: 'Unit fully assembled and ready for dispatch',
-          });
-        }
+      // Manual stage advancement only — do not auto-advance
+      // Each stage requires explicit manager approval before advancing to next stage
+      // This prevents units from being rushed through stages
+      if (statusTo === 'COMPLETED' && unit.currentStage === StageType.FINAL_ASSEMBLY) {
+        // Final stage (FINAL_ASSEMBLY) completed — mark unit as fully done
+        updates.currentStatus = UnitStatus.COMPLETED;
+        await appendTimeline({
+          unitId: id,
+          userId: session.id,
+          action: 'final_assembly_completed',
+          stage: unit.currentStage,
+          statusFrom: UnitStatus.COMPLETED,
+          statusTo: UnitStatus.COMPLETED,
+          remarks: 'Unit fully assembled and ready for dispatch',
+        });
       }
     }
 
