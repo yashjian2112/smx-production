@@ -50,6 +50,7 @@ export function PrintComponent({
   const [error, setError] = useState('');
   const [totalConfirmed, setTotalConfirmed] = useState(0);
   const [history, setHistory] = useState(initialHistory);
+  const [printFrameHtml, setPrintFrameHtml] = useState('');
   const pendingBarcodes = useRef<string[]>([]);
 
   useEffect(() => {
@@ -123,6 +124,7 @@ export function PrintComponent({
     function onMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'component-print-complete' && pendingBarcodes.current.length > 0) {
+        setPrintFrameHtml('');
         setPrintState('confirm');
       }
     }
@@ -133,14 +135,7 @@ export function PrintComponent({
     };
   }, []);
 
-  function openPrintWindow(items: PrintedSticker[]) {
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=420,height=640');
-    if (!printWindow) {
-      setError('Pop-up blocked. Please allow pop-ups and try again.');
-      setPrintState('idle');
-      return false;
-    }
-
+  function buildPrintHtml(items: PrintedSticker[]) {
     const safeName = escapeHtml(name);
     const safePart = escapeHtml(partNumber);
     const safeProductCode = escapeHtml(productCode);
@@ -159,8 +154,7 @@ export function PrintComponent({
       </div>
     `).join('');
 
-    printWindow.document.open();
-    printWindow.document.write(`
+    return `
       <!doctype html>
       <html>
         <head>
@@ -201,21 +195,21 @@ export function PrintComponent({
           <script>
             window.addEventListener('afterprint', function () {
               try {
-                if (window.opener && !window.opener.closed) {
-                  window.opener.postMessage({ type: 'component-print-complete' }, window.location.origin);
+                if (window.parent) {
+                  window.parent.postMessage({ type: 'component-print-complete' }, window.location.origin);
                 }
               } catch (e) {}
-              window.close();
             });
             window.addEventListener('load', function () {
-              setTimeout(function () { window.print(); }, 250);
+              setTimeout(function () {
+                window.focus();
+                window.print();
+              }, 250);
             });
           </script>
         </body>
       </html>
-    `);
-    printWindow.document.close();
-    return true;
+    `;
   }
 
   async function generateAndPrint() {
@@ -241,7 +235,7 @@ export function PrintComponent({
       );
       pendingBarcodes.current = items.map((item) => item.barcode);
       setStickers(items);
-      if (!openPrintWindow(items)) return;
+      setPrintFrameHtml(buildPrintHtml(items));
     } catch {
       setError('Network error');
       setPrintState('idle');
@@ -277,7 +271,7 @@ export function PrintComponent({
 
   function reprint() {
     setPrintState('reprinting');
-    if (!openPrintWindow(stickers)) return;
+    setPrintFrameHtml(buildPrintHtml(stickers));
   }
 
   return (
@@ -452,6 +446,14 @@ export function PrintComponent({
             </div>
           </div>
         </>
+      )}
+
+      {printFrameHtml && (
+        <iframe
+          title="Component label print frame"
+          srcDoc={printFrameHtml}
+          style={{ position: 'fixed', width: 0, height: 0, border: 0, opacity: 0, pointerEvents: 'none' }}
+        />
       )}
 
     </div>
