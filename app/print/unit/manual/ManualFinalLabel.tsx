@@ -858,7 +858,7 @@ export function ManualFinalLabel({
                       <div
                         style={{
                           width: '100%',
-                          fontSize: '2.2mm',
+                          fontSize: '1.7mm',
                           fontWeight: 800,
                           fontFamily: 'Arial, Helvetica, sans-serif',
                           textTransform: 'uppercase',
@@ -871,27 +871,12 @@ export function ManualFinalLabel({
                         NOTE — Warranty Void If Removed
                       </div>
 
-                      {/* "Serial Number" label */}
-                      <div
-                        style={{
-                          fontSize: '1.6mm',
-                          fontWeight: 600,
-                          fontFamily: 'Arial, Helvetica, sans-serif',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.1mm',
-                          color: '#444',
-                          lineHeight: 1,
-                        }}
-                      >
-                        Serial Number
-                      </div>
-
                       {/* Barcode */}
                       <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
                         <Barcode128
                           value={sticker.serial}
                           width={1.5}
-                          height={30}
+                          height={40}
                           displayValue={false}
                           fontSize={9}
                           background="#ffffff"
