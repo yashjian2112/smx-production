@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Barcode128 } from '@/components/Barcode128';
 
 const MONTH_CODES = ['JA', 'FE', 'MR', 'AP', 'MY', 'JN', 'JL', 'AU', 'SE', 'OC', 'NO', 'DE'] as const;
@@ -93,7 +93,9 @@ export function ManualFinalLabel({
   const [saving, setSaving]       = useState(false);
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [lastSavedCount, setLastSavedCount] = useState(0);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const fetchSeqTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmBoxRef   = useRef<HTMLDivElement | null>(null);
 
   const computedPrefix = useMemo(() => {
     const code = productCode.trim().toUpperCase();
@@ -246,6 +248,7 @@ export function ManualFinalLabel({
       setStickers(buildPrintable(batch.items));
       setPrintState('confirm');
       setTab('print');
+      setTimeout(() => confirmBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
     } catch (err) {
       console.error(err);
       setStickers([]);
@@ -335,7 +338,29 @@ export function ManualFinalLabel({
     setStickers(buildPrintable(batch.items));
     setPrintState('confirm');
     setTab('print');
+    // scroll confirm box into view after state settles
+    setTimeout(() => confirmBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   }
+
+  const removeBatch = useCallback(async (batchId: string) => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/print/unit/manual', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchIds: [batchId] }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) throw new Error(data.error || 'Failed to remove batch');
+      setHistory((prev) => prev.filter((b) => b.id !== batchId));
+      setConfirmDeleteId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove');
+    } finally {
+      setSaving(false);
+    }
+  }, []);
 
   async function confirmPrinted() {
     if (!activeBatchId) {
@@ -374,6 +399,7 @@ export function ManualFinalLabel({
             {/* ── Print confirmation box ── */}
             {printState === 'confirm' && activeBatch && (
               <div
+                ref={confirmBoxRef}
                 className="rounded-xl p-3 space-y-3"
                 style={{ background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.28)' }}
               >
@@ -736,6 +762,52 @@ export function ManualFinalLabel({
                                 {item.copies > 1 && <span className="ml-2 text-xs text-zinc-600">×{item.copies}</span>}
                               </div>
                             ))}
+                          </div>
+
+                          {/* History actions */}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => reprintBatch(batch)}
+                              disabled={saving}
+                              className="px-3 py-2 rounded-lg text-xs font-semibold text-white"
+                              style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
+                            >
+                              ↺ Reprint
+                            </button>
+
+                            {confirmDeleteId === batch.id ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => removeBatch(batch.id)}
+                                  disabled={saving}
+                                  className="px-3 py-2 rounded-lg text-xs font-semibold"
+                                  style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.35)', color: '#fca5a5' }}
+                                >
+                                  {saving ? '...' : 'Confirm Remove'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteId(null)}
+                                  disabled={saving}
+                                  className="px-3 py-2 rounded-lg text-xs font-semibold text-zinc-400"
+                                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteId(batch.id)}
+                                disabled={saving}
+                                className="px-3 py-2 rounded-lg text-xs font-semibold"
+                                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.18)', color: '#f87171' }}
+                              >
+                                ✕ Remove
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
