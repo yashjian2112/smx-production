@@ -98,7 +98,19 @@ export function PrintComponent({
         .sticker-name, .sticker-barcode, .sticker-part, .sticker-meta { color: black !important; }
       }
       .sticker-grid { display: grid; grid-template-columns: 50mm; gap: 8px; margin-top: 16px; }
-      .sticker { width: 50mm; height: 25mm; border: 1px dashed rgba(255,255,255,0.15); border-radius: 6px; display: flex; align-items: center; gap: 2mm; padding: 1.5mm 2mm; overflow: hidden; background: white; color: black; }
+      .sticker {
+        width: 50mm;
+        height: 25mm;
+        border: 1px dashed rgba(255,255,255,0.15);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: white;
+        color: black;
+      }
+      .sticker-inner { width: 46mm; height: 21mm; display: grid; grid-template-columns: 15mm 1fr; column-gap: 2mm; align-items: center; }
       .sticker-qr { width: 15mm; height: 15mm; flex: 0 0 15mm; }
       .sticker-qr img { width: 15mm; height: 15mm; display: block; border-radius: 4px; }
       .sticker-text { flex: 1; min-width: 0; overflow: hidden; }
@@ -135,12 +147,14 @@ export function PrintComponent({
     const safeStage = escapeHtml(STAGE_LABELS[stage] ?? stage);
     const labels = items.map(({ barcode, qrDataUrl }) => `
       <div class="label">
-        <div class="qr"><img src="${qrDataUrl}" alt="${escapeHtml(barcode)}" /></div>
-        <div class="text">
-          <div class="name">${safeName}</div>
-          ${safePart ? `<div class="part">${safePart}</div>` : ''}
-          <div class="barcode">${escapeHtml(barcode)}</div>
-          <div class="meta">${safeProductCode} · ${safeStage}</div>
+        <div class="inner">
+          <div class="qr"><img src="${qrDataUrl}" alt="${escapeHtml(barcode)}" /></div>
+          <div class="text">
+            <div class="name">${safeName}</div>
+            ${safePart ? `<div class="part">${safePart}</div>` : ''}
+            <div class="barcode">${escapeHtml(barcode)}</div>
+            <div class="meta">${safeProductCode} · ${safeStage}</div>
+          </div>
         </div>
       </div>
     `).join('');
@@ -160,16 +174,20 @@ export function PrintComponent({
             .label {
               width: 50mm;
               height: 25mm;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+            }
+            .label + .label { page-break-before: always; break-before: page; }
+            .inner {
+              width: 46mm;
+              height: 21mm;
               display: grid;
               grid-template-columns: 15mm 1fr;
               column-gap: 2mm;
               align-items: center;
-              padding: 1.5mm 2mm;
-              overflow: hidden;
-              page-break-after: always;
-              break-after: page;
             }
-            .label:last-child { page-break-after: auto; break-after: auto; }
             .qr img { width: 15mm; height: 15mm; display: block; }
             .text { min-width: 0; }
             .name { font-size: 3.2mm; line-height: 1.05; font-weight: 700; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -418,14 +436,16 @@ export function PrintComponent({
             <div className="sticker-grid">
               {stickers.map((sticker, i) => (
                 <div key={i} className="sticker">
-                  <div className="sticker-qr">
-                    <img src={sticker.qrDataUrl} alt={sticker.barcode} />
-                  </div>
-                  <div className="sticker-text">
-                    <div className="sticker-name">{name}</div>
-                    {partNumber && <div className="sticker-part">{partNumber}</div>}
-                    <div className="sticker-barcode">{sticker.barcode}</div>
-                    <div className="sticker-meta">{productCode} · {STAGE_LABELS[stage] ?? stage}</div>
+                  <div className="sticker-inner">
+                    <div className="sticker-qr">
+                      <img src={sticker.qrDataUrl} alt={sticker.barcode} />
+                    </div>
+                    <div className="sticker-text">
+                      <div className="sticker-name">{name}</div>
+                      {partNumber && <div className="sticker-part">{partNumber}</div>}
+                      <div className="sticker-barcode">{sticker.barcode}</div>
+                      <div className="sticker-meta">{productCode} · {STAGE_LABELS[stage] ?? stage}</div>
+                    </div>
                   </div>
                 </div>
               ))}
