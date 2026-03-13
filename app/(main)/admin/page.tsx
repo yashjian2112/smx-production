@@ -21,10 +21,15 @@ export default async function AdminPage() {
           <p className="font-medium">Users</p>
           <p className="text-slate-400 text-xs mt-1">Manage users & face enroll</p>
         </Link>
-        <Link href="/admin/checklists" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center col-span-2">
+        <Link href="/admin/clients" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center">
+          <div className="text-3xl mb-2">🏢</div>
+          <p className="font-medium">Clients</p>
+          <p className="text-slate-400 text-xs mt-1">Manage customers & billing info</p>
+        </Link>
+        <Link href="/admin/checklists" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center">
           <div className="text-3xl mb-2">✅</div>
-          <p className="font-medium">Stage Checklists</p>
-          <p className="text-slate-400 text-xs mt-1">Define AI quality checks per stage — components, acceptance criteria, reference images</p>
+          <p className="font-medium">Checklists</p>
+          <p className="text-slate-400 text-xs mt-1">AI quality checks per stage</p>
         </Link>
       </div>
     </div>

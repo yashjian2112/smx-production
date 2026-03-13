@@ -97,11 +97,33 @@ model ComponentCheck {
   @@map("component_checks")
 }
 
+// ----- Clients -----
+model Client {
+  id              String   @id @default(cuid())
+  code            String   @unique               // e.g. CLI001
+  customerName    String   @map("customer_name")
+  email           String?
+  phone           String?
+  customerType    String?  @map("customer_type")    // OEM | Retail | Dealer | etc.
+  globalOrIndian  String?  @map("global_or_indian") // "Global" | "Indian"
+  billingAddress  String?  @map("billing_address")
+  shippingAddress String?  @map("shipping_address")
+  gstNumber       String?  @map("gst_number")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  orders Order[]
+
+  @@map("clients")
+}
+
 // ----- Orders -----
 model Order {
   id                 String    @id @default(cuid())
   orderNumber        String    @unique @map("order_number")
   websiteOrderNumber String?   @map("website_order_number")
+  clientId           String?   @map("client_id")
   productId          String    @map("product_id")
   quantity    Int
   dueDate     DateTime? @map("due_date")
@@ -113,6 +135,7 @@ model Order {
   updatedAt   DateTime  @updatedAt @map("updated_at")
   createdById String?   @map("created_by_id")
 
+  client  Client?  @relation(fields: [clientId], references: [id])
   product Product @relation(fields: [productId], references: [id])
   units   ControllerUnit[]
 }

@@ -12,6 +12,7 @@ export type OrderItem = {
   createdAt: string;
   voltage?: string | null;
   product: { name: string; code: string };
+  client?: { id: string; code: string; customerName: string } | null;
   _count: { units: number };
   units: UnitSummary[];
 };
@@ -117,6 +118,7 @@ function OrderCard({ order }: { order: OrderItem }) {
         {order.voltage ? ` · ${order.voltage}` : ''}
         {' · '}
         {total} unit{total !== 1 ? 's' : ''}
+        {order.client ? ` · ${order.client.customerName}` : ''}
       </p>
 
       {/* Progress bar */}
