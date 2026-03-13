@@ -52,6 +52,17 @@ export function PrintComponent({
   const [history, setHistory] = useState(initialHistory);
   const [printFrameHtml, setPrintFrameHtml] = useState('');
   const pendingBarcodes = useRef<string[]>([]);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showConfirmActions() {
+    if (confirmTimerRef.current) {
+      clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+    }
+    if (pendingBarcodes.current.length === 0) return;
+    setPrintFrameHtml('');
+    setPrintState('confirm');
+  }
 
   useEffect(() => {
     const style = document.createElement('style');
@@ -124,12 +135,12 @@ export function PrintComponent({
     function onMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'component-print-complete' && pendingBarcodes.current.length > 0) {
-        setPrintFrameHtml('');
-        setPrintState('confirm');
+        showConfirmActions();
       }
     }
     window.addEventListener('message', onMessage);
     return () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
       style.remove();
       window.removeEventListener('message', onMessage);
     };
@@ -236,6 +247,10 @@ export function PrintComponent({
       pendingBarcodes.current = items.map((item) => item.barcode);
       setStickers(items);
       setPrintFrameHtml(buildPrintHtml(items));
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = setTimeout(() => {
+        showConfirmActions();
+      }, 2500);
     } catch {
       setError('Network error');
       setPrintState('idle');
@@ -261,6 +276,7 @@ export function PrintComponent({
       setTotalConfirmed((c) => c + pendingBarcodes.current.length);
       pendingBarcodes.current = [];
       setStickers([]);
+      setPrintFrameHtml('');
       setPrintState('confirmed');
       setTimeout(() => { setPrintState('idle'); setTab('history'); }, 2000);
     } catch {
@@ -272,6 +288,10 @@ export function PrintComponent({
   function reprint() {
     setPrintState('reprinting');
     setPrintFrameHtml(buildPrintHtml(stickers));
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    confirmTimerRef.current = setTimeout(() => {
+      showConfirmActions();
+    }, 2500);
   }
 
   return (
