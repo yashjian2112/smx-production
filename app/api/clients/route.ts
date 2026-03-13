@@ -10,6 +10,7 @@ const createSchema = z.object({
   phone:          z.string().optional(),
   customerType:   z.string().optional(),
   globalOrIndian: z.enum(['Global', 'Indian']).optional(),
+  state:          z.string().optional(),
   billingAddress: z.string().optional(),
   shippingAddress:z.string().optional(),
   gstNumber:      z.string().optional(),
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { code, customerName, email, phone, customerType, globalOrIndian, billingAddress, shippingAddress, gstNumber } = parsed.data;
+    const { code, customerName, email, phone, customerType, globalOrIndian, state, billingAddress, shippingAddress, gstNumber } = parsed.data;
 
     const existing = await prisma.client.findUnique({ where: { code } });
     if (existing) return NextResponse.json({ error: `Client code "${code}" already exists` }, { status: 400 });
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
         phone:          phone || null,
         customerType:   customerType || null,
         globalOrIndian: globalOrIndian || null,
+        state:          state || null,
         billingAddress: billingAddress || null,
         shippingAddress:shippingAddress || null,
         gstNumber:      gstNumber || null,

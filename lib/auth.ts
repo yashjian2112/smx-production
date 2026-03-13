@@ -65,3 +65,9 @@ export function isManager(session: SessionUser) {
 export function isEmployee(session: SessionUser) {
   return session.role === 'PRODUCTION_EMPLOYEE';
 }
+export function isSales(session: SessionUser) {
+  return session.role === 'SALES';
+}
+export function isAccounts(session: SessionUser) {
+  return session.role === 'ACCOUNTS';
+}

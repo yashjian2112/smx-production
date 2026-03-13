@@ -9,6 +9,7 @@ const patchSchema = z.object({
   phone:          z.string().optional(),
   customerType:   z.string().optional(),
   globalOrIndian: z.enum(['Global', 'Indian']).optional().or(z.literal('')),
+  state:          z.string().optional(),
   billingAddress: z.string().optional(),
   shippingAddress:z.string().optional(),
   gstNumber:      z.string().optional(),
@@ -42,7 +43,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { customerName, email, phone, customerType, globalOrIndian, billingAddress, shippingAddress, gstNumber, active } = parsed.data;
+    const { customerName, email, phone, customerType, globalOrIndian, state, billingAddress, shippingAddress, gstNumber, active } = parsed.data;
 
     const client = await prisma.client.update({
       where: { id: params.id },
@@ -52,6 +53,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         ...(phone        !== undefined   && { phone: phone || null }),
         ...(customerType !== undefined   && { customerType: customerType || null }),
         ...(globalOrIndian !== undefined && { globalOrIndian: globalOrIndian || null }),
+        ...(state        !== undefined   && { state: state || null }),
         ...(billingAddress !== undefined && { billingAddress: billingAddress || null }),
         ...(shippingAddress !== undefined && { shippingAddress: shippingAddress || null }),
         ...(gstNumber    !== undefined   && { gstNumber: gstNumber || null }),

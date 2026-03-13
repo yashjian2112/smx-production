@@ -14,19 +14,25 @@ type Modal =
 
 const ROLE_OPTIONS = [
   { value: 'PRODUCTION_EMPLOYEE', label: 'Production Employee' },
-  { value: 'PRODUCTION_MANAGER', label: 'Production Manager' },
-  { value: 'ADMIN', label: 'Admin' },
+  { value: 'PRODUCTION_MANAGER',  label: 'Production Manager' },
+  { value: 'SALES',               label: 'Sales' },
+  { value: 'ACCOUNTS',            label: 'Accounts' },
+  { value: 'ADMIN',               label: 'Admin' },
 ];
 
 const ROLE_BADGE: Record<string, string> = {
-  ADMIN: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
-  PRODUCTION_MANAGER: 'bg-sky-500/20 text-sky-400 border-sky-500/30',
+  ADMIN:               'bg-violet-500/20 text-violet-400 border-violet-500/30',
+  PRODUCTION_MANAGER:  'bg-sky-500/20 text-sky-400 border-sky-500/30',
   PRODUCTION_EMPLOYEE: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
+  SALES:               'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  ACCOUNTS:            'bg-amber-500/20 text-amber-400 border-amber-500/30',
 };
 const ROLE_LABEL: Record<string, string> = {
-  ADMIN: 'Admin',
-  PRODUCTION_MANAGER: 'Manager',
+  ADMIN:               'Admin',
+  PRODUCTION_MANAGER:  'Manager',
   PRODUCTION_EMPLOYEE: 'Employee',
+  SALES:               'Sales',
+  ACCOUNTS:            'Accounts',
 };
 
 export function UsersAdmin({ users: initial }: { users: User[] }) {
