@@ -312,3 +312,37 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
+
+// ── DELETE: remove a confirmed/abandoned batch from history ──────────────────
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await requireSession();
+    requireRole(session, 'ADMIN');
+
+    const body     = await req.json();
+    const batchIds = normalizeBatchIds(body?.batchIds);
+
+    if (batchIds.length === 0) {
+      return NextResponse.json({ error: 'No batch IDs provided' }, { status: 400 });
+    }
+
+    await prisma.auditLog.deleteMany({
+      where: {
+        id:     { in: batchIds },
+        action: { in: [CONFIRMED_ACTION, ABANDONED_ACTION] },
+        entity: ENTITY,
+      },
+    });
+
+    return NextResponse.json({ deleted: batchIds });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (error instanceof Error && error.message === 'Forbidden') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    console.error(error);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
