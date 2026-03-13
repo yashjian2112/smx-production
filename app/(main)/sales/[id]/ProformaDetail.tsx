@@ -11,6 +11,7 @@ type Proforma = {
   currency: string; exchangeRate: number | null;
   termsOfPayment: string | null; deliveryDays: number | null; termsOfDelivery: string | null;
   notes: string | null; status: string; rejectedReason: string | null;
+  paymentReceiptUrl: string | null;
   createdBy: { id: string; name: string }; approvedBy: { id: string; name: string } | null;
   approvedAt: string | null; client: Client; items: Item[];
   order: { id: string; orderNumber: string; status: string } | null;
@@ -36,19 +37,24 @@ function fmtAmt(n: number, currency: string) {
 
 export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma; role: string; userId: string }) {
   const router = useRouter();
-  const [loading,       setLoading]       = useState(false);
-  const [error,         setError]         = useState('');
-  const [rejectModal,   setRejectModal]   = useState(false);
-  const [rejectReason,  setRejectReason]  = useState('');
-  const [convertModal,  setConvertModal]  = useState(false);
-  const [orderNumber,   setOrderNumber]   = useState('');
+  const [loading,         setLoading]         = useState(false);
+  const [error,           setError]           = useState('');
+  const [rejectModal,     setRejectModal]      = useState(false);
+  const [rejectReason,    setRejectReason]     = useState('');
+  const [convertModal,    setConvertModal]     = useState(false);
+  const [orderNumber,     setOrderNumber]      = useState('');
+  const [receiptUrl,      setReceiptUrl]       = useState<string | null>(proforma.paymentReceiptUrl);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [receiptError,    setReceiptError]     = useState('');
 
   const isOwner   = proforma.createdBy.id === userId;
   const canEdit   = (role === 'ADMIN' || (role === 'SALES' && isOwner)) && proforma.status === 'DRAFT';
   const canDelete = canEdit;
-  const canSendApproval = (role === 'ADMIN' || (role === 'SALES' && isOwner)) && proforma.status === 'DRAFT';
-  const canApprove= (role === 'ADMIN' || role === 'ACCOUNTS') && proforma.status === 'PENDING_APPROVAL';
-  const canConvert= (role === 'ADMIN' || role === 'ACCOUNTS') && proforma.status === 'APPROVED' && !proforma.order;
+  const canSendApproval    = (role === 'ADMIN' || (role === 'SALES' && isOwner)) && proforma.status === 'DRAFT';
+  const canApprove         = (role === 'ADMIN' || role === 'ACCOUNTS') && proforma.status === 'PENDING_APPROVAL';
+  const canConvert         = (role === 'ADMIN' || role === 'ACCOUNTS') && proforma.status === 'APPROVED' && !proforma.order;
+  const canUploadReceipt   = (role === 'ADMIN' || (role === 'SALES' && isOwner)) && ['DRAFT', 'PENDING_APPROVAL'].includes(proforma.status);
+  const isReceiptPdf       = receiptUrl ? receiptUrl.toLowerCase().includes('.pdf') : false;
 
   const subtotal  = proforma.items.reduce((s, i) => s + calcItem(i), 0);
   const isExport  = proforma.currency === 'USD';
@@ -124,6 +130,33 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
     } catch { setError('Network error'); setLoading(false); }
   }
 
+  async function handleReceiptUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setReceiptError('');
+    setUploadingReceipt(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/proformas/${proforma.id}/receipt`, { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) { setReceiptError(data.error || 'Upload failed'); return; }
+      setReceiptUrl(data.paymentReceiptUrl);
+    } catch { setReceiptError('Network error during upload'); }
+    finally { setUploadingReceipt(false); e.target.value = ''; }
+  }
+
+  async function removeReceipt() {
+    setReceiptError('');
+    setUploadingReceipt(true);
+    try {
+      const res = await fetch(`/api/proformas/${proforma.id}/receipt`, { method: 'DELETE' });
+      if (res.ok) setReceiptUrl(null);
+      else { const d = await res.json(); setReceiptError(d.error || 'Failed to remove'); }
+    } catch { setReceiptError('Network error'); }
+    finally { setUploadingReceipt(false); }
+  }
+
   return (
     <div className="space-y-5 pb-12">
 
@@ -183,6 +216,16 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
           </Link>
         )}
 
+        {canUploadReceipt && (
+          <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-700 hover:border-green-500 text-sm text-zinc-300 hover:text-green-400 transition-colors cursor-pointer">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            {uploadingReceipt ? 'Uploading…' : receiptUrl ? 'Replace Receipt' : 'Upload Receipt'}
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={handleReceiptUpload} disabled={uploadingReceipt} />
+          </label>
+        )}
+
         {canSendApproval && (
           <button onClick={sendForApproval} disabled={loading}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-sm text-white font-medium transition-colors disabled:opacity-50">
@@ -219,6 +262,89 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
           </button>
         )}
       </div>
+
+      {/* Receipt error */}
+      {receiptError && (
+        <div className="p-3 rounded-lg text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          {receiptError}
+        </div>
+      )}
+
+      {/* Payment Receipt Card */}
+      {receiptUrl ? (
+        <div className="rounded-xl border p-4" style={{ background: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.2)' }}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              {/* Icon */}
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'rgba(34,197,94,0.12)' }}>
+                {isReceiptPdf ? (
+                  <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                  </svg>
+                )}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-green-300">Payment Receipt Attached</p>
+                <p className="text-xs text-zinc-500 mt-0.5">{isReceiptPdf ? 'PDF Document' : 'Image'}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <a
+                href={`/api/blob-image?url=${encodeURIComponent(receiptUrl)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-green-300 transition-colors"
+                style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)' }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                </svg>
+                View
+              </a>
+              {canUploadReceipt && (
+                <button
+                  onClick={removeReceipt}
+                  disabled={uploadingReceipt}
+                  className="px-2 py-1.5 rounded-lg text-xs text-zinc-500 hover:text-red-400 transition-colors"
+                  title="Remove receipt"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+          {/* Image preview */}
+          {!isReceiptPdf && (
+            <div className="mt-3 rounded-lg overflow-hidden border border-zinc-700" style={{ maxHeight: 200 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/blob-image?url=${encodeURIComponent(receiptUrl)}`}
+                alt="Payment receipt"
+                className="w-full object-contain"
+                style={{ maxHeight: 200 }}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Shown to ACCOUNTS when no receipt uploaded yet */
+        canApprove && (
+          <div className="p-3 rounded-lg text-sm text-amber-400" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.15)' }}>
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+              </svg>
+              No payment receipt uploaded yet. Review invoice details carefully before approving.
+            </div>
+          </div>
+        )
+      )}
 
       {/* Client Card */}
       <div className="card p-4 space-y-1">

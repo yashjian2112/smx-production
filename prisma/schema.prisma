@@ -438,9 +438,10 @@ model ProformaInvoice {
   termsOfPayment   String?        @map("terms_of_payment")
   deliveryDays     Int?           @map("delivery_days")
   termsOfDelivery  String?        @map("terms_of_delivery")
-  notes            String?
-  status           ProformaStatus @default(DRAFT)
-  rejectedReason   String?        @map("rejected_reason")
+  notes              String?
+  paymentReceiptUrl  String?        @map("payment_receipt_url")   // Vercel Blob URL for payment receipt
+  status             ProformaStatus @default(DRAFT)
+  rejectedReason     String?        @map("rejected_reason")
   createdById      String         @map("created_by_id")
   approvedById     String?        @map("approved_by_id")
   approvedAt       DateTime?      @map("approved_at")
