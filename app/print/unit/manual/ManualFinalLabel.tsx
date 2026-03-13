@@ -198,6 +198,12 @@ export function ManualFinalLabel({
                   />
                 </div>
               </div>
+
+              <div className="rounded-xl px-3 py-2 text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <span className="text-sky-400 font-semibold">Qty</span> = new serial numbers
+                <span className="text-zinc-600 mx-2">|</span>
+                <span className="text-amber-400 font-semibold">Copies</span> = same serial prints multiple times
+              </div>
             </div>
 
             <button
@@ -275,7 +281,9 @@ export function ManualFinalLabel({
                     }}
                   >
                     <div style={{ fontSize: '2.1mm', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6mm' }}>
-                      Warranty Void If Removed
+                      <span style={{ fontSize: '1.55mm', letterSpacing: '0.08mm', lineHeight: 1.05, display: 'block', textAlign: 'center' }}>
+                        NOTE: Warranty Void If Removed
+                      </span>
                     </div>
                     <div style={{ fontSize: '1.9mm', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.45mm', color: '#444' }}>
                       Serial Number
