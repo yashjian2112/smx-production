@@ -9,6 +9,7 @@ export default async function OrdersPage() {
   if (!session) redirect('/login');
 
   const isManager = session.role === 'ADMIN' || session.role === 'PRODUCTION_MANAGER';
+  const isAdmin   = session.role === 'ADMIN';
 
   const [rawOrders, products] = await Promise.all([
     prisma.order.findMany({
@@ -20,7 +21,7 @@ export default async function OrdersPage() {
       orderBy: { createdAt: 'desc' },
       take: 200,
     }),
-    isManager
+    isAdmin
       ? prisma.product.findMany({ where: { active: true }, orderBy: { code: 'asc' } })
       : Promise.resolve([]),
   ]);
@@ -41,7 +42,7 @@ export default async function OrdersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Orders</h2>
-        {isManager && <CreateOrderForm products={products} />}
+        {isAdmin && <CreateOrderForm products={products} />}
       </div>
       <OrdersList orders={orders} isManager={isManager} />
     </div>
