@@ -330,7 +330,7 @@ export function ManualFinalLabel({
             <button
               type="button"
               onClick={generateAndPrint}
-              disabled={saving || !(manualPrefix.trim() || computedPrefix) || !(partyName.trim() || selectedClient?.customerName)}
+              disabled={saving}
               className="w-full py-3 rounded-xl text-sm font-semibold disabled:opacity-50"
               style={{ background: '#0ea5e9', color: '#fff' }}
             >
@@ -420,17 +420,19 @@ export function ManualFinalLabel({
                       flexDirection: 'column',
                       justifyContent: 'center',
                       alignItems: 'center',
-                      gap: '0.8mm',
+                      gap: '0.7mm',
                       background: '#fff',
                       color: '#111',
+                      fontFamily: 'var(--font-poppins, sans-serif)',
                       padding: '1.2mm 1.6mm',
                     }}
                   >
                     <div
                       style={{
                         width: '100%',
-                        fontSize: '1.25mm',
+                        fontSize: '1.3mm',
                         fontWeight: 800,
+                        fontFamily: 'var(--font-poppins, sans-serif)',
                         textTransform: 'uppercase',
                         letterSpacing: '0.05mm',
                         lineHeight: 1.05,
@@ -439,7 +441,15 @@ export function ManualFinalLabel({
                     >
                       NOTE: Warranty Void If Removed
                     </div>
-                    <div style={{ fontSize: '1.65mm', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3mm', color: '#444' }}>
+                    <div
+                      style={{
+                        fontSize: '1.85mm',
+                        fontWeight: 900,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.18mm',
+                        color: '#444',
+                      }}
+                    >
                       Serial Number
                     </div>
                     <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
@@ -455,20 +465,15 @@ export function ManualFinalLabel({
                     </div>
                     <div
                       style={{
-                        fontSize: '2.9mm',
+                        fontSize: '3.55mm',
                         fontWeight: 900,
-                        fontFamily: 'var(--font-poppins, sans-serif)',
-                        letterSpacing: '0.08mm',
+                        letterSpacing: '0.02mm',
                         lineHeight: 1,
+                        textTransform: 'uppercase',
                       }}
                     >
                       {sticker.serial}
                     </div>
-                    {sticker.totalCopies > 1 && (
-                      <div style={{ fontSize: '1.55mm', fontWeight: 700, color: '#444', lineHeight: 1 }}>
-                        Copy {sticker.copyNumber} / {sticker.totalCopies}
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
