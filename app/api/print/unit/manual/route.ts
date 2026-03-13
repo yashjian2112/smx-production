@@ -104,13 +104,21 @@ export async function GET(req: NextRequest) {
 
     let lastManualSeq = 0;
     for (const log of manualLogs) {
-      const p = parsePayload(log.details);
-      if (!p || !Array.isArray(p.items)) continue;
-      for (const item of p.items as Array<{ serial: string; copies: number }>) {
-        if (typeof item.serial === 'string' && item.serial.startsWith(prefix)) {
-          const seq = parseInt(item.serial.slice(prefix.length), 10) || 0;
-          if (seq > lastManualSeq) lastManualSeq = seq;
-        }
+      if (!log.details) continue;
+      let rawItems: unknown[] = [];
+      try {
+        const parsed = JSON.parse(log.details) as { items?: unknown };
+        rawItems = Array.isArray(parsed?.items) ? parsed.items : [];
+      } catch {
+        continue;
+      }
+      for (const raw of rawItems) {
+        if (!raw || typeof raw !== 'object') continue;
+        const item = raw as Record<string, unknown>;
+        const serial = typeof item.serial === 'string' ? item.serial.trim().toUpperCase() : '';
+        if (!serial.startsWith(prefix)) continue;
+        const seq = parseInt(serial.slice(prefix.length), 10) || 0;
+        if (seq > lastManualSeq) lastManualSeq = seq;
       }
     }
 
