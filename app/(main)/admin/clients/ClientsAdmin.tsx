@@ -22,7 +22,6 @@ export type ClientRow = {
 const CUSTOMER_TYPES = ['OEM', 'Retail', 'Dealer', 'Distributor', 'Government', 'Other'];
 
 const emptyForm = {
-  code: '',
   customerName: '',
   email: '',
   phone: '',
@@ -97,7 +96,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form,
+          customerName:    form.customerName,
           email: form.email || undefined,
           phone: form.phone || undefined,
           customerType: form.customerType || undefined,
@@ -290,9 +289,6 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
       {/* Add Modal */}
       {modal?.type === 'add' && (
         <Drawer title="Add New Client" onClose={closeModal}>
-          <label className={labelCls}>Client Code <span className="text-slate-600 font-normal text-[10px]">(unique, e.g. CLI001)</span></label>
-          <input className={inputCls} placeholder="CLI001" value={form.code} onChange={(e) => field('code', e.target.value.toUpperCase())} />
-
           <label className={labelCls}>Customer Name <span className="text-red-500">*</span></label>
           <input className={inputCls} placeholder="e.g. Acme Motors Pvt Ltd" value={form.customerName} onChange={(e) => field('customerName', e.target.value)} />
 
@@ -373,7 +369,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
             <button onClick={closeModal} className="flex-1 py-2 rounded-lg border border-slate-600 text-sm text-slate-400 hover:text-white transition-colors">Cancel</button>
             <button
               onClick={handleAdd}
-              disabled={saving || !form.code || !form.customerName}
+              disabled={saving || !form.customerName}
               className="flex-1 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-sm font-medium text-white transition-colors"
             >
               {saving ? 'Creating…' : 'Create Client'}

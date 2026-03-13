@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 
 const createSchema = z.object({
-  code:           z.string().min(1),
   customerName:   z.string().min(1),
   email:          z.string().email().optional().or(z.literal('')),
   phone:          z.string().optional(),
@@ -15,6 +14,19 @@ const createSchema = z.object({
   shippingAddress:z.string().optional(),
   gstNumber:      z.string().optional(),
 });
+
+async function generateClientCode(): Promise<string> {
+  const clients = await prisma.client.findMany({ select: { code: true } });
+  let max = 0;
+  for (const c of clients) {
+    const match = c.code.match(/^CLI(\d+)$/);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (n > max) max = n;
+    }
+  }
+  return `CLI${String(max + 1).padStart(3, '0')}`;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -45,10 +57,9 @@ export async function POST(req: NextRequest) {
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { code, customerName, email, phone, customerType, globalOrIndian, state, billingAddress, shippingAddress, gstNumber } = parsed.data;
+    const { customerName, email, phone, customerType, globalOrIndian, state, billingAddress, shippingAddress, gstNumber } = parsed.data;
 
-    const existing = await prisma.client.findUnique({ where: { code } });
-    if (existing) return NextResponse.json({ error: `Client code "${code}" already exists` }, { status: 400 });
+    const code = await generateClientCode();
 
     const client = await prisma.client.create({
       data: {
