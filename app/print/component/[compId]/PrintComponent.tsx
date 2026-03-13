@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { QRCodeCanvas } from '@/components/QRCode';
+import QRCode from 'qrcode';
 
 const STAGE_LABELS: Record<string, string> = {
   POWERSTAGE_MANUFACTURING: 'Powerstage',
@@ -12,6 +12,16 @@ const STAGE_LABELS: Record<string, string> = {
 
 type PrintState = 'idle' | 'generating' | 'confirm' | 'confirmed' | 'reprinting';
 type Tab = 'print' | 'history';
+type PrintedSticker = { barcode: string; qrDataUrl: string };
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 export function PrintComponent({
   productId,
@@ -35,7 +45,7 @@ export function PrintComponent({
 }) {
   const [tab, setTab] = useState('print' as Tab);
   const [qty, setQty] = useState(1);
-  const [stickers, setStickers] = useState([] as string[]);
+  const [stickers, setStickers] = useState<PrintedSticker[]>([]);
   const [printState, setPrintState] = useState('idle' as PrintState);
   const [error, setError] = useState('');
   const [totalConfirmed, setTotalConfirmed] = useState(0);
@@ -90,7 +100,7 @@ export function PrintComponent({
       .sticker-grid { display: grid; grid-template-columns: 50mm; gap: 8px; margin-top: 16px; }
       .sticker { width: 50mm; height: 25mm; border: 1px dashed rgba(255,255,255,0.15); border-radius: 6px; display: flex; align-items: center; gap: 2mm; padding: 1.5mm 2mm; overflow: hidden; background: white; color: black; }
       .sticker-qr { width: 15mm; height: 15mm; flex: 0 0 15mm; }
-      .sticker-qr canvas { width: 15mm; height: 15mm; display: block; border-radius: 4px; }
+      .sticker-qr img { width: 15mm; height: 15mm; display: block; border-radius: 4px; }
       .sticker-text { flex: 1; min-width: 0; overflow: hidden; }
       .sticker-name { font-size: 6.5pt; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: black; }
       .sticker-part { font-size: 5.5pt; color: #444; font-family: monospace; margin-top: 0.5mm; }
@@ -98,15 +108,97 @@ export function PrintComponent({
       .sticker-meta { font-size: 5pt; color: #666; margin-top: 0.8mm; }
     `;
     document.head.appendChild(style);
-    function onAfterPrint() {
-      if (pendingBarcodes.current.length > 0) setPrintState('confirm');
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'component-print-complete' && pendingBarcodes.current.length > 0) {
+        setPrintState('confirm');
+      }
     }
-    window.addEventListener('afterprint', onAfterPrint);
+    window.addEventListener('message', onMessage);
     return () => {
       style.remove();
-      window.removeEventListener('afterprint', onAfterPrint);
+      window.removeEventListener('message', onMessage);
     };
   }, []);
+
+  function openPrintWindow(items: PrintedSticker[]) {
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=420,height=640');
+    if (!printWindow) {
+      setError('Pop-up blocked. Please allow pop-ups and try again.');
+      setPrintState('idle');
+      return false;
+    }
+
+    const safeName = escapeHtml(name);
+    const safePart = escapeHtml(partNumber);
+    const safeProductCode = escapeHtml(productCode);
+    const safeStage = escapeHtml(STAGE_LABELS[stage] ?? stage);
+    const labels = items.map(({ barcode, qrDataUrl }) => `
+      <div class="label">
+        <div class="qr"><img src="${qrDataUrl}" alt="${escapeHtml(barcode)}" /></div>
+        <div class="text">
+          <div class="name">${safeName}</div>
+          ${safePart ? `<div class="part">${safePart}</div>` : ''}
+          <div class="barcode">${escapeHtml(barcode)}</div>
+          <div class="meta">${safeProductCode} · ${safeStage}</div>
+        </div>
+      </div>
+    `).join('');
+
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Component Labels</title>
+          <style>
+            * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { size: 50mm 25mm; margin: 0; }
+            html, body { margin: 0; padding: 0; background: #fff; width: 50mm; font-family: Arial, Helvetica, sans-serif; }
+            .sheet { width: 50mm; margin: 0; padding: 0; }
+            .label {
+              width: 50mm;
+              height: 25mm;
+              display: grid;
+              grid-template-columns: 15mm 1fr;
+              column-gap: 2mm;
+              align-items: center;
+              padding: 1.5mm 2mm;
+              overflow: hidden;
+              page-break-after: always;
+              break-after: page;
+            }
+            .label:last-child { page-break-after: auto; break-after: auto; }
+            .qr img { width: 15mm; height: 15mm; display: block; }
+            .text { min-width: 0; }
+            .name { font-size: 3.2mm; line-height: 1.05; font-weight: 700; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .part { font-size: 2.1mm; line-height: 1.1; margin-top: 0.5mm; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .barcode { font-size: 2.4mm; line-height: 1.1; margin-top: 0.9mm; color: #000; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .meta { font-size: 2mm; line-height: 1.1; margin-top: 0.7mm; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          </style>
+        </head>
+        <body>
+          <div class="sheet">${labels}</div>
+          <script>
+            window.addEventListener('afterprint', function () {
+              try {
+                if (window.opener && !window.opener.closed) {
+                  window.opener.postMessage({ type: 'component-print-complete' }, window.location.origin);
+                }
+              } catch (e) {}
+              window.close();
+            });
+            window.addEventListener('load', function () {
+              setTimeout(function () { window.print(); }, 250);
+            });
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    return true;
+  }
 
   async function generateAndPrint() {
     setError('');
@@ -119,9 +211,19 @@ export function PrintComponent({
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed to generate barcodes'); setPrintState('idle'); return; }
-      pendingBarcodes.current = data.barcodes;
-      setStickers(data.barcodes);
-      setTimeout(() => window.print(), 400);
+      const items = await Promise.all(
+        (data.barcodes as string[]).map(async (barcode) => ({
+          barcode,
+          qrDataUrl: await QRCode.toDataURL(barcode, {
+            width: 300,
+            margin: 1,
+            color: { dark: '#000000', light: '#ffffff' },
+          }),
+        }))
+      );
+      pendingBarcodes.current = items.map((item) => item.barcode);
+      setStickers(items);
+      if (!openPrintWindow(items)) return;
     } catch {
       setError('Network error');
       setPrintState('idle');
@@ -157,7 +259,7 @@ export function PrintComponent({
 
   function reprint() {
     setPrintState('reprinting');
-    setTimeout(() => window.print(), 200);
+    if (!openPrintWindow(stickers)) return;
   }
 
   return (
@@ -314,15 +416,15 @@ export function PrintComponent({
           )}
           <div className="print-sheet">
             <div className="sticker-grid">
-              {stickers.map((bc, i) => (
+              {stickers.map((sticker, i) => (
                 <div key={i} className="sticker">
                   <div className="sticker-qr">
-                    <QRCodeCanvas value={bc} size={140} dark="#000000" light="#ffffff" />
+                    <img src={sticker.qrDataUrl} alt={sticker.barcode} />
                   </div>
                   <div className="sticker-text">
                     <div className="sticker-name">{name}</div>
                     {partNumber && <div className="sticker-part">{partNumber}</div>}
-                    <div className="sticker-barcode">{bc}</div>
+                    <div className="sticker-barcode">{sticker.barcode}</div>
                     <div className="sticker-meta">{productCode} · {STAGE_LABELS[stage] ?? stage}</div>
                   </div>
                 </div>
