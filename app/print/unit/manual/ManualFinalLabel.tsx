@@ -4,16 +4,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { Barcode128 } from '@/components/Barcode128';
 
 const MONTH_CODES = ['JA', 'FE', 'MR', 'AP', 'MY', 'JN', 'JL', 'AU', 'SE', 'OC', 'NO', 'DE'] as const;
-type Tab = 'print' | 'history';
+
+type Tab = 'print' | 'pending' | 'history';
+type PrintState = 'idle' | 'generating' | 'confirm' | 'confirmed';
 type GeneratedSerial = { serial: string; copies: number };
-type PrintableSticker = { serial: string; copyNumber: number; totalCopies: number };
+type PrintableSticker = { serial: string };
 type ClientOption = { id: string; code: string; customerName: string };
-type SavedBatch = {
+type ManualBatch = {
   id: string;
   partyName: string;
   partyCode: string | null;
   stage: string;
   createdAt: string;
+  confirmedAt: string | null;
   items: GeneratedSerial[];
 };
 
@@ -30,7 +33,8 @@ function currentMonthCode() {
   return MONTH_CODES[new Date().getMonth()] ?? 'JA';
 }
 
-function formatStamp(value: string) {
+function formatStamp(value: string | null) {
+  if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleString('en-IN', {
@@ -45,18 +49,29 @@ function stageLabel(stage: string) {
   return stage.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function buildPrintable(items: GeneratedSerial[]) {
+  return items.flatMap((item) => Array.from({ length: item.copies }, () => ({ serial: item.serial })));
+}
+
+function totalStickerCount(items: GeneratedSerial[]) {
+  return items.reduce((sum, item) => sum + item.copies, 0);
+}
+
 export function ManualFinalLabel({
   initialProductCode,
   initialProductName,
   clients,
+  initialPending,
   initialHistory,
 }: {
   initialProductCode: string;
   initialProductName: string;
   clients: ClientOption[];
-  initialHistory: SavedBatch[];
+  initialPending: ManualBatch[];
+  initialHistory: ManualBatch[];
 }) {
   const [tab, setTab] = useState<Tab>('print');
+  const [printState, setPrintState] = useState<PrintState>('idle');
   const [productCode, setProductCode] = useState(initialProductCode.toUpperCase());
   const [productName, setProductName] = useState(initialProductName);
   const [startSequence, setStartSequence] = useState('001');
@@ -66,15 +81,19 @@ export function ManualFinalLabel({
   const [partyName, setPartyName] = useState('');
   const [manualPrefix, setManualPrefix] = useState('');
   const [stickers, setStickers] = useState<PrintableSticker[]>([]);
-  const [history, setHistory] = useState<SavedBatch[]>(initialHistory);
+  const [pending, setPending] = useState<ManualBatch[]>(initialPending);
+  const [history, setHistory] = useState<ManualBatch[]>(initialHistory);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [lastSavedCount, setLastSavedCount] = useState(0);
 
   const computedPrefix = useMemo(() => {
     const code = productCode.trim().toUpperCase();
     if (!code) return '';
     return `${code}${currentYear2()}${currentMonthCode()}`;
   }, [productCode]);
+
   const selectedClient = useMemo(
     () => clients.find((client) => client.id === clientId) ?? null,
     [clientId, clients]
@@ -112,11 +131,11 @@ export function ManualFinalLabel({
       }
     `;
     document.head.appendChild(style);
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       if (stickers.length > 0) window.print();
     }, 150);
     return () => {
-      clearTimeout(t);
+      clearTimeout(timer);
       style.remove();
     };
   }, [stickers]);
@@ -135,11 +154,13 @@ export function ManualFinalLabel({
     const generated = buildSerials();
     const resolvedPartyName = partyName.trim() || selectedClient?.customerName || '';
     const resolvedPrefix = (manualPrefix.trim().toUpperCase() || computedPrefix).trim();
+
     if (!resolvedPrefix) {
       setStickers([]);
       setError('Enter a valid prefix before printing.');
       return;
     }
+
     if (!resolvedPartyName) {
       setStickers([]);
       setError('Select a party or enter a party name before printing.');
@@ -147,15 +168,9 @@ export function ManualFinalLabel({
     }
 
     setError('');
-    const printable = generated.flatMap((item) =>
-      Array.from({ length: item.copies }, (_, index) => ({
-        serial: item.serial,
-        copyNumber: index + 1,
-        totalCopies: item.copies,
-      }))
-    );
-
     setSaving(true);
+    setPrintState('generating');
+
     try {
       const res = await fetch('/api/print/unit/manual', {
         method: 'POST',
@@ -170,20 +185,91 @@ export function ManualFinalLabel({
           items: generated,
         }),
       });
+
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to save manual labels');
+        throw new Error(data.error || 'Failed to generate manual labels');
       }
-      setHistory((prev) => [data.batch as SavedBatch, ...prev]);
-      setStickers(printable);
-    } catch (error) {
-      console.error(error);
+
+      const batch = data.batch as ManualBatch;
+      setPending((prev) => [batch, ...prev]);
+      setActiveBatchId(batch.id);
+      setStickers(buildPrintable(batch.items));
+      setPrintState('confirm');
+      setTab('print');
+    } catch (err) {
+      console.error(err);
       setStickers([]);
-      setError(error instanceof Error ? error.message : 'Failed to save manual labels');
+      setPrintState('idle');
+      setError(err instanceof Error ? err.message : 'Failed to generate manual labels');
     } finally {
       setSaving(false);
     }
   }
+
+  async function savePendingBatches(batchIds: string[]) {
+    if (batchIds.length === 0) return false;
+
+    setSaving(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/print/unit/manual', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchIds }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save barcodes');
+      }
+
+      const confirmed = (data.batches as ManualBatch[]) ?? [];
+      setPending((prev) => prev.filter((batch) => !batchIds.includes(batch.id)));
+      setHistory((prev) => [...confirmed, ...prev]);
+
+      const confirmedCount = confirmed.reduce((sum, batch) => sum + batch.items.length, 0);
+      setLastSavedCount(confirmedCount);
+
+      if (activeBatchId && batchIds.includes(activeBatchId)) {
+        setActiveBatchId(null);
+        setStickers([]);
+      }
+
+      setPrintState('confirmed');
+      setTimeout(() => {
+        setPrintState('idle');
+        setTab('history');
+      }, 1400);
+      return true;
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'Failed to save barcodes');
+      setPrintState('confirm');
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function reprintBatch(batch: ManualBatch) {
+    setError('');
+    setActiveBatchId(batch.id);
+    setStickers(buildPrintable(batch.items));
+    setPrintState('confirm');
+    setTab('print');
+  }
+
+  async function confirmPrinted() {
+    if (!activeBatchId) {
+      setError('No pending batch selected to save.');
+      return;
+    }
+    await savePendingBatches([activeBatchId]);
+  }
+
+  const activeBatch = activeBatchId ? pending.find((batch) => batch.id === activeBatchId) ?? null : null;
 
   return (
     <div className="print-root min-h-dvh p-4" style={{ fontFamily: 'var(--font-poppins, sans-serif)' }}>
@@ -204,9 +290,43 @@ export function ManualFinalLabel({
               <p className="text-xs uppercase tracking-widest text-amber-400 font-semibold">Admin Only</p>
               <h1 className="text-xl font-semibold text-white mt-1">Manual Final Sticker</h1>
               <p className="text-sm text-zinc-400 mt-2">
-                Print controller final stickers in the same small-label format as regular labels.
+                Generate controller final stickers, then save or reprint them before they move to history.
               </p>
             </div>
+
+            {printState === 'confirm' && activeBatch && (
+              <div
+                className="rounded-xl p-3 space-y-3"
+                style={{ background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.28)' }}
+              >
+                <div className="text-sm font-semibold text-amber-300">Did the stickers print successfully?</div>
+                <div className="text-xs text-zinc-300">
+                  {activeBatch.partyName} · {activeBatch.items.length} serial{activeBatch.items.length !== 1 ? 's' : ''} · {totalStickerCount(activeBatch.items)} sticker{totalStickerCount(activeBatch.items) !== 1 ? 's' : ''}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={confirmPrinted} className="btn-primary px-4 py-2 text-sm rounded-lg" disabled={saving}>
+                    ✓ Save Barcode
+                  </button>
+                  <button
+                    onClick={() => reprintBatch(activeBatch)}
+                    disabled={saving}
+                    className="px-4 py-2 text-sm rounded-lg text-white"
+                    style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
+                  >
+                    ↺ Reprint
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {printState === 'confirmed' && (
+              <div
+                className="rounded-xl p-3 text-sm font-semibold"
+                style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.28)', color: '#4ade80' }}
+              >
+                ✓ Saved {lastSavedCount} serial{lastSavedCount !== 1 ? 's' : ''} to history
+              </div>
+            )}
 
             <div className="space-y-3">
               <div>
@@ -229,7 +349,10 @@ export function ManualFinalLabel({
                 />
               </div>
 
-              <div className="space-y-3 rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div
+                className="space-y-3 rounded-xl p-3"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+              >
                 <div>
                   <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Party</label>
                   <select
@@ -320,7 +443,10 @@ export function ManualFinalLabel({
                 </div>
               </div>
 
-              <div className="rounded-xl px-3 py-2 text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div
+                className="rounded-xl px-3 py-2 text-xs"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+              >
                 <span className="text-sky-400 font-semibold">Qty</span> = new serial numbers
                 <span className="text-zinc-600 mx-2">|</span>
                 <span className="text-amber-400 font-semibold">Copies</span> = same serial prints multiple times
@@ -330,13 +456,13 @@ export function ManualFinalLabel({
             <button
               type="button"
               onClick={generateAndPrint}
-              disabled={saving}
+              disabled={saving || printState === 'generating'}
               className="w-full py-3 rounded-xl text-sm font-semibold disabled:opacity-50"
               style={{ background: '#0ea5e9', color: '#fff' }}
             >
-              {saving
-                ? 'Saving & Printing...'
-                : `Generate ${qty} serial${qty !== 1 ? 's' : ''} · Print ${qty * copies} sticker${qty * copies !== 1 ? 's' : ''}`}
+              {printState === 'generating'
+                ? 'Generating...'
+                : `Generate & Print ${qty * copies} sticker${qty * copies !== 1 ? 's' : ''}`}
             </button>
             {error && <p className="text-xs text-rose-400">{error}</p>}
           </div>
@@ -353,6 +479,14 @@ export function ManualFinalLabel({
               </button>
               <button
                 type="button"
+                onClick={() => setTab('pending')}
+                className={`flex-1 py-3 text-sm font-semibold transition-colors ${tab === 'pending' ? 'text-amber-300' : 'text-zinc-500 hover:text-zinc-300'}`}
+                style={tab === 'pending' ? { borderBottom: '2px solid #f59e0b', marginBottom: -1 } : {}}
+              >
+                Pending {pending.length > 0 ? pending.length : ''}
+              </button>
+              <button
+                type="button"
                 onClick={() => setTab('history')}
                 className={`flex-1 py-3 text-sm font-semibold transition-colors ${tab === 'history' ? 'text-sky-400' : 'text-zinc-500 hover:text-zinc-300'}`}
                 style={tab === 'history' ? { borderBottom: '2px solid #38bdf8', marginBottom: -1 } : {}}
@@ -360,127 +494,205 @@ export function ManualFinalLabel({
                 History {history.length > 0 ? history.length : ''}
               </button>
             </div>
+
             <div className="p-4">
-              {tab === 'print' ? (
+              {tab === 'print' && (
                 <div className="text-sm text-zinc-500">
                   {stickers.length === 0
-                    ? 'Set party, qty, and copies, then click Generate & Print.'
-                    : `${qty} serial${qty !== 1 ? 's' : ''} saved for ${partyName.trim() || selectedClient?.customerName || 'party'} · ${stickers.length} sticker${stickers.length !== 1 ? 's' : ''} ready.`}
-                </div>
-              ) : history.length === 0 ? (
-                <div className="text-sm text-zinc-500">No manual final stickers yet.</div>
-              ) : (
-                <div className="space-y-3 max-h-80 overflow-y-auto">
-                  {history.map((batch) => (
-                    <div
-                      key={batch.id}
-                      className="rounded-xl px-3 py-3"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-white">{batch.partyName}</div>
-                          <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-zinc-500">
-                            {batch.partyCode && <span className="font-mono text-zinc-400">{batch.partyCode}</span>}
-                            <span>{stageLabel(batch.stage)}</span>
-                            <span>{formatStamp(batch.createdAt)}</span>
-                          </div>
-                        </div>
-                        <div className="text-[11px] font-semibold text-sky-400">
-                          {batch.items.length} serial{batch.items.length !== 1 ? 's' : ''}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 space-y-2">
-                        {batch.items.map((item) => (
-                          <div key={`${batch.id}-${item.serial}`} className="text-sm font-mono text-zinc-200">
-                            {item.serial}
-                            {item.copies > 1 && <span className="ml-2 text-xs text-zinc-500">x{item.copies}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                    ? 'Generate stickers, then save them after print confirmation.'
+                    : `${stickers.length} sticker${stickers.length !== 1 ? 's' : ''} ready · ${pending.length} pending batch${pending.length !== 1 ? 'es' : ''}`}
                 </div>
               )}
+
+              {tab === 'pending' &&
+                (pending.length === 0 ? (
+                  <div className="text-sm text-zinc-500">No abandoned barcodes right now.</div>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs text-zinc-500">Generated but not saved to history yet.</div>
+                      <button
+                        type="button"
+                        onClick={() => savePendingBatches(pending.map((batch) => batch.id))}
+                        disabled={saving}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold"
+                        style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.25)', color: '#4ade80' }}
+                      >
+                        Save All
+                      </button>
+                    </div>
+
+                    {pending.map((batch) => (
+                      <div
+                        key={batch.id}
+                        className="rounded-xl px-3 py-3"
+                        style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.14)' }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-white">{batch.partyName}</div>
+                            <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-zinc-500">
+                              {batch.partyCode && <span className="font-mono text-zinc-300">{batch.partyCode}</span>}
+                              <span>{stageLabel(batch.stage)}</span>
+                              <span>Generated {formatStamp(batch.createdAt)}</span>
+                            </div>
+                          </div>
+                          <div className="text-[11px] font-semibold text-amber-300">
+                            {batch.items.length} serial{batch.items.length !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                          {batch.items.map((item) => (
+                            <div key={`${batch.id}-${item.serial}`} className="text-sm font-mono text-zinc-200">
+                              {item.serial}
+                              {item.copies > 1 && <span className="ml-2 text-xs text-zinc-500">x{item.copies}</span>}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => savePendingBatches([batch.id])}
+                            disabled={saving}
+                            className="px-3 py-2 rounded-lg text-xs font-semibold"
+                            style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.25)', color: '#4ade80' }}
+                          >
+                            Save Barcode
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => reprintBatch(batch)}
+                            disabled={saving}
+                            className="px-3 py-2 rounded-lg text-xs font-semibold text-white"
+                            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
+                          >
+                            Reprint
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+
+              {tab === 'history' &&
+                (history.length === 0 ? (
+                  <div className="text-sm text-zinc-500">No saved manual stickers yet.</div>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {history.map((batch) => (
+                      <div
+                        key={batch.id}
+                        className="rounded-xl px-3 py-3"
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-white">{batch.partyName}</div>
+                            <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-zinc-500">
+                              {batch.partyCode && <span className="font-mono text-zinc-300">{batch.partyCode}</span>}
+                              <span>{stageLabel(batch.stage)}</span>
+                              <span>Saved {formatStamp(batch.confirmedAt ?? batch.createdAt)}</span>
+                            </div>
+                          </div>
+                          <div className="text-[11px] font-semibold text-sky-400">
+                            {batch.items.length} serial{batch.items.length !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                          {batch.items.map((item) => (
+                            <div key={`${batch.id}-${item.serial}`} className="text-sm font-mono text-zinc-200">
+                              {item.serial}
+                              {item.copies > 1 && <span className="ml-2 text-xs text-zinc-500">x{item.copies}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
             </div>
           </div>
         </div>
 
-        <div>
-          <div className="print-sheet">
-            <div className="sticker-grid">
-              {stickers.map((sticker, index) => (
-                <div key={`${sticker.serial}-${index}`} className="sticker">
-                  <div
-                    style={{
-                      width: '46mm',
-                      height: '21mm',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      gap: '0.7mm',
-                      background: '#fff',
-                      color: '#111',
-                      fontFamily: 'var(--font-poppins, sans-serif)',
-                      padding: '1.2mm 1.6mm',
-                    }}
-                  >
+        {tab === 'print' && (
+          <div>
+            <div className="print-sheet">
+              <div className="sticker-grid">
+                {stickers.map((sticker, index) => (
+                  <div key={`${sticker.serial}-${index}`} className="sticker">
                     <div
                       style={{
-                        width: '100%',
-                        fontSize: '2.6mm',
-                        fontWeight: 800,
+                        width: '46mm',
+                        height: '21mm',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        gap: '0.7mm',
+                        background: '#fff',
+                        color: '#111',
                         fontFamily: 'var(--font-poppins, sans-serif)',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.03mm',
-                        lineHeight: 0.98,
-                        textAlign: 'center',
+                        padding: '1.2mm 1.6mm',
                       }}
                     >
-                      NOTE: Warranty Void If Removed
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '1.85mm',
-                        fontWeight: 900,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.18mm',
-                        color: '#444',
-                      }}
-                    >
-                      Serial Number
-                    </div>
-                    <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
-                      <Barcode128
-                        value={sticker.serial}
-                        width={1.4}
-                        height={24}
-                        displayValue={false}
-                        fontSize={9}
-                        background="#ffffff"
-                        lineColor="#000000"
-                      />
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '4.25mm',
-                        fontWeight: 900,
-                        fontFamily: 'var(--font-poppins, sans-serif)',
-                        letterSpacing: '0.02mm',
-                        lineHeight: 1,
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {sticker.serial}
+                      <div
+                        style={{
+                          width: '100%',
+                          fontSize: '2.6mm',
+                          fontWeight: 800,
+                          fontFamily: 'var(--font-poppins, sans-serif)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.03mm',
+                          lineHeight: 0.98,
+                          textAlign: 'center',
+                        }}
+                      >
+                        NOTE: Warranty Void If Removed
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '1.85mm',
+                          fontWeight: 900,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.18mm',
+                          color: '#444',
+                        }}
+                      >
+                        Serial Number
+                      </div>
+                      <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+                        <Barcode128
+                          value={sticker.serial}
+                          width={1.4}
+                          height={24}
+                          displayValue={false}
+                          fontSize={9}
+                          background="#ffffff"
+                          lineColor="#000000"
+                        />
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '4.25mm',
+                          fontWeight: 900,
+                          fontFamily: 'var(--font-poppins, sans-serif)',
+                          letterSpacing: '0.02mm',
+                          lineHeight: 1,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {sticker.serial}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

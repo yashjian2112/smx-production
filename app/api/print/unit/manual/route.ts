@@ -2,9 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
+const PENDING_ACTION = 'MANUAL_FINAL_LABEL_PENDING';
+const CONFIRMED_ACTION = 'MANUAL_FINAL_LABEL_PRINT';
+const ENTITY = 'FINAL_ASSEMBLY_LABEL';
+
 type IncomingItem = {
   serial?: unknown;
   copies?: unknown;
+};
+
+type StoredPayload = {
+  stage: string;
+  productCode: string;
+  productName: string | null;
+  prefix: string;
+  partyName: string;
+  partyCode: string | null;
+  clientId: string | null;
+  items: Array<{ serial: string; copies: number }>;
+  totalStickers: number;
+  source: 'manual-admin';
+  status: 'PENDING' | 'CONFIRMED';
+  generatedAt: string;
+  confirmedAt: string | null;
 };
 
 function normalizeItems(value: unknown) {
@@ -18,6 +38,25 @@ function normalizeItems(value: unknown) {
     })
     .filter((item): item is { serial: string; copies: number } => item !== null)
     .slice(0, 100);
+}
+
+function normalizeBatchIds(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((id) => (typeof id === 'string' ? id.trim() : ''))
+    .filter(Boolean)
+    .slice(0, 100);
+}
+
+function parsePayload(details: string | null) {
+  if (!details) return null;
+  try {
+    const parsed = JSON.parse(details) as Partial<StoredPayload>;
+    if (!Array.isArray(parsed.items) || parsed.items.length === 0) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -55,7 +94,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Party details are required' }, { status: 400 });
     }
 
-    const payload = {
+    const generatedAt = new Date().toISOString();
+    const payload: StoredPayload = {
       stage,
       productCode,
       productName: productName || null,
@@ -66,13 +106,16 @@ export async function POST(req: NextRequest) {
       items,
       totalStickers: items.reduce((sum, item) => sum + item.copies, 0),
       source: 'manual-admin',
+      status: 'PENDING',
+      generatedAt,
+      confirmedAt: null,
     };
 
     const log = await prisma.auditLog.create({
       data: {
         userId: session.id,
-        action: 'MANUAL_FINAL_LABEL_PRINT',
-        entity: 'FINAL_ASSEMBLY_LABEL',
+        action: PENDING_ACTION,
+        entity: ENTITY,
         entityId: items[0]?.serial ?? null,
         details: JSON.stringify(payload),
       },
@@ -84,9 +127,103 @@ export async function POST(req: NextRequest) {
         partyName: payload.partyName,
         partyCode: payload.partyCode,
         stage: payload.stage,
-        createdAt: log.createdAt.toISOString(),
+        createdAt: payload.generatedAt,
+        confirmedAt: null,
         items: payload.items,
       },
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (error instanceof Error && error.message === 'Forbidden') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    console.error(error);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const session = await requireSession();
+    requireRole(session, 'ADMIN');
+
+    const body = await req.json();
+    const batchIds = normalizeBatchIds(body?.batchIds);
+    if (batchIds.length === 0) {
+      return NextResponse.json({ error: 'No pending batches selected' }, { status: 400 });
+    }
+
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        id: { in: batchIds },
+        action: PENDING_ACTION,
+        entity: ENTITY,
+      },
+      select: { id: true, details: true },
+    });
+
+    if (logs.length === 0) {
+      return NextResponse.json({ error: 'Pending batches not found' }, { status: 404 });
+    }
+
+    const confirmedAt = new Date().toISOString();
+    const updates = logs
+      .map((log) => {
+        const payload = parsePayload(log.details);
+        if (!payload) return null;
+        const nextPayload: StoredPayload = {
+          stage: typeof payload.stage === 'string' ? payload.stage : 'FINAL_ASSEMBLY',
+          productCode: typeof payload.productCode === 'string' ? payload.productCode : '',
+          productName: typeof payload.productName === 'string' ? payload.productName : null,
+          prefix: typeof payload.prefix === 'string' ? payload.prefix : '',
+          partyName: typeof payload.partyName === 'string' ? payload.partyName : 'Manual Party',
+          partyCode: typeof payload.partyCode === 'string' ? payload.partyCode : null,
+          clientId: typeof payload.clientId === 'string' ? payload.clientId : null,
+          items: normalizeItems(payload.items),
+          totalStickers:
+            typeof payload.totalStickers === 'number'
+              ? payload.totalStickers
+              : normalizeItems(payload.items).reduce((sum, item) => sum + item.copies, 0),
+          source: 'manual-admin',
+          status: 'CONFIRMED',
+          generatedAt:
+            typeof payload.generatedAt === 'string' && payload.generatedAt
+              ? payload.generatedAt
+              : confirmedAt,
+          confirmedAt,
+        };
+
+        return {
+          id: log.id,
+          payload: nextPayload,
+        };
+      })
+      .filter((item): item is { id: string; payload: StoredPayload } => item !== null && item.payload.items.length > 0);
+
+    await prisma.$transaction(
+      updates.map((update) =>
+        prisma.auditLog.update({
+          where: { id: update.id },
+          data: {
+            action: CONFIRMED_ACTION,
+            details: JSON.stringify(update.payload),
+          },
+        })
+      )
+    );
+
+    return NextResponse.json({
+      batches: updates.map((update) => ({
+        id: update.id,
+        partyName: update.payload.partyName,
+        partyCode: update.payload.partyCode,
+        stage: update.payload.stage,
+        createdAt: update.payload.generatedAt,
+        confirmedAt: update.payload.confirmedAt,
+        items: update.payload.items,
+      })),
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {

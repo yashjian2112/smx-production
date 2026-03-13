@@ -3,22 +3,28 @@ import { getSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ManualFinalLabel } from './ManualFinalLabel';
 
-type ManualHistoryBatch = {
+const PENDING_ACTION = 'MANUAL_FINAL_LABEL_PENDING';
+const CONFIRMED_ACTION = 'MANUAL_FINAL_LABEL_PRINT';
+
+type ManualBatch = {
   id: string;
   partyName: string;
   partyCode: string | null;
   stage: string;
   createdAt: string;
+  confirmedAt: string | null;
   items: Array<{ serial: string; copies: number }>;
 };
 
-function parseHistory(details: string | null): Omit<ManualHistoryBatch, 'id' | 'createdAt'> | null {
+function parseBatch(details: string | null, createdAt: Date): Omit<ManualBatch, 'id'> | null {
   if (!details) return null;
   try {
     const parsed = JSON.parse(details) as {
       partyName?: unknown;
       partyCode?: unknown;
       stage?: unknown;
+      generatedAt?: unknown;
+      confirmedAt?: unknown;
       items?: unknown;
     };
     const items = Array.isArray(parsed.items)
@@ -38,6 +44,14 @@ function parseHistory(details: string | null): Omit<ManualHistoryBatch, 'id' | '
       partyName: typeof parsed.partyName === 'string' && parsed.partyName.trim() ? parsed.partyName.trim() : 'Manual Party',
       partyCode: typeof parsed.partyCode === 'string' && parsed.partyCode.trim() ? parsed.partyCode.trim() : null,
       stage: typeof parsed.stage === 'string' && parsed.stage.trim() ? parsed.stage.trim() : 'FINAL_ASSEMBLY',
+      createdAt:
+        typeof parsed.generatedAt === 'string' && parsed.generatedAt.trim()
+          ? parsed.generatedAt
+          : createdAt.toISOString(),
+      confirmedAt:
+        typeof parsed.confirmedAt === 'string' && parsed.confirmedAt.trim()
+          ? parsed.confirmedAt
+          : null,
       items,
     };
   } catch {
@@ -63,32 +77,42 @@ export default async function ManualFinalLabelPage({
     }),
     prisma.auditLog.findMany({
       where: {
-        action: 'MANUAL_FINAL_LABEL_PRINT',
         entity: 'FINAL_ASSEMBLY_LABEL',
+        action: { in: [PENDING_ACTION, CONFIRMED_ACTION] },
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
-      select: { id: true, details: true, createdAt: true },
+      select: { id: true, action: true, details: true, createdAt: true },
     }),
   ]);
 
-  const initialHistory: ManualHistoryBatch[] = logs
+  const parsedLogs = logs
     .map((log) => {
-      const parsed = parseHistory(log.details);
+      const parsed = parseBatch(log.details, log.createdAt);
       if (!parsed) return null;
       return {
         id: log.id,
-        createdAt: log.createdAt.toISOString(),
+        action: log.action,
         ...parsed,
       };
     })
-    .filter((item): item is ManualHistoryBatch => item !== null);
+    .filter(
+      (
+        item
+      ): item is ManualBatch & {
+        action: string;
+      } => item !== null
+    );
+
+  const initialPending = parsedLogs.filter((log) => log.action === PENDING_ACTION).map(({ action: _action, ...rest }) => rest);
+  const initialHistory = parsedLogs.filter((log) => log.action === CONFIRMED_ACTION).map(({ action: _action, ...rest }) => rest);
 
   return (
     <ManualFinalLabel
       initialProductCode={params.productCode ?? ''}
       initialProductName={params.productName ?? ''}
       clients={clients}
+      initialPending={initialPending}
       initialHistory={initialHistory}
     />
   );
