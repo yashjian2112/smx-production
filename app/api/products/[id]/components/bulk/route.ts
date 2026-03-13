@@ -25,16 +25,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const suffix = STAGE_SUFFIX[stage];
     if (!suffix) return NextResponse.json({ error: 'Invalid stage' }, { status: 400 });
 
-    const barcodes: string[] = [];
+    const items: Array<{ id: string; barcode: string; createdAt: Date }> = [];
     for (let i = 0; i < qty; i++) {
       const barcode = await generateComponentBarcode(product.code, suffix);
-      await prisma.productComponent.create({
+      const created = await prisma.productComponent.create({
         data: { productId, name, partNumber: partNumber || null, stage, barcode, required: true, printed: false },
       });
-      barcodes.push(barcode);
+      items.push({ id: created.id, barcode, createdAt: created.createdAt });
     }
 
-    return NextResponse.json({ barcodes });
+    return NextResponse.json({ barcodes: items.map((item) => item.barcode), items });
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

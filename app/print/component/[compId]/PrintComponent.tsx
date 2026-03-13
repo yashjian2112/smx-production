@@ -11,8 +11,9 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 type PrintState = 'idle' | 'generating' | 'confirm' | 'confirmed' | 'reprinting';
-type Tab = 'print' | 'history';
+type Tab = 'print' | 'pending' | 'history';
 type PrintedSticker = { barcode: string; qrDataUrl: string };
+type BarcodeRecord = { id: string; barcode: string; printedAt: string | Date | null; createdAt: string | Date };
 
 function escapeHtml(value: string) {
   return value
@@ -21,6 +22,13 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function formatStamp(value: string | Date | null | undefined) {
+  if (!value) return '—';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 export function PrintComponent({
@@ -32,6 +40,7 @@ export function PrintComponent({
   productName,
   productCode,
   history: initialHistory,
+  pending: initialPending,
 }: {
   compId: string;
   productId: string;
@@ -41,15 +50,17 @@ export function PrintComponent({
   stage: string;
   productName: string;
   productCode: string;
-  history: { barcode: string; printedAt: Date | null }[];
+  history: BarcodeRecord[];
+  pending: BarcodeRecord[];
 }) {
   const [tab, setTab] = useState('print' as Tab);
   const [qty, setQty] = useState(1);
   const [stickers, setStickers] = useState<PrintedSticker[]>([]);
   const [printState, setPrintState] = useState('idle' as PrintState);
   const [error, setError] = useState('');
-  const [totalConfirmed, setTotalConfirmed] = useState(0);
+  const [lastConfirmedCount, setLastConfirmedCount] = useState(0);
   const [history, setHistory] = useState(initialHistory);
+  const [pending, setPending] = useState(initialPending);
   const [printFrameHtml, setPrintFrameHtml] = useState('');
   const pendingBarcodes = useRef<string[]>([]);
 
@@ -207,16 +218,30 @@ export function PrintComponent({
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed to generate barcodes'); setPrintState('idle'); return; }
+      const createdItems: BarcodeRecord[] = Array.isArray(data.items)
+        ? data.items.map((item: { id: string; barcode: string; createdAt: string }) => ({
+            id: item.id,
+            barcode: item.barcode,
+            createdAt: item.createdAt,
+            printedAt: null,
+          }))
+        : (data.barcodes as string[]).map((barcode) => ({
+            id: barcode,
+            barcode,
+            createdAt: new Date().toISOString(),
+            printedAt: null,
+          }));
       const items = await Promise.all(
-        (data.barcodes as string[]).map(async (barcode) => ({
-          barcode,
-          qrDataUrl: await QRCode.toDataURL(barcode, {
+        createdItems.map(async (item) => ({
+          barcode: item.barcode,
+          qrDataUrl: await QRCode.toDataURL(item.barcode, {
             width: 300,
             margin: 1,
             color: { dark: '#000000', light: '#ffffff' },
           }),
         }))
       );
+      setPending((prev) => [...createdItems, ...prev]);
       pendingBarcodes.current = items.map((item) => item.barcode);
       setStickers(items);
       setPrintFrameHtml(buildPrintHtml(items));
@@ -227,12 +252,12 @@ export function PrintComponent({
     }
   }
 
-  async function confirmPrinted() {
+  async function savePrintedBarcodes(barcodes: string[]) {
     try {
       const res = await fetch(`/api/products/${productId}/components/bulk`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcodes: pendingBarcodes.current }),
+        body: JSON.stringify({ barcodes }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -240,19 +265,42 @@ export function PrintComponent({
         setPrintState('confirm');
         return;
       }
-      const now = new Date();
-      const confirmed = pendingBarcodes.current.map((bc) => ({ barcode: bc, printedAt: now }));
+      const nowIso = new Date().toISOString();
+      const confirmed = barcodes.map((bc) => {
+        const match = pending.find((item) => item.barcode === bc);
+        return {
+          id: match?.id ?? bc,
+          barcode: bc,
+          createdAt: match?.createdAt ?? nowIso,
+          printedAt: nowIso,
+        };
+      });
       setHistory((h) => [...confirmed, ...h]);
-      setTotalConfirmed((c) => c + pendingBarcodes.current.length);
-      pendingBarcodes.current = [];
+      setPending((p) => p.filter((item) => !barcodes.includes(item.barcode)));
+      setLastConfirmedCount(barcodes.length);
+      pendingBarcodes.current = pendingBarcodes.current.filter((bc) => !barcodes.includes(bc));
       setStickers([]);
       setPrintFrameHtml('');
-      setPrintState('confirmed');
-      setTimeout(() => { setPrintState('idle'); setTab('history'); }, 2000);
+      return true;
     } catch {
       setError('Failed to confirm print status');
-      setPrintState('idle');
+      setPrintState('confirm');
+      return false;
     }
+  }
+
+  async function confirmPrinted() {
+    const ok = await savePrintedBarcodes(pendingBarcodes.current);
+    if (!ok) return;
+    setPrintState('confirmed');
+    setTimeout(() => { setPrintState('idle'); setTab('history'); }, 2000);
+  }
+
+  async function confirmPendingBarcode(barcodes: string[]) {
+    const ok = await savePrintedBarcodes(barcodes);
+    if (!ok) return;
+    setPrintState('confirmed');
+    setTimeout(() => { setPrintState('idle'); setTab('history'); }, 1200);
   }
 
   function reprint() {
@@ -288,6 +336,22 @@ export function PrintComponent({
           }}
         >
           Print
+        </button>
+        <button
+          onClick={() => setTab('pending')}
+          className="flex-1 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          style={{
+            background: tab === 'pending' ? 'rgba(245,158,11,0.12)' : 'transparent',
+            color: tab === 'pending' ? '#fbbf24' : '#71717a',
+            border: tab === 'pending' ? '1px solid rgba(245,158,11,0.2)' : '1px solid transparent',
+          }}
+        >
+          Pending
+          {pending.length > 0 && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(245,158,11,0.12)', color: '#fbbf24' }}>
+              {pending.length}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setTab('history')}
@@ -332,7 +396,7 @@ export function PrintComponent({
 
           {printState === 'confirmed' && (
             <div className="mb-4 rounded-lg p-3 text-sm font-semibold" style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.3)', color: '#4ade80' }}>
-              ✓ Print confirmed — {totalConfirmed} sticker{totalConfirmed !== 1 ? 's' : ''} recorded
+              ✓ Saved {lastConfirmedCount} barcode{lastConfirmedCount !== 1 ? 's' : ''} to history
             </div>
           )}
 
@@ -374,8 +438,49 @@ export function PrintComponent({
 
           <div className="flex gap-3 mt-3 text-xs text-zinc-500">
             <span>Each sticker gets a unique barcode · 50mm × 25mm</span>
-            {totalConfirmed > 0 && <span className="text-green-400 font-semibold">✓ {totalConfirmed} confirmed</span>}
+            {pending.length > 0 && <span className="text-amber-400 font-semibold">{pending.length} pending</span>}
           </div>
+        </div>
+      )}
+
+      {/* Pending tab */}
+      {tab === 'pending' && (
+        <div className="no-print card max-w-lg mx-auto mb-4 p-4">
+          {pending.length === 0 ? (
+            <div className="text-center text-zinc-600 text-sm py-8">No pending barcodes</div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <div className="text-zinc-300 font-semibold text-sm">{pending.length} barcode{pending.length !== 1 ? 's' : ''} pending</div>
+                  <div className="text-zinc-500 text-xs">Generated but not yet saved to printed history</div>
+                </div>
+                <button
+                  onClick={() => confirmPendingBarcode(pending.map((item) => item.barcode))}
+                  className="btn-primary px-3 py-2 text-xs rounded-lg"
+                >
+                  Save All
+                </button>
+              </div>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {pending.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.12)' }}>
+                    <div className="min-w-0">
+                      <div className="text-sm font-mono text-zinc-100 truncate">{item.barcode}</div>
+                      <div className="text-xs text-zinc-500">Generated {formatStamp(item.createdAt)}</div>
+                    </div>
+                    <button
+                      onClick={() => confirmPendingBarcode([item.barcode])}
+                      className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold"
+                      style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.25)', color: '#4ade80' }}
+                    >
+                      Save
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -394,7 +499,7 @@ export function PrintComponent({
                   <div key={i} className="flex items-center justify-between py-1.5 px-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)' }}>
                     <span className="text-xs font-mono text-zinc-200">{h.barcode}</span>
                     <span className="text-xs text-zinc-500">
-                      {h.printedAt ? new Date(h.printedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      {formatStamp(h.printedAt)}
                     </span>
                   </div>
                 ))}

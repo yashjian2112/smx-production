@@ -12,18 +12,26 @@ export default async function PrintComponentPage({ params }: { params: Promise<{
 
   if (!component || !component.barcode) notFound();
 
-  // Fetch all printed instances of the same component type (same name + stage + product)
-  const history = await prisma.productComponent.findMany({
-    where: {
-      productId: component.productId,
-      name: component.name,
-      stage: component.stage,
-      printed: true,
-    },
-    orderBy: { printedAt: 'desc' },
-    select: { barcode: true, printedAt: true },
-    take: 100,
-  });
+  const baseWhere = {
+    productId: component.productId,
+    name: component.name,
+    stage: component.stage,
+  };
+
+  const [history, pending] = await Promise.all([
+    prisma.productComponent.findMany({
+      where: { ...baseWhere, printed: true },
+      orderBy: { printedAt: 'desc' },
+      select: { id: true, barcode: true, printedAt: true, createdAt: true },
+      take: 100,
+    }),
+    prisma.productComponent.findMany({
+      where: { ...baseWhere, printed: false },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, barcode: true, printedAt: true, createdAt: true },
+      take: 100,
+    }),
+  ]);
 
   return (
     <PrintComponent
@@ -35,7 +43,8 @@ export default async function PrintComponentPage({ params }: { params: Promise<{
       stage={component.stage ?? ''}
       productName={component.product.name}
       productCode={component.product.code}
-      history={history as { barcode: string; printedAt: Date | null }[]}
+      history={history as { id: string; barcode: string; printedAt: Date | null; createdAt: Date }[]}
+      pending={pending as { id: string; barcode: string; printedAt: Date | null; createdAt: Date }[]}
     />
   );
 }
