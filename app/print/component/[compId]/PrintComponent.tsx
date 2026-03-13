@@ -48,11 +48,40 @@ export function PrintComponent({
       * { box-sizing: border-box; }
       @media print {
         * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        @page { margin: 3mm; size: 50mm auto; }
-        body { margin: 0 !important; padding: 0 !important; background: white !important; }
+        @page { margin: 0; size: 50mm 25mm; }
+        html, body { margin: 0 !important; padding: 0 !important; width: 50mm !important; background: white !important; overflow: hidden !important; }
         .no-print { display: none !important; }
-        .sticker-grid { display: grid; grid-template-columns: 50mm; gap: 2mm; padding: 0; }
-        .sticker { width: 50mm; height: 25mm; border: 0.3mm dashed #999; border-radius: 1mm; display: flex; align-items: center; gap: 2mm; padding: 1.5mm 2mm; overflow: hidden; break-inside: avoid; page-break-inside: avoid; background: white; color: black; }
+        body.print-component * { visibility: hidden !important; }
+        body.print-component .print-sheet,
+        body.print-component .print-sheet * { visibility: visible !important; }
+        body.print-component .print-sheet {
+          position: fixed;
+          inset: 0 auto auto 0;
+          width: 50mm;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: white !important;
+        }
+        .sticker-grid { display: block; width: 50mm; margin: 0; padding: 0; }
+        .sticker {
+          width: 50mm;
+          height: 25mm;
+          margin: 0;
+          border: 0;
+          border-radius: 0;
+          display: flex;
+          align-items: center;
+          gap: 2mm;
+          padding: 1.5mm 2mm;
+          overflow: hidden;
+          break-inside: avoid;
+          page-break-inside: avoid;
+          break-after: page;
+          page-break-after: always;
+          background: white;
+          color: black;
+        }
+        .sticker:last-child { break-after: auto; page-break-after: auto; }
         .sticker-name, .sticker-barcode, .sticker-part, .sticker-meta { color: black !important; }
       }
       .sticker-grid { display: grid; grid-template-columns: 50mm; gap: 8px; margin-top: 16px; }
@@ -65,10 +94,20 @@ export function PrintComponent({
     `;
     document.head.appendChild(style);
     function onAfterPrint() {
+      document.body.classList.remove('print-component');
       if (pendingBarcodes.current.length > 0) setPrintState('confirm');
     }
+    function onBeforePrint() {
+      document.body.classList.add('print-component');
+    }
+    window.addEventListener('beforeprint', onBeforePrint);
     window.addEventListener('afterprint', onAfterPrint);
-    return () => { style.remove(); window.removeEventListener('afterprint', onAfterPrint); };
+    return () => {
+      document.body.classList.remove('print-component');
+      style.remove();
+      window.removeEventListener('beforeprint', onBeforePrint);
+      window.removeEventListener('afterprint', onAfterPrint);
+    };
   }, []);
 
   async function generateAndPrint() {
@@ -269,7 +308,8 @@ export function PrintComponent({
               Set qty and click &quot;Generate &amp; Print&quot; — each sticker will get a unique barcode
             </div>
           )}
-          <div className="sticker-grid">
+          <div className="print-sheet">
+            <div className="sticker-grid">
             {stickers.map((bc, i) => (
               <div key={i} className="sticker">
                 <QRCodeCanvas value={bc} size={66} dark="#000000" light="#ffffff" />
@@ -281,6 +321,7 @@ export function PrintComponent({
                 </div>
               </div>
             ))}
+            </div>
           </div>
         </>
       )}
