@@ -51,6 +51,12 @@ export function PrintComponent({
         @page { margin: 0; size: 50mm 25mm; }
         html, body { margin: 0 !important; padding: 0 !important; width: 50mm !important; background: white !important; }
         .no-print { display: none !important; }
+        .print-root {
+          min-height: 0 !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          width: 50mm !important;
+        }
         .print-sheet,
         .sticker-grid { display: block; width: 50mm; margin: 0; padding: 0; }
         .sticker {
@@ -72,10 +78,19 @@ export function PrintComponent({
           color: black;
         }
         .sticker:last-child { break-after: auto; page-break-after: auto; }
+        .sticker-qr { width: 15mm; height: 15mm; flex: 0 0 15mm; }
+        .sticker-qr canvas { width: 15mm !important; height: 15mm !important; display: block; border-radius: 0 !important; }
+        .sticker-text { min-width: 0; }
+        .sticker-name { font-size: 3.2mm !important; line-height: 1.05 !important; }
+        .sticker-part { font-size: 2.1mm !important; margin-top: 0.5mm !important; }
+        .sticker-barcode { font-size: 2.4mm !important; margin-top: 0.9mm !important; letter-spacing: 0 !important; }
+        .sticker-meta { font-size: 2mm !important; margin-top: 0.7mm !important; }
         .sticker-name, .sticker-barcode, .sticker-part, .sticker-meta { color: black !important; }
       }
       .sticker-grid { display: grid; grid-template-columns: 50mm; gap: 8px; margin-top: 16px; }
       .sticker { width: 50mm; height: 25mm; border: 1px dashed rgba(255,255,255,0.15); border-radius: 6px; display: flex; align-items: center; gap: 2mm; padding: 1.5mm 2mm; overflow: hidden; background: white; color: black; }
+      .sticker-qr { width: 15mm; height: 15mm; flex: 0 0 15mm; }
+      .sticker-qr canvas { width: 15mm; height: 15mm; display: block; border-radius: 4px; }
       .sticker-text { flex: 1; min-width: 0; overflow: hidden; }
       .sticker-name { font-size: 6.5pt; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: black; }
       .sticker-part { font-size: 5.5pt; color: #444; font-family: monospace; margin-top: 0.5mm; }
@@ -146,7 +161,7 @@ export function PrintComponent({
   }
 
   return (
-    <div className="min-h-dvh p-4" style={{ fontFamily: 'var(--font-poppins, sans-serif)' }}>
+    <div className="print-root min-h-dvh p-4" style={{ fontFamily: 'var(--font-poppins, sans-serif)' }}>
 
       {/* Back button */}
       <div className="no-print max-w-lg mx-auto mb-3">
@@ -301,7 +316,9 @@ export function PrintComponent({
             <div className="sticker-grid">
               {stickers.map((bc, i) => (
                 <div key={i} className="sticker">
-                  <QRCodeCanvas value={bc} size={66} dark="#000000" light="#ffffff" />
+                  <div className="sticker-qr">
+                    <QRCodeCanvas value={bc} size={140} dark="#000000" light="#ffffff" />
+                  </div>
                   <div className="sticker-text">
                     <div className="sticker-name">{name}</div>
                     {partNumber && <div className="sticker-part">{partNumber}</div>}
