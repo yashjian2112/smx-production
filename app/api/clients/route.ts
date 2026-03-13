@@ -5,13 +5,13 @@ import { z } from 'zod';
 
 const createSchema = z.object({
   customerName:   z.string().min(1),
-  email:          z.string().email().optional().or(z.literal('')),
-  phone:          z.string().optional(),
+  email:          z.string().email(),
+  phone:          z.string().min(1),
   customerType:   z.string().optional(),
   globalOrIndian: z.enum(['Global', 'Indian']).optional(),
   state:          z.string().optional(),
-  billingAddress: z.string().optional(),
-  shippingAddress:z.string().optional(),
+  billingAddress: z.string().min(1),
+  shippingAddress:z.string().min(1),
   gstNumber:      z.string().optional(),
 });
 
@@ -65,13 +65,13 @@ export async function POST(req: NextRequest) {
       data: {
         code,
         customerName,
-        email:          email || null,
-        phone:          phone || null,
+        email,
+        phone,
         customerType:   customerType || null,
         globalOrIndian: globalOrIndian || null,
         state:          state || null,
-        billingAddress: billingAddress || null,
-        shippingAddress:shippingAddress || null,
+        billingAddress,
+        shippingAddress,
         gstNumber:      gstNumber || null,
       },
     });

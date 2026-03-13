@@ -72,6 +72,12 @@ const Icons = {
       <line x1="6" y1="20" x2="6" y2="14" />
     </svg>
   ),
+  Returns: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 14l-4-4 4-4" />
+      <path d="M5 10h11a4 4 0 0 1 0 8h-1" />
+    </svg>
+  ),
   Admin: () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
@@ -100,16 +106,18 @@ type NavItem = { href: string; label: string; icon: keyof typeof Icons };
 
 const managerNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
-  { href: '/orders', label: 'Orders', icon: 'Orders' },
-  { href: '/serial', label: 'Serial', icon: 'Serial' },
-  { href: '/reports', label: 'Reports', icon: 'Reports' },
+  { href: '/orders',   label: 'Orders',    icon: 'Orders' },
+  { href: '/serial',   label: 'Serial',    icon: 'Serial' },
+  { href: '/rework',   label: 'Returns',   icon: 'Returns' },
+  { href: '/reports',  label: 'Reports',   icon: 'Reports' },
 ];
 
 const adminNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
-  { href: '/orders', label: 'Orders', icon: 'Orders' },
-  { href: '/reports', label: 'Reports', icon: 'Reports' },
-  { href: '/admin', label: 'Admin', icon: 'Admin' },
+  { href: '/orders',   label: 'Orders',    icon: 'Orders' },
+  { href: '/rework',   label: 'Returns',   icon: 'Returns' },
+  { href: '/reports',  label: 'Reports',   icon: 'Reports' },
+  { href: '/admin',    label: 'Admin',     icon: 'Admin' },
 ];
 
 const employeeNav: NavItem[] = [

@@ -25,7 +25,6 @@ const HSN_OPTIONS = [
 ];
 
 const PAYMENT_PRESETS = ['100% ADVANCE', '50% Advance, 50% on delivery', '30 days net', 'LC at sight'];
-const DELIVERY_PRESETS = ['EX-WORKS Ahmedabad', 'FOB Mumbai', 'CIF', 'DAP'];
 
 let keyCounter = 3;
 
@@ -48,11 +47,14 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
   const [invoiceType,      setInvoiceType]      = useState<'SALE' | 'RETURN' | 'REPLACEMENT'>('SALE');
   const [clientId,         setClientId]         = useState('');
   const [currency,         setCurrency]         = useState<'INR' | 'USD'>('INR');
-  const [exchangeRate,     setExchangeRate]     = useState('');
   const [termsOfPayment,   setTermsOfPayment]   = useState('100% ADVANCE');
   const [deliveryDays,     setDeliveryDays]     = useState('');
-  const [termsOfDelivery,  setTermsOfDelivery]  = useState('');
   const [notes,            setNotes]            = useState('');
+  const [shippingCharges,  setShippingCharges]  = useState('');
+  // Replacement-specific fields
+  const [unitSerial,       setUnitSerial]       = useState('');
+  const [problemDesc,      setProblemDesc]      = useState('');
+
   const [items, setItems] = useState<LineItem[]>([
     { key: 1, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0 },
   ]);
@@ -103,14 +105,14 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
   }
 
   // ─── Totals ──────────────────────────────────────────────────────
-  const subtotal   = items.reduce((s, i) => s + calcAmount(i), 0);
-  const isExport   = currency === 'USD';
-  const sellerState= 'gujarat';
-  const buyerState = (selectedClient?.state ?? '').toLowerCase();
-  const isIntra    = !isExport && !!buyerState && buyerState === sellerState;
-  const gst        = isExport ? 0 : subtotal * 0.18;
-  const total      = subtotal + gst;
-  const totalINR   = isExport ? total * (parseFloat(exchangeRate) || 0) : total;
+  const subtotal       = items.reduce((s, i) => s + calcAmount(i), 0);
+  const shipping       = parseFloat(shippingCharges) || 0;
+  const isExport       = currency === 'USD';
+  const sellerState    = 'gujarat';
+  const buyerState     = (selectedClient?.state ?? '').toLowerCase();
+  const isIntra        = !isExport && !!buyerState && buyerState === sellerState;
+  const gst            = isExport ? 0 : subtotal * 0.18;
+  const total          = subtotal + gst + shipping;
 
   const fmtAmt = (n: number) => currency === 'USD'
     ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
@@ -124,8 +126,41 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
       setError('Fill in all line items (description, HSN code, price)');
       return;
     }
+    if (invoiceType === 'REPLACEMENT' && (!unitSerial.trim() || !problemDesc.trim())) {
+      setError('Please fill in Unit Serial Number and Problem Description for replacement');
+      return;
+    }
     setError('');
     setLoading(true);
+
+    // Build notes
+    let finalNotes = notes.trim();
+    if (invoiceType === 'REPLACEMENT') {
+      finalNotes = `[REPLACEMENT]\nSerial: ${unitSerial.trim()}\nProblem: ${problemDesc.trim()}${finalNotes ? '\n' + finalNotes : ''}`;
+    }
+
+    // Build items (add shipping as line item if > 0)
+    const submitItems = items.map((item, i) => ({
+      description:     item.description,
+      productId:       item.productId || undefined,
+      hsnCode:         item.hsnCode,
+      quantity:        item.quantity,
+      unitPrice:       item.unitPrice,
+      discountPercent: item.discountPercent,
+      sortOrder:       i,
+    }));
+    if (shipping > 0) {
+      submitItems.push({
+        description:     'Freight & Forwarding Charges',
+        productId:       undefined,
+        hsnCode:         '9965',
+        quantity:        1,
+        unitPrice:       shipping,
+        discountPercent: 0,
+        sortOrder:       submitItems.length,
+      });
+    }
+
     try {
       const res = await fetch('/api/proformas', {
         method: 'POST',
@@ -134,20 +169,10 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
           clientId,
           invoiceType,
           currency,
-          exchangeRate: exchangeRate ? parseFloat(exchangeRate) : undefined,
           termsOfPayment:  termsOfPayment || undefined,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : undefined,
-          termsOfDelivery: termsOfDelivery || undefined,
-          notes:           notes || undefined,
-          items: items.map((item, i) => ({
-            description:     item.description,
-            productId:       item.productId || undefined,
-            hsnCode:         item.hsnCode,
-            quantity:        item.quantity,
-            unitPrice:       item.unitPrice,
-            discountPercent: item.discountPercent,
-            sortOrder:       i,
-          })),
+          notes:           finalNotes || undefined,
+          items:           submitItems,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -181,6 +206,32 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
         </div>
       </div>
 
+      {/* Replacement fields */}
+      {invoiceType === 'REPLACEMENT' && (
+        <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)' }}>
+          <p className="text-xs font-medium text-amber-400">Replacement Details</p>
+          <div>
+            <label className={lCls}>Unit Serial Number <span className="text-red-400">*</span></label>
+            <input
+              value={unitSerial}
+              onChange={(e) => setUnitSerial(e.target.value.toUpperCase())}
+              className={iCls}
+              placeholder="e.g. SMX100026001"
+            />
+          </div>
+          <div>
+            <label className={lCls}>Problem / Customer Complaint <span className="text-red-400">*</span></label>
+            <textarea
+              value={problemDesc}
+              onChange={(e) => setProblemDesc(e.target.value)}
+              className={`${iCls} resize-none`}
+              rows={3}
+              placeholder="Describe the issue reported by customer…"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Client */}
       <div>
         <label className={lCls}>Client <span className="text-red-400">*</span></label>
@@ -195,28 +246,20 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
         )}
       </div>
 
-      {/* Currency + Exchange Rate */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={lCls}>Currency</label>
-          <div className="flex gap-2">
-            {(['INR', 'USD'] as const).map((c) => (
-              <button key={c} type="button" onClick={() => setCurrency(c)}
-                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
-                style={currency === c
-                  ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
-                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-                {c}
-              </button>
-            ))}
-          </div>
+      {/* Currency */}
+      <div>
+        <label className={lCls}>Currency</label>
+        <div className="flex gap-2 max-w-[160px]">
+          {(['INR', 'USD'] as const).map((c) => (
+            <button key={c} type="button" onClick={() => setCurrency(c)}
+              className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
+              style={currency === c
+                ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+              {c}
+            </button>
+          ))}
         </div>
-        {currency === 'USD' && (
-          <div>
-            <label className={lCls}>Exchange Rate (₹/$)</label>
-            <input type="number" step="0.01" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className={iCls} placeholder="e.g. 84.50" />
-          </div>
-        )}
       </div>
 
       {/* Terms of Payment */}
@@ -238,21 +281,6 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
       <div>
         <label className={lCls}>Delivery Days <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
         <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} className={iCls} placeholder="e.g. 30" />
-      </div>
-
-      {/* Terms of Delivery */}
-      <div>
-        <label className={lCls}>Terms of Delivery <span className="normal-case text-zinc-600 font-normal text-[10px]">(optional)</span></label>
-        <input value={termsOfDelivery} onChange={(e) => setTermsOfDelivery(e.target.value)} className={iCls} placeholder="e.g. EX-WORKS Ahmedabad" />
-        <div className="flex gap-1.5 mt-1.5 flex-wrap">
-          {DELIVERY_PRESETS.map((p) => (
-            <button key={p} type="button" onClick={() => setTermsOfDelivery(p)}
-              className="text-[10px] px-2 py-0.5 rounded-full border text-zinc-500 hover:text-zinc-300 transition-colors"
-              style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
-              {p}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* ── Line Items ── */}
@@ -345,6 +373,20 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
         </div>
       </div>
 
+      {/* Shipping Charges */}
+      <div>
+        <label className={lCls}>Shipping Charges <span className="normal-case text-zinc-600 font-normal text-[10px]">(optional — HSN 9965)</span></label>
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={shippingCharges}
+          onChange={(e) => setShippingCharges(e.target.value)}
+          className={iCls}
+          placeholder="0.00"
+        />
+      </div>
+
       {/* ── Totals Summary ── */}
       {items.length > 0 && (
         <div className="rounded-xl border border-zinc-800 p-4 space-y-2" style={{ background: 'rgba(255,255,255,0.02)' }}>
@@ -361,16 +403,13 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
           {!isExport && !isIntra && (
             <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{fmtAmt(gst)}</span></div>
           )}
+          {shipping > 0 && (
+            <div className="flex justify-between text-sm text-zinc-500"><span>Shipping</span><span>{fmtAmt(shipping)}</span></div>
+          )}
           <div className="flex justify-between text-sm font-semibold border-t border-zinc-800 pt-2">
             <span>Total</span>
             <span className="text-sky-400">{fmtAmt(total)}</span>
           </div>
-          {isExport && exchangeRate && (
-            <div className="flex justify-between text-xs text-zinc-600">
-              <span>≈ INR (@ ₹{exchangeRate}/$)</span>
-              <span>₹{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-            </div>
-          )}
         </div>
       )}
 

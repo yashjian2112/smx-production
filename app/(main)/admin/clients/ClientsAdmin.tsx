@@ -96,14 +96,14 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerName:    form.customerName,
-          email: form.email || undefined,
-          phone: form.phone || undefined,
-          customerType: form.customerType || undefined,
-          globalOrIndian: form.globalOrIndian || undefined,
-          state: form.state || undefined,
-          billingAddress: form.billingAddress || undefined,
-          shippingAddress: form.shippingAddress || undefined,
-          gstNumber: form.gstNumber || undefined,
+          email:           form.email,
+          phone:           form.phone,
+          customerType:    form.customerType || undefined,
+          globalOrIndian:  form.globalOrIndian || undefined,
+          state:           form.state || undefined,
+          billingAddress:  form.billingAddress,
+          shippingAddress: form.shippingAddress,
+          gstNumber:       form.gstNumber || undefined,
         }),
       });
       const data = await res.json();
@@ -293,11 +293,11 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className={labelCls}>Email</label>
+              <label className={labelCls}>Email <span className="text-red-500">*</span></label>
               <input type="email" className={inputCls} placeholder="contact@acme.com" value={form.email} onChange={(e) => field('email', e.target.value)} />
             </div>
             <div>
-              <label className={labelCls}>Phone</label>
+              <label className={labelCls}>Phone <span className="text-red-500">*</span></label>
               <input className={inputCls} placeholder="+91 98765 43210" value={form.phone} onChange={(e) => field('phone', e.target.value)} />
             </div>
           </div>
@@ -330,7 +330,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
             </>
           )}
 
-          <label className={labelCls}>Billing Address</label>
+          <label className={labelCls}>Billing Address <span className="text-red-500">*</span></label>
           <textarea
             className={`${inputCls} resize-none`}
             rows={2}
@@ -352,7 +352,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
 
           {!sameAddress && (
             <>
-              <label className={labelCls}>Shipping Address</label>
+              <label className={labelCls}>Shipping Address <span className="text-red-500">*</span></label>
               <textarea
                 className={`${inputCls} resize-none`}
                 rows={2}
@@ -368,7 +368,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
             <button onClick={closeModal} className="flex-1 py-2 rounded-lg border border-slate-600 text-sm text-slate-400 hover:text-white transition-colors">Cancel</button>
             <button
               onClick={handleAdd}
-              disabled={saving || !form.customerName}
+              disabled={saving || !form.customerName || !form.email || !form.phone || !form.billingAddress || !form.shippingAddress}
               className="flex-1 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-sm font-medium text-white transition-colors"
             >
               {saving ? 'Creating…' : 'Create Client'}
@@ -385,11 +385,11 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className={labelCls}>Email</label>
+              <label className={labelCls}>Email <span className="text-red-500">*</span></label>
               <input type="email" className={inputCls} value={form.email} onChange={(e) => field('email', e.target.value)} />
             </div>
             <div>
-              <label className={labelCls}>Phone</label>
+              <label className={labelCls}>Phone <span className="text-red-500">*</span></label>
               <input className={inputCls} value={form.phone} onChange={(e) => field('phone', e.target.value)} />
             </div>
           </div>
@@ -422,7 +422,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
             </>
           )}
 
-          <label className={labelCls}>Billing Address</label>
+          <label className={labelCls}>Billing Address <span className="text-red-500">*</span></label>
           <textarea
             className={`${inputCls} resize-none`}
             rows={2}
@@ -443,7 +443,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
 
           {!sameAddress && (
             <>
-              <label className={labelCls}>Shipping Address</label>
+              <label className={labelCls}>Shipping Address <span className="text-red-500">*</span></label>
               <textarea
                 className={`${inputCls} resize-none`}
                 rows={2}
@@ -458,7 +458,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
             <button onClick={closeModal} className="flex-1 py-2 rounded-lg border border-slate-600 text-sm text-slate-400 hover:text-white transition-colors">Cancel</button>
             <button
               onClick={handleEdit}
-              disabled={saving || !form.customerName}
+              disabled={saving || !form.customerName || !form.email || !form.phone || !form.billingAddress || !form.shippingAddress}
               className="flex-1 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-sm font-medium text-white transition-colors"
             >
               {saving ? 'Saving…' : 'Save Changes'}
