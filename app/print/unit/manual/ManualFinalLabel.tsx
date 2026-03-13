@@ -272,37 +272,44 @@ export function ManualFinalLabel({
                       flexDirection: 'column',
                       justifyContent: 'center',
                       alignItems: 'center',
-                      gap: '1.2mm',
-                      border: '0.4mm solid #111',
-                      borderRadius: '1.5mm',
+                      gap: '0.8mm',
                       background: '#fff',
                       color: '#111',
-                      padding: '1.5mm 2mm',
+                      padding: '1.2mm 1.6mm',
                     }}
                   >
-                    <div style={{ fontSize: '2.1mm', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6mm' }}>
-                      <span style={{ fontSize: '1.55mm', letterSpacing: '0.08mm', lineHeight: 1.05, display: 'block', textAlign: 'center' }}>
-                        NOTE: Warranty Void If Removed
-                      </span>
+                    <div
+                      style={{
+                        width: '100%',
+                        fontSize: '1.25mm',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05mm',
+                        lineHeight: 1.05,
+                        textAlign: 'center',
+                      }}
+                    >
+                      NOTE: Warranty Void If Removed
                     </div>
-                    <div style={{ fontSize: '1.9mm', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.45mm', color: '#444' }}>
+                    <div style={{ fontSize: '1.7mm', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.35mm', color: '#444' }}>
                       Serial Number
                     </div>
                     <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
                       <Barcode128
                         value={sticker.serial}
-                        width={1.55}
-                        height={34}
-                        fontSize={10}
+                        width={1.4}
+                        height={24}
+                        displayValue={false}
+                        fontSize={9}
                         background="#ffffff"
                         lineColor="#000000"
                       />
                     </div>
-                    <div style={{ fontSize: '2.8mm', fontWeight: 800, fontFamily: 'monospace', letterSpacing: '0.2mm' }}>
+                    <div style={{ fontSize: '2.5mm', fontWeight: 800, fontFamily: 'monospace', letterSpacing: '0.16mm', lineHeight: 1 }}>
                       {sticker.serial}
                     </div>
                     {sticker.totalCopies > 1 && (
-                      <div style={{ fontSize: '1.8mm', fontWeight: 700, color: '#444' }}>
+                      <div style={{ fontSize: '1.55mm', fontWeight: 700, color: '#444', lineHeight: 1 }}>
                         Copy {sticker.copyNumber} / {sticker.totalCopies}
                       </div>
                     )}
