@@ -81,8 +81,10 @@ export function ManualFinalLabel({
   const [startSequence, setStartSequence] = useState(
     String(initialNextSequence ?? 1).padStart(3, '0')
   );
-  const [qty, setQty]       = useState(1);
-  const [copies, setCopies] = useState(1);
+  const [qtyInput, setQtyInput]       = useState('1');
+  const [copiesInput, setCopiesInput] = useState('1');
+  const qty    = Math.max(1, Math.min(100, parseInt(qtyInput,    10) || 1));
+  const copies = Math.max(1, Math.min(20,  parseInt(copiesInput, 10) || 1));
   const [clientId, setClientId]   = useState('');
   const [partyName, setPartyName] = useState('');
   const [manualPrefix, setManualPrefix] = useState('');
@@ -552,8 +554,9 @@ export function ManualFinalLabel({
                     type="number"
                     min={1}
                     max={100}
-                    value={qty}
-                    onChange={(e) => setQty(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+                    value={qtyInput}
+                    onChange={(e) => setQtyInput(e.target.value)}
+                    onBlur={(e) => setQtyInput(String(Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 1))))}
                     className="input-field text-sm font-mono"
                   />
                 </div>
@@ -564,8 +567,9 @@ export function ManualFinalLabel({
                     type="number"
                     min={1}
                     max={20}
-                    value={copies}
-                    onChange={(e) => setCopies(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                    value={copiesInput}
+                    onChange={(e) => setCopiesInput(e.target.value)}
+                    onBlur={(e) => setCopiesInput(String(Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 1))))}
                     className="input-field text-sm font-mono"
                   />
                 </div>
