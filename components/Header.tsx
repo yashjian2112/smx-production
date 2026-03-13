@@ -3,9 +3,11 @@
 import { useRouter } from 'next/navigation';
 
 const ROLE_LABEL: Record<string, string> = {
-  ADMIN: 'Admin',
-  PRODUCTION_MANAGER: 'Manager',
+  ADMIN:               'Admin',
+  PRODUCTION_MANAGER:  'Manager',
   PRODUCTION_EMPLOYEE: 'Employee',
+  SALES:               'Sales',
+  ACCOUNTS:            'Accounts',
 };
 
 export function Header({ title, user }: { title: string; user: { name: string; role: string } }) {

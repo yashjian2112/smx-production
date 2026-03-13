@@ -11,6 +11,7 @@ export type ClientRow = {
   phone: string | null;
   customerType: string | null;
   globalOrIndian: string | null;
+  state: string | null;
   billingAddress: string | null;
   shippingAddress: string | null;
   gstNumber: string | null;
@@ -27,6 +28,7 @@ const emptyForm = {
   phone: '',
   customerType: '',
   globalOrIndian: '' as '' | 'Global' | 'Indian',
+  state: '',
   billingAddress: '',
   shippingAddress: '',
   gstNumber: '',
@@ -59,6 +61,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
       phone: c.phone ?? '',
       customerType: c.customerType ?? '',
       globalOrIndian: (c.globalOrIndian as '' | 'Global' | 'Indian') ?? '',
+      state: c.state ?? '',
       billingAddress: c.billingAddress ?? '',
       shippingAddress: c.shippingAddress ?? '',
       gstNumber: c.gstNumber ?? '',
@@ -99,6 +102,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
           phone: form.phone || undefined,
           customerType: form.customerType || undefined,
           globalOrIndian: form.globalOrIndian || undefined,
+          state: form.state || undefined,
           billingAddress: form.billingAddress || undefined,
           shippingAddress: form.shippingAddress || undefined,
           gstNumber: form.gstNumber || undefined,
@@ -125,6 +129,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
           phone:          form.phone || '',
           customerType:   form.customerType || '',
           globalOrIndian: form.globalOrIndian || '',
+          state:          form.state || '',
           billingAddress: form.billingAddress || '',
           shippingAddress:form.shippingAddress || '',
           gstNumber:      form.gstNumber || '',

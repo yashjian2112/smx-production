@@ -35,12 +35,17 @@ model User {
   auditLogs         AuditLog[]
   componentChecks   ComponentCheck[]
   workSubmissions   StageWorkSubmission[] @relation("WorkSubmissions")
+  createdProformas  ProformaInvoice[] @relation("PICreatedBy")
+  approvedProformas ProformaInvoice[] @relation("PIApprovedBy")
+  appSettings       AppSetting[]
 }
 
 enum Role {
   ADMIN
   PRODUCTION_MANAGER
   PRODUCTION_EMPLOYEE
+  SALES
+  ACCOUNTS
 }
 
 // ----- Products / Models -----
@@ -56,6 +61,7 @@ model Product {
   units          ControllerUnit[]
   components     ProductComponent[]
   checklistItems StageChecklistItem[]
+  proformaItems  ProformaInvoiceItem[]
 }
 
 // ----- Product Components (BOM per model) -----
@@ -106,6 +112,7 @@ model Client {
   phone           String?
   customerType    String?  @map("customer_type")    // OEM | Retail | Dealer | etc.
   globalOrIndian  String?  @map("global_or_indian") // "Global" | "Indian"
+  state           String?                           // e.g. "Gujarat" — for IGST vs CGST+SGST
   billingAddress  String?  @map("billing_address")
   shippingAddress String?  @map("shipping_address")
   gstNumber       String?  @map("gst_number")
@@ -113,7 +120,8 @@ model Client {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  orders Order[]
+  orders           Order[]
+  proformaInvoices ProformaInvoice[]
 
   @@map("clients")
 }
@@ -135,9 +143,10 @@ model Order {
   updatedAt   DateTime  @updatedAt @map("updated_at")
   createdById String?   @map("created_by_id")
 
-  client  Client?  @relation(fields: [clientId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
-  units   ControllerUnit[]
+  client          Client?          @relation(fields: [clientId], references: [id])
+  product         Product          @relation(fields: [productId], references: [id])
+  units           ControllerUnit[]
+  proformaInvoice ProformaInvoice?
 }
 
 enum OrderStatus {
@@ -415,6 +424,85 @@ enum SubmissionStatus {
 enum SubmissionResult {
   PASS
   FAIL
+}
+
+// ----- Sales: Proforma Invoices -----
+model ProformaInvoice {
+  id               String         @id @default(cuid())
+  invoiceNumber    String         @unique @map("invoice_number")  // TSM/PI/25-26/001
+  invoiceDate      DateTime       @default(now()) @map("invoice_date")
+  clientId         String         @map("client_id")
+  invoiceType      InvoiceType    @default(SALE) @map("invoice_type")
+  currency         String         @default("INR")               // "INR" | "USD"
+  exchangeRate     Float?         @map("exchange_rate")         // USD→INR rate (for global)
+  termsOfPayment   String?        @map("terms_of_payment")
+  deliveryDays     Int?           @map("delivery_days")
+  termsOfDelivery  String?        @map("terms_of_delivery")
+  notes            String?
+  status           ProformaStatus @default(DRAFT)
+  rejectedReason   String?        @map("rejected_reason")
+  createdById      String         @map("created_by_id")
+  approvedById     String?        @map("approved_by_id")
+  approvedAt       DateTime?      @map("approved_at")
+  orderId          String?        @unique @map("order_id")       // set after conversion
+  relatedInvoiceId String?        @map("related_invoice_id")    // for returns/replacements
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  client         Client               @relation(fields: [clientId], references: [id])
+  createdBy      User                 @relation("PICreatedBy", fields: [createdById], references: [id])
+  approvedBy     User?                @relation("PIApprovedBy", fields: [approvedById], references: [id])
+  order          Order?               @relation(fields: [orderId], references: [id])
+  relatedInvoice ProformaInvoice?     @relation("RelatedInvoice", fields: [relatedInvoiceId], references: [id])
+  relatedTo      ProformaInvoice[]    @relation("RelatedInvoice")
+  items          ProformaInvoiceItem[]
+
+  @@map("proforma_invoices")
+}
+
+enum InvoiceType {
+  SALE
+  RETURN
+  REPLACEMENT
+}
+
+enum ProformaStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CONVERTED
+}
+
+model ProformaInvoiceItem {
+  id              String   @id @default(cuid())
+  proformaId      String   @map("proforma_id")
+  description     String
+  productId       String?  @map("product_id")
+  hsnCode         String   @map("hsn_code")
+  quantity        Int
+  unitPrice       Float    @map("unit_price")
+  discountPercent Float    @default(0) @map("discount_percent")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  proforma ProformaInvoice @relation(fields: [proformaId], references: [id], onDelete: Cascade)
+  product  Product?        @relation(fields: [productId], references: [id])
+
+  @@map("proforma_invoice_items")
+}
+
+// ----- App Settings (LUT number, bank details, etc.) -----
+model AppSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  updatedById String?  @map("updated_by_id")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  updatedBy User? @relation(fields: [updatedById], references: [id])
+
+  @@map("app_settings")
 }
 
 // ----- Audit (admin actions, user management, settings) -----
