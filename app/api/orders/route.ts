@@ -10,6 +10,7 @@ import { z } from 'zod';
 const createSchema = z.object({
   orderNumber:        z.string().min(1),
   websiteOrderNumber: z.string().optional(),
+  clientId:           z.string().optional(),
   productId:          z.string().min(1),
   quantity:           z.number().int().min(1).max(10000),
   dueDate:            z.string().datetime().optional(),
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
-    const { orderNumber, websiteOrderNumber, productId, quantity, dueDate, priority, voltage, motorType } = parsed.data;
+    const { orderNumber, websiteOrderNumber, clientId, productId, quantity, dueDate, priority, voltage, motorType } = parsed.data;
 
     // Prevent duplicate order numbers
     const existing = await prisma.order.findFirst({ where: { orderNumber } });
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
       data: {
         orderNumber,
         websiteOrderNumber: websiteOrderNumber ?? null,
+        clientId: clientId ?? null,
         productId,
         quantity,
         dueDate: dueDate ? new Date(dueDate) : null,

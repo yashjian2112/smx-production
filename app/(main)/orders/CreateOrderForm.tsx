@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { FaceGate } from '@/components/FaceGate';
 
 type Product = { id: string; code: string; name: string };
+type Client  = { id: string; code: string; customerName: string };
 
 const VOLTAGES   = ['24V','36V','48V','60V','72V','84V','96V','108V','120V','130V'];
 const MOTOR_TYPES = [
@@ -13,7 +14,7 @@ const MOTOR_TYPES = [
   { value: 'UBX', label: 'UBX' },
 ];
 
-export function CreateOrderForm({ products }: { products: Product[] }) {
+export function CreateOrderForm({ products, clients }: { products: Product[]; clients: Client[] }) {
   const [open, setOpen]               = useState(false);
   const [showFace, setShowFace]       = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
@@ -21,6 +22,7 @@ export function CreateOrderForm({ products }: { products: Product[] }) {
   const [productId, setProductId]     = useState(products[0]?.id ?? '');
   const [voltageFrom, setVoltageFrom] = useState('48V');
   const [voltageTo, setVoltageTo]     = useState('48V');
+  const [clientId, setClientId]       = useState('');
   const [motorType, setMotorType]     = useState('');
   const [quantity, setQuantity]       = useState(10);
   const [dueDate, setDueDate]         = useState('');
@@ -40,6 +42,7 @@ export function CreateOrderForm({ products }: { products: Product[] }) {
         body: JSON.stringify({
           orderNumber:       orderNumber.trim(),
           websiteOrderNumber: websiteOrderNo.trim() || undefined,
+          clientId:   clientId || undefined,
           productId,
           voltage:   voltageFrom === voltageTo ? voltageFrom : `${voltageFrom}-${voltageTo}`,
           motorType: motorType || undefined,
@@ -53,6 +56,7 @@ export function CreateOrderForm({ products }: { products: Product[] }) {
       setOpen(false);
       setOrderNumber('');
       setWebsiteOrderNo('');
+      setClientId('');
       setVoltageFrom('48V');
       setVoltageTo('48V');
       setMotorType('');
@@ -137,6 +141,23 @@ export function CreateOrderForm({ products }: { products: Product[] }) {
             placeholder="e.g. 3523"
           />
         </div>
+
+        {/* Client */}
+        {clients.length > 0 && (
+          <div>
+            <label className={labelCls}>Client {optLabel}</label>
+            <select
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              className="select-field text-sm"
+            >
+              <option value="">— No client —</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.customerName} ({c.code})</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Product */}
         <div>

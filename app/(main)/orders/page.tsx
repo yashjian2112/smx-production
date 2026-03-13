@@ -11,10 +11,11 @@ export default async function OrdersPage() {
   const isManager = session.role === 'ADMIN' || session.role === 'PRODUCTION_MANAGER';
   const isAdmin   = session.role === 'ADMIN';
 
-  const [rawOrders, products] = await Promise.all([
+  const [rawOrders, products, clients] = await Promise.all([
     prisma.order.findMany({
       include: {
         product: true,
+        client: { select: { id: true, code: true, customerName: true } },
         _count: { select: { units: true } },
         units: { select: { currentStatus: true, currentStage: true } },
       },
@@ -23,6 +24,9 @@ export default async function OrdersPage() {
     }),
     isAdmin
       ? prisma.product.findMany({ where: { active: true }, orderBy: { code: 'asc' } })
+      : Promise.resolve([]),
+    isAdmin
+      ? prisma.client.findMany({ where: { active: true }, orderBy: { customerName: 'asc' }, select: { id: true, code: true, customerName: true } })
       : Promise.resolve([]),
   ]);
 
@@ -34,6 +38,7 @@ export default async function OrdersPage() {
     createdAt: o.createdAt.toISOString(),
     voltage: o.voltage ?? null,
     product: { name: o.product.name, code: o.product.code },
+    client: o.client ? { id: o.client.id, code: o.client.code, customerName: o.client.customerName } : null,
     _count: { units: o._count.units },
     units: o.units.map((u) => ({ currentStatus: u.currentStatus, currentStage: u.currentStage })),
   }));
@@ -42,7 +47,7 @@ export default async function OrdersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Orders</h2>
-        {isAdmin && <CreateOrderForm products={products} />}
+        {isAdmin && <CreateOrderForm products={products} clients={clients} />}
       </div>
       <OrdersList orders={orders} isManager={isManager} />
     </div>
