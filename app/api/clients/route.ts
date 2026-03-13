@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN');
+    requireRole(session, 'ADMIN', 'SALES');
 
     const body = await req.json();
     const parsed = createSchema.safeParse(body);

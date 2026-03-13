@@ -14,6 +14,14 @@ const Icons = {
       <polyline points="10 9 9 9 8 9" />
     </svg>
   ),
+  Clients: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  ),
   Accounts: () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="1" x2="12" y2="23" />
@@ -89,6 +97,7 @@ const Icons = {
 
 type NavItem = { href: string; label: string; icon: keyof typeof Icons };
 
+
 const managerNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
   { href: '/orders', label: 'Orders', icon: 'Orders' },
@@ -110,8 +119,9 @@ const employeeNav: NavItem[] = [
 ];
 
 const salesNav: NavItem[] = [
-  { href: '/sales',    label: 'Invoices', icon: 'Invoice' },
-  { href: '/orders',   label: 'Orders',   icon: 'Orders' },
+  { href: '/sales',         label: 'Invoices', icon: 'Invoice' },
+  { href: '/sales/clients', label: 'Clients',  icon: 'Clients' },
+  { href: '/orders',        label: 'Orders',   icon: 'Orders' },
 ];
 
 const accountsNav: NavItem[] = [

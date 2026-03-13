@@ -36,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN');
+    requireRole(session, 'ADMIN', 'SALES');
 
     const body = await req.json();
     const parsed = patchSchema.safeParse(body);

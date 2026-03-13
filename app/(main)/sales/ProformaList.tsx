@@ -26,28 +26,40 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; border: string }
 const TYPE_LABEL: Record<string, string> = { SALE: 'Sale', RETURN: 'Return', REPLACEMENT: 'Replacement' };
 
 export function ProformaList({ proformas, role }: { proformas: ProformaRow[]; role: string }) {
-  const [tab, setTab]     = useState<'active' | 'all'>('active');
+  const [tab, setTab]     = useState<'active' | 'return' | 'replacement' | 'all'>('active');
   const [search, setSearch] = useState('');
 
-  const active = proformas.filter((p) => ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(p.status));
-  const list   = tab === 'active' ? active : proformas;
+  const active       = proformas.filter((p) => ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(p.status));
+  const returns      = proformas.filter((p) => p.invoiceType === 'RETURN');
+  const replacements = proformas.filter((p) => p.invoiceType === 'REPLACEMENT');
+  const list =
+    tab === 'active'      ? active :
+    tab === 'return'      ? returns :
+    tab === 'replacement' ? replacements :
+    proformas;
+
   const filtered = list.filter((p) => {
     if (!search) return true;
     const q = search.toLowerCase();
     return p.invoiceNumber.toLowerCase().includes(q) || p.client.customerName.toLowerCase().includes(q);
   });
 
-  const tabs: Array<'active' | 'all'> = ['active', 'all'];
+  const tabs: Array<{ key: 'active' | 'return' | 'replacement' | 'all'; label: string; count: number }> = [
+    { key: 'active',      label: 'Active',      count: active.length },
+    { key: 'return',      label: 'Return',      count: returns.length },
+    { key: 'replacement', label: 'Replace',     count: replacements.length },
+    { key: 'all',         label: 'All',         count: proformas.length },
+  ];
 
   return (
     <div>
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-xl mb-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
         {tabs.map((t) => (
-          <button key={t} type="button" onClick={() => setTab(t)}
-            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${tab === t ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
-            style={tab === t ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
-            {t === 'active' ? `Active (${active.length})` : `All (${proformas.length})`}
+          <button key={t.key} type="button" onClick={() => setTab(t.key)}
+            className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${tab === t.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+            style={tab === t.key ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
+            {t.label} ({t.count})
           </button>
         ))}
       </div>
