@@ -30,6 +30,7 @@ export async function POST(
         units: {
           select: {
             id: true,
+            currentStage: true,
             powerstageBarcode: true,
             brainboardBarcode: true,
             qcBarcode: true,
@@ -53,7 +54,7 @@ export async function POST(
         updates.brainboardBarcode = await generateNextBrainboardBarcode(modelCode);
       if (!unit.qcBarcode)
         updates.qcBarcode = await generateNextQCBarcode(modelCode);
-      if (!unit.finalAssemblyBarcode)
+      if (unit.currentStage === 'FINAL_ASSEMBLY' && !unit.finalAssemblyBarcode)
         updates.finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(modelCode);
 
       if (Object.keys(updates).length > 0) {

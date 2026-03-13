@@ -3,14 +3,23 @@ import { prisma } from './prisma';
 
 /**
  * Stage-wise barcodes for cross-verification. No printable BOM sheet.
- * Format: modelname + stageSuffix + year(2) + sequence(3 or 4 for final).
- * Powerstage: 1000PS26001, Brainboard: 1000BB26001, QC: 1000QC26001, Final: 1000260001
+ * Format: modelname + stageSuffix + year(2) + sequence(3), except Final Assembly
+ * which uses modelname + year(2) + batchMonth(2) + sequence(3).
+ * Powerstage: 1000PS26001, Brainboard: 1000BB26001, QC: 1000QC26001, Final: SM35026MR001
  */
 
 const YEAR_STR = String(new Date().getFullYear() % 100).padStart(2, '0');
+const FINAL_ASSEMBLY_MONTH_CODES = ['JA', 'FE', 'MR', 'AP', 'MY', 'JN', 'JL', 'AU', 'SE', 'OC', 'NO', 'DE'] as const;
 
 function modelPrefix(code: string): string {
   return code.padStart(4, '0').slice(0, 4);
+}
+
+function finalAssemblyPrefix(code: string, date = new Date()): string {
+  const cleanCode = code.trim().toUpperCase();
+  const year = String(date.getFullYear() % 100).padStart(2, '0');
+  const month = FINAL_ASSEMBLY_MONTH_CODES[date.getMonth()] ?? 'JA';
+  return `${cleanCode}${year}${month}`;
 }
 
 async function nextSequence(
@@ -63,11 +72,11 @@ export async function generateNextQCBarcode(modelCode: string): Promise<string> 
   return barcode;
 }
 
-/** Final Assembly: modelname260001 (4-digit sequence) */
+/** Final Assembly: modelname26MR001 (month-batch + 3-digit sequence) */
 export async function generateNextFinalAssemblyBarcode(modelCode: string): Promise<string> {
-  const prefix = `${modelPrefix(modelCode)}${YEAR_STR}`;
-  const seq = await nextSequence('finalAssemblyBarcode', prefix, 4);
-  const barcode = `${prefix}${String(seq).padStart(4, '0')}`;
+  const prefix = finalAssemblyPrefix(modelCode);
+  const seq = await nextSequence('finalAssemblyBarcode', prefix, 3);
+  const barcode = `${prefix}${String(seq).padStart(3, '0')}`;
   const exists = await prisma.controllerUnit.findFirst({ where: { finalAssemblyBarcode: barcode } });
   if (exists) throw new Error('Final assembly barcode collision');
   return barcode;

@@ -3,7 +3,7 @@ import { requireSession, requireRole, isManager } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
 import { generateNextSerial } from '@/lib/serial';
-import { generateNextPowerstageBarcode, generateNextBrainboardBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
+import { generateNextPowerstageBarcode, generateNextBrainboardBarcode, generateNextQCBarcode } from '@/lib/barcode';
 import { StageType } from '@prisma/client';
 import { z } from 'zod';
 
@@ -85,13 +85,14 @@ export async function POST(req: NextRequest) {
       remarks: `Order ${orderNumber}${websiteOrderNumber ? ` (Web: ${websiteOrderNumber})` : ''}, qty ${quantity}`,
     });
 
-    // Generate unit records with serials and all 4 stage barcodes for cross-verification
+    // Generate unit records with serial + early-stage barcodes.
+    // Final Assembly barcode is generated when the unit actually reaches Final Assembly
+    // so the month-batch code matches the real build month.
     for (let i = 0; i < quantity; i++) {
       const serial = await generateNextSerial(product.code);
       const powerstageBarcode = await generateNextPowerstageBarcode(product.code);
       const brainboardBarcode = await generateNextBrainboardBarcode(product.code);
       const qcBarcode = await generateNextQCBarcode(product.code);
-      const finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(product.code);
       await prisma.controllerUnit.create({
         data: {
           serialNumber: serial,
@@ -102,7 +103,6 @@ export async function POST(req: NextRequest) {
           powerstageBarcode,
           brainboardBarcode,
           qcBarcode,
-          finalAssemblyBarcode,
         },
       });
     }

@@ -110,13 +110,19 @@ export function DispatchSection({
         {/* ── Final Assembly Barcode ─────────────────────────────────── */}
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">
-            Final Assembly Barcode
+            Final Assembly Serial Label
           </p>
           {finalAssemblyBarcode ? (
             <div
               className="rounded-xl p-4 flex flex-col items-center gap-2"
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
             >
+              <p className="text-[10px] font-bold uppercase tracking-widest text-amber-400">
+                Warranty Void If Removed
+              </p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                Serial Number
+              </p>
               <Barcode128
                 value={finalAssemblyBarcode}
                 height={56}

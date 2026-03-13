@@ -82,11 +82,17 @@ export function PrintUnit({
           ))}
         </div>
 
-        {/* Bottom: Final Assembly — full-width Code 128 (GS1-128, customer-facing) */}
+        {/* Bottom: Final Assembly — customer label */}
         {barcodes.filter(b => b.isFinal).map(({ label, value }) => (
           <div key={label} style={{ border: '2px solid #000', borderRadius: 6, padding: 14, textAlign: 'center' }}>
             <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 8, color: '#333' }}>
-              ★ {label} — Customer Label (Code 128)
+              ★ {label} — Serial Number Label
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 'bold', color: '#111', marginBottom: 8 }}>
+              NOTE: Warranty Void If Removed
+            </div>
+            <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1.5, color: '#444', marginBottom: 8 }}>
+              Serial Number
             </div>
             {value && <Barcode128 value={value} width={2.5} height={70} fontSize={13} background="#ffffff" lineColor="#000000" />}
             <div style={{ fontSize: 10, fontFamily: 'monospace', color: '#111', marginTop: 4, fontWeight: 'bold', letterSpacing: 2 }}>{value || '—'}</div>

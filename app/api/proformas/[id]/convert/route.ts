@@ -3,7 +3,7 @@ import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
 import { generateNextSerial } from '@/lib/serial';
-import { generateNextPowerstageBarcode, generateNextBrainboardBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
+import { generateNextPowerstageBarcode, generateNextBrainboardBarcode, generateNextQCBarcode } from '@/lib/barcode';
 import { StageType } from '@prisma/client';
 import { z } from 'zod';
 
@@ -72,7 +72,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const powerstageBarcode   = await generateNextPowerstageBarcode(product.code);
       const brainboardBarcode   = await generateNextBrainboardBarcode(product.code);
       const qcBarcode           = await generateNextQCBarcode(product.code);
-      const finalAssemblyBarcode= await generateNextFinalAssemblyBarcode(product.code);
       await prisma.controllerUnit.create({
         data: {
           serialNumber: serial,
@@ -83,7 +82,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           powerstageBarcode,
           brainboardBarcode,
           qcBarcode,
-          finalAssemblyBarcode,
         },
       });
     }
