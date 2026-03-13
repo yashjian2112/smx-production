@@ -49,19 +49,9 @@ export function PrintComponent({
       @media print {
         * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         @page { margin: 0; size: 50mm 25mm; }
-        html, body { margin: 0 !important; padding: 0 !important; width: 50mm !important; background: white !important; overflow: hidden !important; }
+        html, body { margin: 0 !important; padding: 0 !important; width: 50mm !important; background: white !important; }
         .no-print { display: none !important; }
-        body.print-component * { visibility: hidden !important; }
-        body.print-component .print-sheet,
-        body.print-component .print-sheet * { visibility: visible !important; }
-        body.print-component .print-sheet {
-          position: fixed;
-          inset: 0 auto auto 0;
-          width: 50mm;
-          margin: 0 !important;
-          padding: 0 !important;
-          background: white !important;
-        }
+        .print-sheet,
         .sticker-grid { display: block; width: 50mm; margin: 0; padding: 0; }
         .sticker {
           width: 50mm;
@@ -94,18 +84,11 @@ export function PrintComponent({
     `;
     document.head.appendChild(style);
     function onAfterPrint() {
-      document.body.classList.remove('print-component');
       if (pendingBarcodes.current.length > 0) setPrintState('confirm');
     }
-    function onBeforePrint() {
-      document.body.classList.add('print-component');
-    }
-    window.addEventListener('beforeprint', onBeforePrint);
     window.addEventListener('afterprint', onAfterPrint);
     return () => {
-      document.body.classList.remove('print-component');
       style.remove();
-      window.removeEventListener('beforeprint', onBeforePrint);
       window.removeEventListener('afterprint', onAfterPrint);
     };
   }, []);
@@ -132,11 +115,17 @@ export function PrintComponent({
 
   async function confirmPrinted() {
     try {
-      await fetch(`/api/products/${productId}/components/bulk`, {
+      const res = await fetch(`/api/products/${productId}/components/bulk`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ barcodes: pendingBarcodes.current }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Failed to save printed barcodes');
+        setPrintState('confirm');
+        return;
+      }
       const now = new Date();
       const confirmed = pendingBarcodes.current.map((bc) => ({ barcode: bc, printedAt: now }));
       setHistory((h) => [...confirmed, ...h]);
@@ -310,17 +299,17 @@ export function PrintComponent({
           )}
           <div className="print-sheet">
             <div className="sticker-grid">
-            {stickers.map((bc, i) => (
-              <div key={i} className="sticker">
-                <QRCodeCanvas value={bc} size={66} dark="#000000" light="#ffffff" />
-                <div className="sticker-text">
-                  <div className="sticker-name">{name}</div>
-                  {partNumber && <div className="sticker-part">{partNumber}</div>}
-                  <div className="sticker-barcode">{bc}</div>
-                  <div className="sticker-meta">{productCode} · {STAGE_LABELS[stage] ?? stage}</div>
+              {stickers.map((bc, i) => (
+                <div key={i} className="sticker">
+                  <QRCodeCanvas value={bc} size={66} dark="#000000" light="#ffffff" />
+                  <div className="sticker-text">
+                    <div className="sticker-name">{name}</div>
+                    {partNumber && <div className="sticker-part">{partNumber}</div>}
+                    <div className="sticker-barcode">{bc}</div>
+                    <div className="sticker-meta">{productCode} · {STAGE_LABELS[stage] ?? stage}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
             </div>
           </div>
         </>
