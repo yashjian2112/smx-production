@@ -147,6 +147,17 @@ export function DispatchSection({
                 </svg>
                 Print Controller Label
               </a>
+              {sessionRole === 'ADMIN' && (
+                <a
+                  href={`/print/unit/manual?productCode=${encodeURIComponent(productCode)}&productName=${encodeURIComponent(productName)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold"
+                  style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.2)', color: '#fbbf24' }}
+                >
+                  Manual Print
+                </a>
+              )}
             </div>
           ) : (
             <div

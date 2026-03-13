@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { PrintComponent } from './PrintComponent';
 
 export default async function PrintComponentPage({ params }: { params: Promise<{ compId: string }> }) {
   const { compId } = await params;
+  const session = await getSession();
 
   const component = await prisma.productComponent.findUnique({
     where: { id: compId },
@@ -61,7 +63,20 @@ export default async function PrintComponentPage({ params }: { params: Promise<{
                   Product {component.product.code} · {component.product.name}
                 </p>
               </div>
-              <span className="text-xs text-zinc-500">{units.length} unit{units.length !== 1 ? 's' : ''}</span>
+              <div className="flex items-center gap-3">
+                {session?.role === 'ADMIN' && (
+                  <a
+                    href={`/print/unit/manual?productCode=${encodeURIComponent(component.product.code)}&productName=${encodeURIComponent(component.product.name)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-2 rounded-lg text-xs font-semibold"
+                    style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}
+                  >
+                    Manual Print
+                  </a>
+                )}
+                <span className="text-xs text-zinc-500">{units.length} unit{units.length !== 1 ? 's' : ''}</span>
+              </div>
             </div>
 
             {units.length === 0 ? (
