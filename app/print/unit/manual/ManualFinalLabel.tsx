@@ -430,12 +430,12 @@ export function ManualFinalLabel({
                     <div
                       style={{
                         width: '100%',
-                        fontSize: '1.3mm',
+                        fontSize: '2.6mm',
                         fontWeight: 800,
                         fontFamily: 'var(--font-poppins, sans-serif)',
                         textTransform: 'uppercase',
-                        letterSpacing: '0.05mm',
-                        lineHeight: 1.05,
+                        letterSpacing: '0.03mm',
+                        lineHeight: 0.98,
                         textAlign: 'center',
                       }}
                     >
@@ -465,8 +465,9 @@ export function ManualFinalLabel({
                     </div>
                     <div
                       style={{
-                        fontSize: '3.55mm',
+                        fontSize: '4.25mm',
                         fontWeight: 900,
+                        fontFamily: 'var(--font-poppins, sans-serif)',
                         letterSpacing: '0.02mm',
                         lineHeight: 1,
                         textTransform: 'uppercase',
