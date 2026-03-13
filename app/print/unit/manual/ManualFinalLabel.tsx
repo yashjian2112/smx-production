@@ -836,16 +836,16 @@ export function ManualFinalLabel({
                       className="sticker-inner"
                       style={{
                         width: '46mm',
-                        height: '21mm',
+                        height: '23mm',
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'center',
                         alignItems: 'center',
-                        gap: '0.5mm',
+                        gap: '0.3mm',
                         background: '#fff',
                         color: '#111',
                         fontFamily: 'Arial, Helvetica, sans-serif',
-                        padding: '1mm 1.4mm',
+                        padding: '0.5mm 1.4mm',
                         border: 'none',
                         outline: 'none',
                       }}
@@ -854,8 +854,8 @@ export function ManualFinalLabel({
                       <div
                         style={{
                           width: '100%',
-                          fontSize: '3.2mm',
-                          fontWeight: 900,
+                          fontSize: '2.2mm',
+                          fontWeight: 800,
                           fontFamily: 'Arial, Helvetica, sans-serif',
                           textTransform: 'uppercase',
                           letterSpacing: '0.04mm',
@@ -870,12 +870,12 @@ export function ManualFinalLabel({
                       {/* "Serial Number" label */}
                       <div
                         style={{
-                          fontSize: '2.4mm',
-                          fontWeight: 700,
+                          fontSize: '1.6mm',
+                          fontWeight: 600,
                           fontFamily: 'Arial, Helvetica, sans-serif',
                           textTransform: 'uppercase',
-                          letterSpacing: '0.2mm',
-                          color: '#333',
+                          letterSpacing: '0.1mm',
+                          color: '#444',
                           lineHeight: 1,
                         }}
                       >
@@ -887,7 +887,7 @@ export function ManualFinalLabel({
                         <Barcode128
                           value={sticker.serial}
                           width={1.5}
-                          height={20}
+                          height={30}
                           displayValue={false}
                           fontSize={9}
                           background="#ffffff"
@@ -895,10 +895,10 @@ export function ManualFinalLabel({
                         />
                       </div>
 
-                      {/* Serial text — largest, most prominent */}
+                      {/* Serial text */}
                       <div
                         style={{
-                          fontSize: '5.5mm',
+                          fontSize: '4.0mm',
                           fontWeight: 900,
                           fontFamily: 'Arial, Helvetica, sans-serif',
                           letterSpacing: '0.1mm',
