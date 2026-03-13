@@ -99,9 +99,10 @@ model ComponentCheck {
 
 // ----- Orders -----
 model Order {
-  id          String    @id @default(cuid())
-  orderNumber String    @unique @map("order_number")
-  productId   String    @map("product_id")
+  id                 String    @id @default(cuid())
+  orderNumber        String    @unique @map("order_number")
+  websiteOrderNumber String?   @map("website_order_number")
+  productId          String    @map("product_id")
   quantity    Int
   dueDate     DateTime? @map("due_date")
   priority    Int       @default(0)  // higher = more urgent
