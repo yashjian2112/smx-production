@@ -5,7 +5,8 @@ import { Barcode128 } from '@/components/Barcode128';
 
 const MONTH_CODES = ['JA', 'FE', 'MR', 'AP', 'MY', 'JN', 'JL', 'AU', 'SE', 'OC', 'NO', 'DE'] as const;
 type Tab = 'print' | 'history';
-type ManualSticker = { serial: string };
+type GeneratedSerial = { serial: string; copies: number };
+type PrintableSticker = { serial: string; copyNumber: number; totalCopies: number };
 
 function padSequence(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 3);
@@ -32,9 +33,10 @@ export function ManualFinalLabel({
   const [productName, setProductName] = useState(initialProductName);
   const [startSequence, setStartSequence] = useState('001');
   const [qty, setQty] = useState(1);
+  const [copies, setCopies] = useState(1);
   const [manualPrefix, setManualPrefix] = useState('');
-  const [stickers, setStickers] = useState<ManualSticker[]>([]);
-  const [history, setHistory] = useState<ManualSticker[]>([]);
+  const [stickers, setStickers] = useState<PrintableSticker[]>([]);
+  const [history, setHistory] = useState<GeneratedSerial[]>([]);
 
   const computedPrefix = useMemo(() => {
     const code = productCode.trim().toUpperCase();
@@ -89,14 +91,21 @@ export function ManualFinalLabel({
     const start = Number(padSequence(startSequence));
     return Array.from({ length: qty }, (_, index) => {
       const seq = String(start + index).padStart(3, '0');
-      return { serial: `${prefix}${seq}` };
+      return { serial: `${prefix}${seq}`, copies };
     });
   }
 
   function generateAndPrint() {
-    const next = buildSerials();
-    setStickers(next);
-    setHistory((prev) => [...next, ...prev]);
+    const generated = buildSerials();
+    const printable = generated.flatMap((item) =>
+      Array.from({ length: item.copies }, (_, index) => ({
+        serial: item.serial,
+        copyNumber: index + 1,
+        totalCopies: item.copies,
+      }))
+    );
+    setStickers(printable);
+    setHistory((prev) => [...generated, ...prev]);
   }
 
   return (
@@ -154,7 +163,7 @@ export function ManualFinalLabel({
                 <p className="text-[11px] text-zinc-600 mt-1">Auto prefix: {computedPrefix || '—'}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Start Sequence</label>
                   <input
@@ -176,6 +185,18 @@ export function ManualFinalLabel({
                     className="input-field text-sm font-mono"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Copies</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={copies}
+                    onChange={(e) => setCopies(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                    className="input-field text-sm font-mono"
+                  />
+                </div>
               </div>
             </div>
 
@@ -186,7 +207,7 @@ export function ManualFinalLabel({
               className="w-full py-3 rounded-xl text-sm font-semibold disabled:opacity-50"
               style={{ background: '#0ea5e9', color: '#fff' }}
             >
-              Generate & Print {qty} sticker{qty !== 1 ? 's' : ''}
+              Generate {qty} serial{qty !== 1 ? 's' : ''} · Print {qty * copies} sticker{qty * copies !== 1 ? 's' : ''}
             </button>
           </div>
 
@@ -212,7 +233,9 @@ export function ManualFinalLabel({
             <div className="p-4">
               {tab === 'print' ? (
                 <div className="text-sm text-zinc-500">
-                  {stickers.length === 0 ? 'Set qty and click Generate & Print.' : `${stickers.length} sticker${stickers.length !== 1 ? 's' : ''} ready.`}
+                  {stickers.length === 0
+                    ? 'Set qty and copies, then click Generate & Print.'
+                    : `${qty} serial${qty !== 1 ? 's' : ''} generated · ${stickers.length} sticker${stickers.length !== 1 ? 's' : ''} ready.`}
                 </div>
               ) : history.length === 0 ? (
                 <div className="text-sm text-zinc-500">No manual final stickers yet.</div>
@@ -221,6 +244,7 @@ export function ManualFinalLabel({
                   {history.map((item, index) => (
                     <div key={`${item.serial}-${index}`} className="rounded-lg px-3 py-2 text-sm font-mono text-zinc-200" style={{ background: 'rgba(255,255,255,0.04)' }}>
                       {item.serial}
+                      <span className="ml-2 text-xs text-zinc-500">x{item.copies}</span>
                     </div>
                   ))}
                 </div>
@@ -269,6 +293,11 @@ export function ManualFinalLabel({
                     <div style={{ fontSize: '2.8mm', fontWeight: 800, fontFamily: 'monospace', letterSpacing: '0.2mm' }}>
                       {sticker.serial}
                     </div>
+                    {sticker.totalCopies > 1 && (
+                      <div style={{ fontSize: '1.8mm', fontWeight: 700, color: '#444' }}>
+                        Copy {sticker.copyNumber} / {sticker.totalCopies}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
