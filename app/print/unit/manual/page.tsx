@@ -125,13 +125,21 @@ export default async function ManualFinalLabelPage({
 
     let lastManualSeq = 0;
     for (const log of logs) {
-      const p = parseBatch(log.details, log.createdAt, 'PENDING');
-      if (!p) continue;
-      for (const item of p.items) {
-        if (item.serial.startsWith(prefix)) {
-          const seq = parseInt(item.serial.slice(prefix.length), 10) || 0;
-          if (seq > lastManualSeq) lastManualSeq = seq;
-        }
+      if (!log.details) continue;
+      let rawItems: unknown[] = [];
+      try {
+        const parsed = JSON.parse(log.details) as { items?: unknown };
+        rawItems = Array.isArray(parsed?.items) ? parsed.items : [];
+      } catch {
+        continue;
+      }
+      for (const raw of rawItems) {
+        if (!raw || typeof raw !== 'object') continue;
+        const item = raw as Record<string, unknown>;
+        const serial = typeof item.serial === 'string' ? item.serial.trim().toUpperCase() : '';
+        if (!serial.startsWith(prefix)) continue;
+        const seq = parseInt(serial.slice(prefix.length), 10) || 0;
+        if (seq > lastManualSeq) lastManualSeq = seq;
       }
     }
 

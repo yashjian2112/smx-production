@@ -94,8 +94,9 @@ export function ManualFinalLabel({
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [lastSavedCount, setLastSavedCount] = useState(0);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const fetchSeqTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const confirmBoxRef   = useRef<HTMLDivElement | null>(null);
+  const fetchSeqTimeout  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmBoxRef    = useRef<HTMLDivElement | null>(null);
+  const isInitialMount   = useRef(true);
 
   const computedPrefix = useMemo(() => {
     const code = productCode.trim().toUpperCase();
@@ -108,10 +109,15 @@ export function ManualFinalLabel({
     [clientId, clients]
   );
 
-  // Auto-fetch next sequence when productCode changes (debounced 600ms)
+  // Auto-fetch next sequence when productCode changes (debounced 600ms).
+  // Skip on initial mount — the server already computed the correct initialNextSequence.
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     const code = productCode.trim().toUpperCase();
-    if (!code || manualPrefix.trim()) return; // skip if manual prefix is set
+    if (!code || manualPrefix.trim()) return;
     if (fetchSeqTimeout.current) clearTimeout(fetchSeqTimeout.current);
     fetchSeqTimeout.current = setTimeout(async () => {
       try {
