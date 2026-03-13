@@ -325,11 +325,15 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
             </div>
           </div>
 
-          <label className={labelCls}>State <span className="text-slate-600 font-normal text-[10px]">(for GST calculation)</span></label>
-          <input className={inputCls} placeholder="e.g. Gujarat, Maharashtra…" value={form.state} onChange={(e) => field('state', e.target.value)} />
+          {form.globalOrIndian !== 'Global' && (
+            <>
+              <label className={labelCls}>State <span className="text-slate-600 font-normal text-[10px]">(for GST calculation)</span></label>
+              <input className={inputCls} placeholder="e.g. Gujarat, Maharashtra…" value={form.state} onChange={(e) => field('state', e.target.value)} />
 
-          <label className={labelCls}>GST Number</label>
-          <input className={inputCls} placeholder="22AAAAA0000A1Z5" value={form.gstNumber} onChange={(e) => field('gstNumber', e.target.value.toUpperCase())} />
+              <label className={labelCls}>GST Number</label>
+              <input className={inputCls} placeholder="22AAAAA0000A1Z5" value={form.gstNumber} onChange={(e) => field('gstNumber', e.target.value.toUpperCase())} />
+            </>
+          )}
 
           <label className={labelCls}>Billing Address</label>
           <textarea
@@ -413,11 +417,15 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
             </div>
           </div>
 
-          <label className={labelCls}>State <span className="text-slate-600 font-normal text-[10px]">(for GST calculation)</span></label>
-          <input className={inputCls} placeholder="e.g. Gujarat, Maharashtra…" value={form.state} onChange={(e) => field('state', e.target.value)} />
+          {form.globalOrIndian !== 'Global' && (
+            <>
+              <label className={labelCls}>State <span className="text-slate-600 font-normal text-[10px]">(for GST calculation)</span></label>
+              <input className={inputCls} placeholder="e.g. Gujarat, Maharashtra…" value={form.state} onChange={(e) => field('state', e.target.value)} />
 
-          <label className={labelCls}>GST Number</label>
-          <input className={inputCls} value={form.gstNumber} onChange={(e) => field('gstNumber', e.target.value.toUpperCase())} />
+              <label className={labelCls}>GST Number</label>
+              <input className={inputCls} value={form.gstNumber} onChange={(e) => field('gstNumber', e.target.value.toUpperCase())} />
+            </>
+          )}
 
           <label className={labelCls}>Billing Address</label>
           <textarea
