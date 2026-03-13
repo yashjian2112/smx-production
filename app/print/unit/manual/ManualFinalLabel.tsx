@@ -539,9 +539,10 @@ export function ManualFinalLabel({
                   <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Start Seq</label>
                   <input
                     value={startSequence}
-                    onChange={(e) => setStartSequence(padSequence(e.target.value))}
-                    className="input-field text-sm font-mono"
-                    placeholder="001"
+                    readOnly
+                    className="input-field text-sm font-mono cursor-not-allowed"
+                    style={{ opacity: 0.6 }}
+                    tabIndex={-1}
                   />
                 </div>
 
