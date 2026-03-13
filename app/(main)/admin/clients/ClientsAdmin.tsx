@@ -54,7 +54,6 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
 
   function openEdit(c: ClientRow) {
     setForm({
-      code: c.code,
       customerName: c.customerName,
       email: c.email ?? '',
       phone: c.phone ?? '',
