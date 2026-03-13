@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Barcode128 } from '@/components/Barcode128';
 
 const MONTH_CODES = ['JA', 'FE', 'MR', 'AP', 'MY', 'JN', 'JL', 'AU', 'SE', 'OC', 'NO', 'DE'] as const;
+type Tab = 'print' | 'history';
+type ManualSticker = { serial: string };
 
 function padSequence(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 3);
@@ -25,76 +27,98 @@ export function ManualFinalLabel({
   initialProductCode: string;
   initialProductName: string;
 }) {
+  const [tab, setTab] = useState<Tab>('print');
   const [productCode, setProductCode] = useState(initialProductCode.toUpperCase());
   const [productName, setProductName] = useState(initialProductName);
-  const [sequence, setSequence] = useState('001');
-  const [manualSerial, setManualSerial] = useState('');
+  const [startSequence, setStartSequence] = useState('001');
+  const [qty, setQty] = useState(1);
+  const [manualPrefix, setManualPrefix] = useState('');
+  const [stickers, setStickers] = useState<ManualSticker[]>([]);
+  const [history, setHistory] = useState<ManualSticker[]>([]);
 
-  const generatedSerial = useMemo(() => {
+  const computedPrefix = useMemo(() => {
     const code = productCode.trim().toUpperCase();
     if (!code) return '';
-    return `${code}${currentYear2()}${currentMonthCode()}${padSequence(sequence)}`;
-  }, [productCode, sequence]);
-
-  const finalSerial = manualSerial.trim().toUpperCase() || generatedSerial;
+    return `${code}${currentYear2()}${currentMonthCode()}`;
+  }, [productCode]);
 
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
       @media print {
         * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        body.manual-final-print * { visibility: hidden; }
-        body.manual-final-print #manual-final-label,
-        body.manual-final-print #manual-final-label * { visibility: visible; }
-        body.manual-final-print #manual-final-label {
-          position: fixed;
-          inset: 0;
+        @page { margin: 0; size: 50mm 25mm; }
+        html, body { margin: 0 !important; padding: 0 !important; width: 50mm !important; background: white !important; }
+        .no-print { display: none !important; }
+        .print-root { min-height: 0 !important; padding: 0 !important; margin: 0 !important; width: 50mm !important; }
+        .print-sheet,
+        .sticker-grid { display: block; width: 50mm; margin: 0; padding: 0; }
+        .sticker {
+          width: 50mm;
+          height: 25mm;
+          margin: 0;
+          border: 0;
+          border-radius: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          break-inside: avoid;
+          page-break-inside: avoid;
+          break-after: page;
+          page-break-after: always;
           background: white;
           color: black;
-          padding: 24px;
         }
-        .no-print { display: none !important; }
+        .sticker:last-child { break-after: auto; page-break-after: auto; }
       }
     `;
     document.head.appendChild(style);
-
-    function onBeforePrint() {
-      document.body.classList.add('manual-final-print');
-    }
-    function onAfterPrint() {
-      document.body.classList.remove('manual-final-print');
-    }
-
-    window.addEventListener('beforeprint', onBeforePrint);
-    window.addEventListener('afterprint', onAfterPrint);
+    const t = setTimeout(() => {
+      if (stickers.length > 0) window.print();
+    }, 150);
     return () => {
-      document.body.classList.remove('manual-final-print');
-      window.removeEventListener('beforeprint', onBeforePrint);
-      window.removeEventListener('afterprint', onAfterPrint);
+      clearTimeout(t);
       style.remove();
     };
-  }, []);
+  }, [stickers]);
+
+  function buildSerials() {
+    const prefix = (manualPrefix.trim().toUpperCase() || computedPrefix).trim();
+    if (!prefix) return [];
+    const start = Number(padSequence(startSequence));
+    return Array.from({ length: qty }, (_, index) => {
+      const seq = String(start + index).padStart(3, '0');
+      return { serial: `${prefix}${seq}` };
+    });
+  }
+
+  function generateAndPrint() {
+    const next = buildSerials();
+    setStickers(next);
+    setHistory((prev) => [...next, ...prev]);
+  }
 
   return (
-    <div className="min-h-dvh p-4" style={{ fontFamily: 'var(--font-poppins, sans-serif)' }}>
-      <div className="max-w-4xl mx-auto space-y-4">
-        <div className="no-print flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => window.close()}
-            className="text-sm text-zinc-500 hover:text-white transition-colors"
-          >
-            ← Close
-          </button>
-        </div>
+    <div className="print-root min-h-dvh p-4" style={{ fontFamily: 'var(--font-poppins, sans-serif)' }}>
+      <div className="max-w-5xl mx-auto grid lg:grid-cols-[340px_1fr] gap-4">
+        <div className="no-print space-y-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => window.close()}
+              className="text-sm text-zinc-500 hover:text-white transition-colors"
+            >
+              ← Close
+            </button>
+          </div>
 
-        <div className="grid lg:grid-cols-[340px_1fr] gap-4">
-          <div className="no-print card p-5 space-y-4">
+          <div className="card p-5 space-y-4">
             <div>
               <p className="text-xs uppercase tracking-widest text-amber-400 font-semibold">Admin Only</p>
-              <h1 className="text-xl font-semibold text-white mt-1">Manual Final Assembly Label</h1>
+              <h1 className="text-xl font-semibold text-white mt-1">Manual Final Sticker</h1>
               <p className="text-sm text-zinc-400 mt-2">
-                Print a controller serial sticker directly for Final Assembly.
+                Print controller final stickers in the same small-label format as regular labels.
               </p>
             </div>
 
@@ -110,93 +134,144 @@ export function ManualFinalLabel({
               </div>
 
               <div>
-                <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Product Name (optional)</label>
+                <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Product Name</label>
                 <input
                   value={productName}
                   onChange={(e) => setProductName(e.target.value)}
                   className="input-field text-sm"
-                  placeholder="e.g. SM350 Controller"
+                  placeholder="e.g. SM350"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Sequence</label>
+                <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Prefix</label>
                 <input
-                  value={sequence}
-                  onChange={(e) => setSequence(padSequence(e.target.value))}
+                  value={manualPrefix}
+                  onChange={(e) => setManualPrefix(e.target.value.toUpperCase())}
                   className="input-field text-sm font-mono"
-                  placeholder="001"
+                  placeholder={computedPrefix || 'Auto from product + year + batch'}
                 />
-                <p className="text-[11px] text-zinc-600 mt-1">
-                  Format: {productCode.trim().toUpperCase() || 'MODEL'}{currentYear2()}{currentMonthCode()}{padSequence(sequence)}
-                </p>
+                <p className="text-[11px] text-zinc-600 mt-1">Auto prefix: {computedPrefix || '—'}</p>
               </div>
 
-              <div>
-                <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Manual Serial Override (optional)</label>
-                <input
-                  value={manualSerial}
-                  onChange={(e) => setManualSerial(e.target.value.toUpperCase())}
-                  className="input-field text-sm font-mono"
-                  placeholder="Enter full serial if needed"
-                />
-              </div>
-            </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Start Sequence</label>
+                  <input
+                    value={startSequence}
+                    onChange={(e) => setStartSequence(padSequence(e.target.value))}
+                    className="input-field text-sm font-mono"
+                    placeholder="001"
+                  />
+                </div>
 
-            <div className="rounded-xl p-3 text-sm" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.18)' }}>
-              <p className="text-amber-300 font-medium">Preview Serial</p>
-              <p className="font-mono text-zinc-100 mt-1">{finalSerial || '—'}</p>
+                <div>
+                  <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-1">Qty</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={qty}
+                    onChange={(e) => setQty(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+                    className="input-field text-sm font-mono"
+                  />
+                </div>
+              </div>
             </div>
 
             <button
               type="button"
-              onClick={() => window.print()}
-              disabled={!finalSerial}
+              onClick={generateAndPrint}
+              disabled={!(manualPrefix.trim() || computedPrefix)}
               className="w-full py-3 rounded-xl text-sm font-semibold disabled:opacity-50"
               style={{ background: '#0ea5e9', color: '#fff' }}
             >
-              Print Final Label
+              Generate & Print {qty} sticker{qty !== 1 ? 's' : ''}
             </button>
           </div>
 
-          <div id="manual-final-label" className="card p-6" style={{ background: '#fff', color: '#111' }}>
-            <div style={{ borderBottom: '2px solid #111', paddingBottom: 12, marginBottom: 16 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 2 }}>SMX DRIVES</div>
-              <div style={{ fontSize: 11, marginTop: 2 }}>Manual Final Assembly Serial Label</div>
+          <div className="card overflow-hidden">
+            <div className="flex border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              <button
+                type="button"
+                onClick={() => setTab('print')}
+                className={`flex-1 py-3 text-sm font-semibold transition-colors ${tab === 'print' ? 'text-sky-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                style={tab === 'print' ? { borderBottom: '2px solid #38bdf8', marginBottom: -1 } : {}}
+              >
+                Print
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('history')}
+                className={`flex-1 py-3 text-sm font-semibold transition-colors ${tab === 'history' ? 'text-sky-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                style={tab === 'history' ? { borderBottom: '2px solid #38bdf8', marginBottom: -1 } : {}}
+              >
+                History {history.length > 0 ? history.length : ''}
+              </button>
             </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>
-                {productCode.trim().toUpperCase() || 'MODEL'}{productName.trim() ? ` — ${productName.trim()}` : ''}
-              </div>
-              <div style={{ fontSize: 10, color: '#555' }}>
-                Batch: {currentMonthCode()} · Year: {currentYear2()}
-              </div>
-            </div>
-
-            <div style={{ border: '2px solid #000', borderRadius: 6, padding: 18, textAlign: 'center' }}>
-              <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.8, marginBottom: 8, color: '#333' }}>
-                Final Assembly Serial Label
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#111', marginBottom: 8 }}>
-                NOTE: Warranty Void If Removed
-              </div>
-              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5, color: '#444', marginBottom: 10 }}>
-                Serial Number
-              </div>
-              {finalSerial && (
-                <Barcode128
-                  value={finalSerial}
-                  width={2.4}
-                  height={72}
-                  fontSize={13}
-                  background="#ffffff"
-                  lineColor="#000000"
-                />
+            <div className="p-4">
+              {tab === 'print' ? (
+                <div className="text-sm text-zinc-500">
+                  {stickers.length === 0 ? 'Set qty and click Generate & Print.' : `${stickers.length} sticker${stickers.length !== 1 ? 's' : ''} ready.`}
+                </div>
+              ) : history.length === 0 ? (
+                <div className="text-sm text-zinc-500">No manual final stickers yet.</div>
+              ) : (
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {history.map((item, index) => (
+                    <div key={`${item.serial}-${index}`} className="rounded-lg px-3 py-2 text-sm font-mono text-zinc-200" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                      {item.serial}
+                    </div>
+                  ))}
+                </div>
               )}
-              <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#111', marginTop: 6, fontWeight: 700, letterSpacing: 1.5 }}>
-                {finalSerial || '—'}
-              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="print-sheet">
+            <div className="sticker-grid">
+              {stickers.map((sticker, index) => (
+                <div key={`${sticker.serial}-${index}`} className="sticker">
+                  <div
+                    style={{
+                      width: '46mm',
+                      height: '21mm',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      gap: '1.2mm',
+                      border: '0.4mm solid #111',
+                      borderRadius: '1.5mm',
+                      background: '#fff',
+                      color: '#111',
+                      padding: '1.5mm 2mm',
+                    }}
+                  >
+                    <div style={{ fontSize: '2.1mm', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6mm' }}>
+                      Warranty Void If Removed
+                    </div>
+                    <div style={{ fontSize: '1.9mm', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.45mm', color: '#444' }}>
+                      Serial Number
+                    </div>
+                    <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+                      <Barcode128
+                        value={sticker.serial}
+                        width={1.55}
+                        height={34}
+                        fontSize={10}
+                        background="#ffffff"
+                        lineColor="#000000"
+                      />
+                    </div>
+                    <div style={{ fontSize: '2.8mm', fontWeight: 800, fontFamily: 'monospace', letterSpacing: '0.2mm' }}>
+                      {sticker.serial}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
