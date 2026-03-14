@@ -78,6 +78,14 @@ const Icons = {
       <path d="M5 10h11a4 4 0 0 1 0 8h-1" />
     </svg>
   ),
+  Shipping: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="3" width="15" height="13" rx="1" />
+      <path d="M16 8h4l3 3v5h-7V8z" />
+      <circle cx="5.5" cy="18.5" r="2.5" />
+      <circle cx="18.5" cy="18.5" r="2.5" />
+    </svg>
+  ),
   Admin: () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
@@ -106,18 +114,18 @@ type NavItem = { href: string; label: string; icon: keyof typeof Icons };
 
 const managerNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
-  { href: '/orders',   label: 'Orders',    icon: 'Orders' },
-  { href: '/serial',   label: 'Serial',    icon: 'Serial' },
-  { href: '/rework',   label: 'Returns',   icon: 'Returns' },
-  { href: '/reports',  label: 'Reports',   icon: 'Reports' },
+  { href: '/orders',    label: 'Orders',    icon: 'Orders' },
+  { href: '/shipping',  label: 'Shipping',  icon: 'Shipping' },
+  { href: '/rework',    label: 'Returns',   icon: 'Returns' },
+  { href: '/reports',   label: 'Reports',   icon: 'Reports' },
 ];
 
 const adminNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
-  { href: '/orders',   label: 'Orders',    icon: 'Orders' },
-  { href: '/rework',   label: 'Returns',   icon: 'Returns' },
-  { href: '/reports',  label: 'Reports',   icon: 'Reports' },
-  { href: '/admin',    label: 'Admin',     icon: 'Admin' },
+  { href: '/orders',    label: 'Orders',    icon: 'Orders' },
+  { href: '/shipping',  label: 'Shipping',  icon: 'Shipping' },
+  { href: '/rework',    label: 'Returns',   icon: 'Returns' },
+  { href: '/admin',     label: 'Admin',     icon: 'Admin' },
 ];
 
 const employeeNav: NavItem[] = [
@@ -134,6 +142,7 @@ const salesNav: NavItem[] = [
 
 const accountsNav: NavItem[] = [
   { href: '/accounts',          label: 'Approvals', icon: 'Accounts' },
+  { href: '/shipping',          label: 'Shipping',  icon: 'Shipping' },
   { href: '/sales',             label: 'All PIs',   icon: 'Invoice' },
   { href: '/accounts/settings', label: 'Settings',  icon: 'Admin' },
 ];
