@@ -307,7 +307,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         if (next === StageType.QC_AND_SOFTWARE && !unit.qcBarcode) {
           stageBarcode.qcBarcode = await generateNextQCBarcode(productCode);
         }
-        if (next === StageType.FINAL_ASSEMBLY) {
+        if (next === StageType.FINAL_ASSEMBLY && !unit.finalAssemblyBarcode) {
           stageBarcode.finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(productCode);
         }
       }

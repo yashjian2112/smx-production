@@ -112,12 +112,16 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       label,
       units: unitsForStage.map((u) => {
         const field = STAGE_BARCODE_FIELD[key];
+        // For FA, only show the barcode if the unit has actually reached or completed FA
+        const unitAtOrPastStage =
+          key !== 'FINAL_ASSEMBLY' ||
+          STAGE_PIPELINE.indexOf(u.currentStage) >= STAGE_PIPELINE.indexOf('FINAL_ASSEMBLY');
         return {
           id: u.id,
           serialNumber: u.serialNumber,
           currentStage: u.currentStage,
           currentStatus: u.currentStatus,
-          barcodeForStage: field ? (u[field] ?? null) : null,
+          barcodeForStage: field && unitAtOrPastStage ? (u[field] ?? null) : null,
           derivedStatus: derivedStageStatus(u, key),
           // Pass PS + BB barcodes for Assembly multi-select modal
           powerstageBarcode: key === 'CONTROLLER_ASSEMBLY' ? (u.powerstageBarcode ?? null) : undefined,
