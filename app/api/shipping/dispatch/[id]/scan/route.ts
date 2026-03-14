@@ -32,9 +32,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (dispatch.status !== 'DRAFT')
       return NextResponse.json({ error: 'Dispatch is no longer in DRAFT state' }, { status: 400 });
 
-    // Find unit by finalAssemblyBarcode
+    // Find unit by finalAssemblyBarcode OR serialNumber (sticker encodes serial)
     const unit = await prisma.controllerUnit.findFirst({
-      where: { finalAssemblyBarcode: barcode },
+      where: { OR: [{ finalAssemblyBarcode: barcode }, { serialNumber: barcode }] },
       select: {
         id:                   true,
         serialNumber:         true,
