@@ -3,11 +3,11 @@ import { prisma } from './prisma';
 const PREFIX = 'SMX';
 
 /**
- * Generate next serial number: SMX + modelCode (4 digits) + year (2) + sequence (3).
- * Example: SMX100026001
+ * Generate next serial number: SMX + modelCode (full) + year (2) + sequence (3).
+ * Example: SMXCL35026001
  */
 export async function generateNextSerial(modelCode: string): Promise<string> {
-  const code = modelCode.padStart(4, '0').slice(0, 4);
+  const code = modelCode.trim().toUpperCase();
   const year = new Date().getFullYear() % 100;
   const yearStr = String(year).padStart(2, '0');
 
@@ -62,7 +62,8 @@ export async function generateStageBarcode(productCode: string, suffix: 'PS' | '
 }
 
 export function parseSerial(serial: string): { prefix: string; modelCode: string; year: number; sequence: number } | null {
-  const match = serial.match(/^SMX(\d{4})(\d{2})(\d{3})$/);
+  // Format: SMX + modelCode (variable length) + year (2 digits) + sequence (3 digits)
+  const match = serial.match(/^SMX(.+?)(\d{2})(\d{3})$/);
   if (!match) return null;
   return {
     prefix: 'SMX',
