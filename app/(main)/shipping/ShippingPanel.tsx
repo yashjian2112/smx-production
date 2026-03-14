@@ -141,7 +141,8 @@ function ScanPanel({
   const [isPartial, setIsPartial]       = useState(false);
   const [partialReason, setPartialReason] = useState('');
   const [abandonConfirm, setAbandonConfirm] = useState(false);
-  const [removing, setRemoving]   = useState<string | null>(null);
+  const [removing, setRemoving]     = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState('');
   const barcodeRef = useRef<HTMLInputElement>(null);
 
   const order     = dispatch.order;
@@ -210,8 +211,9 @@ function ScanPanel({
   // ── Remove a scanned item ──
   async function removeItem(itemId: string) {
     setRemoving(itemId);
+    setRemoveError('');
     try {
-      const res = await fetch(`/api/shipping/dispatch/${dispatch.id}/scan`, {
+      const res  = await fetch(`/api/shipping/dispatch/${dispatch.id}/scan`, {
         method:  'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ dispatchItemId: itemId }),
@@ -219,7 +221,12 @@ function ScanPanel({
       if (res.ok) {
         setDispatch((prev) => ({ ...prev, items: prev.items.filter((i) => i.id !== itemId) }));
         if (pendingPhotoItemId === itemId) setPendingPhotoItemId(null);
+      } else {
+        const data = await res.json() as { error?: string };
+        setRemoveError(data.error ?? 'Failed to remove item');
       }
+    } catch {
+      setRemoveError('Network error — could not remove item');
     } finally {
       setRemoving(null);
     }
@@ -372,6 +379,9 @@ function ScanPanel({
       {dispatch.items.length > 0 && (
         <div className="card p-4 space-y-3">
           <div className="text-sm font-semibold text-white">Scanned Controllers ({dispatch.items.length})</div>
+          {removeError && (
+            <div className="rounded-lg p-2 text-xs" style={mismatchStyle}>{removeError}</div>
+          )}
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {dispatch.items.map((item, i) => (
               <div

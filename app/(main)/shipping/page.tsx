@@ -9,7 +9,7 @@ export default async function ShippingPage() {
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const allowed = ['ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS'];
+  const allowed = ['ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING'];
   if (!allowed.includes(session.role)) redirect('/dashboard');
 
   // Active DRAFT dispatches (all open work)

@@ -33,7 +33,7 @@ async function nextDispatchNumber(): Promise<string> {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
 
     const body = createSchema.parse(await req.json());
 
