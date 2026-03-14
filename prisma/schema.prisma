@@ -49,6 +49,7 @@ enum Role {
   PRODUCTION_EMPLOYEE
   SALES
   ACCOUNTS
+  SHIPPING
 }
 
 // ----- Products / Models -----
@@ -554,7 +555,7 @@ model DispatchItem {
   scannedById        String    @map("scanned_by_id")
 
   dispatch  Dispatch       @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
-  unit      ControllerUnit @relation(fields: [unitId], references: [id])
+  unit      ControllerUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
   scannedBy User           @relation("DispatchItemScannedBy", fields: [scannedById], references: [id])
 
   @@unique([dispatchId, unitId])

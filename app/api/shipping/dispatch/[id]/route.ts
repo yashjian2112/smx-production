@@ -37,7 +37,7 @@ const dispatchInclude = {
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
 
     const dispatch = await prisma.dispatch.findUnique({
       where:   { id: params.id },
@@ -60,7 +60,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
 
     const dispatch = await prisma.dispatch.findUnique({
       where:  { id: params.id },
@@ -69,6 +69,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     if (!dispatch) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     if (dispatch.status !== 'DRAFT')
       return NextResponse.json({ error: 'Only DRAFT dispatches can be abandoned' }, { status: 400 });
+
+    // BUG#7 FIX: only the creator or ADMIN can abandon
+    if (dispatch.dispatchedById !== session.id && session.role !== 'ADMIN')
+      return NextResponse.json({ error: 'Only the dispatcher or an admin can abandon this dispatch' }, { status: 403 });
 
     await prisma.dispatch.delete({ where: { id: params.id } });
     return NextResponse.json({ ok: true });

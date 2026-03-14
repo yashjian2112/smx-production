@@ -147,6 +147,11 @@ const accountsNav: NavItem[] = [
   { href: '/accounts/settings', label: 'Settings',  icon: 'Admin' },
 ];
 
+const shippingNav: NavItem[] = [
+  { href: '/shipping',  label: 'Shipping',  icon: 'Shipping' },
+  { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
+];
+
 export function BottomNav({ role }: { role: string }) {
   const pathname = usePathname();
   const items =
@@ -154,6 +159,7 @@ export function BottomNav({ role }: { role: string }) {
     role === 'ADMIN'               ? adminNav    :
     role === 'SALES'               ? salesNav    :
     role === 'ACCOUNTS'            ? accountsNav :
+    role === 'SHIPPING'            ? shippingNav :
     managerNav;
 
   return (

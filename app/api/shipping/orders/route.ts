@@ -4,18 +4,29 @@ import { prisma } from '@/lib/prisma';
 
 /**
  * GET /api/shipping/orders
- * Returns all orders that have at least one controller ready for shipping.
- * "Ready" = FINAL_ASSEMBLY stage, COMPLETED or APPROVED status, readyForDispatch=false,
+ * Returns all orders with at least one controller ready for shipping.
+ * "Ready" = FINAL_ASSEMBLY, COMPLETED/APPROVED, readyForDispatch=false,
  *           and NOT already in a DRAFT or SUBMITTED dispatch item.
  */
 export async function GET() {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
+
+    // BUG#1 FIX: single query — count approved dispatch items per order directly
+    const approvedItems = await prisma.dispatchItem.findMany({
+      where:  { dispatch: { status: 'APPROVED' } },
+      select: { dispatch: { select: { orderId: true } } },
+    });
+    const dispatchedByOrder: Record<string, number> = {};
+    for (const item of approvedItems) {
+      const oid = item.dispatch.orderId;
+      dispatchedByOrder[oid] = (dispatchedByOrder[oid] ?? 0) + 1;
+    }
 
     // Find unit IDs already locked in active dispatches (DRAFT or SUBMITTED)
     const activeItems = await prisma.dispatchItem.findMany({
-      where: { dispatch: { status: { in: ['DRAFT', 'SUBMITTED'] } } },
+      where:  { dispatch: { status: { in: ['DRAFT', 'SUBMITTED'] } } },
       select: { unitId: true },
     });
     const lockedUnitIds = new Set(activeItems.map((i) => i.unitId));
@@ -23,44 +34,44 @@ export async function GET() {
     // Find all units ready to ship
     const readyUnits = await prisma.controllerUnit.findMany({
       where: {
-        currentStage:    'FINAL_ASSEMBLY',
-        currentStatus:   { in: ['COMPLETED', 'APPROVED'] },
+        currentStage:     'FINAL_ASSEMBLY',
+        currentStatus:    { in: ['COMPLETED', 'APPROVED'] },
         readyForDispatch: false,
       },
       select: {
-        id:                  true,
-        serialNumber:        true,
+        id:                   true,
+        serialNumber:         true,
         finalAssemblyBarcode: true,
-        currentStatus:       true,
-        orderId:             true,
+        currentStatus:        true,
+        orderId:              true,
         order: {
           select: {
             id:          true,
             orderNumber: true,
             quantity:    true,
             status:      true,
-            client: { select: { id: true, code: true, customerName: true } },
-            product: { select: { id: true, code: true, name: true } },
+            client:   { select: { id: true, code: true, customerName: true } },
+            product:  { select: { id: true, code: true, name: true } },
             dispatches: {
-              where: { status: { in: ['DRAFT', 'SUBMITTED'] } },
+              where:  { status: { in: ['DRAFT', 'SUBMITTED'] } },
               select: { id: true, dispatchNumber: true, status: true },
-              take: 1,
+              take:   1,
             },
           },
         },
       },
     });
 
-    // Filter out locked units and group by order
+    // Group by order, filtering out locked units
     const orderMap = new Map<string, {
-      orderId:       string;
-      orderNumber:   string;
-      quantity:      number;
-      orderStatus:   string;
-      client:        { id: string; code: string; customerName: string } | null;
-      product:       { id: string; code: string; name: string };
-      activeDraft:   { id: string; dispatchNumber: string; status: string } | null;
-      readyUnits:    { id: string; serialNumber: string; finalAssemblyBarcode: string | null; currentStatus: string }[];
+      orderId:     string;
+      orderNumber: string;
+      quantity:    number;
+      orderStatus: string;
+      client:      { id: string; code: string; customerName: string } | null;
+      product:     { id: string; code: string; name: string };
+      activeDraft: { id: string; dispatchNumber: string; status: string } | null;
+      readyUnits:  { id: string; serialNumber: string; finalAssemblyBarcode: string | null; currentStatus: string }[];
     }>();
 
     for (const unit of readyUnits) {
@@ -86,9 +97,9 @@ export async function GET() {
       });
     }
 
-    // Also include orders that have an active DRAFT/SUBMITTED dispatch (even if no more free units)
+    // Also include orders that only have an active DRAFT/SUBMITTED dispatch (no free units left)
     const activeDispatches = await prisma.dispatch.findMany({
-      where: { status: { in: ['DRAFT', 'SUBMITTED'] } },
+      where:  { status: { in: ['DRAFT', 'SUBMITTED'] } },
       select: {
         id:             true,
         dispatchNumber: true,
@@ -100,11 +111,10 @@ export async function GET() {
             orderNumber: true,
             quantity:    true,
             status:      true,
-            client: { select: { id: true, code: true, customerName: true } },
-            product: { select: { id: true, code: true, name: true } },
+            client:   { select: { id: true, code: true, customerName: true } },
+            product:  { select: { id: true, code: true, name: true } },
           },
         },
-        _count: { select: { items: true } },
       },
     });
 
@@ -121,33 +131,10 @@ export async function GET() {
           readyUnits:  [],
         });
       } else {
-        // Update activeDraft if missing
         const entry = orderMap.get(d.orderId)!;
         if (!entry.activeDraft) {
           entry.activeDraft = { id: d.id, dispatchNumber: d.dispatchNumber, status: d.status };
         }
-      }
-    }
-
-    // Count total dispatched for each order
-    const orderIds = Array.from(orderMap.keys());
-    const dispatchedCounts = await prisma.dispatchItem.groupBy({
-      by: ['dispatchId'],
-      where: {
-        dispatch: {
-          orderId: { in: orderIds },
-          status:  'APPROVED',
-        },
-      },
-      _count: { id: true },
-    });
-
-    // Build dispatched per order
-    const dispatchedByOrder: Record<string, number> = {};
-    for (const grp of dispatchedCounts) {
-      const d = await prisma.dispatch.findUnique({ where: { id: grp.dispatchId }, select: { orderId: true } });
-      if (d) {
-        dispatchedByOrder[d.orderId] = (dispatchedByOrder[d.orderId] ?? 0) + grp._count.id;
       }
     }
 
