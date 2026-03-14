@@ -45,8 +45,11 @@ export async function POST(
     const modelCode = order.product.code;
     let generated = 0;
 
+    const FA_STAGE_IDX = ['POWERSTAGE_MANUFACTURING','BRAINBOARD_MANUFACTURING','CONTROLLER_ASSEMBLY','QC_AND_SOFTWARE','FINAL_ASSEMBLY'].indexOf('FINAL_ASSEMBLY');
+
     for (const unit of order.units) {
-      const updates: Record<string, string> = {};
+      const updates: Record<string, string | null> = {};
+      const unitStageIdx = ['POWERSTAGE_MANUFACTURING','BRAINBOARD_MANUFACTURING','CONTROLLER_ASSEMBLY','QC_AND_SOFTWARE','FINAL_ASSEMBLY'].indexOf(unit.currentStage);
 
       if (!unit.powerstageBarcode)
         updates.powerstageBarcode = await generateNextPowerstageBarcode(modelCode);
@@ -54,8 +57,17 @@ export async function POST(
         updates.brainboardBarcode = await generateNextBrainboardBarcode(modelCode);
       if (!unit.qcBarcode)
         updates.qcBarcode = await generateNextQCBarcode(modelCode);
-      if (unit.currentStage === 'FINAL_ASSEMBLY' && !unit.finalAssemblyBarcode)
-        updates.finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(modelCode);
+
+      if (unitStageIdx >= FA_STAGE_IDX) {
+        // Unit is at or past FA — generate FA barcode if missing
+        if (!unit.finalAssemblyBarcode)
+          updates.finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(modelCode);
+      } else {
+        // Unit hasn't reached FA yet — clear any wrongly pre-assigned FA barcode
+        // so it will receive a fresh barcode in the correct format when it enters FA
+        if (unit.finalAssemblyBarcode)
+          updates.finalAssemblyBarcode = null;
+      }
 
       if (Object.keys(updates).length > 0) {
         await prisma.controllerUnit.update({ where: { id: unit.id }, data: updates });
