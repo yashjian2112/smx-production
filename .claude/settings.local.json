@@ -161,7 +161,16 @@
       "Bash(git merge claude/busy-gauss --no-edit)",
       "Bash(git add \"app/\\(main\\)/orders/CreateOrderForm.tsx\" \"app/api/orders/route.ts\" \"prisma/schema.prisma\")",
       "Bash(brew install poppler)",
-      "Bash(git add -A)"
+      "Bash(git add -A)",
+      "Bash(grep -r -n \"manual\\\\|Manual\" /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/print/unit/[id]/PrintUnit.tsx)",
+      "Bash(grep -rn \"manual\\\\|Manual\\\\|print\" /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/\\\\\\(main\\\\\\)/units/[id]/ --include=\"*.tsx\" -l)",
+      "Bash(grep -n \"manual\\\\|Manual\\\\|print\\\\|Print\\\\|sticker\\\\|Sticker\\\\|final\\\\|Final\" /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/\\\\\\(main\\\\\\)/units/[id]/UnitActions.tsx)",
+      "Bash(grep -rn \"manual\\\\|Manual\\\\|/print/unit/manual\" /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/\\\\\\(main\\\\\\)/units/[id]/ --include=\"*.tsx\")",
+      "Bash(ls /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/\\\\\\(main\\\\\\)/)",
+      "Bash(ls /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/units/[id]/dispatch/)",
+      "Bash(mkdir -p /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/shipping/dispatch/[id]/scan)",
+      "Bash(mkdir -p /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/shipping/dispatch/[id]/submit)",
+      "Bash(mkdir -p /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/shipping/dispatch/[id]/approve)"
     ]
   }
 }
