@@ -12,7 +12,7 @@ const YEAR_STR = String(new Date().getFullYear() % 100).padStart(2, '0');
 const FINAL_ASSEMBLY_MONTH_CODES = ['JA', 'FE', 'MR', 'AP', 'MY', 'JN', 'JL', 'AU', 'SE', 'OC', 'NO', 'DE'] as const;
 
 function modelPrefix(code: string): string {
-  return code.padStart(4, '0').slice(0, 4);
+  return code.trim().toUpperCase();
 }
 
 function finalAssemblyPrefix(code: string, date = new Date()): string {
