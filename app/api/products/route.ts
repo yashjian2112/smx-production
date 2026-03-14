@@ -19,7 +19,7 @@ export async function GET() {
 }
 
 const createSchema = z.object({
-  code: z.string().min(1).max(10),
+  code: z.string().min(1).max(10).regex(/^[A-Za-z0-9]+$/, 'Product code must be alphanumeric only (e.g. CL350) — no spaces or special characters'),
   name: z.string().min(1).max(100),
   description: z.string().optional(),
 });
