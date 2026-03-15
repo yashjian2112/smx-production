@@ -90,7 +90,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
     if (p) {
       updateItem(key, {
         productId,
-        description: `SMX${p.code} ${p.name}`,
+        description: p.name,
         hsnCode: '85371000',
       });
     } else {
@@ -388,7 +388,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                 <label className={lCls}>Product (from catalogue)</label>
                 <select value={item.productId} onChange={(e) => handleProductSelect(item.key, e.target.value)} className={sCls}>
                   <option value="">— Custom / manual entry —</option>
-                  {products.map((p) => <option key={p.id} value={p.id}>SMX{p.code} — {p.name}</option>)}
+                  {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
 

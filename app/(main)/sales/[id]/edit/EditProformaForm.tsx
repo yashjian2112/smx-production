@@ -167,7 +167,7 @@ export function EditProformaForm({
   function handleProductSelect(key: number, productId: string) {
     const p = products.find((x) => x.id === productId);
     if (p) {
-      updateItem(key, { productId, description: `SMX${p.code} ${p.name}`, hsnCode: '85371000' });
+      updateItem(key, { productId, description: p.name, hsnCode: '85371000' });
     } else {
       updateItem(key, { productId: '' });
     }
@@ -381,7 +381,7 @@ export function EditProformaForm({
                 <label className={lCls}>Product (from catalogue)</label>
                 <select value={item.productId} onChange={(e) => handleProductSelect(item.key, e.target.value)} className={sCls}>
                   <option value="">— Custom / manual entry —</option>
-                  {products.map((p) => <option key={p.id} value={p.id}>SMX{p.code} — {p.name}</option>)}
+                  {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
 
