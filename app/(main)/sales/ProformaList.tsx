@@ -26,17 +26,19 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; border: string }
 const TYPE_LABEL: Record<string, string> = { SALE: 'Sale', RETURN: 'Return', REPLACEMENT: 'Replacement' };
 
 export function ProformaList({ proformas, role }: { proformas: ProformaRow[]; role: string }) {
-  const [tab, setTab]     = useState<'active' | 'return' | 'replacement' | 'all'>('active');
+  const [tab, setTab]       = useState<'pi' | 'invoice' | 'return' | 'replacement'>('pi');
   const [search, setSearch] = useState('');
 
-  const active       = proformas.filter((p) => ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(p.status));
+  const piList       = proformas.filter((p) => p.invoiceNumber.startsWith('TSM/PI/') && p.invoiceType === 'SALE');
+  const invoiceList  = proformas.filter((p) => p.invoiceNumber.startsWith('TSM/ES/') || p.invoiceNumber.startsWith('TSM/DS/'));
   const returns      = proformas.filter((p) => p.invoiceType === 'RETURN');
   const replacements = proformas.filter((p) => p.invoiceType === 'REPLACEMENT');
+
   const list =
-    tab === 'active'      ? active :
+    tab === 'pi'          ? piList :
+    tab === 'invoice'     ? invoiceList :
     tab === 'return'      ? returns :
-    tab === 'replacement' ? replacements :
-    proformas;
+    replacements;
 
   const filtered = list.filter((p) => {
     if (!search) return true;
@@ -44,11 +46,11 @@ export function ProformaList({ proformas, role }: { proformas: ProformaRow[]; ro
     return p.invoiceNumber.toLowerCase().includes(q) || p.client.customerName.toLowerCase().includes(q);
   });
 
-  const tabs: Array<{ key: 'active' | 'return' | 'replacement' | 'all'; label: string; count: number }> = [
-    { key: 'active',      label: 'Active',      count: active.length },
-    { key: 'return',      label: 'Return',      count: returns.length },
-    { key: 'replacement', label: 'Replace',     count: replacements.length },
-    { key: 'all',         label: 'All',         count: proformas.length },
+  const tabs: Array<{ key: 'pi' | 'invoice' | 'return' | 'replacement'; label: string; count: number }> = [
+    { key: 'pi',          label: 'PI',      count: piList.length },
+    { key: 'invoice',     label: 'Invoice', count: invoiceList.length },
+    { key: 'return',      label: 'Return',  count: returns.length },
+    { key: 'replacement', label: 'Replace', count: replacements.length },
   ];
 
   return (

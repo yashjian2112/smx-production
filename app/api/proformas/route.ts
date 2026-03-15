@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { generateNextInvoiceNumber } from '@/lib/invoice-number';
+import { generateNextInvoiceNumber, generateNextExportInvoiceNumber, generateNextDomesticInvoiceNumber } from '@/lib/invoice-number';
 import { z } from 'zod';
 
 const itemSchema = z.object({
@@ -16,6 +16,7 @@ const itemSchema = z.object({
 
 const createSchema = z.object({
   clientId:         z.string().min(1),
+  documentType:     z.enum(['PROFORMA', 'INVOICE']).default('PROFORMA'),
   invoiceType:      z.enum(['SALE', 'RETURN', 'REPLACEMENT']).default('SALE'),
   currency:         z.enum(['INR', 'USD']).default('INR'),
   exchangeRate:     z.number().positive().optional(),
@@ -68,13 +69,20 @@ export async function POST(req: NextRequest) {
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { clientId, invoiceType, currency, exchangeRate, termsOfPayment, deliveryDays,
+    const { clientId, documentType, invoiceType, currency, exchangeRate, termsOfPayment, deliveryDays,
             termsOfDelivery, notes, relatedInvoiceId, items } = parsed.data;
 
     const client = await prisma.client.findUnique({ where: { id: clientId } });
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 400 });
 
-    const invoiceNumber = await generateNextInvoiceNumber();
+    let invoiceNumber: string;
+    if (documentType === 'INVOICE' && invoiceType === 'SALE') {
+      invoiceNumber = client.globalOrIndian === 'Global'
+        ? await generateNextExportInvoiceNumber()
+        : await generateNextDomesticInvoiceNumber();
+    } else {
+      invoiceNumber = await generateNextInvoiceNumber();
+    }
 
     const proforma = await prisma.proformaInvoice.create({
       data: {

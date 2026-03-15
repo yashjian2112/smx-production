@@ -35,10 +35,10 @@ export default async function SalesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Proforma Invoices</h2>
+        <h2 className="text-xl font-semibold">Invoices</h2>
         {canCreate && (
           <Link href="/sales/new" className="btn-primary py-2 px-4 text-sm tap-target">
-            + New PI
+            + New
           </Link>
         )}
       </div>

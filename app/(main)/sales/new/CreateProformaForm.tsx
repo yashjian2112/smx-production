@@ -44,6 +44,7 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
   const router = useRouter();
 
   // ─── State ───────────────────────────────────────────────────────
+  const [documentType,     setDocumentType]     = useState<'PROFORMA' | 'INVOICE'>('PROFORMA');
   const [invoiceType,      setInvoiceType]      = useState<'SALE' | 'RETURN' | 'REPLACEMENT'>('SALE');
   const [clientId,         setClientId]         = useState('');
   const [currency,         setCurrency]         = useState<'INR' | 'USD'>('INR');
@@ -167,6 +168,7 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId,
+          documentType: invoiceType === 'SALE' ? documentType : 'PROFORMA',
           invoiceType,
           currency,
           termsOfPayment:  termsOfPayment || undefined,
@@ -189,6 +191,27 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
           {error}
         </div>
       )}
+
+      {/* Document Type */}
+      <div>
+        <label className={lCls}>Document Type</label>
+        <div className="flex gap-2">
+          {([['PROFORMA', 'Proforma Invoice (PI)'], ['INVOICE', 'Invoice']] as const).map(([val, label]) => (
+            <button key={val} type="button" onClick={() => setDocumentType(val)}
+              className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
+              style={documentType === val
+                ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {documentType === 'INVOICE' && (
+          <p className="text-[10px] text-zinc-500 mt-1">
+            Export clients → <span className="font-mono">TSM/ES/YY-YY/0001</span> &nbsp;·&nbsp; Indian clients → <span className="font-mono">TSM/DS/YY-YY/0001</span>
+          </p>
+        )}
+      </div>
 
       {/* Invoice Type */}
       <div>
@@ -422,7 +445,7 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
       {/* Submit */}
       <div className="flex gap-2 pt-2">
         <button type="submit" disabled={loading} className="btn-primary flex-1 py-2.5 text-sm">
-          {loading ? 'Creating…' : 'Create Proforma Invoice'}
+          {loading ? 'Creating…' : documentType === 'INVOICE' && invoiceType === 'SALE' ? 'Create Invoice' : 'Create Proforma Invoice'}
         </button>
         <button type="button" onClick={() => router.back()} className="btn-ghost px-4 py-2.5 text-sm">
           Cancel
