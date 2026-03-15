@@ -128,8 +128,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!clientId) { setError('Please select a client'); return; }
-    if (items.some((i) => !i.description || !i.hsnCode || i.unitPrice <= 0)) {
-      setError('Fill in all line items (description, HSN code, price)');
+    if (items.some((i) => !i.hsnCode || i.unitPrice <= 0)) {
+      setError('Fill in all line items (HSN code, price)');
       return;
     }
     if (items.some((i) => !i.voltageFrom || !i.voltageTo)) {
@@ -404,8 +404,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
 
               {/* Description */}
               <div>
-                <label className={lCls}>Description <span className="text-red-400">*</span></label>
-                <input value={item.description} onChange={(e) => updateItem(item.key, { description: e.target.value })} className={iCls} placeholder="Controller / Motor / Display description…" required />
+                <label className={lCls}>Description</label>
+                <input value={item.description} onChange={(e) => updateItem(item.key, { description: e.target.value })} className={iCls} placeholder="Controller / Motor / Display description…" />
               </div>
 
               {/* HSN Code */}

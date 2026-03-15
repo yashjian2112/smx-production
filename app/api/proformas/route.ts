@@ -5,7 +5,7 @@ import { generateNextInvoiceNumber, generateNextExportInvoiceNumber, generateNex
 import { z } from 'zod';
 
 const itemSchema = z.object({
-  description:     z.string().min(1),
+  description:     z.string().default(''),
   productId:       z.string().optional(),
   hsnCode:         z.string().min(1),
   quantity:        z.number().int().min(1),
