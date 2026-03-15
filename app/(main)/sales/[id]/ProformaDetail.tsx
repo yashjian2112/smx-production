@@ -161,10 +161,10 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
       )}
 
       {proforma.order && (
-        <Link href={`/orders/${proforma.order.id}`} className="flex items-center gap-2 p-3 rounded-lg text-sm text-sky-400" style={{ background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)' }}>
+        <div className="flex items-center gap-2 p-3 rounded-lg text-sm text-sky-400" style={{ background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)' }}>
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /></svg>
           Converted to Order: {proforma.order.orderNumber} · {proforma.order.status}
-        </Link>
+        </div>
       )}
 
       {/* ── PAYMENT RECEIPT — shown FIRST so Accounts sees it before the approve button ── */}

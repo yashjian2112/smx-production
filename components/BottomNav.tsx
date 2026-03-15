@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 
 /* ── SVG Icon set — stroke-based, 1.5 weight, minimal ── */
 const Icons = {
@@ -48,16 +48,6 @@ const Icons = {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.35-4.35" />
-    </svg>
-  ),
-  Scan: () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-      <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-      <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-      <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-      <line x1="7" y1="12" x2="7" y2="12.01" />
-      <line x1="10" y1="12" x2="17" y2="12" />
     </svg>
   ),
   Approve: () => (
@@ -111,7 +101,6 @@ const Icons = {
 
 type NavItem = { href: string; label: string; icon: keyof typeof Icons };
 
-
 const managerNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
   { href: '/orders',    label: 'Orders',    icon: 'Orders' },
@@ -129,22 +118,25 @@ const adminNav: NavItem[] = [
 ];
 
 const employeeNav: NavItem[] = [
-  { href: '/dashboard', label: 'My Work', icon: 'Dashboard' },
-  { href: '/orders',    label: 'Orders',  icon: 'Orders' },
+  { href: '/dashboard',      label: 'My Work',     icon: 'Dashboard' },
+  { href: '/orders',         label: 'Orders',      icon: 'Orders' },
   { href: '/my-performance', label: 'Performance', icon: 'Performance' },
 ];
 
+// SALES: 4 items — PI, Invoice, Returns & Replacement, Clients
 const salesNav: NavItem[] = [
-  { href: '/sales',         label: 'Invoices', icon: 'Invoice' },
-  { href: '/sales/clients', label: 'Clients',  icon: 'Clients' },
-  { href: '/orders',        label: 'Orders',   icon: 'Orders' },
+  { href: '/sales',                label: 'PI',      icon: 'Invoice'  },
+  { href: '/sales?tab=invoice',    label: 'Invoice', icon: 'Accounts' },
+  { href: '/sales?tab=returns',    label: 'Returns', icon: 'Returns'  },
+  { href: '/sales/clients',        label: 'Clients', icon: 'Clients'  },
 ];
 
+// ACCOUNTS: 4 items — Approvals, Shipping, Invoices (→ /sales), Settings
 const accountsNav: NavItem[] = [
   { href: '/accounts',          label: 'Approvals', icon: 'Accounts' },
   { href: '/shipping',          label: 'Shipping',  icon: 'Shipping' },
-  { href: '/sales',             label: 'All PIs',   icon: 'Invoice' },
-  { href: '/accounts/settings', label: 'Settings',  icon: 'Admin' },
+  { href: '/sales',             label: 'Invoices',  icon: 'Invoice'  },
+  { href: '/accounts/settings', label: 'Settings',  icon: 'Admin'    },
 ];
 
 const shippingNav: NavItem[] = [
@@ -153,7 +145,10 @@ const shippingNav: NavItem[] = [
 ];
 
 export function BottomNav({ role }: { role: string }) {
-  const pathname = usePathname();
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab   = searchParams.get('tab') ?? '';
+
   const items =
     role === 'PRODUCTION_EMPLOYEE' ? employeeNav :
     role === 'ADMIN'               ? adminNav    :
@@ -174,9 +169,20 @@ export function BottomNav({ role }: { role: string }) {
     >
       <div className="flex justify-around items-center h-16 md:gap-2">
         {items.map((item) => {
-          const active =
-            pathname === item.href ||
-            (item.href !== '/dashboard' && pathname.startsWith(item.href));
+          // Parse any ?tab= in the nav item href
+          const [itemPath, itemQuery] = item.href.split('?');
+          const itemTab = itemQuery ? new URLSearchParams(itemQuery).get('tab') ?? '' : '';
+
+          // Active: path matches AND (no tab param on item, OR tab param matches current)
+          const pathMatch = pathname === itemPath ||
+            (itemPath !== '/dashboard' && itemPath !== '/sales' && pathname.startsWith(itemPath));
+          const salesPathMatch = itemPath === '/sales' && pathname === '/sales';
+          const tabMatch = itemTab === '' ? (currentTab === '' || !itemQuery) : currentTab === itemTab;
+
+          const active = itemPath === '/sales'
+            ? salesPathMatch && tabMatch
+            : pathMatch;
+
           const IconComponent = Icons[item.icon];
 
           return (

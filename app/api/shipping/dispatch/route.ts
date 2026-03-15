@@ -26,6 +26,57 @@ async function nextDispatchNumber(): Promise<string> {
   return `${prefix}${String(seq).padStart(3, '0')}`;
 }
 
+const DISPATCH_INCLUDE = {
+  items: {
+    include: {
+      unit:      { select: { serialNumber: true, finalAssemblyBarcode: true } },
+      scannedBy: { select: { name: true } },
+    },
+    orderBy: { scannedAt: 'asc' as const },
+  },
+  order: {
+    select: {
+      id:          true,
+      orderNumber: true,
+      quantity:    true,
+      client: { select: { customerName: true, shippingAddress: true, billingAddress: true } },
+      product: { select: { code: true, name: true } },
+    },
+  },
+  dispatchedBy: { select: { id: true, name: true } },
+  approvedBy:   { select: { id: true, name: true } },
+};
+
+/**
+ * GET /api/shipping/dispatch?history=1
+ * Returns completed dispatches (SUBMITTED / APPROVED / REJECTED) for history view.
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const session = await requireSession();
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
+
+    const { searchParams } = new URL(req.url);
+    const take = Math.min(parseInt(searchParams.get('take') ?? '50', 10), 200);
+
+    const dispatches = await prisma.dispatch.findMany({
+      where:   { status: { in: ['SUBMITTED', 'APPROVED', 'REJECTED'] } },
+      include: DISPATCH_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+      take,
+    });
+
+    return NextResponse.json({ dispatches });
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Unauthorized')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (e instanceof Error && e.message === 'Forbidden')
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    console.error(e);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
+
 /**
  * POST /api/shipping/dispatch
  * Create a new DRAFT dispatch for an order.

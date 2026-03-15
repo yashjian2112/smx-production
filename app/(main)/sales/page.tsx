@@ -4,7 +4,11 @@ import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import { ProformaList } from './ProformaList';
 
-export default async function SalesPage() {
+export default async function SalesPage({
+  searchParams,
+}: {
+  searchParams: { tab?: string };
+}) {
   const session = await getSession();
   if (!session) redirect('/login');
 
@@ -32,6 +36,12 @@ export default async function SalesPage() {
 
   const canCreate = session.role === 'ADMIN' || session.role === 'SALES';
 
+  const rawTab = searchParams?.tab;
+  const initialTab =
+    rawTab === 'invoice' ? 'invoice' :
+    rawTab === 'returns' ? 'returns' :
+    'pi';
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -42,7 +52,7 @@ export default async function SalesPage() {
           </Link>
         )}
       </div>
-      <ProformaList proformas={serialized as any} role={session.role} />
+      <ProformaList proformas={serialized as any} role={session.role} initialTab={initialTab} />
     </div>
   );
 }

@@ -46,7 +46,25 @@ type ReadyOrder = {
   activeDraft:     { id: string; dispatchNumber: string; status: string } | null;
 };
 
-type View = 'list' | 'scan';
+type View = 'list' | 'scan' | 'history';
+
+type HistoryDispatch = {
+  id:             string;
+  dispatchNumber: string;
+  status:         string;
+  createdAt:      string;
+  submittedAt:    string | null;
+  approvedAt:     string | null;
+  items:          { id: string; unit: { serialNumber: string } | null }[];
+  order: {
+    orderNumber: string;
+    quantity:    number;
+    client:      { customerName: string } | null;
+    product:     { name: string };
+  };
+  dispatchedBy: { name: string };
+  approvedBy:   { name: string } | null;
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 async function uploadPhoto(file: File, type: 'controller' | 'box'): Promise<string> {
@@ -544,6 +562,21 @@ export function ShippingPanel({
   const [searchQ, setSearchQ]         = useState('');
   const [creating, setCreating]       = useState<string | null>(null);
   const [submitted, setSubmitted]     = useState<Dispatch | null>(null);
+  const [history, setHistory]         = useState<HistoryDispatch[] | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historySearch, setHistorySearch]   = useState('');
+
+  // Load shipping history on demand
+  async function loadHistory() {
+    setLoadingHistory(true);
+    try {
+      const res  = await fetch('/api/shipping/dispatch');
+      const data = await res.json() as { dispatches?: HistoryDispatch[] };
+      setHistory(data.dispatches ?? []);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
 
   // Load ready orders on demand
   async function loadOrders() {
@@ -631,9 +664,27 @@ export function ShippingPanel({
     );
   }
 
-  // ── List view ──
+  // ── History view ──
+  const filteredHistory = (history ?? []).filter((d) => {
+    if (!historySearch.trim()) return true;
+    const q = historySearch.toLowerCase();
+    return (
+      d.dispatchNumber.toLowerCase().includes(q) ||
+      d.order.orderNumber.toLowerCase().includes(q) ||
+      (d.order.client?.customerName ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  const historyStatusStyle: Record<string, { color: string; bg: string }> = {
+    SUBMITTED: { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+    APPROVED:  { color: '#4ade80', bg: 'rgba(74,222,128,0.12)' },
+    REJECTED:  { color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
+  };
+
+  // ── List / History view ──
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="space-y-4 max-w-2xl mx-auto">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-white">Shipping</h2>
@@ -647,144 +698,233 @@ export function ShippingPanel({
         </span>
       </div>
 
-      {/* Submitted success banner */}
-      {submitted && (
-        <div
-          className="rounded-xl p-4 space-y-1"
-          style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}
-        >
-          <div className="text-sm font-bold text-green-400">
-            ✓ Dispatch {submitted.dispatchNumber} submitted for approval
-          </div>
-          <div className="text-xs text-zinc-400">
-            {submitted.items.length} controller{submitted.items.length !== 1 ? 's' : ''} for {submitted.order.client?.customerName ?? '—'} · sent to Accounts
-          </div>
-          <button type="button" onClick={() => setSubmitted(null)} className="text-xs text-zinc-500 hover:text-zinc-300">
-            Dismiss
+      {/* Tab toggle: Active / History */}
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        {(['list', 'history'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => {
+              setView(v);
+              if (v === 'history' && history === null) loadHistory();
+            }}
+            className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${view === v ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+            style={view === v ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}
+          >
+            {v === 'list' ? `Active (${drafts.length})` : 'History'}
           </button>
-        </div>
-      )}
+        ))}
+      </div>
 
-      {/* Active drafts */}
-      {drafts.length > 0 && (
+      {/* ── HISTORY TAB ── */}
+      {view === 'history' && (
         <div className="space-y-3">
-          <div className="text-sm font-semibold text-zinc-300">In Progress ({drafts.length})</div>
-          {drafts.map((d) => (
-            <div
-              key={d.id}
-              className="card p-4 cursor-pointer hover:ring-1 hover:ring-sky-500 transition-all"
-              onClick={() => openDraft(d)}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-mono font-semibold text-white">{d.dispatchNumber}</span>
-                    <StatusBadge status={d.status} />
-                  </div>
-                  <div className="text-sm text-zinc-400 mt-0.5">
-                    {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
-                  </div>
-                  <div className="text-xs text-zinc-500 mt-1">
-                    {d.order.product.name} · Scanned {d.items.length} of {d.order.quantity}
+          <input
+            value={historySearch}
+            onChange={(e) => setHistorySearch(e.target.value)}
+            placeholder="Search dispatch no., order, client…"
+            className="input-field text-sm w-full"
+          />
+
+          {loadingHistory && (
+            <div className="text-sm text-zinc-500 text-center py-6">Loading history…</div>
+          )}
+
+          {!loadingHistory && history !== null && filteredHistory.length === 0 && (
+            <div className="text-sm text-zinc-500 text-center py-6">No dispatch history found.</div>
+          )}
+
+          {!loadingHistory && filteredHistory.map((d) => {
+            const st = historyStatusStyle[d.status] ?? historyStatusStyle.SUBMITTED;
+            const dateStr = new Date(d.submittedAt ?? d.createdAt).toLocaleDateString('en-IN', {
+              day: '2-digit', month: 'short', year: 'numeric',
+            });
+            return (
+              <div key={d.id} className="card p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold text-sm text-white">{d.dispatchNumber}</span>
+                      <span
+                        className="text-[11px] font-bold px-2 py-0.5 rounded"
+                        style={{ color: st.color, background: st.bg }}
+                      >
+                        {d.status}
+                      </span>
+                    </div>
+                    <div className="text-sm text-zinc-400 mt-0.5">
+                      {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      {d.order.product.name} · {d.items.length} unit{d.items.length !== 1 ? 's' : ''} of {d.order.quantity} · {dateStr}
+                    </div>
+                    {d.approvedBy && (
+                      <div className="text-xs text-green-400 mt-0.5">Approved by {d.approvedBy.name}</div>
+                    )}
                   </div>
                 </div>
-                <span className="text-sky-400 text-sm">→</span>
+                {/* Serials */}
+                {d.items.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {d.items.slice(0, 8).map((item) => (
+                      <span
+                        key={item.id}
+                        className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(255,255,255,0.06)', color: '#a1a1aa' }}
+                      >
+                        {item.unit?.serialNumber ?? '—'}
+                      </span>
+                    ))}
+                    {d.items.length > 8 && (
+                      <span className="text-[10px] text-zinc-600">+{d.items.length - 8} more</span>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* Ready orders */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold text-zinc-300">Ready to Dispatch</div>
-          {!orders && !loadingOrders && (
-            <button
-              type="button"
-              onClick={loadOrders}
-              className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-              style={{ background: 'rgba(14,165,233,0.1)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}
+      {/* ── ACTIVE TAB ── */}
+      {view === 'list' && (
+        <div className="space-y-6">
+          {/* Submitted success banner */}
+          {submitted && (
+            <div
+              className="rounded-xl p-4 space-y-1"
+              style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}
             >
-              Load Orders
-            </button>
+              <div className="text-sm font-bold text-green-400">
+                ✓ Dispatch {submitted.dispatchNumber} submitted for approval
+              </div>
+              <div className="text-xs text-zinc-400">
+                {submitted.items.length} controller{submitted.items.length !== 1 ? 's' : ''} for {submitted.order.client?.customerName ?? '—'} · sent to Accounts
+              </div>
+              <button type="button" onClick={() => setSubmitted(null)} className="text-xs text-zinc-500 hover:text-zinc-300">
+                Dismiss
+              </button>
+            </div>
           )}
-        </div>
 
-        {loadingOrders && (
-          <div className="text-sm text-zinc-500 text-center py-4">Loading…</div>
-        )}
-
-        {orders !== null && (
-          <>
-            <input
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              placeholder="Search by order no., customer, product…"
-              className="input-field text-sm w-full"
-            />
-
-            {filteredOrders.length === 0 && (
-              <div className="text-sm text-zinc-500 text-center py-6">No ready orders found.</div>
-            )}
-
+          {/* Active drafts */}
+          {drafts.length > 0 && (
             <div className="space-y-3">
-              {filteredOrders.map((o) => (
+              <div className="text-sm font-semibold text-zinc-300">In Progress ({drafts.length})</div>
+              {drafts.map((d) => (
                 <div
-                  key={o.orderId}
-                  className="card p-4 space-y-3"
+                  key={d.id}
+                  className="card p-4 cursor-pointer hover:ring-1 hover:ring-sky-500 transition-all"
+                  onClick={() => openDraft(d)}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-white">
-                        #{o.orderNumber}
-                        {o.client && <span className="text-zinc-400 font-normal"> · {o.client.customerName}</span>}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-mono font-semibold text-white">{d.dispatchNumber}</span>
+                        <StatusBadge status={d.status} />
                       </div>
-                      <div className="text-xs text-zinc-500 mt-0.5">{o.product.name}</div>
+                      <div className="text-sm text-zinc-400 mt-0.5">
+                        {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
+                      </div>
+                      <div className="text-xs text-zinc-500 mt-1">
+                        {d.order.product.name} · Scanned {d.items.length} of {d.order.quantity}
+                      </div>
                     </div>
-                    <div className="text-right text-xs">
-                      <div className="font-bold text-sky-400">{o.readyUnits.length} ready</div>
-                      <div className="text-zinc-600">{o.dispatchedCount} dispatched / {o.quantity} ordered</div>
-                    </div>
+                    <span className="text-sky-400 text-sm">→</span>
                   </div>
-
-                  {/* Ready serials preview */}
-                  {o.readyUnits.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {o.readyUnits.slice(0, 6).map((u) => (
-                        <span
-                          key={u.id}
-                          className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                          style={{ background: 'rgba(14,165,233,0.08)', color: '#7dd3fc' }}
-                        >
-                          {u.serialNumber}
-                        </span>
-                      ))}
-                      {o.readyUnits.length > 6 && (
-                        <span className="text-[10px] text-zinc-500">+{o.readyUnits.length - 6} more</span>
-                      )}
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => startDispatch(o.orderId)}
-                    disabled={creating === o.orderId || o.readyUnits.length === 0}
-                    className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
-                    style={{ background: '#0ea5e9', color: '#fff' }}
-                  >
-                    {creating === o.orderId
-                      ? 'Starting…'
-                      : o.activeDraft
-                      ? `Continue Dispatch (${o.activeDraft.dispatchNumber})`
-                      : `Start Dispatch (${o.readyUnits.length} controller${o.readyUnits.length !== 1 ? 's' : ''})`}
-                  </button>
                 </div>
               ))}
             </div>
-          </>
-        )}
-      </div>
+          )}
+
+          {/* Ready orders */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-zinc-300">Ready to Dispatch</div>
+              {!orders && !loadingOrders && (
+                <button
+                  type="button"
+                  onClick={loadOrders}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                  style={{ background: 'rgba(14,165,233,0.1)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}
+                >
+                  Load Orders
+                </button>
+              )}
+            </div>
+
+            {loadingOrders && (
+              <div className="text-sm text-zinc-500 text-center py-4">Loading…</div>
+            )}
+
+            {orders !== null && (
+              <>
+                <input
+                  value={searchQ}
+                  onChange={(e) => setSearchQ(e.target.value)}
+                  placeholder="Search by order no., customer, product…"
+                  className="input-field text-sm w-full"
+                />
+
+                {filteredOrders.length === 0 && (
+                  <div className="text-sm text-zinc-500 text-center py-6">No ready orders found.</div>
+                )}
+
+                <div className="space-y-3">
+                  {filteredOrders.map((o) => (
+                    <div key={o.orderId} className="card p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-white">
+                            #{o.orderNumber}
+                            {o.client && <span className="text-zinc-400 font-normal"> · {o.client.customerName}</span>}
+                          </div>
+                          <div className="text-xs text-zinc-500 mt-0.5">{o.product.name}</div>
+                        </div>
+                        <div className="text-right text-xs">
+                          <div className="font-bold text-sky-400">{o.readyUnits.length} ready</div>
+                          <div className="text-zinc-600">{o.dispatchedCount} dispatched / {o.quantity} ordered</div>
+                        </div>
+                      </div>
+
+                      {o.readyUnits.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {o.readyUnits.slice(0, 6).map((u) => (
+                            <span
+                              key={u.id}
+                              className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                              style={{ background: 'rgba(14,165,233,0.08)', color: '#7dd3fc' }}
+                            >
+                              {u.serialNumber}
+                            </span>
+                          ))}
+                          {o.readyUnits.length > 6 && (
+                            <span className="text-[10px] text-zinc-500">+{o.readyUnits.length - 6} more</span>
+                          )}
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => startDispatch(o.orderId)}
+                        disabled={creating === o.orderId || o.readyUnits.length === 0}
+                        className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
+                        style={{ background: '#0ea5e9', color: '#fff' }}
+                      >
+                        {creating === o.orderId
+                          ? 'Starting…'
+                          : o.activeDraft
+                          ? `Continue Dispatch (${o.activeDraft.dispatchNumber})`
+                          : `Start Dispatch (${o.readyUnits.length} controller${o.readyUnits.length !== 1 ? 's' : ''})`}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,223 @@
+# CONTEXT COPDEX
+
+This file is a handoff note for any AI/coding agent working in this repo.
+It explains what has already been done, what the user expects, and what state the code is currently in.
+
+## Repo
+- Root: `/Users/mr.yash/Desktop/production`
+- Branch: `main`
+- Local HEAD: `168bee3`
+- Remote `origin/main`: `dc4a47a`
+- Important: local commit `168bee3` exists, but the last push failed because GitHub DNS/network access was blocked (`Could not resolve host: github.com`).
+- Vercel is connected to GitHub and auto-deploys from `main`, so anything not pushed is not live yet.
+
+## Very Important User Expectations
+- The user is very direct and wants fixes to work end-to-end.
+- The user expects code to be pushed to `main` so Vercel deploys automatically.
+- The user is focused heavily on label printing accuracy and physical output, not just code correctness.
+- When discussing label issues, the user wants practical answers tied to the actual printer/label behavior.
+
+## Do Not Touch Unrelated User Changes
+There are unrelated in-progress user changes. Do not revert or overwrite them.
+Current unrelated modified files:
+- `app/(main)/sales/[id]/ProformaDetail.tsx`
+- `app/api/proformas/[id]/route.ts`
+- `app/print/proforma/[id]/PrintProforma.tsx`
+- `.claude/worktrees/...`
+
+## Label / Printer Context
+The user is printing on:
+- Printer: `TVS LP46 NEO`
+- Label size: `50mm width x 25mm height`
+- This is a sticker/label workflow where physical print alignment matters.
+
+## Component Labels vs Final Labels
+This distinction matters a lot.
+
+### Component labels
+- Route family: `app/print/component/[compId]/...`
+- These use QR-style component labels.
+- There is a pending/history/save flow already implemented for component labels.
+
+### Final Assembly / controller label
+- The user repeatedly clarified that Final Assembly is **not** the component label flow.
+- Final Assembly is a **controller sticker** with the final serial.
+- Manual admin route:
+  - `app/print/unit/manual/page.tsx`
+  - `app/print/unit/manual/ManualFinalLabel.tsx`
+- API route:
+  - `app/api/print/unit/manual/route.ts`
+
+## Final Assembly Serial Format
+The user requested this format:
+- `MODEL + YY + monthCode + 3-digit sequence`
+- Example: `SM35026MR001`
+
+Month codes in use:
+- `JA, FE, MR, AP, MY, JN, JL, AU, SE, OC, NO, DE`
+
+Related file:
+- `lib/barcode.ts`
+
+## Final Manual Label UI Requirements From User
+The user has asked for the final manual sticker to:
+- use the regular small sticker style (`50mm x 25mm`)
+- use `Poppins`
+- have larger / clearer serial text
+- have larger note text
+- not show `Copy 1 / 2` on the printed label
+- support:
+  - `Qty` = number of new serials
+  - `Copies` = repeated print count for each serial
+- ask for party details
+- save barcodes under that party and under the stage manually
+- provide:
+  - Save barcode option
+  - Reprint option
+  - History
+  - Pending/abandoned barcode list
+
+## What Has Been Done So Far
+
+### 1. Manual final label route was created
+Files:
+- `app/print/unit/manual/page.tsx`
+- `app/print/unit/manual/ManualFinalLabel.tsx`
+
+This route is admin-only and is meant only for manual Final Assembly/controller sticker printing.
+
+### 2. Final manual label visual styling was adjusted multiple times
+Changes already made over multiple commits:
+- removed the outer rectangle/border from the sticker
+- increased note size
+- increased serial number size
+- switched sticker text to `Poppins`
+- removed copy text from the printed sticker itself
+
+### 3. Party-aware saving was added
+The manual final label UI now asks for:
+- Party (select existing client or manual entry)
+- Party name
+- Stage is fixed to `FINAL_ASSEMBLY`
+
+### 4. Pending/save/reprint/history flow was restored locally
+Local commit: `168bee3`
+Status: **local only, not pushed yet** because the last `git push` failed due network/DNS.
+
+The local code now does the following for manual final labels:
+- `Generate & Print` creates a **pending** batch first
+- After print, user gets confirmation UI:
+  - `Save Barcode`
+  - `Reprint`
+- Pending tab shows unsaved / abandoned batches
+- Pending tab supports:
+  - Save one batch
+  - Save all
+  - Reprint any pending batch
+- History tab shows saved batches
+- Saved/pending batches are grouped by party and stage
+
+Files for this local pending/save flow:
+- `app/print/unit/manual/ManualFinalLabel.tsx`
+- `app/print/unit/manual/page.tsx`
+- `app/api/print/unit/manual/route.ts`
+
+## How Manual Final Persistence Works Right Now
+Persistence uses `AuditLog`, not a new Prisma model.
+
+### Pending manual final batch
+- `action = MANUAL_FINAL_LABEL_PENDING`
+- `entity = FINAL_ASSEMBLY_LABEL`
+
+### Confirmed/saved manual final batch
+- `action = MANUAL_FINAL_LABEL_PRINT`
+- `entity = FINAL_ASSEMBLY_LABEL`
+
+### Stored payload in `AuditLog.details`
+JSON includes:
+- `stage`
+- `productCode`
+- `productName`
+- `prefix`
+- `partyName`
+- `partyCode`
+- `clientId`
+- `items` (`serial`, `copies`)
+- `totalStickers`
+- `source`
+- `status`
+- `generatedAt`
+- `confirmedAt`
+
+## Current Manual Final Flow in Code (local HEAD `168bee3`)
+
+### Page load
+`app/print/unit/manual/page.tsx`
+- loads active clients
+- loads audit logs for:
+  - `MANUAL_FINAL_LABEL_PENDING`
+  - `MANUAL_FINAL_LABEL_PRINT`
+- maps them into:
+  - `initialPending`
+  - `initialHistory`
+
+### Generate
+`app/print/unit/manual/ManualFinalLabel.tsx`
+- validates prefix and party
+- POSTs to `/api/print/unit/manual`
+- creates a pending batch only
+- prints the stickers
+- shows confirmation UI
+
+### Save barcode / confirm print
+`app/print/unit/manual/ManualFinalLabel.tsx`
+- PATCHes `/api/print/unit/manual` with selected `batchIds`
+- moves those batches from pending to history
+
+### Reprint
+`app/print/unit/manual/ManualFinalLabel.tsx`
+- rebuilds sticker data from a pending batch
+- prints again
+- keeps the batch pending until user explicitly saves it
+
+## Current Visual Settings for Manual Final Sticker (local HEAD)
+In `app/print/unit/manual/ManualFinalLabel.tsx` the printed sticker currently uses:
+- note text in `Poppins`
+- larger note size (`2.6mm`)
+- serial number label in `Poppins`
+- larger final serial text (`4.25mm`)
+- no copy text on the printed sticker
+
+## Important Recent Commits
+Recent history:
+- `168bee3` restore manual final pending save flow  **(local only, not pushed)**
+- `dc4a47a` increase final sticker note and serial text
+- `6c8a373` improve final sticker text clarity
+- `d5c8b11` save manual final labels by party
+- `659756a` remove final label border and resize note
+
+## If You Continue From Here
+Recommended first checks:
+1. Check whether the user wants the local commit `168bee3` pushed now.
+2. If network is available again, run:
+   - `git push origin main`
+3. After push, Vercel should deploy automatically.
+4. Then test the manual final label flow on the live site:
+   - Generate & Print
+   - Save Barcode
+   - Reprint
+   - Pending tab
+   - History tab
+
+## Known Risk / Current Deployment Gap
+- The current local code includes the pending/save/reprint/history fix for manual final labels.
+- Because the last push failed, the live Vercel site is probably still on `dc4a47a`, not `168bee3`.
+- If the user says save/reprint/history is missing on the live site, this is likely because the new local commit has not reached GitHub/Vercel yet.
+
+## Short Summary
+- Component label flow and final controller label flow are separate.
+- Final manual label route is admin-only.
+- Final label uses serial format like `SM35026MR001`.
+- Manual final label now asks for party details and is tied to `FINAL_ASSEMBLY`.
+- The latest local code restores pending/save/reprint/history for abandoned manual final barcodes.
+- That newest fix is not yet deployed because push failed on network.
