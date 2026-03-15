@@ -185,7 +185,8 @@ model ControllerUnit {
   // Stage-wise barcodes: cross-verify controller at any stage (no printable BOM sheet)
   powerstageBarcode   String?  @unique @map("powerstage_barcode")   // modelnamePS26001
   brainboardBarcode   String?  @unique @map("brainboard_barcode")   // modelnameBB26001
-  qcBarcode          String?  @unique @map("qc_barcode")            // modelnameQC26001 (on QC test report)
+  assemblyBarcode    String?  @unique @map("assembly_barcode")       // modelnameCA26001 (Controller Assembly)
+  qcBarcode          String?  @unique @map("qc_barcode")            // modelnameQC26001 (generated after QC approval)
   finalAssemblyBarcode String? @unique @map("final_assembly_barcode") // modelname260001
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -500,9 +501,9 @@ model ProformaInvoiceItem {
   quantity        Int
   unitPrice       Float    @map("unit_price")
   discountPercent Float    @default(0) @map("discount_percent")
+  sortOrder       Int      @default(0) @map("sort_order")
   voltageFrom     String?  @map("voltage_from")
   voltageTo       String?  @map("voltage_to")
-  sortOrder       Int      @default(0) @map("sort_order")
   createdAt       DateTime @default(now()) @map("created_at")
 
   proforma ProformaInvoice @relation(fields: [proformaId], references: [id], onDelete: Cascade)
