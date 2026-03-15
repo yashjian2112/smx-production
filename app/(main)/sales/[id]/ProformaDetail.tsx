@@ -81,11 +81,11 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   const total       = fullSubtotal + gst;
   const st          = STATUS_STYLE[proforma.status] ?? STATUS_STYLE.DRAFT;
 
-  // Split invoice preview
+  // Split invoice preview — split is on total (incl. shipping + GST)
   const servicePctNum = parseFloat(splitServicePercent);
   const goodsPctNum   = isNaN(servicePctNum) ? null : 100 - servicePctNum;
-  const serviceAmt    = !isNaN(servicePctNum) ? subtotal * (servicePctNum / 100) : null;
-  const goodsAmt      = !isNaN(servicePctNum) ? subtotal * ((100 - servicePctNum) / 100) : null;
+  const serviceAmt    = !isNaN(servicePctNum) ? total * (servicePctNum / 100) : null;
+  const goodsAmt      = !isNaN(servicePctNum) ? total * ((100 - servicePctNum) / 100) : null;
 
   async function saveSplitInvoice(override?: { splitInvoice?: boolean; splitServicePercent?: string }) {
     setSplitError(''); setSplitSaved(false); setSplitSaving(true);
@@ -450,7 +450,7 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
                   className="rounded-lg px-3 py-2 text-xs space-y-1"
                   style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.15)' }}
                 >
-                  <div className="text-zinc-500 mb-1">Invoice split preview (product subtotal):</div>
+                  <div className="text-zinc-500 mb-1">Invoice split preview (total incl. GST + shipping):</div>
                   <div className="flex gap-4">
                     <span style={{ color: '#4ade80' }}>
                       Goods {goodsPctNum.toFixed(0)}% = {fmtAmt(goodsAmt, proforma.currency)}
@@ -482,10 +482,10 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
           </div>
           <div className="flex gap-4 text-xs mt-1">
             <span style={{ color: '#4ade80' }}>
-              Goods = {fmtAmt(subtotal * ((100 - proforma.splitServicePercent) / 100), proforma.currency)}
+              Goods = {fmtAmt(total * ((100 - proforma.splitServicePercent) / 100), proforma.currency)}
             </span>
             <span style={{ color: '#fbbf24' }}>
-              Service = {fmtAmt(subtotal * (proforma.splitServicePercent / 100), proforma.currency)}
+              Service = {fmtAmt(total * (proforma.splitServicePercent / 100), proforma.currency)}
             </span>
           </div>
         </div>

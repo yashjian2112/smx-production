@@ -360,10 +360,15 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
               const svcPct = parseFloat(splitServicePercent);
               if (!svcPct || svcPct <= 0 || svcPct >= 100) return null;
               const goodsPct = 100 - svcPct;
+              const goodsAmt = total * (goodsPct / 100);
+              const serviceAmt = total * (svcPct / 100);
               return (
-                <div className="flex gap-4 text-xs">
-                  <span style={{ color: '#4ade80' }}>Goods {goodsPct.toFixed(0)}%</span>
-                  <span style={{ color: '#fbbf24' }}>Service {svcPct.toFixed(0)}%</span>
+                <div className="space-y-1">
+                  <div className="flex gap-4 text-xs">
+                    <span style={{ color: '#4ade80' }}>Goods {goodsPct.toFixed(0)}% = {fmtAmt(goodsAmt)}</span>
+                    <span style={{ color: '#fbbf24' }}>Service {svcPct.toFixed(0)}% = {fmtAmt(serviceAmt)}</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-600">Split calculated on total ({fmtAmt(total)}) incl. GST + shipping</p>
                 </div>
               );
             })()}
