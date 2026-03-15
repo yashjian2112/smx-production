@@ -9,5 +9,6 @@ export function descriptorDistanceServer(a: number[], b: number[]): number {
   return Math.sqrt(sum);
 }
 
-/** Stricter threshold: same as client. Only server sets cookie if below this. */
-export const FACE_MATCH_THRESHOLD = 0.38;
+/** Match threshold: 0.45 balances security with daily variation (glasses, morning face).
+ *  face-api default is 0.6; 0.45 is still strict but handles real-world conditions. */
+export const FACE_MATCH_THRESHOLD = 0.45;

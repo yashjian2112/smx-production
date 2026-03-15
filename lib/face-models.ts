@@ -25,12 +25,35 @@ export async function getFaceDescriptor(
   source: HTMLVideoElement | HTMLCanvasElement | HTMLImageElement
 ): Promise<Float32Array | null> {
   const faceapi = await import('@vladmandic/face-api');
-  // Higher minConfidence (0.6) = require clearer face detection to reduce false matches
+  // 0.5 confidence: still filters noise but works with glasses/tired eyes
   const detection = await faceapi
-    .detectSingleFace(source, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
+    .detectSingleFace(source, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
     .withFaceLandmarks()
     .withFaceDescriptor();
   return detection?.descriptor ?? null;
+}
+
+/** Capture multiple frames from a video and return the averaged descriptor.
+ *  More robust enrollment — handles glasses / angle / lighting variation. */
+export async function getAveragedDescriptor(
+  video: HTMLVideoElement,
+  frames = 5,
+  intervalMs = 300
+): Promise<Float32Array | null> {
+  const descriptors: Float32Array[] = [];
+  for (let i = 0; i < frames; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, intervalMs));
+    const d = await getFaceDescriptor(video);
+    if (d) descriptors.push(d);
+  }
+  if (descriptors.length === 0) return null;
+  // Average all captured descriptors element-wise
+  const avg = new Float32Array(128);
+  for (const d of descriptors) {
+    for (let j = 0; j < 128; j++) avg[j] += d[j];
+  }
+  for (let j = 0; j < 128; j++) avg[j] /= descriptors.length;
+  return avg;
 }
 
 export function descriptorDistance(a: Float32Array, b: Float32Array): number {

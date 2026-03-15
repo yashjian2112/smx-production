@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { loadFaceModels, getFaceDescriptor, descriptorDistance, descriptorFromJson, descriptorToJson } from '@/lib/face-models';
+import { loadFaceModels, getFaceDescriptor, getAveragedDescriptor, descriptorDistance, descriptorFromJson, descriptorToJson } from '@/lib/face-models';
 
 type Mode = 'verify' | 'enroll';
 
@@ -14,8 +14,9 @@ type FaceGateProps = {
   title?: string;
 };
 
-// Must match server FACE_MATCH_THRESHOLD in lib/face-verify-server.ts (0.38 = stricter, fewer false accepts)
-const MATCH_THRESHOLD = 0.38;
+// Must match server FACE_MATCH_THRESHOLD in lib/face-verify-server.ts
+// 0.45 handles daily variation (glasses, morning face) while remaining secure
+const MATCH_THRESHOLD = 0.45;
 const CONSECUTIVE_MATCHES_REQUIRED = 2; // Require 2 frames in a row to reduce lucky one-frame match
 const SCAN_INTERVAL_MS = 350;
 
@@ -120,13 +121,13 @@ export function FaceGate({ mode = 'verify', userId, onVerified, onEnrolled, onCa
               consecutiveMatchCount.current = 0;
               setAttempts((a) => {
                 const next = a + 1;
-                if (next >= 5) {
+                if (next >= 10) {
                   setStatus('mismatch');
-                  setMessage('Face not recognised after 5 attempts');
+                  setMessage('Face not recognised after 10 attempts');
                   if (intervalRef.current) clearInterval(intervalRef.current);
                 } else {
                   setStatus('scanning');
-                  setMessage(`Face not matching — hold still (${next}/5)`);
+                  setMessage(`Face not matching — hold still (${next}/10)`);
                 }
                 return next;
               });
@@ -138,12 +139,20 @@ export function FaceGate({ mode = 'verify', userId, onVerified, onEnrolled, onCa
 
           intervalRef.current = setInterval(async () => {
             if (!videoRef.current || cancelled) return;
-            const desc = await getFaceDescriptor(videoRef.current);
-            if (desc) {
+            // Quick check: is a face visible at all?
+            const quickDesc = await getFaceDescriptor(videoRef.current);
+            if (quickDesc) {
               if (intervalRef.current) clearInterval(intervalRef.current);
               setStatus('enrolling');
-              setMessage('Saving face data…');
+              setMessage('Hold still — capturing face data…');
               try {
+                // Average 5 frames for a robust enrollment descriptor
+                const desc = await getAveragedDescriptor(videoRef.current, 5, 300);
+                if (!desc) {
+                  setStatus('error');
+                  setMessage('Could not capture enough frames. Try again.');
+                  return;
+                }
                 const res = await fetch(`/api/users/${userId}/face-enroll`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -307,7 +316,7 @@ export function FaceGate({ mode = 'verify', userId, onVerified, onEnrolled, onCa
       {/* Attempt dots for verify mode */}
       {mode === 'verify' && attempts > 0 && !isError && (
         <div className="flex gap-1.5 mt-3">
-          {[0,1,2,3,4].map((i) => (
+          {[0,1,2,3,4,5,6,7,8,9].map((i) => (
             <div key={i} className={`w-2 h-2 rounded-full ${i < attempts ? 'bg-red-500' : 'bg-slate-600'}`} />
           ))}
         </div>
