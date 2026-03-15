@@ -27,6 +27,8 @@ type InitialProforma = {
   termsOfPayment: string | null;
   deliveryDays: number | null;
   termsOfDelivery: string | null;
+  voltageFrom: string | null;
+  voltageTo: string | null;
   notes: string | null;
   items: InitialItem[];
 };
@@ -139,6 +141,8 @@ export function EditProformaForm({
   const [currency,       setCurrency]       = useState<'INR' | 'USD'>(proforma.currency as 'INR' | 'USD');
   const [termsOfPayment, setTermsOfPayment] = useState(proforma.termsOfPayment ?? '');
   const [deliveryDays,   setDeliveryDays]   = useState(proforma.deliveryDays?.toString() ?? '');
+  const [voltageFrom,    setVoltageFrom]    = useState(proforma.voltageFrom ?? '');
+  const [voltageTo,      setVoltageTo]      = useState(proforma.voltageTo ?? '');
   const [notes,          setNotes]          = useState(() => isReplacement ? stripReplacementHeader(proforma.notes) : (proforma.notes ?? ''));
 
   // Replacement-specific
@@ -249,6 +253,8 @@ export function EditProformaForm({
           currency,
           termsOfPayment:  termsOfPayment  || undefined,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : null,
+          voltageFrom:     voltageFrom || null,
+          voltageTo:       voltageTo || null,
           notes:           finalNotes    || undefined,
           items:           submitItems,
         }),
@@ -352,6 +358,17 @@ export function EditProformaForm({
       <div>
         <label className={lCls}>Delivery Days <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
         <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} className={iCls} placeholder="e.g. 30" />
+      </div>
+
+      {/* Voltage Range */}
+      <div>
+        <label className={lCls}>Voltage Range</label>
+        <div className="flex items-center gap-2">
+          <input type="number" min={0} value={voltageFrom} onChange={(e) => setVoltageFrom(e.target.value)} className={iCls} placeholder="From (e.g. 48)" />
+          <span className="text-zinc-500 text-sm shrink-0">to</span>
+          <input type="number" min={0} value={voltageTo} onChange={(e) => setVoltageTo(e.target.value)} className={iCls} placeholder="To (e.g. 120)" />
+          <span className="text-zinc-500 text-xs shrink-0">V</span>
+        </div>
       </div>
 
       {/* ── Line Items ── */}

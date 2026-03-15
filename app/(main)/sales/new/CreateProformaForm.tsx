@@ -52,6 +52,9 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   const [deliveryDays,     setDeliveryDays]     = useState('');
   const [notes,            setNotes]            = useState('');
   const [shippingCharges,  setShippingCharges]  = useState('');
+  // Voltage range
+  const [voltageFrom,      setVoltageFrom]      = useState('');
+  const [voltageTo,        setVoltageTo]        = useState('');
   // Split invoice
   const [splitInvoice,        setSplitInvoice]        = useState(false);
   const [splitServicePercent, setSplitServicePercent] = useState('');
@@ -178,6 +181,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : undefined,
           notes:           finalNotes || undefined,
           items:           submitItems,
+          voltageFrom:     voltageFrom || undefined,
+          voltageTo:       voltageTo || undefined,
           splitInvoice:    splitInvoice || undefined,
           splitServicePercent: splitInvoice && splitServicePercent ? parseFloat(splitServicePercent) : undefined,
         }),
@@ -313,6 +318,17 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       <div>
         <label className={lCls}>Delivery Days <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
         <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} className={iCls} placeholder="e.g. 30" />
+      </div>
+
+      {/* Voltage Range */}
+      <div>
+        <label className={lCls}>Voltage Range</label>
+        <div className="flex items-center gap-2">
+          <input type="number" min={0} value={voltageFrom} onChange={(e) => setVoltageFrom(e.target.value)} className={iCls} placeholder="From (e.g. 48)" />
+          <span className="text-zinc-500 text-sm shrink-0">to</span>
+          <input type="number" min={0} value={voltageTo} onChange={(e) => setVoltageTo(e.target.value)} className={iCls} placeholder="To (e.g. 120)" />
+          <span className="text-zinc-500 text-xs shrink-0">V</span>
+        </div>
       </div>
 
       {/* ── Split Invoice ── */}

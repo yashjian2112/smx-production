@@ -12,6 +12,7 @@ type Proforma = {
   termsOfPayment: string | null; deliveryDays: number | null; termsOfDelivery: string | null;
   notes: string | null; status: string; rejectedReason: string | null;
   paymentReceiptUrl: string | null;
+  voltageFrom: string | null; voltageTo: string | null;
   splitInvoice: boolean; splitServicePercent: number | null;
   createdBy: { id: string; name: string }; approvedBy: { id: string; name: string } | null;
   approvedAt: string | null; client: Client; items: Item[];
@@ -378,6 +379,7 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
         {proforma.termsOfPayment && <div><p className="text-zinc-600 text-xs mb-0.5">Payment Terms</p><p className="text-white">{proforma.termsOfPayment}</p></div>}
         {proforma.deliveryDays && <div><p className="text-zinc-600 text-xs mb-0.5">Delivery</p><p className="text-white">Within {proforma.deliveryDays} days</p></div>}
         {proforma.termsOfDelivery && <div><p className="text-zinc-600 text-xs mb-0.5">Delivery Terms</p><p className="text-white">{proforma.termsOfDelivery}</p></div>}
+        {(proforma.voltageFrom || proforma.voltageTo) && <div><p className="text-zinc-600 text-xs mb-0.5">Voltage Range</p><p className="text-white">{proforma.voltageFrom || '—'}V to {proforma.voltageTo || '—'}V</p></div>}
         {isExport && proforma.exchangeRate && <div><p className="text-zinc-600 text-xs mb-0.5">Exchange Rate</p><p className="text-white">₹{proforma.exchangeRate}/$</p></div>}
       </div>
 

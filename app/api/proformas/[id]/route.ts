@@ -24,6 +24,8 @@ const patchSchema = z.object({
   notes:               z.string().optional(),
   items:               z.array(itemSchema).optional(),
   status:              z.enum(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CONVERTED']).optional(),
+  voltageFrom:         z.string().optional().nullable(),
+  voltageTo:           z.string().optional().nullable(),
   splitInvoice:        z.boolean().optional(),
   splitServicePercent: z.number().min(0).max(100).optional().nullable(),
 });
@@ -82,6 +84,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         ...(rest.termsOfDelivery !== undefined && { termsOfDelivery: rest.termsOfDelivery || null }),
         ...(rest.notes                !== undefined && { notes: rest.notes || null }),
         ...(rest.status               !== undefined && { status: rest.status }),
+        ...(rest.voltageFrom          !== undefined && { voltageFrom: rest.voltageFrom }),
+        ...(rest.voltageTo            !== undefined && { voltageTo: rest.voltageTo }),
         ...(rest.splitInvoice         !== undefined && { splitInvoice: rest.splitInvoice }),
         ...(rest.splitServicePercent  !== undefined && { splitServicePercent: rest.splitServicePercent }),
         ...(items !== undefined && {

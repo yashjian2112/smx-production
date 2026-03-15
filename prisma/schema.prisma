@@ -462,6 +462,8 @@ model ProformaInvoice {
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
 
+  voltageFrom         String?  @map("voltage_from")  // e.g. "48"
+  voltageTo           String?  @map("voltage_to")    // e.g. "120"
   splitInvoice        Boolean  @default(false) @map("split_invoice")
   splitServicePercent Float?   @map("split_service_percent") // e.g. 70 = 70% service, 30% goods
 
