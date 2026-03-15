@@ -52,6 +52,9 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   const [deliveryDays,     setDeliveryDays]     = useState('');
   const [notes,            setNotes]            = useState('');
   const [shippingCharges,  setShippingCharges]  = useState('');
+  // Split invoice
+  const [splitInvoice,        setSplitInvoice]        = useState(false);
+  const [splitServicePercent, setSplitServicePercent] = useState('');
   // Replacement-specific fields
   const [unitSerial,       setUnitSerial]       = useState('');
   const [problemDesc,      setProblemDesc]      = useState('');
@@ -175,6 +178,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : undefined,
           notes:           finalNotes || undefined,
           items:           submitItems,
+          splitInvoice:    splitInvoice || undefined,
+          splitServicePercent: splitInvoice && splitServicePercent ? parseFloat(splitServicePercent) : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -308,6 +313,52 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       <div>
         <label className={lCls}>Delivery Days <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
         <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} className={iCls} placeholder="e.g. 30" />
+      </div>
+
+      {/* ── Split Invoice ── */}
+      <div className="rounded-xl p-4 space-y-3" style={{ border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(139,92,246,0.03)' }}>
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <div
+            className="relative w-10 h-5 rounded-full transition-colors shrink-0"
+            style={{ background: splitInvoice ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.1)' }}
+            onClick={() => setSplitInvoice(!splitInvoice)}
+          >
+            <div
+              className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+              style={{ transform: splitInvoice ? 'translateX(22px)' : 'translateX(2px)' }}
+            />
+          </div>
+          <span className="text-sm text-zinc-300">
+            {splitInvoice ? 'Split into Goods + Service invoices' : 'Split Invoice (off)'}
+          </span>
+        </label>
+
+        {splitInvoice && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-zinc-500 w-28 shrink-0">Service %</label>
+              <input
+                type="number" min={1} max={99}
+                value={splitServicePercent}
+                onChange={(e) => setSplitServicePercent(e.target.value)}
+                className={iCls + ' !w-24'}
+                placeholder="e.g. 30"
+              />
+              <span className="text-xs text-zinc-500">%</span>
+            </div>
+            {(() => {
+              const svcPct = parseFloat(splitServicePercent);
+              if (!svcPct || svcPct <= 0 || svcPct >= 100) return null;
+              const goodsPct = 100 - svcPct;
+              return (
+                <div className="flex gap-4 text-xs">
+                  <span style={{ color: '#4ade80' }}>Goods {goodsPct.toFixed(0)}%</span>
+                  <span style={{ color: '#fbbf24' }}>Service {svcPct.toFixed(0)}%</span>
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
 
       {/* ── Line Items ── */}
