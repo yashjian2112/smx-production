@@ -462,8 +462,6 @@ model ProformaInvoice {
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
 
-  voltageFrom         String?  @map("voltage_from")  // e.g. "48"
-  voltageTo           String?  @map("voltage_to")    // e.g. "120"
   splitInvoice        Boolean  @default(false) @map("split_invoice")
   splitServicePercent Float?   @map("split_service_percent") // e.g. 70 = 70% service, 30% goods
 
@@ -502,6 +500,8 @@ model ProformaInvoiceItem {
   quantity        Int
   unitPrice       Float    @map("unit_price")
   discountPercent Float    @default(0) @map("discount_percent")
+  voltageFrom     String?  @map("voltage_from")
+  voltageTo       String?  @map("voltage_to")
   sortOrder       Int      @default(0) @map("sort_order")
   createdAt       DateTime @default(now()) @map("created_at")
 

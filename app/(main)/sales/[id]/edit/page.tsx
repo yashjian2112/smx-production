@@ -43,8 +43,6 @@ export default async function EditProformaPage({ params }: { params: { id: strin
     termsOfPayment:  proforma.termsOfPayment,
     deliveryDays:    proforma.deliveryDays,
     termsOfDelivery: proforma.termsOfDelivery,
-    voltageFrom:     proforma.voltageFrom,
-    voltageTo:       proforma.voltageTo,
     notes:           proforma.notes,
     items:           proforma.items.map((item) => ({
       id:              item.id,
@@ -54,6 +52,8 @@ export default async function EditProformaPage({ params }: { params: { id: strin
       quantity:        item.quantity,
       unitPrice:       item.unitPrice,
       discountPercent: item.discountPercent,
+      voltageFrom:     item.voltageFrom,
+      voltageTo:       item.voltageTo,
       product:         item.product,
     })),
   };

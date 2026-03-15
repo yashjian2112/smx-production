@@ -11,6 +11,8 @@ const itemSchema = z.object({
   quantity:        z.number().int().min(1),
   unitPrice:       z.number().min(0),
   discountPercent: z.number().min(0).max(100).default(0),
+  voltageFrom:     z.string().optional(),
+  voltageTo:       z.string().optional(),
   sortOrder:       z.number().int().default(0),
 });
 
@@ -26,8 +28,6 @@ const createSchema = z.object({
   notes:            z.string().optional(),
   relatedInvoiceId: z.string().optional(),
   items:            z.array(itemSchema).min(1),
-  voltageFrom:         z.string().optional(),
-  voltageTo:           z.string().optional(),
   splitInvoice:        z.boolean().optional(),
   splitServicePercent: z.number().min(0).max(100).optional(),
 });
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
     const { clientId, documentType, invoiceType, currency, exchangeRate, termsOfPayment, deliveryDays,
-            termsOfDelivery, notes, relatedInvoiceId, items, voltageFrom, voltageTo, splitInvoice, splitServicePercent } = parsed.data;
+            termsOfDelivery, notes, relatedInvoiceId, items, splitInvoice, splitServicePercent } = parsed.data;
 
     const client = await prisma.client.findUnique({ where: { id: clientId } });
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 400 });
@@ -100,8 +100,6 @@ export async function POST(req: NextRequest) {
         termsOfDelivery: termsOfDelivery ?? null,
         notes:           notes           ?? null,
         relatedInvoiceId:relatedInvoiceId?? null,
-        voltageFrom:     voltageFrom     ?? null,
-        voltageTo:       voltageTo       ?? null,
         splitInvoice:    splitInvoice    ?? false,
         splitServicePercent: splitServicePercent ?? null,
         createdById:     session.id,
@@ -113,6 +111,8 @@ export async function POST(req: NextRequest) {
             quantity:        item.quantity,
             unitPrice:       item.unitPrice,
             discountPercent: item.discountPercent,
+            voltageFrom:     item.voltageFrom ?? null,
+            voltageTo:       item.voltageTo ?? null,
             sortOrder:       item.sortOrder ?? i,
           })),
         },

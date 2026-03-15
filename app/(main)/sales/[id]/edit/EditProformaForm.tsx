@@ -14,6 +14,8 @@ type InitialItem = {
   quantity: number;
   unitPrice: number;
   discountPercent: number;
+  voltageFrom?: string | null;
+  voltageTo?: string | null;
   product?: { id: string; code: string; name: string } | null;
 };
 
@@ -27,8 +29,6 @@ type InitialProforma = {
   termsOfPayment: string | null;
   deliveryDays: number | null;
   termsOfDelivery: string | null;
-  voltageFrom: string | null;
-  voltageTo: string | null;
   notes: string | null;
   items: InitialItem[];
 };
@@ -41,6 +41,8 @@ type LineItem = {
   quantity:        number;
   unitPrice:       number;
   discountPercent: number;
+  voltageFrom:     string;
+  voltageTo:       string;
 };
 
 const HSN_KNOWN = ['85371000', '85015290', '85285200', '9965'];
@@ -57,7 +59,7 @@ const PAYMENT_PRESETS  = ['100% ADVANCE', '50% Advance, 50% on delivery', '30 da
 let keyCounter = 100;
 
 function newItem(): LineItem {
-  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0 };
+  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '' };
 }
 
 function calcAmount(item: LineItem) {
@@ -77,6 +79,8 @@ function toLineItem(i: InitialItem): LineItem {
     quantity:        i.quantity,
     unitPrice:       i.unitPrice,
     discountPercent: i.discountPercent,
+    voltageFrom:     i.voltageFrom ?? '',
+    voltageTo:       i.voltageTo ?? '',
   };
 }
 
@@ -141,8 +145,6 @@ export function EditProformaForm({
   const [currency,       setCurrency]       = useState<'INR' | 'USD'>(proforma.currency as 'INR' | 'USD');
   const [termsOfPayment, setTermsOfPayment] = useState(proforma.termsOfPayment ?? '');
   const [deliveryDays,   setDeliveryDays]   = useState(proforma.deliveryDays?.toString() ?? '');
-  const [voltageFrom,    setVoltageFrom]    = useState(proforma.voltageFrom ?? '');
-  const [voltageTo,      setVoltageTo]      = useState(proforma.voltageTo ?? '');
   const [notes,          setNotes]          = useState(() => isReplacement ? stripReplacementHeader(proforma.notes) : (proforma.notes ?? ''));
 
   // Replacement-specific
@@ -230,6 +232,8 @@ export function EditProformaForm({
       quantity:        item.quantity,
       unitPrice:       item.unitPrice,
       discountPercent: item.discountPercent,
+      voltageFrom:     item.voltageFrom || null,
+      voltageTo:       item.voltageTo || null,
       sortOrder:       idx,
     }));
     if (shipping > 0) {
@@ -240,6 +244,8 @@ export function EditProformaForm({
         quantity:        1,
         unitPrice:       shipping,
         discountPercent: 0,
+        voltageFrom:     null,
+        voltageTo:       null,
         sortOrder:       submitItems.length,
       });
     }
@@ -253,8 +259,6 @@ export function EditProformaForm({
           currency,
           termsOfPayment:  termsOfPayment  || undefined,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : null,
-          voltageFrom:     voltageFrom || null,
-          voltageTo:       voltageTo || null,
           notes:           finalNotes    || undefined,
           items:           submitItems,
         }),
@@ -360,17 +364,6 @@ export function EditProformaForm({
         <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} className={iCls} placeholder="e.g. 30" />
       </div>
 
-      {/* Voltage Range */}
-      <div>
-        <label className={lCls}>Voltage Range</label>
-        <div className="flex items-center gap-2">
-          <input type="number" min={0} value={voltageFrom} onChange={(e) => setVoltageFrom(e.target.value)} className={iCls} placeholder="From (e.g. 48)" />
-          <span className="text-zinc-500 text-sm shrink-0">to</span>
-          <input type="number" min={0} value={voltageTo} onChange={(e) => setVoltageTo(e.target.value)} className={iCls} placeholder="To (e.g. 120)" />
-          <span className="text-zinc-500 text-xs shrink-0">V</span>
-        </div>
-      </div>
-
       {/* ── Line Items ── */}
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -434,6 +427,17 @@ export function EditProformaForm({
                 <div>
                   <label className={lCls}>Qty (PCS) <span className="text-red-400">*</span></label>
                   <input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.key, { quantity: parseInt(e.target.value, 10) || 1 })} className={iCls} />
+                </div>
+              </div>
+
+              {/* Voltage Range */}
+              <div>
+                <label className={lCls}>Voltage Range</label>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={0} value={item.voltageFrom} onChange={(e) => updateItem(item.key, { voltageFrom: e.target.value })} className={iCls} placeholder="From (e.g. 48)" />
+                  <span className="text-zinc-500 text-sm shrink-0">to</span>
+                  <input type="number" min={0} value={item.voltageTo} onChange={(e) => updateItem(item.key, { voltageTo: e.target.value })} className={iCls} placeholder="To (e.g. 120)" />
+                  <span className="text-zinc-500 text-xs shrink-0">V</span>
                 </div>
               </div>
 

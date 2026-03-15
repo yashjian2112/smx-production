@@ -14,6 +14,8 @@ type LineItem = {
   quantity:        number;
   unitPrice:       number;
   discountPercent: number;
+  voltageFrom:     string;
+  voltageTo:       string;
 };
 
 const HSN_OPTIONS = [
@@ -29,7 +31,7 @@ const PAYMENT_PRESETS = ['100% ADVANCE', '50% Advance, 50% on delivery', '30 day
 let keyCounter = 3;
 
 function newItem(): LineItem {
-  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0 };
+  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '' };
 }
 
 function calcAmount(item: LineItem) {
@@ -52,9 +54,6 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   const [deliveryDays,     setDeliveryDays]     = useState('');
   const [notes,            setNotes]            = useState('');
   const [shippingCharges,  setShippingCharges]  = useState('');
-  // Voltage range
-  const [voltageFrom,      setVoltageFrom]      = useState('');
-  const [voltageTo,        setVoltageTo]        = useState('');
   // Split invoice
   const [splitInvoice,        setSplitInvoice]        = useState(false);
   const [splitServicePercent, setSplitServicePercent] = useState('');
@@ -63,7 +62,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   const [problemDesc,      setProblemDesc]      = useState('');
 
   const [items, setItems] = useState<LineItem[]>([
-    { key: 1, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0 },
+    { key: 1, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '' },
   ]);
   const [hsnInputs, setHsnInputs] = useState<Record<number, string>>({});  // custom HSN per item
 
@@ -154,6 +153,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       quantity:        item.quantity,
       unitPrice:       item.unitPrice,
       discountPercent: item.discountPercent,
+      voltageFrom:     item.voltageFrom || undefined,
+      voltageTo:       item.voltageTo || undefined,
       sortOrder:       i,
     }));
     if (shipping > 0) {
@@ -164,6 +165,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
         quantity:        1,
         unitPrice:       shipping,
         discountPercent: 0,
+        voltageFrom:     undefined,
+        voltageTo:       undefined,
         sortOrder:       submitItems.length,
       });
     }
@@ -181,8 +184,6 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : undefined,
           notes:           finalNotes || undefined,
           items:           submitItems,
-          voltageFrom:     voltageFrom || undefined,
-          voltageTo:       voltageTo || undefined,
           splitInvoice:    splitInvoice || undefined,
           splitServicePercent: splitInvoice && splitServicePercent ? parseFloat(splitServicePercent) : undefined,
         }),
@@ -320,17 +321,6 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
         <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} className={iCls} placeholder="e.g. 30" />
       </div>
 
-      {/* Voltage Range */}
-      <div>
-        <label className={lCls}>Voltage Range</label>
-        <div className="flex items-center gap-2">
-          <input type="number" min={0} value={voltageFrom} onChange={(e) => setVoltageFrom(e.target.value)} className={iCls} placeholder="From (e.g. 48)" />
-          <span className="text-zinc-500 text-sm shrink-0">to</span>
-          <input type="number" min={0} value={voltageTo} onChange={(e) => setVoltageTo(e.target.value)} className={iCls} placeholder="To (e.g. 120)" />
-          <span className="text-zinc-500 text-xs shrink-0">V</span>
-        </div>
-      </div>
-
       {/* ── Split Invoice ── */}
       <div className="rounded-xl p-4 space-y-3" style={{ border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(139,92,246,0.03)' }}>
         <label className="flex items-center gap-3 cursor-pointer select-none">
@@ -442,6 +432,17 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                 <div>
                   <label className={lCls}>Qty (PCS) <span className="text-red-400">*</span></label>
                   <input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.key, { quantity: parseInt(e.target.value, 10) || 1 })} className={iCls} />
+                </div>
+              </div>
+
+              {/* Voltage Range */}
+              <div>
+                <label className={lCls}>Voltage Range</label>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={0} value={item.voltageFrom} onChange={(e) => updateItem(item.key, { voltageFrom: e.target.value })} className={iCls} placeholder="From (e.g. 48)" />
+                  <span className="text-zinc-500 text-sm shrink-0">to</span>
+                  <input type="number" min={0} value={item.voltageTo} onChange={(e) => updateItem(item.key, { voltageTo: e.target.value })} className={iCls} placeholder="To (e.g. 120)" />
+                  <span className="text-zinc-500 text-xs shrink-0">V</span>
                 </div>
               </div>
 

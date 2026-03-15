@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-type Item = { id: string; description: string; hsnCode: string; quantity: number; unitPrice: number; discountPercent: number; product?: { code: string; name: string } | null };
+type Item = { id: string; description: string; hsnCode: string; quantity: number; unitPrice: number; discountPercent: number; voltageFrom?: string | null; voltageTo?: string | null; product?: { code: string; name: string } | null };
 type Client = { id: string; code: string; customerName: string; email: string | null; phone: string | null; billingAddress: string | null; shippingAddress: string | null; gstNumber: string | null; globalOrIndian: string | null; state: string | null };
 type Proforma = {
   id: string; invoiceNumber: string; invoiceDate: string; invoiceType: string;
@@ -12,7 +12,6 @@ type Proforma = {
   termsOfPayment: string | null; deliveryDays: number | null; termsOfDelivery: string | null;
   notes: string | null; status: string; rejectedReason: string | null;
   paymentReceiptUrl: string | null;
-  voltageFrom: string | null; voltageTo: string | null;
   splitInvoice: boolean; splitServicePercent: number | null;
   createdBy: { id: string; name: string }; approvedBy: { id: string; name: string } | null;
   approvedAt: string | null; client: Client; items: Item[];
@@ -379,7 +378,6 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
         {proforma.termsOfPayment && <div><p className="text-zinc-600 text-xs mb-0.5">Payment Terms</p><p className="text-white">{proforma.termsOfPayment}</p></div>}
         {proforma.deliveryDays && <div><p className="text-zinc-600 text-xs mb-0.5">Delivery</p><p className="text-white">Within {proforma.deliveryDays} days</p></div>}
         {proforma.termsOfDelivery && <div><p className="text-zinc-600 text-xs mb-0.5">Delivery Terms</p><p className="text-white">{proforma.termsOfDelivery}</p></div>}
-        {(proforma.voltageFrom || proforma.voltageTo) && <div><p className="text-zinc-600 text-xs mb-0.5">Voltage Range</p><p className="text-white">{proforma.voltageFrom || '—'}V to {proforma.voltageTo || '—'}V</p></div>}
         {isExport && proforma.exchangeRate && <div><p className="text-zinc-600 text-xs mb-0.5">Exchange Rate</p><p className="text-white">₹{proforma.exchangeRate}/$</p></div>}
       </div>
 
@@ -511,7 +509,12 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
             <tbody>
               {proforma.items.map((item) => (
                 <tr key={item.id} className="border-b border-zinc-900">
-                  <td className="p-3 text-white">{item.description}</td>
+                  <td className="p-3 text-white">
+                    {item.description}
+                    {(item.voltageFrom || item.voltageTo) && (
+                      <span className="ml-2 text-xs text-zinc-500">({item.voltageFrom || '?'}V – {item.voltageTo || '?'}V)</span>
+                    )}
+                  </td>
                   <td className="p-3 text-center text-zinc-400 font-mono text-xs">{item.hsnCode}</td>
                   <td className="p-3 text-center text-zinc-400">{item.quantity} PCS</td>
                   <td className="p-3 text-right text-zinc-400">{fmtAmt(item.unitPrice, proforma.currency)}</td>
