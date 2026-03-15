@@ -123,12 +123,11 @@ const employeeNav: NavItem[] = [
   { href: '/my-performance', label: 'Performance', icon: 'Performance' },
 ];
 
-// SALES: 4 items — PI, Invoice, Returns & Replacement, Clients
+// SALES: 3 items — PI, Returns & Replacement, Clients
 const salesNav: NavItem[] = [
-  { href: '/sales',                label: 'PI',      icon: 'Invoice'  },
-  { href: '/sales?tab=invoice',    label: 'Invoice', icon: 'Accounts' },
-  { href: '/sales?tab=returns',    label: 'Returns', icon: 'Returns'  },
-  { href: '/sales/clients',        label: 'Clients', icon: 'Clients'  },
+  { href: '/sales',             label: 'PI',      icon: 'Invoice'  },
+  { href: '/sales?tab=returns', label: 'Returns', icon: 'Returns'  },
+  { href: '/sales/clients',     label: 'Clients', icon: 'Clients'  },
 ];
 
 // ACCOUNTS: 4 items — Approvals, Shipping, Invoices (→ /sales), Settings

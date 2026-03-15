@@ -59,7 +59,9 @@ export function ProformaList({
   initialTab?: TabKey;
   invoices?: InvoiceRow[];
 }) {
-  const [tab, setTab]       = useState<TabKey>(initialTab ?? 'pi');
+  // Guard: SALES role cannot see Invoice tab — fall back to 'pi'
+  const safeInitialTab: TabKey = (initialTab === 'invoice' && role === 'SALES') ? 'pi' : (initialTab ?? 'pi');
+  const [tab, setTab]       = useState<TabKey>(safeInitialTab);
   const [search, setSearch] = useState('');
 
   const piList      = proformas.filter((p) => p.invoiceNumber.startsWith('TSM/PI/') && p.invoiceType === 'SALE');
