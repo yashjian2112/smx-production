@@ -38,7 +38,7 @@ export default async function SalesPage() {
         <h2 className="text-xl font-semibold">Proforma Invoices</h2>
         {canCreate && (
           <Link href="/sales/new" className="btn-primary py-2 px-4 text-sm tap-target">
-            + New PI
+            + New Invoice
           </Link>
         )}
       </div>

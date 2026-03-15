@@ -26,22 +26,22 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; border: string }
 const TYPE_LABEL: Record<string, string> = { SALE: 'Sale', RETURN: 'Return', REPLACEMENT: 'Replacement' };
 
 export function ProformaList({ proformas, role }: { proformas: ProformaRow[]; role: string }) {
-  const [tab, setTab]       = useState<'pi' | 'invoice' | 'replace' | 'return'>('pi');
+  const [tab, setTab]       = useState<'invoice' | 'converted' | 'replace' | 'return'>('invoice');
   const [search, setSearch] = useState('');
 
-  // PI tab  = SALE type, not yet converted (active pipeline)
-  const piList       = proformas.filter((p) => p.invoiceType === 'SALE' && p.status !== 'CONVERTED');
-  // Invoice tab = SALE type, converted to order
-  const invoiceList  = proformas.filter((p) => p.invoiceType === 'SALE' && p.status === 'CONVERTED');
+  // Invoice tab = all active SALE proformas (DRAFT / PENDING / APPROVED) — new ones land here
+  const invoiceList   = proformas.filter((p) => p.invoiceType === 'SALE' && p.status !== 'CONVERTED');
+  // Converted tab = SALE proformas converted to a production order
+  const convertedList = proformas.filter((p) => p.invoiceType === 'SALE' && p.status === 'CONVERTED');
   // Replace tab = REPLACEMENT type
-  const replaceList  = proformas.filter((p) => p.invoiceType === 'REPLACEMENT');
+  const replaceList   = proformas.filter((p) => p.invoiceType === 'REPLACEMENT');
   // Return tab  = RETURN type
-  const returnList   = proformas.filter((p) => p.invoiceType === 'RETURN');
+  const returnList    = proformas.filter((p) => p.invoiceType === 'RETURN');
 
   const list =
-    tab === 'pi'      ? piList :
-    tab === 'invoice' ? invoiceList :
-    tab === 'replace' ? replaceList :
+    tab === 'invoice'   ? invoiceList :
+    tab === 'converted' ? convertedList :
+    tab === 'replace'   ? replaceList :
     returnList;
 
   const filtered = list.filter((p) => {
@@ -50,11 +50,11 @@ export function ProformaList({ proformas, role }: { proformas: ProformaRow[]; ro
     return p.invoiceNumber.toLowerCase().includes(q) || p.client.customerName.toLowerCase().includes(q);
   });
 
-  const tabs: Array<{ key: 'pi' | 'invoice' | 'replace' | 'return'; label: string; count: number }> = [
-    { key: 'pi',      label: 'PI',      count: piList.length },
-    { key: 'invoice', label: 'Invoice', count: invoiceList.length },
-    { key: 'replace', label: 'Replace', count: replaceList.length },
-    { key: 'return',  label: 'Return',  count: returnList.length },
+  const tabs: Array<{ key: 'invoice' | 'converted' | 'replace' | 'return'; label: string; count: number }> = [
+    { key: 'invoice',   label: 'Invoice',   count: invoiceList.length },
+    { key: 'converted', label: 'Converted', count: convertedList.length },
+    { key: 'replace',   label: 'Replace',   count: replaceList.length },
+    { key: 'return',    label: 'Return',    count: returnList.length },
   ];
 
   return (
@@ -82,9 +82,9 @@ export function ProformaList({ proformas, role }: { proformas: ProformaRow[]; ro
         {filtered.length === 0 ? (
           <div className="card p-8 text-center">
             <p className="text-zinc-500 text-sm">
-              {tab === 'pi'      ? 'No active proforma invoices.' :
-               tab === 'invoice' ? 'No converted invoices yet.' :
-               tab === 'replace' ? 'No replacement invoices.' :
+              {tab === 'invoice'   ? 'No active invoices.' :
+               tab === 'converted' ? 'No converted invoices yet.' :
+               tab === 'replace'   ? 'No replacement invoices.' :
                'No return invoices.'}
             </p>
           </div>

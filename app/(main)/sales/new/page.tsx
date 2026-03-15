@@ -17,7 +17,7 @@ export default async function NewProformaPage() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold">New Proforma Invoice</h2>
+      <h2 className="text-xl font-semibold">New Invoice</h2>
       <CreateProformaForm clients={clients as any} products={products} />
     </div>
   );
