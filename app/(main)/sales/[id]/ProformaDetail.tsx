@@ -12,6 +12,7 @@ type Proforma = {
   termsOfPayment: string | null; deliveryDays: number | null; termsOfDelivery: string | null;
   notes: string | null; status: string; rejectedReason: string | null;
   paymentReceiptUrl: string | null;
+  splitInvoice: boolean; splitServicePercent: number | null;
   createdBy: { id: string; name: string }; approvedBy: { id: string; name: string } | null;
   approvedAt: string | null; client: Client; items: Item[];
   order: { id: string; orderNumber: string; status: string } | null;
@@ -46,6 +47,15 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [receiptError,     setReceiptError]     = useState('');
 
+  // Split invoice state — initialised from proforma data
+  const [splitInvoice,        setSplitInvoice]        = useState(proforma.splitInvoice ?? false);
+  const [splitServicePercent, setSplitServicePercent] = useState<string>(
+    proforma.splitServicePercent != null ? String(proforma.splitServicePercent) : ''
+  );
+  const [splitSaving, setSplitSaving]   = useState(false);
+  const [splitError,  setSplitError]    = useState('');
+  const [splitSaved,  setSplitSaved]    = useState(false);
+
   const isOwner          = proforma.createdBy.id === userId;
   const canEdit          = (role === 'ADMIN' || (role === 'SALES' && isOwner)) && proforma.status === 'DRAFT';
   const canDelete        = canEdit;
@@ -55,14 +65,56 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   const canUploadReceipt = (role === 'ADMIN' || (role === 'SALES' && isOwner)) && ['DRAFT', 'PENDING_APPROVAL'].includes(proforma.status);
   const isReceiptPdf     = receiptUrl ? receiptUrl.toLowerCase().includes('.pdf') : false;
 
-  const subtotal    = proforma.items.reduce((s, i) => s + calcItem(i), 0);
+  // Compute items excluding shipping HSN 9965
+  const productItems = proforma.items.filter((i) => i.hsnCode !== '9965');
+  const subtotal    = productItems.reduce((s, i) => s + calcItem(i), 0);
+  const fullSubtotal = proforma.items.reduce((s, i) => s + calcItem(i), 0);
   const isExport    = proforma.currency === 'USD';
   const sellerState = 'gujarat';
   const buyerState  = (proforma.client.state ?? '').toLowerCase();
   const isIntra     = !isExport && !!buyerState && buyerState === sellerState;
-  const gst         = isExport ? 0 : subtotal * 0.18;
-  const total       = subtotal + gst;
+  const gst         = isExport ? 0 : fullSubtotal * 0.18;
+  const total       = fullSubtotal + gst;
   const st          = STATUS_STYLE[proforma.status] ?? STATUS_STYLE.DRAFT;
+
+  // Split invoice preview
+  const servicePctNum = parseFloat(splitServicePercent);
+  const goodsPctNum   = isNaN(servicePctNum) ? null : 100 - servicePctNum;
+  const serviceAmt    = !isNaN(servicePctNum) ? subtotal * (servicePctNum / 100) : null;
+  const goodsAmt      = !isNaN(servicePctNum) ? subtotal * ((100 - servicePctNum) / 100) : null;
+
+  async function saveSplitInvoice(override?: { splitInvoice?: boolean; splitServicePercent?: string }) {
+    setSplitError(''); setSplitSaved(false); setSplitSaving(true);
+    const si  = override?.splitInvoice  !== undefined ? override.splitInvoice  : splitInvoice;
+    const ssp = override?.splitServicePercent !== undefined ? override.splitServicePercent : splitServicePercent;
+    const pct = parseFloat(ssp);
+    if (si && (isNaN(pct) || pct <= 0 || pct >= 100)) {
+      setSplitError('Enter a service % between 1 and 99.');
+      setSplitSaving(false);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/proformas/${proforma.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          splitInvoice: si,
+          splitServicePercent: si ? pct : null,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setSplitError(d.error || 'Failed to save');
+      } else {
+        setSplitSaved(true);
+        setTimeout(() => setSplitSaved(false), 2000);
+      }
+    } catch {
+      setSplitError('Network error');
+    } finally {
+      setSplitSaving(false);
+    }
+  }
 
   async function sendForApproval() {
     setLoading(true); setError('');
@@ -145,6 +197,14 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
             {proforma.status.replace('_', ' ')}
           </span>
           <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{proforma.currency}</span>
+          {proforma.splitInvoice && (
+            <span
+              className="text-xs font-medium px-2 py-0.5 rounded border"
+              style={{ background: 'rgba(139,92,246,0.1)', color: '#c4b5fd', borderColor: 'rgba(139,92,246,0.3)' }}
+            >
+              Split Invoice
+            </span>
+          )}
         </div>
         <p className="text-zinc-500 text-sm mt-0.5">
           {new Date(proforma.invoiceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}
@@ -317,6 +377,116 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
         {isExport && proforma.exchangeRate && <div><p className="text-zinc-600 text-xs mb-0.5">Exchange Rate</p><p className="text-white">₹{proforma.exchangeRate}/$</p></div>}
       </div>
 
+      {/* ── Split Invoice ── only shown for DRAFT and to owners/admin ── */}
+      {canEdit && (
+        <div
+          className="card p-4 space-y-3"
+          style={{ border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(139,92,246,0.03)' }}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Split Invoice</p>
+            {splitSaved && (
+              <span className="text-xs text-green-400">Saved ✓</span>
+            )}
+          </div>
+
+          {/* Toggle */}
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <div
+              className="relative w-10 h-5 rounded-full transition-colors"
+              style={{ background: splitInvoice ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.1)' }}
+              onClick={() => {
+                const next = !splitInvoice;
+                setSplitInvoice(next);
+                saveSplitInvoice({ splitInvoice: next });
+              }}
+            >
+              <div
+                className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+                style={{ transform: splitInvoice ? 'translateX(22px)' : 'translateX(2px)' }}
+              />
+            </div>
+            <span className="text-sm text-zinc-300">
+              {splitInvoice ? 'Split into Goods + Service invoices' : 'Single invoice (no split)'}
+            </span>
+          </label>
+
+          {/* Service % input */}
+          {splitInvoice && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-zinc-500 w-28 shrink-0">Service %</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={splitServicePercent}
+                    onChange={(e) => setSplitServicePercent(e.target.value)}
+                    onBlur={() => saveSplitInvoice()}
+                    placeholder="e.g. 70"
+                    className="w-24 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-violet-500"
+                  />
+                  <span className="text-zinc-500 text-sm">%</span>
+                  <button
+                    type="button"
+                    onClick={() => saveSplitInvoice()}
+                    disabled={splitSaving}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50"
+                    style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#c4b5fd' }}
+                  >
+                    {splitSaving ? '…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Preview */}
+              {goodsAmt !== null && serviceAmt !== null && goodsPctNum !== null && (
+                <div
+                  className="rounded-lg px-3 py-2 text-xs space-y-1"
+                  style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.15)' }}
+                >
+                  <div className="text-zinc-500 mb-1">Invoice split preview (product subtotal):</div>
+                  <div className="flex gap-4">
+                    <span style={{ color: '#4ade80' }}>
+                      Goods {goodsPctNum.toFixed(0)}% = {fmtAmt(goodsAmt, proforma.currency)}
+                    </span>
+                    <span style={{ color: '#fbbf24' }}>
+                      Service {servicePctNum.toFixed(0)}% = {fmtAmt(serviceAmt, proforma.currency)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {splitError && (
+                <p className="text-xs text-red-400">{splitError}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Read-only split info for non-editors */}
+      {!canEdit && proforma.splitInvoice && proforma.splitServicePercent != null && (
+        <div
+          className="card p-4"
+          style={{ border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(139,92,246,0.03)' }}
+        >
+          <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2">Split Invoice</p>
+          <div className="text-sm text-zinc-300">
+            Goods {(100 - proforma.splitServicePercent).toFixed(0)}% · Service {proforma.splitServicePercent.toFixed(0)}%
+          </div>
+          <div className="flex gap-4 text-xs mt-1">
+            <span style={{ color: '#4ade80' }}>
+              Goods = {fmtAmt(subtotal * ((100 - proforma.splitServicePercent) / 100), proforma.currency)}
+            </span>
+            <span style={{ color: '#fbbf24' }}>
+              Service = {fmtAmt(subtotal * (proforma.splitServicePercent / 100), proforma.currency)}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Line Items */}
       <div className="card overflow-hidden">
         <div className="p-3 border-b border-zinc-800"><p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Line Items</p></div>
@@ -347,11 +517,11 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
           </table>
         </div>
         <div className="p-4 border-t border-zinc-800 space-y-2">
-          <div className="flex justify-between text-sm"><span className="text-zinc-500">Sub Total</span><span>{fmtAmt(subtotal, proforma.currency)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-zinc-500">Sub Total</span><span>{fmtAmt(fullSubtotal, proforma.currency)}</span></div>
           {!isExport && isIntra && (
             <>
-              <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{fmtAmt(subtotal * 0.09, proforma.currency)}</span></div>
-              <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{fmtAmt(subtotal * 0.09, proforma.currency)}</span></div>
+              <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{fmtAmt(fullSubtotal * 0.09, proforma.currency)}</span></div>
+              <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{fmtAmt(fullSubtotal * 0.09, proforma.currency)}</span></div>
             </>
           )}
           {!isExport && !isIntra && <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{fmtAmt(gst, proforma.currency)}</span></div>}

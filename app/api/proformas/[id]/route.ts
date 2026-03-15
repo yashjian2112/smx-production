@@ -15,15 +15,17 @@ const itemSchema = z.object({
 });
 
 const patchSchema = z.object({
-  clientId:         z.string().optional(),
-  currency:         z.enum(['INR', 'USD']).optional(),
-  exchangeRate:     z.number().positive().optional().nullable(),
-  termsOfPayment:   z.string().optional(),
-  deliveryDays:     z.number().int().min(1).optional().nullable(),
-  termsOfDelivery:  z.string().optional(),
-  notes:            z.string().optional(),
-  items:            z.array(itemSchema).optional(),
-  status:           z.enum(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CONVERTED']).optional(),
+  clientId:            z.string().optional(),
+  currency:            z.enum(['INR', 'USD']).optional(),
+  exchangeRate:        z.number().positive().optional().nullable(),
+  termsOfPayment:      z.string().optional(),
+  deliveryDays:        z.number().int().min(1).optional().nullable(),
+  termsOfDelivery:     z.string().optional(),
+  notes:               z.string().optional(),
+  items:               z.array(itemSchema).optional(),
+  status:              z.enum(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CONVERTED']).optional(),
+  splitInvoice:        z.boolean().optional(),
+  splitServicePercent: z.number().min(0).max(100).optional().nullable(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -78,8 +80,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         ...(rest.termsOfPayment  !== undefined && { termsOfPayment: rest.termsOfPayment || null }),
         ...(rest.deliveryDays    !== undefined && { deliveryDays: rest.deliveryDays }),
         ...(rest.termsOfDelivery !== undefined && { termsOfDelivery: rest.termsOfDelivery || null }),
-        ...(rest.notes           !== undefined && { notes: rest.notes || null }),
-        ...(rest.status          !== undefined && { status: rest.status }),
+        ...(rest.notes                !== undefined && { notes: rest.notes || null }),
+        ...(rest.status               !== undefined && { status: rest.status }),
+        ...(rest.splitInvoice         !== undefined && { splitInvoice: rest.splitInvoice }),
+        ...(rest.splitServicePercent  !== undefined && { splitServicePercent: rest.splitServicePercent }),
         ...(items !== undefined && {
           items: {
             deleteMany: {},

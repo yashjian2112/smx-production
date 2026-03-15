@@ -41,6 +41,9 @@ model User {
   dispatches        Dispatch[]        @relation("DispatchedBy")
   approvedDispatches Dispatch[]       @relation("DispatchApprovedBy")
   dispatchItemsScanned DispatchItem[] @relation("DispatchItemScannedBy")
+  dispatchOrders    DispatchOrder[]   @relation("DOCreatedBy")
+  approvedDOs       DispatchOrder[]   @relation("DOApprovedBy")
+  boxItemsScanned   PackingBoxItem[]  @relation("BoxItemScannedBy")
 }
 
 enum Role {
@@ -126,6 +129,7 @@ model Client {
 
   orders           Order[]
   proformaInvoices ProformaInvoice[]
+  invoices         Invoice[]
 
   @@map("clients")
 }
@@ -152,6 +156,7 @@ model Order {
   units           ControllerUnit[]
   proformaInvoice ProformaInvoice?
   dispatches      Dispatch[]
+  dispatchOrders  DispatchOrder[]
 }
 
 enum OrderStatus {
@@ -195,6 +200,7 @@ model ControllerUnit {
   componentChecks ComponentCheck[]
   workSubmissions StageWorkSubmission[]
   dispatchItems   DispatchItem[]
+  packingBoxItem  PackingBoxItem?
 }
 
 enum StageType {
@@ -456,6 +462,9 @@ model ProformaInvoice {
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
 
+  splitInvoice        Boolean  @default(false) @map("split_invoice")
+  splitServicePercent Float?   @map("split_service_percent") // e.g. 70 = 70% service, 30% goods
+
   client         Client               @relation(fields: [clientId], references: [id])
   createdBy      User                 @relation("PICreatedBy", fields: [createdById], references: [id])
   approvedBy     User?                @relation("PIApprovedBy", fields: [approvedById], references: [id])
@@ -463,6 +472,7 @@ model ProformaInvoice {
   relatedInvoice ProformaInvoice?     @relation("RelatedInvoice", fields: [relatedInvoiceId], references: [id])
   relatedTo      ProformaInvoice[]    @relation("RelatedInvoice")
   items          ProformaInvoiceItem[]
+  invoices       Invoice[]
 
   @@map("proforma_invoices")
 }
@@ -560,6 +570,118 @@ model DispatchItem {
 
   @@unique([dispatchId, unitId])
   @@map("dispatch_items")
+}
+
+// ----- Dispatch Orders (new manual dispatch flow) -----
+enum DOStatus {
+  OPEN
+  PACKING
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model DispatchOrder {
+  id             String    @id @default(cuid())
+  doNumber       String    @unique @map("do_number")   // TSM/DO/26-27/0001
+  orderId        String    @map("order_id")
+  status         DOStatus  @default(OPEN)
+  totalBoxes     Int?      @map("total_boxes")
+  submittedAt    DateTime? @map("submitted_at")
+  approvedAt     DateTime? @map("approved_at")
+  rejectedReason String?   @map("rejected_reason")
+  createdById    String    @map("created_by_id")
+  approvedById   String?   @map("approved_by_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  order      Order         @relation(fields: [orderId], references: [id])
+  createdBy  User          @relation("DOCreatedBy", fields: [createdById], references: [id])
+  approvedBy User?         @relation("DOApprovedBy", fields: [approvedById], references: [id])
+  boxes      PackingBox[]
+  invoices   Invoice[]
+
+  @@map("dispatch_orders")
+}
+
+model PackingBox {
+  id              String        @id @default(cuid())
+  dispatchOrderId String        @map("dispatch_order_id")
+  boxNumber       Int           @map("box_number")
+  boxLabel        String        @map("box_label")  // TSM/DO/26-27/0001-BOX-1of3
+  photoUrl        String?       @map("photo_url")
+  isSealed        Boolean       @default(false) @map("is_sealed")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  dispatchOrder DispatchOrder   @relation(fields: [dispatchOrderId], references: [id], onDelete: Cascade)
+  items         PackingBoxItem[]
+
+  @@unique([dispatchOrderId, boxNumber])
+  @@map("packing_boxes")
+}
+
+model PackingBoxItem {
+  id          String         @id @default(cuid())
+  boxId       String         @map("box_id")
+  unitId      String         @unique @map("unit_id")  // one unit → one box only
+  serial      String
+  barcode     String
+  scannedAt   DateTime       @default(now()) @map("scanned_at")
+  scannedById String         @map("scanned_by_id")
+
+  box       PackingBox     @relation(fields: [boxId], references: [id], onDelete: Cascade)
+  unit      ControllerUnit @relation(fields: [unitId], references: [id])
+  scannedBy User           @relation("BoxItemScannedBy", fields: [scannedById], references: [id])
+
+  @@map("packing_box_items")
+}
+
+// ----- Auto-generated Invoice (after accounts approves Dispatch Order) -----
+enum InvoiceSubType {
+  FULL     // normal invoice, no split
+  GOODS    // split invoice: goods portion only
+  SERVICE  // split invoice: service portion only
+}
+
+model Invoice {
+  id               String         @id @default(cuid())
+  invoiceNumber    String         @unique @map("invoice_number")  // TSM/ES/26-27/0001 or TSM/DS/
+  dispatchOrderId  String         @map("dispatch_order_id")
+  proformaId       String?        @map("proforma_id")
+  subType          InvoiceSubType @default(FULL) @map("sub_type")
+  splitPercent     Float?         @map("split_percent")   // this invoice's % of total
+  relatedInvoiceId String?        @map("related_invoice_id")
+  clientId         String         @map("client_id")
+  currency         String         @default("INR")
+  exchangeRate     Float?         @map("exchange_rate")
+  notes            String?
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  dispatchOrder  DispatchOrder    @relation(fields: [dispatchOrderId], references: [id])
+  proforma       ProformaInvoice? @relation(fields: [proformaId], references: [id])
+  relatedInvoice Invoice?         @relation("SplitInvoice", fields: [relatedInvoiceId], references: [id])
+  relatedTo      Invoice[]        @relation("SplitInvoice")
+  client         Client           @relation(fields: [clientId], references: [id])
+  items          InvoiceItem[]
+
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id              String  @id @default(cuid())
+  invoiceId       String  @map("invoice_id")
+  description     String
+  hsnCode         String  @map("hsn_code")
+  quantity        Int
+  unitPrice       Float   @map("unit_price")
+  discountPercent Float   @default(0) @map("discount_percent")
+  sortOrder       Int     @default(0) @map("sort_order")
+  serialNumbers   String? @map("serial_numbers")  // JSON array: ["SMX1000260001", ...]
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_items")
 }
 
 // ----- Audit (admin actions, user management, settings) -----

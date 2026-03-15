@@ -15,16 +15,28 @@ export default async function SalesPage({
   const canAccess = ['ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_MANAGER'].includes(session.role);
   if (!canAccess) redirect('/dashboard');
 
-  const proformas = await prisma.proformaInvoice.findMany({
-    where: session.role === 'SALES' ? { createdById: session.id } : {},
-    include: {
-      client:    { select: { id: true, code: true, customerName: true, globalOrIndian: true } },
-      createdBy: { select: { id: true, name: true } },
-      _count:    { select: { items: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 200,
-  });
+  const [proformas, invoices] = await Promise.all([
+    prisma.proformaInvoice.findMany({
+      where: session.role === 'SALES' ? { createdById: session.id } : {},
+      include: {
+        client:    { select: { id: true, code: true, customerName: true, globalOrIndian: true } },
+        createdBy: { select: { id: true, name: true } },
+        _count:    { select: { items: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    }),
+
+    prisma.invoice.findMany({
+      include: {
+        client:        { select: { id: true, code: true, customerName: true, globalOrIndian: true } },
+        dispatchOrder: { select: { doNumber: true, approvedAt: true } },
+        _count:        { select: { items: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    }),
+  ]);
 
   const serialized = proformas.map((p) => ({
     ...p,
@@ -32,6 +44,18 @@ export default async function SalesPage({
     approvedAt:  p.approvedAt?.toISOString() ?? null,
     createdAt:   p.createdAt.toISOString(),
     updatedAt:   p.updatedAt.toISOString(),
+  }));
+
+  const serializedInvoices = invoices.map((inv) => ({
+    ...inv,
+    createdAt:     inv.createdAt.toISOString(),
+    updatedAt:     inv.updatedAt.toISOString(),
+    dispatchOrder: inv.dispatchOrder
+      ? {
+          ...inv.dispatchOrder,
+          approvedAt: inv.dispatchOrder.approvedAt?.toISOString() ?? null,
+        }
+      : null,
   }));
 
   const canCreate = session.role === 'ADMIN' || session.role === 'SALES';
@@ -52,7 +76,12 @@ export default async function SalesPage({
           </Link>
         )}
       </div>
-      <ProformaList proformas={serialized as any} role={session.role} initialTab={initialTab} />
+      <ProformaList
+        proformas={serialized as any}
+        role={session.role}
+        initialTab={initialTab}
+        invoices={serializedInvoices as any}
+      />
     </div>
   );
 }

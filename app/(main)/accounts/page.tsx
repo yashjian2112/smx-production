@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import { ProformaList } from '../sales/ProformaList';
 import { DispatchApprovals } from './DispatchApprovals';
+import { DOApprovals } from './DOApprovals';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export default async function AccountsPage() {
   const canAccess = ['ADMIN', 'ACCOUNTS'].includes(session.role);
   if (!canAccess) redirect('/dashboard');
 
-  const [proformas, submittedDispatches] = await Promise.all([
+  const [proformas, submittedDispatches, submittedDOs] = await Promise.all([
     prisma.proformaInvoice.findMany({
       include: {
         client:    { select: { id: true, code: true, customerName: true, globalOrIndian: true } },
@@ -56,6 +57,41 @@ export default async function AccountsPage() {
       },
       orderBy: { submittedAt: 'asc' },
     }),
+
+    prisma.dispatchOrder.findMany({
+      where: { status: 'SUBMITTED' },
+      include: {
+        order: {
+          select: {
+            orderNumber: true,
+            quantity:    true,
+            client: {
+              select: {
+                customerName:    true,
+                shippingAddress: true,
+                billingAddress:  true,
+                gstNumber:       true,
+                globalOrIndian:  true,
+                state:           true,
+              },
+            },
+            product: { select: { code: true, name: true } },
+          },
+        },
+        createdBy: { select: { name: true } },
+        boxes: {
+          include: {
+            items: {
+              include: {
+                unit: { select: { serialNumber: true, finalAssemblyBarcode: true } },
+              },
+            },
+          },
+          orderBy: { boxNumber: 'asc' },
+        },
+      },
+      orderBy: { submittedAt: 'asc' },
+    }),
   ]);
 
   const serializedProformas = proformas.map((p) => ({
@@ -78,8 +114,25 @@ export default async function AccountsPage() {
     })),
   }));
 
+  const serializedDOs = submittedDOs.map((d) => ({
+    ...d,
+    createdAt:   d.createdAt.toISOString(),
+    updatedAt:   d.updatedAt.toISOString(),
+    submittedAt: d.submittedAt?.toISOString() ?? null,
+    approvedAt:  d.approvedAt?.toISOString()  ?? null,
+    boxes: d.boxes.map((box) => ({
+      ...box,
+      createdAt: box.createdAt.toISOString(),
+      items: box.items.map((item) => ({
+        ...item,
+        scannedAt: item.scannedAt.toISOString(),
+      })),
+    })),
+  }));
+
   const pendingProformas  = proformas.filter((p) => p.status === 'PENDING_APPROVAL').length;
   const pendingDispatches = submittedDispatches.length;
+  const pendingDOs        = submittedDOs.length;
 
   return (
     <div className="space-y-6">
@@ -90,6 +143,11 @@ export default async function AccountsPage() {
             {pendingProformas > 0 && (
               <p className="text-xs text-amber-400">
                 {pendingProformas} invoice{pendingProformas !== 1 ? 's' : ''} pending
+              </p>
+            )}
+            {pendingDOs > 0 && (
+              <p className="text-xs text-violet-400">
+                {pendingDOs} dispatch order{pendingDOs !== 1 ? 's' : ''} awaiting approval
               </p>
             )}
             {pendingDispatches > 0 && (
@@ -107,7 +165,12 @@ export default async function AccountsPage() {
         </Link>
       </div>
 
-      {/* Dispatch approvals — shown prominently when pending */}
+      {/* DO approvals — shown above legacy dispatch approvals */}
+      {pendingDOs > 0 && (
+        <DOApprovals dispatches={serializedDOs as any} />
+      )}
+
+      {/* Legacy dispatch approvals — shown when pending */}
       {pendingDispatches > 0 && (
         <DispatchApprovals dispatches={serializedDispatches as any} />
       )}

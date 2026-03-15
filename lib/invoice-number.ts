@@ -91,3 +91,53 @@ export async function generateNextDomesticInvoiceNumber(): Promise<string> {
 
   return `${prefix}${String(next).padStart(4, '0')}`;
 }
+
+/**
+ * Generates the next Dispatch Order number: TSM/DO/YY-YY/0001
+ * Queries the dispatch_orders table. Resets to 0001 on 1st April each year.
+ */
+export async function generateNextDONumber(): Promise<string> {
+  const fy     = getFiscalYear();
+  const prefix = `TSM/DO/${fy}/`;
+
+  const latest = await prisma.dispatchOrder.findFirst({
+    where: { doNumber: { startsWith: prefix } },
+    orderBy: { doNumber: 'desc' },
+    select: { doNumber: true },
+  });
+
+  let next = 1;
+  if (latest) {
+    const parts = latest.doNumber.split('/');
+    const seq   = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+
+  return `${prefix}${String(next).padStart(4, '0')}`;
+}
+
+/**
+ * Generates the next Invoice number from the invoices table (NOT proforma_invoices).
+ * Export:   TSM/ES/YY-YY/0001
+ * Domestic: TSM/DS/YY-YY/0001
+ * Resets to 0001 on 1st April each year.
+ */
+export async function generateNextFinalInvoiceNumber(isExport: boolean): Promise<string> {
+  const fy     = getFiscalYear();
+  const prefix = isExport ? `TSM/ES/${fy}/` : `TSM/DS/${fy}/`;
+
+  const latest = await prisma.invoice.findFirst({
+    where: { invoiceNumber: { startsWith: prefix } },
+    orderBy: { invoiceNumber: 'desc' },
+    select: { invoiceNumber: true },
+  });
+
+  let next = 1;
+  if (latest) {
+    const parts = latest.invoiceNumber.split('/');
+    const seq   = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+
+  return `${prefix}${String(next).padStart(4, '0')}`;
+}

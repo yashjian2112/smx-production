@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type DispatchStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
@@ -46,25 +47,28 @@ type ReadyOrder = {
   activeDraft:     { id: string; dispatchNumber: string; status: string } | null;
 };
 
-type View = 'list' | 'scan' | 'history';
-
-type HistoryDispatch = {
-  id:             string;
-  dispatchNumber: string;
-  status:         string;
-  createdAt:      string;
-  submittedAt:    string | null;
-  approvedAt:     string | null;
-  items:          { id: string; unit: { serialNumber: string } | null }[];
+type DOListItem = {
+  id:          string;
+  doNumber:    string;
+  status:      string;
+  totalBoxes:  number | null;
+  createdAt:   string;
+  submittedAt: string | null;
+  approvedAt:  string | null;
+  rejectedReason: string | null;
   order: {
     orderNumber: string;
     quantity:    number;
     client:      { customerName: string } | null;
-    product:     { name: string };
+    product:     { code: string; name: string };
   };
-  dispatchedBy: { name: string };
-  approvedBy:   { name: string } | null;
+  createdBy:  { name: string };
+  approvedBy: { name: string } | null;
+  boxes: { _count: { items: number } }[];
+  invoices?: { invoiceNumber: string }[];
 };
+
+type Tab = 'ready' | 'packing' | 'pending' | 'history';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 async function uploadPhoto(file: File, type: 'controller' | 'box'): Promise<string> {
@@ -136,7 +140,7 @@ function PhotoCapture({
   );
 }
 
-// ─── ScanPanel — main dispatch scanning UI ────────────────────────────────────
+// ─── ScanPanel — legacy dispatch scanning UI ──────────────────────────────────
 function ScanPanel({
   dispatch: initialDispatch,
   onBack,
@@ -165,10 +169,9 @@ function ScanPanel({
 
   const order     = dispatch.order;
   const readyCount = dispatch.items.length;
-  const totalReady = order.quantity; // available from order
+  const totalReady = order.quantity;
   const isFullyScanned = readyCount >= totalReady;
 
-  // ── Scan submit ──
   async function handleScan(e: React.FormEvent) {
     e.preventDefault();
     const b = barcode.trim().toUpperCase();
@@ -201,10 +204,8 @@ function ScanPanel({
     }
   }
 
-  // ── Attach controller photo after scan ──
   async function attachControllerPhoto(url: string) {
     if (!pendingPhotoItemId) return;
-    // Optimistically update local state
     setDispatch((prev) => ({
       ...prev,
       items: prev.items.map((item) =>
@@ -212,8 +213,6 @@ function ScanPanel({
       ),
     }));
     setPendingPhotoUrl(url);
-    // Persist to server (re-scan with same barcode and photo — handled by PATCH on item)
-    // We send a PATCH to update the photo on the existing item
     try {
       await fetch(`/api/shipping/dispatch/${dispatch.id}/scan`, {
         method:  'PATCH',
@@ -221,12 +220,11 @@ function ScanPanel({
         body:    JSON.stringify({ dispatchItemId: pendingPhotoItemId, controllerPhotoUrl: url }),
       });
     } catch {
-      // non-critical: photo URL already in local state
+      // non-critical
     }
     setPendingPhotoItemId(null);
   }
 
-  // ── Remove a scanned item ──
   async function removeItem(itemId: string) {
     setRemoving(itemId);
     setRemoveError('');
@@ -250,7 +248,6 @@ function ScanPanel({
     }
   }
 
-  // ── Abandon draft ──
   async function abandonDraft() {
     try {
       await fetch(`/api/shipping/dispatch/${dispatch.id}`, { method: 'DELETE' });
@@ -260,7 +257,6 @@ function ScanPanel({
     }
   }
 
-  // ── Submit dispatch ──
   async function handleSubmit() {
     setSubmitError('');
     setSubmitting(true);
@@ -296,7 +292,6 @@ function ScanPanel({
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center gap-3">
         <button type="button" onClick={onBack} className="text-sm text-zinc-400 hover:text-white">← Back</button>
         <div>
@@ -312,7 +307,6 @@ function ScanPanel({
         )}
       </div>
 
-      {/* Progress bar */}
       <div className="card p-4 space-y-2">
         <div className="flex items-center justify-between text-sm">
           <span className="text-zinc-400">Controllers Scanned</span>
@@ -334,7 +328,6 @@ function ScanPanel({
         )}
       </div>
 
-      {/* Scan input */}
       <div className="card p-4 space-y-3">
         <div className="text-sm font-semibold text-white">Scan Controller Barcode</div>
         <form onSubmit={handleScan} className="flex gap-2">
@@ -360,15 +353,12 @@ function ScanPanel({
         </form>
 
         {scanError && (
-          <div className="rounded-lg p-3 text-sm" style={mismatchStyle}>
-            {scanError}
-          </div>
+          <div className="rounded-lg p-3 text-sm" style={mismatchStyle}>{scanError}</div>
         )}
         {scanSuccess && (
           <div className="text-sm font-semibold" style={{ color: '#4ade80' }}>{scanSuccess}</div>
         )}
 
-        {/* Pending controller photo */}
         {pendingPhotoItemId && (
           <div
             className="rounded-lg p-3 space-y-2"
@@ -393,7 +383,6 @@ function ScanPanel({
         )}
       </div>
 
-      {/* Scanned list */}
       {dispatch.items.length > 0 && (
         <div className="card p-4 space-y-3">
           <div className="text-sm font-semibold text-white">Scanned Controllers ({dispatch.items.length})</div>
@@ -438,7 +427,6 @@ function ScanPanel({
         </div>
       )}
 
-      {/* Partial dispatch */}
       {readyCount > 0 && readyCount < order.quantity && (
         <div
           className="card p-4 space-y-3"
@@ -460,14 +448,13 @@ function ScanPanel({
             <input
               value={partialReason}
               onChange={(e) => setPartialReason(e.target.value)}
-              placeholder="Reason for partial dispatch (e.g. remaining units in production)…"
+              placeholder="Reason for partial dispatch…"
               className="input-field text-sm w-full"
             />
           )}
         </div>
       )}
 
-      {/* Box photo */}
       <div className="card p-4 space-y-3">
         <div className="text-sm font-semibold text-white">
           📦 Packed Box Photo <span className="text-rose-400 text-xs">*required</span>
@@ -482,7 +469,6 @@ function ScanPanel({
         />
       </div>
 
-      {/* Submit */}
       {dispatch.items.length > 0 && (
         <div className="space-y-3">
           {submitError && (
@@ -503,7 +489,6 @@ function ScanPanel({
         </div>
       )}
 
-      {/* Abandon */}
       <div className="pt-2">
         {!abandonConfirm ? (
           <button
@@ -525,7 +510,7 @@ function ScanPanel({
   );
 }
 
-// ─── SubmittedBadge ────────────────────────────────────────────────────────────
+// ─── StatusBadge ──────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: DispatchStatus }) {
   const cfg: Record<DispatchStatus, { label: string; color: string; bg: string }> = {
     DRAFT:     { label: 'Draft',     color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
@@ -534,6 +519,26 @@ function StatusBadge({ status }: { status: DispatchStatus }) {
     REJECTED:  { label: 'Rejected',  color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
   };
   const c = cfg[status];
+  return (
+    <span
+      className="text-[11px] font-bold px-2 py-0.5 rounded"
+      style={{ color: c.color, background: c.bg }}
+    >
+      {c.label}
+    </span>
+  );
+}
+
+// ─── DOStatusBadge ────────────────────────────────────────────────────────────
+function DOStatusBadge({ status }: { status: string }) {
+  const cfg: Record<string, { label: string; color: string; bg: string }> = {
+    OPEN:      { label: 'Open',      color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
+    PACKING:   { label: 'Packing',   color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+    SUBMITTED: { label: 'Submitted', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+    APPROVED:  { label: 'Approved',  color: '#4ade80', bg: 'rgba(74,222,128,0.12)' },
+    REJECTED:  { label: 'Rejected',  color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
+  };
+  const c = cfg[status] ?? cfg.OPEN;
   return (
     <span
       className="text-[11px] font-bold px-2 py-0.5 rounded"
@@ -554,31 +559,31 @@ export function ShippingPanel({
   sessionName:   string;
   initialDrafts: Dispatch[];
 }) {
-  const [view, setView]               = useState<View>('list');
-  const [drafts, setDrafts]           = useState<Dispatch[]>(initialDrafts);
-  const [activeDispatch, setActive]   = useState<Dispatch | null>(null);
+  const router = useRouter();
+
+  // Legacy scan flow state
+  const [legacyView, setLegacyView]     = useState<'tabs' | 'scan'>('tabs');
+  const [activeDispatch, setActive]     = useState<Dispatch | null>(null);
+  const [drafts, setDrafts]             = useState<Dispatch[]>(initialDrafts);
+  const [submitted, setSubmitted]       = useState<Dispatch | null>(null);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<Tab>('ready');
+
+  // Ready tab
   const [orders, setOrders]           = useState<ReadyOrder[] | null>(null);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [searchQ, setSearchQ]         = useState('');
   const [creating, setCreating]       = useState<string | null>(null);
-  const [submitted, setSubmitted]     = useState<Dispatch | null>(null);
-  const [history, setHistory]         = useState<HistoryDispatch[] | null>(null);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [historySearch, setHistorySearch]   = useState('');
+  const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
 
-  // Load shipping history on demand
-  async function loadHistory() {
-    setLoadingHistory(true);
-    try {
-      const res  = await fetch('/api/shipping/dispatch');
-      const data = await res.json() as { dispatches?: HistoryDispatch[] };
-      setHistory(data.dispatches ?? []);
-    } finally {
-      setLoadingHistory(false);
-    }
-  }
+  // DO tabs
+  const [packingDOs, setPackingDOs]       = useState<DOListItem[] | null>(null);
+  const [pendingDOs, setPendingDOs]       = useState<DOListItem[] | null>(null);
+  const [historyDOs, setHistoryDOs]       = useState<DOListItem[] | null>(null);
+  const [loadingDOs, setLoadingDOs]       = useState(false);
 
-  // Load ready orders on demand
+  // Load ready orders
   async function loadOrders() {
     setLoadingOrders(true);
     try {
@@ -590,8 +595,64 @@ export function ShippingPanel({
     }
   }
 
-  // Start or continue a dispatch
-  async function startDispatch(orderId: string) {
+  // Load DOs by status group
+  async function loadDOs(tab: Tab) {
+    setLoadingDOs(true);
+    try {
+      let url = '';
+      if (tab === 'packing') url = '/api/dispatch-orders?status=OPEN,PACKING';
+      if (tab === 'pending')  url = '/api/dispatch-orders?status=SUBMITTED';
+      if (tab === 'history')  url = '/api/dispatch-orders?status=APPROVED,REJECTED';
+      if (!url) return;
+      const res  = await fetch(url);
+      const data = await res.json() as DOListItem[];
+      if (tab === 'packing') setPackingDOs(Array.isArray(data) ? data : []);
+      if (tab === 'pending')  setPendingDOs(Array.isArray(data) ? data : []);
+      if (tab === 'history')  setHistoryDOs(Array.isArray(data) ? data : []);
+    } finally {
+      setLoadingDOs(false);
+    }
+  }
+
+  // Tab change handler
+  function handleTabChange(tab: Tab) {
+    setActiveTab(tab);
+    if (tab === 'ready' && orders === null) loadOrders();
+    if (tab === 'packing' && packingDOs === null) loadDOs('packing');
+    if (tab === 'pending' && pendingDOs === null) loadDOs('pending');
+    if (tab === 'history' && historyDOs === null) loadDOs('history');
+  }
+
+  // Load ready tab on mount
+  useEffect(() => {
+    loadOrders();
+  }, []);
+
+  // Create Dispatch Order
+  async function createDO(orderId: string) {
+    setCreating(orderId);
+    setCreateErrors((prev) => ({ ...prev, [orderId]: '' }));
+    try {
+      const res = await fetch('/api/dispatch-orders', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ orderId }),
+      });
+      const data = await res.json() as { id?: string; doNumber?: string; error?: string };
+      if (!res.ok || !data.id) {
+        setCreateErrors((prev) => ({ ...prev, [orderId]: data.error ?? 'Failed to create dispatch order' }));
+        return;
+      }
+      router.push(`/shipping/do/${data.id}`);
+    } catch {
+      setCreateErrors((prev) => ({ ...prev, [orderId]: 'Network error' }));
+    } finally {
+      setCreating(null);
+    }
+  }
+
+  // Legacy dispatch flow handlers
+  async function startLegacyDispatch(orderId: string) {
     setCreating(orderId);
     try {
       const res  = await fetch('/api/shipping/dispatch', {
@@ -602,7 +663,6 @@ export function ShippingPanel({
       const data = await res.json() as { dispatch?: Dispatch; error?: string };
       if (!res.ok || !data.dispatch) return;
       const d = data.dispatch as Dispatch;
-      // Normalize dates
       const normalized: Dispatch = {
         ...d,
         createdAt:   new Date(d.createdAt).toISOString(),
@@ -612,13 +672,12 @@ export function ShippingPanel({
           scannedAt: new Date(item.scannedAt).toISOString(),
         })),
       };
-      // Update drafts list
       setDrafts((prev) => {
         const idx = prev.findIndex((x) => x.id === normalized.id);
         return idx >= 0 ? prev.map((x, i) => (i === idx ? normalized : x)) : [normalized, ...prev];
       });
       setActive(normalized);
-      setView('scan');
+      setLegacyView('scan');
     } finally {
       setCreating(null);
     }
@@ -626,25 +685,33 @@ export function ShippingPanel({
 
   function openDraft(d: Dispatch) {
     setActive(d);
-    setView('scan');
+    setLegacyView('scan');
     setSubmitted(null);
   }
 
-  function handleBack() {
-    setView('list');
+  function handleLegacyBack() {
+    setLegacyView('tabs');
     setActive(null);
     setSubmitted(null);
-    loadOrders(); // refresh
+    loadOrders();
   }
 
-  function handleSubmitted(d: Dispatch) {
+  function handleLegacySubmitted(d: Dispatch) {
     setSubmitted(d);
     setDrafts((prev) => prev.filter((x) => x.id !== d.id));
-    setView('list');
+    setLegacyView('tabs');
     setActive(null);
   }
 
-  // Filter orders
+  // ── Legacy scan view ──
+  if (legacyView === 'scan' && activeDispatch) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <ScanPanel dispatch={activeDispatch} onBack={handleLegacyBack} onSubmitted={handleLegacySubmitted} />
+      </div>
+    );
+  }
+
   const filteredOrders = (orders ?? []).filter((o) => {
     if (!searchQ.trim()) return true;
     const q = searchQ.toLowerCase();
@@ -655,40 +722,20 @@ export function ShippingPanel({
     );
   });
 
-  // ── Scan view ──
-  if (view === 'scan' && activeDispatch) {
-    return (
-      <div className="max-w-2xl mx-auto space-y-4">
-        <ScanPanel dispatch={activeDispatch} onBack={handleBack} onSubmitted={handleSubmitted} />
-      </div>
-    );
-  }
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'ready',   label: 'Ready' },
+    { key: 'packing', label: 'Packing' },
+    { key: 'pending', label: 'Pending' },
+    { key: 'history', label: 'History' },
+  ];
 
-  // ── History view ──
-  const filteredHistory = (history ?? []).filter((d) => {
-    if (!historySearch.trim()) return true;
-    const q = historySearch.toLowerCase();
-    return (
-      d.dispatchNumber.toLowerCase().includes(q) ||
-      d.order.orderNumber.toLowerCase().includes(q) ||
-      (d.order.client?.customerName ?? '').toLowerCase().includes(q)
-    );
-  });
-
-  const historyStatusStyle: Record<string, { color: string; bg: string }> = {
-    SUBMITTED: { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
-    APPROVED:  { color: '#4ade80', bg: 'rgba(74,222,128,0.12)' },
-    REJECTED:  { color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
-  };
-
-  // ── List / History view ──
   return (
     <div className="space-y-4 max-w-2xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-white">Shipping</h2>
-          <p className="text-sm text-zinc-400 mt-0.5">Scan-to-pack controllers for dispatch</p>
+          <p className="text-sm text-zinc-400 mt-0.5">Create and manage dispatch orders</p>
         </div>
         <span
           className="text-xs font-semibold px-2.5 py-1 rounded-lg"
@@ -698,97 +745,24 @@ export function ShippingPanel({
         </span>
       </div>
 
-      {/* Tab toggle: Active / History */}
+      {/* Tab bar */}
       <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-        {(['list', 'history'] as const).map((v) => (
+        {tabs.map((t) => (
           <button
-            key={v}
+            key={t.key}
             type="button"
-            onClick={() => {
-              setView(v);
-              if (v === 'history' && history === null) loadHistory();
-            }}
-            className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${view === v ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
-            style={view === v ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}
+            onClick={() => handleTabChange(t.key)}
+            className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${activeTab === t.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+            style={activeTab === t.key ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}
           >
-            {v === 'list' ? `Active (${drafts.length})` : 'History'}
+            {t.label}
           </button>
         ))}
       </div>
 
-      {/* ── HISTORY TAB ── */}
-      {view === 'history' && (
-        <div className="space-y-3">
-          <input
-            value={historySearch}
-            onChange={(e) => setHistorySearch(e.target.value)}
-            placeholder="Search dispatch no., order, client…"
-            className="input-field text-sm w-full"
-          />
-
-          {loadingHistory && (
-            <div className="text-sm text-zinc-500 text-center py-6">Loading history…</div>
-          )}
-
-          {!loadingHistory && history !== null && filteredHistory.length === 0 && (
-            <div className="text-sm text-zinc-500 text-center py-6">No dispatch history found.</div>
-          )}
-
-          {!loadingHistory && filteredHistory.map((d) => {
-            const st = historyStatusStyle[d.status] ?? historyStatusStyle.SUBMITTED;
-            const dateStr = new Date(d.submittedAt ?? d.createdAt).toLocaleDateString('en-IN', {
-              day: '2-digit', month: 'short', year: 'numeric',
-            });
-            return (
-              <div key={d.id} className="card p-4 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-semibold text-sm text-white">{d.dispatchNumber}</span>
-                      <span
-                        className="text-[11px] font-bold px-2 py-0.5 rounded"
-                        style={{ color: st.color, background: st.bg }}
-                      >
-                        {d.status}
-                      </span>
-                    </div>
-                    <div className="text-sm text-zinc-400 mt-0.5">
-                      {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
-                    </div>
-                    <div className="text-xs text-zinc-500 mt-0.5">
-                      {d.order.product.name} · {d.items.length} unit{d.items.length !== 1 ? 's' : ''} of {d.order.quantity} · {dateStr}
-                    </div>
-                    {d.approvedBy && (
-                      <div className="text-xs text-green-400 mt-0.5">Approved by {d.approvedBy.name}</div>
-                    )}
-                  </div>
-                </div>
-                {/* Serials */}
-                {d.items.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {d.items.slice(0, 8).map((item) => (
-                      <span
-                        key={item.id}
-                        className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                        style={{ background: 'rgba(255,255,255,0.06)', color: '#a1a1aa' }}
-                      >
-                        {item.unit?.serialNumber ?? '—'}
-                      </span>
-                    ))}
-                    {d.items.length > 8 && (
-                      <span className="text-[10px] text-zinc-600">+{d.items.length - 8} more</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── ACTIVE TAB ── */}
-      {view === 'list' && (
-        <div className="space-y-6">
+      {/* ── READY TAB ── */}
+      {activeTab === 'ready' && (
+        <div className="space-y-4">
           {/* Submitted success banner */}
           {submitted && (
             <div
@@ -799,7 +773,7 @@ export function ShippingPanel({
                 ✓ Dispatch {submitted.dispatchNumber} submitted for approval
               </div>
               <div className="text-xs text-zinc-400">
-                {submitted.items.length} controller{submitted.items.length !== 1 ? 's' : ''} for {submitted.order.client?.customerName ?? '—'} · sent to Accounts
+                {submitted.items.length} controller{submitted.items.length !== 1 ? 's' : ''} · sent to Accounts
               </div>
               <button type="button" onClick={() => setSubmitted(null)} className="text-xs text-zinc-500 hover:text-zinc-300">
                 Dismiss
@@ -807,10 +781,10 @@ export function ShippingPanel({
             </div>
           )}
 
-          {/* Active drafts */}
+          {/* Legacy active drafts */}
           {drafts.length > 0 && (
             <div className="space-y-3">
-              <div className="text-sm font-semibold text-zinc-300">In Progress ({drafts.length})</div>
+              <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Legacy Drafts</div>
               {drafts.map((d) => (
                 <div
                   key={d.id}
@@ -839,25 +813,11 @@ export function ShippingPanel({
 
           {/* Ready orders */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold text-zinc-300">Ready to Dispatch</div>
-              {!orders && !loadingOrders && (
-                <button
-                  type="button"
-                  onClick={loadOrders}
-                  className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-                  style={{ background: 'rgba(14,165,233,0.1)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}
-                >
-                  Load Orders
-                </button>
-              )}
-            </div>
-
             {loadingOrders && (
-              <div className="text-sm text-zinc-500 text-center py-4">Loading…</div>
+              <div className="text-zinc-500 text-sm">Loading…</div>
             )}
 
-            {orders !== null && (
+            {orders !== null && !loadingOrders && (
               <>
                 <input
                   value={searchQ}
@@ -867,7 +827,7 @@ export function ShippingPanel({
                 />
 
                 {filteredOrders.length === 0 && (
-                  <div className="text-sm text-zinc-500 text-center py-6">No ready orders found.</div>
+                  <div className="text-sm text-zinc-500 text-center py-6">No orders ready for dispatch.</div>
                 )}
 
                 <div className="space-y-3">
@@ -879,7 +839,7 @@ export function ShippingPanel({
                             #{o.orderNumber}
                             {o.client && <span className="text-zinc-400 font-normal"> · {o.client.customerName}</span>}
                           </div>
-                          <div className="text-xs text-zinc-500 mt-0.5">{o.product.name}</div>
+                          <div className="text-xs text-zinc-500 mt-0.5">{o.product.code} · {o.product.name}</div>
                         </div>
                         <div className="text-right text-xs">
                           <div className="font-bold text-sky-400">{o.readyUnits.length} ready</div>
@@ -906,23 +866,152 @@ export function ShippingPanel({
 
                       <button
                         type="button"
-                        onClick={() => startDispatch(o.orderId)}
+                        onClick={() => createDO(o.orderId)}
                         disabled={creating === o.orderId || o.readyUnits.length === 0}
                         className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
                         style={{ background: '#0ea5e9', color: '#fff' }}
                       >
-                        {creating === o.orderId
-                          ? 'Starting…'
-                          : o.activeDraft
-                          ? `Continue Dispatch (${o.activeDraft.dispatchNumber})`
-                          : `Start Dispatch (${o.readyUnits.length} controller${o.readyUnits.length !== 1 ? 's' : ''})`}
+                        {creating === o.orderId ? 'Creating…' : `Create Dispatch Order (${o.readyUnits.length} unit${o.readyUnits.length !== 1 ? 's' : ''})`}
                       </button>
+                      {createErrors[o.orderId] && (
+                        <p className="text-xs text-rose-400">{createErrors[o.orderId]}</p>
+                      )}
                     </div>
                   ))}
                 </div>
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── PACKING TAB ── */}
+      {activeTab === 'packing' && (
+        <div className="space-y-3">
+          {loadingDOs && <div className="text-zinc-500 text-sm">Loading…</div>}
+
+          {!loadingDOs && packingDOs !== null && packingDOs.length === 0 && (
+            <div className="text-sm text-zinc-500 text-center py-6">No active dispatch orders.</div>
+          )}
+
+          {!loadingDOs && (packingDOs ?? []).map((d) => {
+            const sealedCount = d.boxes.filter((b: any) => b.isSealed).length;
+            const totalBoxes  = d.totalBoxes ?? d.boxes.length;
+            const unitCount   = d.boxes.reduce((sum: number, b: any) => sum + (b._count?.items ?? 0), 0);
+            return (
+              <div key={d.id} className="card p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold text-sm text-white">{d.doNumber}</span>
+                      <DOStatusBadge status={d.status} />
+                    </div>
+                    <div className="text-sm text-zinc-400 mt-0.5">
+                      {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      {d.order.product.name} · {unitCount} unit{unitCount !== 1 ? 's' : ''} · {totalBoxes > 0 ? `${sealedCount}/${totalBoxes} boxes sealed` : 'boxes not set'}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/shipping/do/${d.id}`)}
+                  className="w-full py-2.5 rounded-lg text-sm font-semibold"
+                  style={{ background: '#0ea5e9', color: '#fff' }}
+                >
+                  Continue Packing
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── PENDING TAB ── */}
+      {activeTab === 'pending' && (
+        <div className="space-y-3">
+          {loadingDOs && <div className="text-zinc-500 text-sm">Loading…</div>}
+
+          {!loadingDOs && pendingDOs !== null && pendingDOs.length === 0 && (
+            <div className="text-sm text-zinc-500 text-center py-6">No dispatch orders pending approval.</div>
+          )}
+
+          {!loadingDOs && (pendingDOs ?? []).map((d) => {
+            const unitCount  = d.boxes.reduce((sum: number, b: any) => sum + (b._count?.items ?? 0), 0);
+            const boxCount   = d.totalBoxes ?? d.boxes.length;
+            const dateStr    = d.submittedAt
+              ? new Date(d.submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+              : '—';
+            return (
+              <div key={d.id} className="card p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold text-sm text-white">{d.doNumber}</span>
+                      <DOStatusBadge status={d.status} />
+                    </div>
+                    <div className="text-sm text-zinc-400 mt-0.5">
+                      {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      {d.order.product.name} · {boxCount} box{boxCount !== 1 ? 'es' : ''} · {unitCount} unit{unitCount !== 1 ? 's' : ''} · Submitted {dateStr}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── HISTORY TAB ── */}
+      {activeTab === 'history' && (
+        <div className="space-y-3">
+          {loadingDOs && <div className="text-zinc-500 text-sm">Loading…</div>}
+
+          {!loadingDOs && historyDOs !== null && historyDOs.length === 0 && (
+            <div className="text-sm text-zinc-500 text-center py-6">No dispatch history yet.</div>
+          )}
+
+          {!loadingDOs && (historyDOs ?? []).map((d) => {
+            const unitCount = d.boxes.reduce((sum: number, b: any) => sum + (b._count?.items ?? 0), 0);
+            const boxCount  = d.totalBoxes ?? d.boxes.length;
+            const dateStr   = d.approvedAt
+              ? new Date(d.approvedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+              : d.submittedAt
+              ? new Date(d.submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+              : '—';
+            return (
+              <div key={d.id} className="card p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold text-sm text-white">{d.doNumber}</span>
+                      <DOStatusBadge status={d.status} />
+                    </div>
+                    <div className="text-sm text-zinc-400 mt-0.5">
+                      {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      {d.order.product.name} · {boxCount} box{boxCount !== 1 ? 'es' : ''} · {unitCount} unit{unitCount !== 1 ? 's' : ''} · {dateStr}
+                    </div>
+                    {d.status === 'APPROVED' && d.approvedBy && (
+                      <div className="text-xs text-green-400 mt-1">
+                        Approved by {d.approvedBy.name}
+                        {d.invoices && d.invoices.length > 0 && (
+                          <span className="text-zinc-500"> · Invoice{d.invoices.length > 1 ? 's' : ''}: {d.invoices.map((inv) => inv.invoiceNumber).join(', ')}</span>
+                        )}
+                      </div>
+                    )}
+                    {d.status === 'REJECTED' && d.rejectedReason && (
+                      <div className="text-xs text-rose-400 mt-1">Rejected: {d.rejectedReason}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
