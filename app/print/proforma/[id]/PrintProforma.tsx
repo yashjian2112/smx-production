@@ -102,7 +102,14 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
     return () => clearTimeout(t);
   }, []);
 
-  const typeLabel = proforma.invoiceType === 'RETURN' ? 'CREDIT NOTE' : proforma.invoiceType === 'REPLACEMENT' ? 'REPLACEMENT' : 'PROFORMA INVOICE';
+  const isFinalInvoice = proforma.invoiceNumber.startsWith('TSM/ES/') || proforma.invoiceNumber.startsWith('TSM/DS/');
+  const typeLabel = proforma.invoiceType === 'RETURN'
+    ? 'CREDIT NOTE'
+    : proforma.invoiceType === 'REPLACEMENT'
+      ? 'REPLACEMENT'
+      : isFinalInvoice
+        ? 'INVOICE'
+        : 'PROFORMA INVOICE';
 
   return (
     <>
@@ -230,7 +237,8 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
           </div>
           <div className="hdr-right">
             <div className="doc-title">{typeLabel}</div>
-            {isExport && <div className="doc-subtitle">Supply under LUT/Bond (Export)</div>}
+            {isExport && isFinalInvoice && <div className="doc-subtitle">Supply under LUT/Bond — Zero Rated Export</div>}
+        {isExport && !isFinalInvoice && <div className="doc-subtitle">Supply under LUT/Bond (Export)</div>}
             <div className="doc-subtitle">FY {fy}</div>
             {proforma.invoiceType !== 'SALE' && (
               <div className="doc-type-badge" style={
@@ -424,7 +432,7 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
           </div>
         </div>
 
-        <div className="comp-gen">This is a Computer Generated Proforma Invoice</div>
+        <div className="comp-gen">This is a Computer Generated {isFinalInvoice ? 'Invoice' : 'Proforma Invoice'}</div>
 
       </div>
     </>
