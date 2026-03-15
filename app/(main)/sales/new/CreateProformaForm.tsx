@@ -215,21 +215,23 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
         </div>
       )}
 
-      {/* Invoice Type */}
-      <div>
-        <label className={lCls}>Invoice Type</label>
-        <div className="flex gap-2">
-          {(['SALE', 'RETURN', 'REPLACEMENT'] as const).map((t) => (
-            <button key={t} type="button" onClick={() => setInvoiceType(t)}
-              className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
-              style={invoiceType === t
-                ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
-                : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-              {t[0] + t.slice(1).toLowerCase()}
-            </button>
-          ))}
+      {/* Invoice Type — SALES can only create Sale PIs (Returns/Replacements via rework flow) */}
+      {role !== 'SALES' && (
+        <div>
+          <label className={lCls}>Invoice Type</label>
+          <div className="flex gap-2">
+            {(['SALE', 'RETURN', 'REPLACEMENT'] as const).map((t) => (
+              <button key={t} type="button" onClick={() => setInvoiceType(t)}
+                className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
+                style={invoiceType === t
+                  ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+                {t[0] + t.slice(1).toLowerCase()}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Replacement fields */}
       {invoiceType === 'REPLACEMENT' && (

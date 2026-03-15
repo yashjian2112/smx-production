@@ -59,6 +59,10 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   const isOwner          = proforma.createdBy.id === userId;
   const canEdit          = (role === 'ADMIN' || (role === 'SALES' && isOwner)) && proforma.status === 'DRAFT';
   const canDelete        = canEdit;
+  // Split invoice can be set any time before order is converted (dispatch not yet done)
+  const canEditSplit     = (role === 'ADMIN' || (role === 'SALES' && isOwner)) &&
+                           !['CONVERTED', 'REJECTED'].includes(proforma.status) &&
+                           proforma.invoiceType === 'SALE';
   const canSendApproval  = (role === 'ADMIN' || (role === 'SALES' && isOwner)) && proforma.status === 'DRAFT';
   const canApprove       = (role === 'ADMIN' || role === 'ACCOUNTS') && proforma.status === 'PENDING_APPROVAL';
   const canConvert       = (role === 'ADMIN' || role === 'ACCOUNTS') && proforma.status === 'APPROVED' && !proforma.order;
@@ -377,8 +381,8 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
         {isExport && proforma.exchangeRate && <div><p className="text-zinc-600 text-xs mb-0.5">Exchange Rate</p><p className="text-white">₹{proforma.exchangeRate}/$</p></div>}
       </div>
 
-      {/* ── Split Invoice ── only shown for DRAFT and to owners/admin ── */}
-      {canEdit && (
+      {/* ── Split Invoice ── shown for SALE type PIs until converted/rejected ── */}
+      {canEditSplit && (
         <div
           className="card p-4 space-y-3"
           style={{ border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(139,92,246,0.03)' }}
@@ -466,8 +470,8 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
         </div>
       )}
 
-      {/* Read-only split info for non-editors */}
-      {!canEdit && proforma.splitInvoice && proforma.splitServicePercent != null && (
+      {/* Read-only split info for non-editors (accounts/admin viewing approved PI) */}
+      {!canEditSplit && proforma.splitInvoice && proforma.splitServicePercent != null && (
         <div
           className="card p-4"
           style={{ border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(139,92,246,0.03)' }}
