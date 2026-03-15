@@ -40,7 +40,7 @@ const lCls  = 'block text-[11px] font-medium text-zinc-500 tracking-widest upper
 const iCls  = 'input-field text-sm w-full';
 const sCls  = 'select-field text-sm w-full';
 
-export function CreateProformaForm({ clients, products }: { clients: Client[]; products: Product[] }) {
+export function CreateProformaForm({ clients, products, role }: { clients: Client[]; products: Product[]; role?: string }) {
   const router = useRouter();
 
   // ─── State ───────────────────────────────────────────────────────
@@ -192,26 +192,28 @@ export function CreateProformaForm({ clients, products }: { clients: Client[]; p
         </div>
       )}
 
-      {/* Document Type */}
-      <div>
-        <label className={lCls}>Document Type</label>
-        <div className="flex gap-2">
-          {([['PROFORMA', 'Proforma Invoice (PI)'], ['INVOICE', 'Invoice']] as const).map(([val, label]) => (
-            <button key={val} type="button" onClick={() => setDocumentType(val)}
-              className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
-              style={documentType === val
-                ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
-                : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-              {label}
-            </button>
-          ))}
+      {/* Document Type — hidden for SALES (they can only create Proforma Invoices) */}
+      {role !== 'SALES' && (
+        <div>
+          <label className={lCls}>Document Type</label>
+          <div className="flex gap-2">
+            {([['PROFORMA', 'Proforma Invoice (PI)'], ['INVOICE', 'Invoice']] as const).map(([val, label]) => (
+              <button key={val} type="button" onClick={() => setDocumentType(val)}
+                className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
+                style={documentType === val
+                  ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {documentType === 'INVOICE' && (
+            <p className="text-[10px] text-zinc-500 mt-1">
+              Export clients → <span className="font-mono">TSM/ES/YY-YY/0001</span> &nbsp;·&nbsp; Indian clients → <span className="font-mono">TSM/DS/YY-YY/0001</span>
+            </p>
+          )}
         </div>
-        {documentType === 'INVOICE' && (
-          <p className="text-[10px] text-zinc-500 mt-1">
-            Export clients → <span className="font-mono">TSM/ES/YY-YY/0001</span> &nbsp;·&nbsp; Indian clients → <span className="font-mono">TSM/DS/YY-YY/0001</span>
-          </p>
-        )}
-      </div>
+      )}
 
       {/* Invoice Type */}
       <div>

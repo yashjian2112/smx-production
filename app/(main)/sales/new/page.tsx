@@ -15,10 +15,12 @@ export default async function NewProformaPage() {
     prisma.product.findMany({ where: { active: true }, orderBy: { code: 'asc' } }),
   ]);
 
+  const title = session.role === 'SALES' ? 'New Proforma Invoice' : 'New Invoice';
+
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold">New Invoice</h2>
-      <CreateProformaForm clients={clients as any} products={products} />
+      <h2 className="text-xl font-semibold">{title}</h2>
+      <CreateProformaForm clients={clients as any} products={products} role={session.role} />
     </div>
   );
 }
