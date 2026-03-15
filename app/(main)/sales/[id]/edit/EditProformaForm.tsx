@@ -211,6 +211,10 @@ export function EditProformaForm({
       setError('Fill in all line items (description, HSN code, price)');
       return;
     }
+    if (items.some((i) => !i.voltageFrom || !i.voltageTo)) {
+      setError('Please enter voltage range (From and To) for all line items');
+      return;
+    }
     if (isReplacement && (!unitSerial.trim() || !problemDesc.trim())) {
       setError('Please fill in Unit Serial Number and Problem Description for replacement');
       return;
@@ -432,11 +436,11 @@ export function EditProformaForm({
 
               {/* Voltage Range */}
               <div>
-                <label className={lCls}>Voltage Range</label>
+                <label className={lCls}>Voltage Range <span className="text-red-400">*</span></label>
                 <div className="flex items-center gap-2">
-                  <input type="number" min={0} value={item.voltageFrom} onChange={(e) => updateItem(item.key, { voltageFrom: e.target.value })} className={iCls} placeholder="From (e.g. 48)" />
+                  <input type="number" min={0} value={item.voltageFrom} onChange={(e) => updateItem(item.key, { voltageFrom: e.target.value })} className={iCls} placeholder="From (e.g. 48)" required />
                   <span className="text-zinc-500 text-sm shrink-0">to</span>
-                  <input type="number" min={0} value={item.voltageTo} onChange={(e) => updateItem(item.key, { voltageTo: e.target.value })} className={iCls} placeholder="To (e.g. 120)" />
+                  <input type="number" min={0} value={item.voltageTo} onChange={(e) => updateItem(item.key, { voltageTo: e.target.value })} className={iCls} placeholder="To (e.g. 120)" required />
                   <span className="text-zinc-500 text-xs shrink-0">V</span>
                 </div>
               </div>
