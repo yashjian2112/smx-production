@@ -30,7 +30,7 @@ export default async function SalesPage() {
     updatedAt:   p.updatedAt.toISOString(),
   }));
 
-  const canCreate = session.role === 'ADMIN' || session.role === 'SALES';
+  const canCreate = session.role === 'ADMIN' || session.role === 'SALES' || session.role === 'ACCOUNTS';
 
   return (
     <div className="space-y-6">

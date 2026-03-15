@@ -7,7 +7,7 @@ export default async function NewProformaPage() {
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const canCreate = ['ADMIN', 'SALES'].includes(session.role);
+  const canCreate = ['ADMIN', 'SALES', 'ACCOUNTS'].includes(session.role);
   if (!canCreate) redirect('/sales');
 
   const [clients, products] = await Promise.all([
