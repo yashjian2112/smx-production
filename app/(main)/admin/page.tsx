@@ -31,6 +31,11 @@ export default async function AdminPage() {
           <p className="font-medium">Checklists</p>
           <p className="text-slate-400 text-xs mt-1">AI quality checks per stage</p>
         </Link>
+        <Link href="/accounts/settings" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center col-span-2">
+          <div className="text-3xl mb-2">🏦</div>
+          <p className="font-medium">Invoice &amp; Company Settings</p>
+          <p className="text-slate-400 text-xs mt-1">LUT number, company info, bank details for proforma invoices</p>
+        </Link>
       </div>
     </div>
   );

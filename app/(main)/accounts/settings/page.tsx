@@ -14,7 +14,7 @@ export default async function AccountsSettingsPage() {
 
   return (
     <div className="space-y-6 max-w-lg mx-auto">
-      <h2 className="text-xl font-semibold">Invoice Settings</h2>
+      <h2 className="text-xl font-semibold">Invoice &amp; Company Settings</h2>
       <SettingsForm settings={settings} />
     </div>
   );
