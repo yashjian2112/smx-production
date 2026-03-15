@@ -67,7 +67,7 @@ export function ProformaList({
 
   const tabs: Array<{ key: TabKey; label: string; count: number }> = [
     { key: 'pi',      label: 'PI',                    count: piList.length      },
-    { key: 'invoice', label: 'Invoice',               count: invoices.length    },
+    ...(role !== 'SALES' ? [{ key: 'invoice' as TabKey, label: 'Invoice', count: invoices.length }] : []),
     { key: 'returns', label: 'Returns & Replacement', count: returnsList.length },
   ];
 
