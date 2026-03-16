@@ -65,10 +65,39 @@ export async function POST(
     }
 
     const next = nextStage(unit.currentStage);
+
+    // ── Final stage (FINAL_ASSEMBLY): approve in-place ─────────────────────
     if (!next) {
-      return NextResponse.json({ error: 'Already at final stage' }, { status: 400 });
+      await prisma.controllerUnit.update({
+        where: { id },
+        data: { currentStatus: 'APPROVED' },
+      });
+      await prisma.stageLog.create({
+        data: {
+          unitId: id,
+          approvedById: session.id,
+          stage: unit.currentStage,
+          statusFrom: 'WAITING_APPROVAL',
+          statusTo: 'APPROVED',
+        },
+      });
+      await appendTimeline({
+        unitId: id,
+        userId: session.id,
+        action: 'approved',
+        stage: unit.currentStage,
+        statusFrom: 'WAITING_APPROVAL',
+        statusTo: 'APPROVED',
+        metadata: { readyForDispatch: true },
+      });
+      const updated = await prisma.controllerUnit.findUnique({
+        where: { id },
+        include: { order: true, product: true, assignments: { include: { user: true } } },
+      });
+      return NextResponse.json(updated);
     }
 
+    // ── Intermediate stages: advance to next stage ──────────────────────────
     const product = await prisma.product.findUnique({ where: { id: unit.productId } });
     const updateData: { currentStage: StageType; currentStatus: UnitStatus; brainboardBarcode?: string; qcBarcode?: string; finalAssemblyBarcode?: string } = {
       currentStage: next,
