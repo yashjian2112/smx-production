@@ -10,7 +10,7 @@ const patchSchema = z.object({
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING', 'PRODUCTION_EMPLOYEE');
 
     const dispatchOrder = await prisma.dispatchOrder.findUnique({
       where: { id: params.id },
@@ -60,7 +60,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'PRODUCTION_EMPLOYEE');
 
     const body = await req.json();
     const parsed = patchSchema.safeParse(body);

@@ -9,7 +9,7 @@ export async function POST(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'PRODUCTION_EMPLOYEE');
 
     // Fetch the dispatch order
     const dispatchOrder = await prisma.dispatchOrder.findUnique({

@@ -13,7 +13,7 @@ export async function POST(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'PRODUCTION_EMPLOYEE');
 
     const body = await req.json();
     const parsed = scanSchema.safeParse(body);
