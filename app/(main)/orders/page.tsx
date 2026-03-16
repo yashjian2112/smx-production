@@ -7,6 +7,7 @@ import { OrdersList, type OrderItem } from './OrdersList';
 export default async function OrdersPage() {
   const session = await getSession();
   if (!session) redirect('/login');
+  if (session.role === 'ACCOUNTS') redirect('/accounts');
 
   const isManager = session.role === 'ADMIN' || session.role === 'PRODUCTION_MANAGER';
   const isAdmin   = session.role === 'ADMIN';

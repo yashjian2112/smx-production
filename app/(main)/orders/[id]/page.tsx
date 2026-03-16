@@ -68,6 +68,7 @@ function derivedStageStatus(unit: UnitRow, stageKey: string): string {
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) redirect('/login');
+  if (session.role === 'ACCOUNTS') redirect('/accounts');
 
   const { id } = await params;
   const isEmployee = session.role === 'PRODUCTION_EMPLOYEE';
