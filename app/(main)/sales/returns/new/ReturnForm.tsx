@@ -42,7 +42,8 @@ export default function ReturnForm({ clients }: { clients: ClientOption[] }) {
   const [fallbackClientId, setFallbackClientId] = useState('');
 
   // Manual mode
-  const [clientId, setClientId] = useState('');
+  const [clientId,      setClientId]      = useState('');
+  const [manualSerial,  setManualSerial]  = useState('');
 
   // Common
   const [type,          setType]          = useState('WARRANTY');
@@ -117,7 +118,12 @@ export default function ReturnForm({ clients }: { clients: ClientOption[] }) {
       let body: Record<string, unknown>;
 
       if (useManual) {
-        body = { clientId, type, reportedIssue: reportedIssue.trim() };
+        body = {
+          clientId,
+          serialNumber: manualSerial.trim() || undefined,
+          type,
+          reportedIssue: reportedIssue.trim(),
+        };
       } else if (lookupState === 'not_found') {
         // Pre-system unit: save serial + chosen client (no unit/order link)
         body = { serialNumber: serialInput.trim(), clientId: fallbackClientId, type, reportedIssue: reportedIssue.trim() };
@@ -281,23 +287,40 @@ export default function ReturnForm({ clients }: { clients: ClientOption[] }) {
 
       {/* ── Manual entry mode ── */}
       {useManual && (
-        <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-            Client <span className="text-red-400">*</span>
-          </label>
-          <select
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
-          >
-            <option value="">Select client…</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.customerName} ({c.code})
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-zinc-600 mt-1">Use this when you don&apos;t have a serial number</p>
+        <div className="space-y-3">
+          {/* Client */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+              Client <span className="text-red-400">*</span>
+            </label>
+            <select
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
+            >
+              <option value="">Select client…</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.customerName} ({c.code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Serial number — optional but recorded for traceability */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+              Serial Number <span className="text-zinc-600 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={manualSerial}
+              onChange={(e) => setManualSerial(e.target.value)}
+              placeholder="e.g. SMX100026001"
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-sky-500"
+            />
+            <p className="text-xs text-zinc-600 mt-1">Stored for traceability — won&apos;t be looked up in the system</p>
+          </div>
         </div>
       )}
 
