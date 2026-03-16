@@ -25,25 +25,37 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  assignedStages    StageAssignment[]
-  stageLogs         StageLog[]
-  qcRecords         QCRecord[]
-  reworkRecords     ReworkRecord[]
-  timelineLogs      TimelineLog[]
-  approvedBy        StageLog[]       @relation("ApprovedBy")
-  performance       UserPerformanceSummary[]
-  auditLogs         AuditLog[]
-  componentChecks   ComponentCheck[]
-  workSubmissions   StageWorkSubmission[] @relation("WorkSubmissions")
-  createdProformas  ProformaInvoice[] @relation("PICreatedBy")
-  approvedProformas ProformaInvoice[] @relation("PIApprovedBy")
-  appSettings       AppSetting[]
-  dispatches        Dispatch[]        @relation("DispatchedBy")
-  approvedDispatches Dispatch[]       @relation("DispatchApprovedBy")
-  dispatchItemsScanned DispatchItem[] @relation("DispatchItemScannedBy")
-  dispatchOrders    DispatchOrder[]   @relation("DOCreatedBy")
-  approvedDOs       DispatchOrder[]   @relation("DOApprovedBy")
-  boxItemsScanned   PackingBoxItem[]  @relation("BoxItemScannedBy")
+  assignedStages       StageAssignment[]
+  stageLogs            StageLog[]
+  qcRecords            QCRecord[]
+  reworkRecords        ReworkRecord[]
+  timelineLogs         TimelineLog[]
+  approvedBy           StageLog[]             @relation("ApprovedBy")
+  performance          UserPerformanceSummary[]
+  auditLogs            AuditLog[]
+  componentChecks      ComponentCheck[]
+  workSubmissions      StageWorkSubmission[]  @relation("WorkSubmissions")
+  createdProformas     ProformaInvoice[]      @relation("PICreatedBy")
+  approvedProformas    ProformaInvoice[]      @relation("PIApprovedBy")
+  appSettings          AppSetting[]
+  dispatches           Dispatch[]             @relation("DispatchedBy")
+  approvedDispatches   Dispatch[]             @relation("DispatchApprovedBy")
+  dispatchItemsScanned DispatchItem[]         @relation("DispatchItemScannedBy")
+  dispatchOrders       DispatchOrder[]        @relation("DOCreatedBy")
+  approvedDOs          DispatchOrder[]        @relation("DOApprovedBy")
+  boxItemsScanned      PackingBoxItem[]       @relation("BoxItemScannedBy")
+  // New relations
+  invoicesApproved     Invoice[]              @relation("InvoiceApprovedBy")
+  payments             Payment[]
+  attendanceRecords    AttendanceRecord[]
+  stockMovements       StockMovement[]
+  purchaseRequests     PurchaseRequest[]
+  purchaseOrders       PurchaseOrder[]
+  goodsReceipts        GoodsReceipt[]
+  returnRequestsReported   ReturnRequest[]    @relation("ReturnReportedBy")
+  returnRequestsEvaluated  ReturnRequest[]    @relation("ReturnEvaluatedBy")
+  repairLogs           RepairLog[]
+  notifications        Notification[]
 }
 
 enum Role {
@@ -52,7 +64,8 @@ enum Role {
   PRODUCTION_EMPLOYEE
   SALES
   ACCOUNTS
-  SHIPPING
+  SHIPPING        // deprecated — use ACCOUNTS for shipping approval
+  PURCHASE_MANAGER
 }
 
 // ----- Products / Models -----
@@ -69,6 +82,7 @@ model Product {
   components     ProductComponent[]
   checklistItems StageChecklistItem[]
   proformaItems  ProformaInvoiceItem[]
+  bomItems       BOMItem[]
 }
 
 // ----- Product Components (BOM per model) -----
@@ -123,6 +137,7 @@ model Client {
   billingAddress  String?  @map("billing_address")
   shippingAddress String?  @map("shipping_address")
   gstNumber       String?  @map("gst_number")
+  panNumber       String?  @map("pan_number")
   active          Boolean  @default(true)
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
@@ -130,6 +145,7 @@ model Client {
   orders           Order[]
   proformaInvoices ProformaInvoice[]
   invoices         Invoice[]
+  returnRequests   ReturnRequest[]
 
   @@map("clients")
 }
@@ -157,6 +173,7 @@ model Order {
   proformaInvoice ProformaInvoice?
   dispatches      Dispatch[]
   dispatchOrders  DispatchOrder[]
+  returnRequests  ReturnRequest[]
 }
 
 enum OrderStatus {
@@ -164,6 +181,7 @@ enum OrderStatus {
   HOLD
   CANCELLED
   CLOSED
+  DISPATCHED  // all units dispatched
 }
 
 enum MotorType {
@@ -182,12 +200,16 @@ model ControllerUnit {
   firmwareVersion String?   @map("firmware_version")
   softwareVersion String?   @map("software_version")
   readyForDispatch Boolean  @default(false) @map("ready_for_dispatch")
-  // Stage-wise barcodes: cross-verify controller at any stage (no printable BOM sheet)
-  powerstageBarcode   String?  @unique @map("powerstage_barcode")   // modelnamePS26001
-  brainboardBarcode   String?  @unique @map("brainboard_barcode")   // modelnameBB26001
-  assemblyBarcode    String?  @unique @map("assembly_barcode")       // modelnameCA26001 (Controller Assembly)
-  qcBarcode          String?  @unique @map("qc_barcode")            // modelnameQC26001 (generated after QC approval)
-  finalAssemblyBarcode String? @unique @map("final_assembly_barcode") // modelname260001
+  // Stage-wise barcodes
+  powerstageBarcode    String?  @unique @map("powerstage_barcode")
+  brainboardBarcode    String?  @unique @map("brainboard_barcode")
+  assemblyBarcode      String?  @unique @map("assembly_barcode")
+  qcBarcode            String?  @unique @map("qc_barcode")
+  finalAssemblyBarcode String?  @unique @map("final_assembly_barcode")
+  // New fields
+  warrantyStartDate    DateTime? @map("warranty_start_date")
+  warrantyMonths       Int?      @map("warranty_months")      // 12 for retail, 36 for OEM
+  dispatchedAt         DateTime? @map("dispatched_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -202,6 +224,7 @@ model ControllerUnit {
   workSubmissions StageWorkSubmission[]
   dispatchItems   DispatchItem[]
   packingBoxItem  PackingBoxItem?
+  returnRequests  ReturnRequest[]
 }
 
 enum StageType {
@@ -261,8 +284,8 @@ model QCRecord {
   unitId         String   @map("unit_id")
   userId         String?  @map("user_id")
   result         QCResult  // PASS, FAIL
-  detectedAtStage StageType @map("detected_at_stage")  // always QC_AND_SOFTWARE for now
-  sourceStage    StageType? @map("source_stage")       // root cause stage
+  detectedAtStage StageType @map("detected_at_stage")
+  sourceStage    StageType? @map("source_stage")
   issueCategoryId String?  @map("issue_category_id")
   remarks        String?
   firmwareVersion String? @map("firmware_version")
@@ -376,20 +399,20 @@ model UserPerformanceSummary {
   @@map("user_performance_summaries")
 }
 
-// ----- Stage Checklist Items (admin-managed visual checks per stage + product) -----
+// ----- Stage Checklist Items -----
 model StageChecklistItem {
   id                String    @id @default(cuid())
-  productId         String?   @map("product_id")           // null = applies to ALL products
+  productId         String?   @map("product_id")
   stage             StageType
-  name              String                                  // e.g. "Main capacitor bank"
-  description       String?                                 // Acceptance criteria / orientation rules
+  name              String
+  description       String?
   referenceImageUrl String?   @map("reference_image_url")
-  expectedCount     Int?      @map("expected_count")        // How many of this component on the board
-  orientationRule   String?   @map("orientation_rule")      // e.g. "heatsink tab faces outward"
-  boardLocation     String?   @map("board_location")        // comma-separated zone IDs
-  componentPositions String?  @map("component_positions")   // JSON [{x,y,label}] — precise marker coords (0-1)
-  photoZone         String?   @map("photo_zone")             // "full" | "top" | "bottom" — which capture step checks this component
-  isBoardReference  Boolean   @default(false) @map("is_board_reference") // Full board reference image
+  expectedCount     Int?      @map("expected_count")
+  orientationRule   String?   @map("orientation_rule")
+  boardLocation     String?   @map("board_location")
+  componentPositions String?  @map("component_positions")
+  photoZone         String?   @map("photo_zone")
+  isBoardReference  Boolean   @default(false) @map("is_board_reference")
   required          Boolean   @default(true)
   sortOrder         Int       @default(0) @map("sort_order")
   active            Boolean   @default(true)
@@ -401,7 +424,7 @@ model StageChecklistItem {
   @@map("stage_checklist_items")
 }
 
-// ----- Stage Work Submissions (photo upload + AI analysis per unit+stage) -----
+// ----- Stage Work Submissions -----
 model StageWorkSubmission {
   id              String            @id @default(cuid())
   unitId          String            @map("unit_id")
@@ -412,11 +435,11 @@ model StageWorkSubmission {
   completedAt     DateTime?         @map("completed_at")
   buildTimeSec    Int?              @map("build_time_sec")
   imageUrl        String?           @map("image_url")
-  imageUrl2       String?           @map("image_url_2")     // Top-strip close-up photo
-  imageUrl3       String?           @map("image_url_3")     // Bottom-strip close-up photo
+  imageUrl2       String?           @map("image_url_2")
+  imageUrl3       String?           @map("image_url_3")
   analysisStatus  SubmissionStatus  @default(IN_PROGRESS) @map("analysis_status")
   analysisResult  SubmissionResult? @map("analysis_result")
-  analysisIssues  String?           @map("analysis_issues")   // JSON [{name,status,note}]
+  analysisIssues  String?           @map("analysis_issues")
   analysisSummary String?           @map("analysis_summary")
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
@@ -446,25 +469,28 @@ model ProformaInvoice {
   invoiceDate      DateTime       @default(now()) @map("invoice_date")
   clientId         String         @map("client_id")
   invoiceType      InvoiceType    @default(SALE) @map("invoice_type")
-  currency         String         @default("INR")               // "INR" | "USD"
-  exchangeRate     Float?         @map("exchange_rate")         // USD→INR rate (for global)
+  currency         String         @default("INR")
+  exchangeRate     Float?         @map("exchange_rate")
   termsOfPayment   String?        @map("terms_of_payment")
   deliveryDays     Int?           @map("delivery_days")
   termsOfDelivery  String?        @map("terms_of_delivery")
-  notes              String?
-  paymentReceiptUrl  String?        @map("payment_receipt_url")   // Vercel Blob URL for payment receipt
+  notes            String?
+  paymentReceiptUrl  String?      @map("payment_receipt_url")
   status             ProformaStatus @default(DRAFT)
-  rejectedReason     String?        @map("rejected_reason")
+  rejectedReason     String?      @map("rejected_reason")
+  clientPONumber     String?      @map("client_po_number")   // client's PO reference
+  advanceAmount      Float?       @map("advance_amount")     // advance paid by client
+  advancePaidAt      DateTime?    @map("advance_paid_at")
   createdById      String         @map("created_by_id")
   approvedById     String?        @map("approved_by_id")
   approvedAt       DateTime?      @map("approved_at")
-  orderId          String?        @unique @map("order_id")       // set after conversion
-  relatedInvoiceId String?        @map("related_invoice_id")    // for returns/replacements
+  orderId          String?        @unique @map("order_id")
+  relatedInvoiceId String?        @map("related_invoice_id")
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
 
   splitInvoice        Boolean  @default(false) @map("split_invoice")
-  splitServicePercent Float?   @map("split_service_percent") // e.g. 70 = 70% service, 30% goods
+  splitServicePercent Float?   @map("split_service_percent")
 
   client         Client               @relation(fields: [clientId], references: [id])
   createdBy      User                 @relation("PICreatedBy", fields: [createdById], references: [id])
@@ -512,7 +538,7 @@ model ProformaInvoiceItem {
   @@map("proforma_invoice_items")
 }
 
-// ----- App Settings (LUT number, bank details, etc.) -----
+// ----- App Settings -----
 model AppSetting {
   id          String   @id @default(cuid())
   key         String   @unique
@@ -525,7 +551,7 @@ model AppSetting {
   @@map("app_settings")
 }
 
-// ----- Shipping Dispatch -----
+// ----- Shipping Dispatch (legacy) -----
 enum DispatchStatus {
   DRAFT
   SUBMITTED
@@ -535,7 +561,7 @@ enum DispatchStatus {
 
 model Dispatch {
   id             String         @id @default(cuid())
-  dispatchNumber String         @unique @map("dispatch_number") // TSM/DS/25-26/001
+  dispatchNumber String         @unique @map("dispatch_number")
   orderId        String         @map("order_id")
   status         DispatchStatus @default(DRAFT)
   isPartial      Boolean        @default(false) @map("is_partial")
@@ -575,7 +601,7 @@ model DispatchItem {
   @@map("dispatch_items")
 }
 
-// ----- Dispatch Orders (new manual dispatch flow) -----
+// ----- Dispatch Orders (employee-created, multi-box packing) -----
 enum DOStatus {
   OPEN
   PACKING
@@ -639,7 +665,15 @@ model PackingBoxItem {
   @@map("packing_box_items")
 }
 
-// ----- Auto-generated Invoice (after accounts approves Dispatch Order) -----
+// ----- Tax Invoice (auto-generated on DO approval) -----
+enum InvoiceStatus {
+  PENDING_APPROVAL
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
 enum InvoiceSubType {
   FULL     // normal invoice, no split
   GOODS    // split invoice: goods portion only
@@ -648,16 +682,23 @@ enum InvoiceSubType {
 
 model Invoice {
   id               String         @id @default(cuid())
-  invoiceNumber    String         @unique @map("invoice_number")  // TSM/ES/26-27/0001 or TSM/DS/
+  invoiceNumber    String         @unique @map("invoice_number")
   dispatchOrderId  String         @map("dispatch_order_id")
   proformaId       String?        @map("proforma_id")
   subType          InvoiceSubType @default(FULL) @map("sub_type")
-  splitPercent     Float?         @map("split_percent")   // this invoice's % of total
+  splitPercent     Float?         @map("split_percent")
   relatedInvoiceId String?        @map("related_invoice_id")
   clientId         String         @map("client_id")
   currency         String         @default("INR")
   exchangeRate     Float?         @map("exchange_rate")
   notes            String?
+  // Payment tracking
+  status           InvoiceStatus  @default(APPROVED) @map("status")  // APPROVED default for existing invoices
+  totalAmount      Float          @default(0) @map("total_amount")   // stored at creation
+  paidAmount       Float          @default(0) @map("paid_amount")
+  dueDate          DateTime?      @map("due_date")
+  approvedById     String?        @map("approved_by_id")
+  approvedAt       DateTime?      @map("approved_at")
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
 
@@ -666,7 +707,9 @@ model Invoice {
   relatedInvoice Invoice?         @relation("SplitInvoice", fields: [relatedInvoiceId], references: [id])
   relatedTo      Invoice[]        @relation("SplitInvoice")
   client         Client           @relation(fields: [clientId], references: [id])
+  approvedBy     User?            @relation("InvoiceApprovedBy", fields: [approvedById], references: [id])
   items          InvoiceItem[]
+  payments       Payment[]
 
   @@map("invoices")
 }
@@ -687,7 +730,353 @@ model InvoiceItem {
   @@map("invoice_items")
 }
 
-// ----- Audit (admin actions, user management, settings) -----
+// ----- Payments (against Tax Invoices) -----
+model Payment {
+  id            String   @id @default(cuid())
+  paymentNumber String   @unique @map("payment_number")  // PAY/26-27/001
+  invoiceId     String   @map("invoice_id")
+  amount        Float
+  currency      String   @default("INR")
+  paymentDate   DateTime @map("payment_date")
+  method        String   // BANK_TRANSFER, CHEQUE, CASH, UPI, SWIFT
+  reference     String?  // transaction ref, cheque number
+  recordedById  String   @map("recorded_by_id")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  invoice    Invoice @relation(fields: [invoiceId], references: [id])
+  recordedBy User    @relation(fields: [recordedById], references: [id])
+
+  @@map("payments")
+}
+
+// ----- Returns & Warranty -----
+enum ReturnStatus {
+  REPORTED
+  EVALUATED
+  APPROVED
+  UNIT_RECEIVED
+  IN_REPAIR
+  REPAIRED
+  QC_CHECKED
+  DISPATCHED
+  CLOSED
+  REJECTED
+}
+
+model ReturnRequest {
+  id              String       @id @default(cuid())
+  returnNumber    String       @unique @map("return_number")  // RTN/26-27/001
+  clientId        String       @map("client_id")
+  unitId          String?      @map("unit_id")
+  orderId         String?      @map("order_id")
+  serialNumber    String?      @map("serial_number")  // manual entry if unit not in system
+  type            String       // WARRANTY, DAMAGE, WRONG_ITEM, OTHER
+  reportedIssue   String       @map("reported_issue")
+  status          ReturnStatus @default(REPORTED)
+  reportedById    String       @map("reported_by_id")
+  evaluatedById   String?      @map("evaluated_by_id")
+  evaluationNotes String?      @map("evaluation_notes")
+  resolution      String?      // REPAIR, REPLACE, REFUND, CREDIT_NOTE
+  proformaId      String?      @map("proforma_id")  // linked replacement/return PI
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  client      Client          @relation(fields: [clientId], references: [id])
+  unit        ControllerUnit? @relation(fields: [unitId], references: [id])
+  order       Order?          @relation(fields: [orderId], references: [id])
+  reportedBy  User            @relation("ReturnReportedBy", fields: [reportedById], references: [id])
+  evaluatedBy User?           @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id])
+  repairLogs  RepairLog[]
+
+  @@map("return_requests")
+}
+
+model RepairLog {
+  id              String    @id @default(cuid())
+  returnRequestId String    @map("return_request_id")
+  unitId          String?   @map("unit_id")
+  issue           String
+  workDone        String?   @map("work_done")
+  employeeId      String    @map("employee_id")
+  startedAt       DateTime  @default(now()) @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+
+  returnRequest ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  employee      User          @relation(fields: [employeeId], references: [id])
+
+  @@map("repair_logs")
+}
+
+// ----- Inventory -----
+model MaterialCategory {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  materials RawMaterial[]
+
+  @@map("material_categories")
+}
+
+model RawMaterial {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  unit         String   // pcs, kg, mtrs, sets, etc.
+  currentStock Float    @default(0) @map("current_stock")
+  minimumStock Float    @default(0) @map("minimum_stock")
+  reorderPoint Float    @default(0) @map("reorder_point")
+  categoryId   String?  @map("category_id")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  category       MaterialCategory?  @relation(fields: [categoryId], references: [id])
+  bomItems       BOMItem[]
+  stockMovements StockMovement[]
+  poItems        POItem[]
+  receiptItems   GoodsReceiptItem[]
+  purchaseRequests PurchaseRequest[]
+
+  @@map("raw_materials")
+}
+
+model BOMItem {
+  id               String  @id @default(cuid())
+  productId        String  @map("product_id")
+  rawMaterialId    String  @map("raw_material_id")
+  quantityRequired Float   @map("quantity_required")
+  unit             String
+  notes            String?
+
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rawMaterial RawMaterial @relation(fields: [rawMaterialId], references: [id])
+
+  @@unique([productId, rawMaterialId])
+  @@map("bom_items")
+}
+
+model StockMovement {
+  id            String   @id @default(cuid())
+  rawMaterialId String   @map("raw_material_id")
+  type          String   // IN, OUT, ADJUSTMENT
+  quantity      Float
+  reference     String?  // PO number, order number, etc.
+  notes         String?
+  createdById   String   @map("created_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  rawMaterial RawMaterial @relation(fields: [rawMaterialId], references: [id])
+  createdBy   User        @relation(fields: [createdById], references: [id])
+
+  @@map("stock_movements")
+}
+
+// ----- Purchase -----
+enum PurchaseRequestStatus {
+  DRAFT
+  OPEN
+  BIDDING
+  AWARDED
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model Vendor {
+  id            String   @id @default(cuid())
+  code          String   @unique  // V001, V002...
+  name          String
+  contactPerson String?  @map("contact_person")
+  phone         String?
+  email         String?
+  address       String?
+  gstNumber     String?  @map("gst_number")
+  active        Boolean  @default(true)
+  rating        Float?   // 1-5 rating
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  purchaseOrders PurchaseOrder[]
+  bidInvitations BidInvitation[]
+  bids           VendorBid[]
+
+  @@map("vendors")
+}
+
+model PurchaseRequest {
+  id               String                @id @default(cuid())
+  requestNumber    String                @unique @map("request_number")  // PR/26-27/001
+  rawMaterialId    String                @map("raw_material_id")
+  quantityRequired Float                 @map("quantity_required")
+  unit             String
+  urgency          String                @default("MEDIUM")  // LOW, MEDIUM, HIGH, CRITICAL
+  status           PurchaseRequestStatus @default(DRAFT)
+  notes            String?
+  requestedById    String                @map("requested_by_id")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+
+  rawMaterial    RawMaterial     @relation(fields: [rawMaterialId], references: [id])
+  requestedBy    User            @relation(fields: [requestedById], references: [id])
+  bidInvitations BidInvitation[]
+  bids           VendorBid[]
+  purchaseOrders PurchaseOrder[]
+
+  @@map("purchase_requests")
+}
+
+model BidInvitation {
+  id                String   @id @default(cuid())
+  purchaseRequestId String   @map("purchase_request_id")
+  vendorId          String   @map("vendor_id")
+  token             String   @unique  // UUID for vendor portal access
+  deadline          DateTime
+  invitedAt         DateTime @default(now()) @map("invited_at")
+  status            String   @default("PENDING")  // PENDING, SUBMITTED, EXPIRED
+
+  purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Cascade)
+  vendor          Vendor          @relation(fields: [vendorId], references: [id])
+  bid             VendorBid?
+
+  @@unique([purchaseRequestId, vendorId])
+  @@map("bid_invitations")
+}
+
+model VendorBid {
+  id                String   @id @default(cuid())
+  bidInvitationId   String   @unique @map("bid_invitation_id")
+  purchaseRequestId String   @map("purchase_request_id")
+  vendorId          String   @map("vendor_id")
+  pricePerUnit      Float    @map("price_per_unit")
+  totalAmount       Float    @map("total_amount")
+  leadTimeDays      Int      @map("lead_time_days")
+  validUntil        DateTime @map("valid_until")
+  attachmentUrl     String?  @map("attachment_url")
+  notes             String?
+  submittedAt       DateTime @default(now()) @map("submitted_at")
+  status            String   @default("PENDING")  // PENDING, SELECTED, REJECTED
+
+  bidInvitation   BidInvitation   @relation(fields: [bidInvitationId], references: [id], onDelete: Cascade)
+  purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id])
+  vendor          Vendor          @relation(fields: [vendorId], references: [id])
+
+  @@map("vendor_bids")
+}
+
+model PurchaseOrder {
+  id                String              @id @default(cuid())
+  poNumber          String              @unique @map("po_number")  // PO/26-27/001
+  vendorId          String              @map("vendor_id")
+  purchaseRequestId String              @map("purchase_request_id")
+  status            PurchaseOrderStatus @default(DRAFT)
+  expectedDelivery  DateTime?           @map("expected_delivery")
+  totalAmount       Float               @map("total_amount")
+  createdById       String              @map("created_by_id")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  vendor          Vendor          @relation(fields: [vendorId], references: [id])
+  purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id])
+  createdBy       User            @relation(fields: [createdById], references: [id])
+  items           POItem[]
+  receipts        GoodsReceipt[]
+
+  @@map("purchase_orders")
+}
+
+model POItem {
+  id               String  @id @default(cuid())
+  purchaseOrderId  String  @map("purchase_order_id")
+  rawMaterialId    String  @map("raw_material_id")
+  quantity         Float
+  unitPrice        Float   @map("unit_price")
+  receivedQuantity Float   @default(0) @map("received_quantity")
+
+  purchaseOrder PurchaseOrder    @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  rawMaterial   RawMaterial      @relation(fields: [rawMaterialId], references: [id])
+  receiptItems  GoodsReceiptItem[]
+
+  @@map("po_items")
+}
+
+model GoodsReceipt {
+  id              String   @id @default(cuid())
+  purchaseOrderId String   @map("purchase_order_id")
+  receivedById    String   @map("received_by_id")
+  receivedAt      DateTime @default(now()) @map("received_at")
+  notes           String?
+
+  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  receivedBy    User               @relation(fields: [receivedById], references: [id])
+  items         GoodsReceiptItem[]
+
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptItem {
+  id             String  @id @default(cuid())
+  goodsReceiptId String  @map("goods_receipt_id")
+  poItemId       String  @map("po_item_id")
+  rawMaterialId  String  @map("raw_material_id")
+  quantity       Float
+  condition      String  @default("GOOD")  // GOOD, DAMAGED, REJECTED
+
+  goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  poItem       POItem       @relation(fields: [poItemId], references: [id])
+  rawMaterial  RawMaterial  @relation(fields: [rawMaterialId], references: [id])
+
+  @@map("goods_receipt_items")
+}
+
+// ----- Attendance & Shifts -----
+model AttendanceRecord {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  date        DateTime  @map("date") @db.Date
+  clockInAt   DateTime? @map("clock_in_at")
+  clockOutAt  DateTime? @map("clock_out_at")
+  hoursWorked Float?    @map("hours_worked")
+  isOvertime  Boolean   @default(false) @map("is_overtime")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("attendance_records")
+}
+
+// ----- Notifications -----
+model Notification {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  type         String   // APPROVAL_REQUIRED, QC_FAILURE, REWORK_AGING, DISPATCH_APPROVED, etc.
+  title        String
+  message      String
+  isRead       Boolean  @default(false) @map("is_read")
+  relatedModel String?  @map("related_model")  // invoice, order, unit, return, etc.
+  relatedId    String?  @map("related_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// ----- Audit -----
 model AuditLog {
   id        String   @id @default(cuid())
   userId    String?  @map("user_id")

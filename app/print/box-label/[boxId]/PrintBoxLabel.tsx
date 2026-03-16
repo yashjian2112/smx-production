@@ -26,11 +26,20 @@ type DispatchOrder = {
   };
 };
 
+type BoxSizeInfo = {
+  name: string;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+};
+
 type Box = {
   id: string;
   boxNumber: number;
   boxLabel: string;
   isSealed: boolean;
+  weightKg: number | null;
+  boxSize: BoxSizeInfo | null;
   createdAt: string | Date;
   dispatchOrder: DispatchOrder;
   items: BoxItem[];
@@ -175,6 +184,18 @@ export function PrintBoxLabel({ box, settings }: { box: Box; settings: Settings 
             <div className="lbl-info-label">Date</div>
             <div className="lbl-info-value">{fmtDate(box.createdAt)}</div>
           </div>
+          {box.weightKg && (
+            <div className="lbl-info-cell" style={{ borderTop: '1px solid #c8d8f0' }}>
+              <div className="lbl-info-label">Weight</div>
+              <div className="lbl-info-value">{box.weightKg} kg</div>
+            </div>
+          )}
+          {box.boxSize && (
+            <div className="lbl-info-cell" style={{ borderTop: '1px solid #c8d8f0' }}>
+              <div className="lbl-info-label">Box Size</div>
+              <div className="lbl-info-value">{box.boxSize.name} · {box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm</div>
+            </div>
+          )}
         </div>
 
         {/* Serial numbers */}

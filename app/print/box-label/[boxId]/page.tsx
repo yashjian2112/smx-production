@@ -6,6 +6,7 @@ export default async function PrintBoxLabelPage({ params }: { params: { boxId: s
   const box = await prisma.packingBox.findUnique({
     where: { id: params.boxId },
     include: {
+      boxSize: true,
       dispatchOrder: {
         include: {
           order: {
