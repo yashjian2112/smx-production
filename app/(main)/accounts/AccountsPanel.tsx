@@ -48,6 +48,7 @@ type DORow = {
   status: string;
   totalBoxes: number | null;
   submittedAt: string | null;
+  approvedAt:  string | null;
   createdAt: string;
   updatedAt: string;
   order: {
@@ -63,7 +64,8 @@ type DORow = {
     } | null;
     product: { code: string; name: string };
   };
-  createdBy: { name: string };
+  createdBy:  { name: string };
+  approvedBy: { name: string } | null;
   boxes: Array<{
     id: string;
     boxNumber: number;
@@ -154,7 +156,7 @@ function fmtDate(iso: string | null) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-type TabKey = 'approvals' | 'invoices' | 'returns';
+type TabKey = 'approvals' | 'dispatch' | 'invoices' | 'returns';
 
 // ---- Main component ----
 
@@ -175,13 +177,15 @@ export function AccountsPanel({
   const [search, setSearch] = useState('');
 
   const pendingProformas  = proformas.filter((p) => p.status === 'PENDING_APPROVAL');
-  const pendingDOs        = doDispatches.length;
   const pendingDispatches = dispatches.length;
+  const submittedDOs      = doDispatches.filter((d) => d.status === 'SUBMITTED');
+  const historyDOs        = doDispatches.filter((d) => d.status !== 'SUBMITTED');
 
-  const totalApprovals = pendingProformas.length + pendingDOs + pendingDispatches;
+  const totalApprovals = pendingProformas.length + submittedDOs.length + pendingDispatches;
 
   const tabs: Array<{ key: TabKey; label: string; count: number | null }> = [
     { key: 'approvals', label: 'Approvals', count: totalApprovals > 0 ? totalApprovals : null },
+    { key: 'dispatch',  label: 'Dispatch',  count: doDispatches.length > 0 ? doDispatches.length : null },
     { key: 'invoices',  label: 'Invoices',  count: invoices.length  },
     { key: 'returns',   label: 'Returns',   count: returns.length   },
   ];
@@ -235,9 +239,9 @@ export function AccountsPanel({
       {/* ── Approvals tab ── */}
       {tab === 'approvals' && (
         <div className="space-y-4">
-          {/* DO Approvals */}
-          {pendingDOs > 0 && (
-            <DOApprovals dispatches={doDispatches as any} />
+          {/* DO Approvals — only SUBMITTED */}
+          {submittedDOs.length > 0 && (
+            <DOApprovals dispatches={submittedDOs as any} />
           )}
 
           {/* Legacy dispatch approvals */}
@@ -295,6 +299,86 @@ export function AccountsPanel({
             <div className="card p-8 text-center">
               <p className="text-zinc-500 text-sm">No pending approvals.</p>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Dispatch tab ── */}
+      {tab === 'dispatch' && (
+        <div className="space-y-3">
+          {doDispatches.length === 0 ? (
+            <div className="card p-8 text-center">
+              <p className="text-zinc-500 text-sm">No dispatch orders found.</p>
+            </div>
+          ) : (
+            <>
+              {/* Pending approval */}
+              {submittedDOs.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-amber-400 uppercase tracking-wide">
+                    Awaiting Approval ({submittedDOs.length})
+                  </p>
+                  <DOApprovals dispatches={submittedDOs as any} />
+                </div>
+              )}
+
+              {/* History */}
+              {historyDOs.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mt-2">
+                    History ({historyDOs.length})
+                  </p>
+                  {historyDOs.map((d) => {
+                    const allUnits = d.boxes.flatMap((b) => b.items).length;
+                    const isApproved = d.status === 'APPROVED';
+                    return (
+                      <div key={d.id} className="card p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-semibold text-sm">{d.doNumber}</span>
+                              <span
+                                className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                                style={
+                                  isApproved
+                                    ? { background: 'rgba(34,197,94,0.1)',  color: '#4ade80' }
+                                    : { background: 'rgba(239,68,68,0.1)',  color: '#f87171' }
+                                }
+                              >
+                                {isApproved ? 'Approved' : 'Rejected'}
+                              </span>
+                            </div>
+                            <p className="text-zinc-400 text-sm mt-0.5">
+                              {d.order.client?.customerName ?? '—'} · Order #{d.order.orderNumber}
+                            </p>
+                            <p className="text-zinc-500 text-xs mt-0.5">
+                              {d.order.product.name} · {allUnits} unit{allUnits !== 1 ? 's' : ''} · {d.boxes.length} box{d.boxes.length !== 1 ? 'es' : ''}
+                            </p>
+                            <p className="text-zinc-600 text-xs mt-0.5">
+                              {isApproved
+                                ? `Approved ${fmtDate(d.approvedAt)}${d.approvedBy ? ` by ${d.approvedBy.name}` : ''}`
+                                : `Rejected ${fmtDate(d.approvedAt ?? d.updatedAt)}`}
+                            </p>
+                          </div>
+                          <a
+                            href={`/print/dispatch-order/${d.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="View DO"
+                            className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 hover:text-sky-400 transition-colors"
+                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                          >
+                            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V8m0 8l-3-3m3 3l3-3M4 20h16" />
+                            </svg>
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

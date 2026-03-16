@@ -57,7 +57,7 @@ export default async function AccountsPage() {
     }),
 
     prisma.dispatchOrder.findMany({
-      where: { status: 'SUBMITTED' },
+      where: { status: { in: ['SUBMITTED', 'APPROVED', 'REJECTED'] } },
       include: {
         order: {
           select: {
@@ -76,7 +76,8 @@ export default async function AccountsPage() {
             product: { select: { code: true, name: true } },
           },
         },
-        createdBy: { select: { name: true } },
+        createdBy:  { select: { name: true } },
+        approvedBy: { select: { name: true } },
         boxes: {
           include: {
             items: {
@@ -88,7 +89,8 @@ export default async function AccountsPage() {
           orderBy: { boxNumber: 'asc' },
         },
       },
-      orderBy: { submittedAt: 'asc' },
+      orderBy: [{ status: 'asc' }, { submittedAt: 'desc' }],
+      take: 100,
     }),
 
     prisma.invoice.findMany({
@@ -145,6 +147,7 @@ export default async function AccountsPage() {
         scannedAt: item.scannedAt.toISOString(),
       })),
     })),
+    approvedBy: d.approvedBy ? { name: d.approvedBy.name } : null,
   }));
 
   const serializedInvoices = invoices.map((inv) => ({
@@ -167,7 +170,7 @@ export default async function AccountsPage() {
 
   const pendingProformas  = proformas.filter((p) => p.status === 'PENDING_APPROVAL').length;
   const pendingDispatches = submittedDispatches.length;
-  const pendingDOs        = submittedDOs.length;
+  const pendingDOs        = submittedDOs.filter((d) => d.status === 'SUBMITTED').length;
 
   return (
     <div className="space-y-6">
