@@ -104,6 +104,25 @@ const Icons = {
       <line x1="12" y1="22.08" x2="12" y2="12" />
     </svg>
   ),
+  Purchase: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <path d="M16 10a4 4 0 0 1-8 0" />
+    </svg>
+  ),
+  Inventory: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <line x1="12" y1="2.08" x2="12" y2="12" />
+    </svg>
+  ),
+  AR: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <line x1="2" y1="10" x2="22" y2="10" />
+    </svg>
+  ),
 };
 
 type NavItem = { href: string; label: string; icon: keyof typeof Icons };
@@ -138,17 +157,24 @@ const salesNav: NavItem[] = [
   { href: '/sales/clients',     label: 'Clients', icon: 'Clients'  },
 ];
 
-// ACCOUNTS: 4 items — Approvals, Shipping, Invoices (→ /sales), Settings
+// ACCOUNTS: 4 items — Approvals, AR, Invoices (→ /sales), Settings
 const accountsNav: NavItem[] = [
-  { href: '/accounts',          label: 'Approvals', icon: 'Accounts' },
-  { href: '/shipping',          label: 'Shipping',  icon: 'Shipping' },
-  { href: '/sales',             label: 'Invoices',  icon: 'Invoice'  },
-  { href: '/accounts/settings', label: 'Settings',  icon: 'Admin'    },
+  { href: '/accounts',             label: 'Approvals', icon: 'Accounts' },
+  { href: '/accounts/receivable',  label: 'AR',        icon: 'AR'       },
+  { href: '/sales',                label: 'Invoices',  icon: 'Invoice'  },
+  { href: '/accounts/settings',    label: 'Settings',  icon: 'Admin'    },
 ];
 
 const shippingNav: NavItem[] = [
   { href: '/shipping',  label: 'Shipping',  icon: 'Shipping' },
   { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
+];
+
+// PURCHASE_MANAGER: Purchase Requests · Purchase Orders · Inventory · Vendors
+const purchaseNav: NavItem[] = [
+  { href: '/purchase',   label: 'Purchase',   icon: 'Purchase'   },
+  { href: '/inventory',  label: 'Inventory',  icon: 'Inventory'  },
+  { href: '/dashboard',  label: 'Dashboard',  icon: 'Dashboard'  },
 ];
 
 export function BottomNav({ role }: { role: string }) {
@@ -157,11 +183,12 @@ export function BottomNav({ role }: { role: string }) {
   const currentTab   = searchParams.get('tab') ?? '';
 
   const items =
-    role === 'PRODUCTION_EMPLOYEE' ? employeeNav :
-    role === 'ADMIN'               ? adminNav    :
-    role === 'SALES'               ? salesNav    :
-    role === 'ACCOUNTS'            ? accountsNav :
-    role === 'SHIPPING'            ? shippingNav :
+    role === 'PRODUCTION_EMPLOYEE' ? employeeNav  :
+    role === 'ADMIN'               ? adminNav     :
+    role === 'SALES'               ? salesNav     :
+    role === 'ACCOUNTS'            ? accountsNav  :
+    role === 'SHIPPING'            ? shippingNav  :
+    role === 'PURCHASE_MANAGER'    ? purchaseNav  :
     managerNav;
 
   return (
