@@ -123,6 +123,14 @@ const Icons = {
       <line x1="2" y1="10" x2="22" y2="10" />
     </svg>
   ),
+  Pack: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+      <line x1="12" y1="22.08" x2="12" y2="12" />
+      <line x1="9" y1="9" x2="15" y2="6" />
+    </svg>
+  ),
   Status: () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" />
@@ -150,10 +158,10 @@ const adminNav: NavItem[] = [
 ];
 
 const employeeNav: NavItem[] = [
-  { href: '/dashboard',      label: 'My Work',     icon: 'Dashboard' },
-  { href: '/orders',         label: 'Orders',      icon: 'Orders'      },
+  { href: '/dashboard',      label: 'My Work',     icon: 'Dashboard'   },
+  { href: '/my-tasks',       label: 'Tasks',       icon: 'Tasks'       },
   { href: '/my-dispatch',    label: 'Dispatch',    icon: 'Dispatch'    },
-  { href: '/rework',         label: 'Rework',      icon: 'Returns'     },
+  { href: '/shipping',       label: 'Packing',     icon: 'Pack'        },
   { href: '/my-performance', label: 'Performance', icon: 'Performance' },
 ];
 
@@ -173,8 +181,9 @@ const accountsNav: NavItem[] = [
 ];
 
 const shippingNav: NavItem[] = [
-  { href: '/shipping',  label: 'Shipping',  icon: 'Shipping' },
-  { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
+  { href: '/my-dispatch', label: 'Dispatch',  icon: 'Dispatch'  },
+  { href: '/shipping',    label: 'Packing',   icon: 'Pack'      },
+  { href: '/dashboard',   label: 'Dashboard', icon: 'Dashboard' },
 ];
 
 // PURCHASE_MANAGER: Purchase Requests · Purchase Orders · Inventory · Vendors
