@@ -633,6 +633,21 @@ model DispatchOrder {
   @@map("dispatch_orders")
 }
 
+model BoxSize {
+  id        String   @id @default(cuid())
+  name      String
+  lengthCm  Float    @map("length_cm")
+  widthCm   Float    @map("width_cm")
+  heightCm  Float    @map("height_cm")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  boxes PackingBox[]
+
+  @@map("box_sizes")
+}
+
 model PackingBox {
   id              String        @id @default(cuid())
   dispatchOrderId String        @map("dispatch_order_id")
@@ -640,9 +655,12 @@ model PackingBox {
   boxLabel        String        @map("box_label")  // TSM/DO/26-27/0001-BOX-1of3
   photoUrl        String?       @map("photo_url")
   isSealed        Boolean       @default(false) @map("is_sealed")
+  weightKg        Float?        @map("weight_kg")
+  boxSizeId       String?       @map("box_size_id")
   createdAt       DateTime      @default(now()) @map("created_at")
 
   dispatchOrder DispatchOrder   @relation(fields: [dispatchOrderId], references: [id], onDelete: Cascade)
+  boxSize       BoxSize?        @relation(fields: [boxSizeId], references: [id])
   items         PackingBoxItem[]
 
   @@unique([dispatchOrderId, boxNumber])
