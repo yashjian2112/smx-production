@@ -9,37 +9,44 @@ export default async function DOPackingPage({ params }: { params: { id: string }
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const allowed = ['ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'ACCOUNTS', 'PRODUCTION_EMPLOYEE'];
+  const allowed = ['ADMIN', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE', 'SHIPPING', 'ACCOUNTS'];
   if (!allowed.includes(session.role)) redirect('/dashboard');
 
-  const dispatchOrder = await prisma.dispatchOrder.findUnique({
-    where: { id: params.id },
-    include: {
-      order: {
-        select: {
-          orderNumber: true,
-          quantity: true,
-          client: { select: { customerName: true } },
-          product: { select: { code: true, name: true } },
+  const [dispatchOrder, boxSizes] = await Promise.all([
+    prisma.dispatchOrder.findUnique({
+      where: { id: params.id },
+      include: {
+        order: {
+          select: {
+            orderNumber: true,
+            quantity: true,
+            client: { select: { customerName: true } },
+            product: { select: { code: true, name: true } },
+          },
         },
-      },
-      boxes: {
-        orderBy: { boxNumber: 'asc' },
-        include: {
-          items: {
-            orderBy: { scannedAt: 'asc' },
-            include: {
-              unit: { select: { serialNumber: true, finalAssemblyBarcode: true } },
+        boxes: {
+          orderBy: { boxNumber: 'asc' },
+          include: {
+            boxSize: true,
+            items: {
+              orderBy: { scannedAt: 'asc' },
+              include: {
+                unit: { select: { serialNumber: true, finalAssemblyBarcode: true } },
+              },
             },
           },
         },
+        createdBy: { select: { name: true } },
+        invoices: {
+          select: { invoiceNumber: true },
+        },
       },
-      createdBy: { select: { name: true } },
-      invoices: {
-        select: { invoiceNumber: true },
-      },
-    },
-  });
+    }),
+    prisma.boxSize.findMany({
+      where:   { active: true },
+      orderBy: { name: 'asc' },
+    }),
+  ]);
 
   if (!dispatchOrder) notFound();
 
@@ -60,7 +67,9 @@ export default async function DOPackingPage({ params }: { params: { id: string }
     })),
   };
 
+  const canApprove = ['ADMIN', 'ACCOUNTS'].includes(session.role);
+
   return (
-    <DOPackingPanel do={serialized as any} role={session.role} />
+    <DOPackingPanel do={serialized as any} boxSizes={boxSizes} role={session.role} canApprove={canApprove} />
   );
 }

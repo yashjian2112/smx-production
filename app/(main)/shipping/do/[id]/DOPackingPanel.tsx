@@ -4,6 +4,14 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+export type BoxSizeOption = {
+  id:       string;
+  name:     string;
+  lengthCm: number;
+  widthCm:  number;
+  heightCm: number;
+};
+
 type PackingBoxItemRow = {
   id:        string;
   serial:    string;
@@ -18,14 +26,17 @@ type PackingBoxRow = {
   boxLabel:  string;
   photoUrl:  string | null;
   isSealed:  boolean;
+  weightKg:  number | null;
+  boxSizeId: string | null;
+  boxSize:   BoxSizeOption | null;
   items:     PackingBoxItemRow[];
 };
 
 type DispatchOrderFull = {
-  id:           string;
-  doNumber:     string;
-  status:       string;
-  totalBoxes:   number | null;
+  id:             string;
+  doNumber:       string;
+  status:         string;
+  totalBoxes:     number | null;
   rejectedReason: string | null;
   order: {
     orderNumber: string;
@@ -33,9 +44,9 @@ type DispatchOrderFull = {
     client:      { customerName: string } | null;
     product:     { code: string; name: string };
   };
-  boxes:       PackingBoxRow[];
-  createdBy:   { name: string };
-  invoices?:   { invoiceNumber: string }[];
+  boxes:      PackingBoxRow[];
+  createdBy:  { name: string };
+  invoices?:  { invoiceNumber: string }[];
 };
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -62,20 +73,30 @@ function DOStatusBadge({ status }: { status: string }) {
 function BoxCard({
   box,
   doId,
-  totalBoxes,
+  doNumber,
+  boxSizes,
   onBoxUpdate,
 }: {
-  box:          PackingBoxRow;
-  doId:         string;
-  totalBoxes:   number;
-  onBoxUpdate:  (updated: PackingBoxRow) => void;
+  box:         PackingBoxRow;
+  doId:        string;
+  doNumber:    string;
+  boxSizes:    BoxSizeOption[];
+  onBoxUpdate: (updated: PackingBoxRow) => void;
 }) {
-  const [barcode, setBarcode]     = useState('');
-  const [scanning, setScanning]   = useState(false);
-  const [scanError, setScanError] = useState('');
-  const [removing, setRemoving]   = useState<string | null>(null);
-  const [sealing, setSealing]     = useState(false);
-  const [sealError, setSealError] = useState('');
+  const [barcode, setBarcode]       = useState('');
+  const [scanning, setScanning]     = useState(false);
+  const [scanError, setScanError]   = useState('');
+  const [removing, setRemoving]     = useState<string | null>(null);
+  const [sealing, setSealing]       = useState(false);
+  const [sealError, setSealError]   = useState('');
+
+  // Box details
+  const [weightInput, setWeightInput]   = useState(box.weightKg?.toString() ?? '');
+  const [sizeId, setSizeId]             = useState(box.boxSizeId ?? '');
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState('');
+  const [detailsSaved, setDetailsSaved] = useState(false);
+
   const barcodeRef = useRef<HTMLInputElement>(null);
   const photoRef   = useRef<HTMLInputElement>(null);
 
@@ -93,10 +114,7 @@ function BoxCard({
         body:    JSON.stringify({ barcode: b }),
       });
       const data = await res.json() as { item?: PackingBoxItemRow; error?: string };
-      if (!res.ok) {
-        setScanError(data.error ?? 'Scan failed');
-        return;
-      }
+      if (!res.ok) { setScanError(data.error ?? 'Scan failed'); return; }
       onBoxUpdate({ ...box, items: [...box.items, data.item!] });
       setBarcode('');
     } catch {
@@ -127,6 +145,32 @@ function BoxCard({
     }
   }
 
+  // Save box weight + size
+  async function handleSaveDetails() {
+    setDetailsError('');
+    setDetailsSaved(false);
+    setSavingDetails(true);
+    try {
+      const body: { weightKg?: number; boxSizeId?: string | null } = {};
+      const w = parseFloat(weightInput);
+      if (!isNaN(w) && w > 0) body.weightKg = w;
+      body.boxSizeId = sizeId || null;
+      const res = await fetch(`/api/dispatch-orders/${doId}/boxes/${box.id}/details`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+      });
+      const data = await res.json() as { box?: PackingBoxRow; error?: string };
+      if (!res.ok) { setDetailsError(data.error ?? 'Failed to save'); return; }
+      onBoxUpdate({ ...box, ...data.box! });
+      setDetailsSaved(true);
+    } catch {
+      setDetailsError('Network error');
+    } finally {
+      setSavingDetails(false);
+    }
+  }
+
   // Seal box — triggered when a photo is selected
   async function handleSealPhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -141,11 +185,7 @@ function BoxCard({
         body:   fd,
       });
       const data = await res.json() as { box?: PackingBoxRow; error?: string };
-      if (!res.ok) {
-        setSealError(data.error ?? 'Failed to seal box');
-        return;
-      }
-      // Merge updated box from server with current items if server doesn't return them
+      if (!res.ok) { setSealError(data.error ?? 'Failed to seal box'); return; }
       const updated = data.box!;
       onBoxUpdate({
         ...box,
@@ -166,9 +206,7 @@ function BoxCard({
       {/* Box header */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <span className="text-sm font-semibold text-white">
-            Box {box.boxNumber} of {totalBoxes}
-          </span>
+          <span className="text-sm font-semibold text-white">Box {box.boxNumber}</span>
           <span className="ml-2 font-mono text-sm text-zinc-400">{box.boxLabel}</span>
         </div>
         {box.isSealed ? (
@@ -198,6 +236,13 @@ function BoxCard({
               />
             </a>
           )}
+          {/* Box details summary */}
+          {(box.weightKg || box.boxSize) && (
+            <div className="text-xs text-zinc-400 flex gap-3 flex-wrap">
+              {box.weightKg && <span>{box.weightKg} kg</span>}
+              {box.boxSize && <span>{box.boxSize.name} ({box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm)</span>}
+            </div>
+          )}
           {/* Read-only items */}
           {box.items.length > 0 && (
             <div className="space-y-1">
@@ -217,6 +262,16 @@ function BoxCard({
               </div>
             </div>
           )}
+          {/* Print packing slip */}
+          <a
+            href={`/print/box-label/${box.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
+            style={{ background: 'rgba(14,165,233,0.12)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}
+          >
+            Print Packing Slip
+          </a>
         </div>
       ) : (
         <div className="space-y-3">
@@ -242,9 +297,7 @@ function BoxCard({
             </button>
           </form>
 
-          {scanError && (
-            <p className="text-xs text-rose-400">{scanError}</p>
-          )}
+          {scanError && <p className="text-xs text-rose-400">{scanError}</p>}
 
           {/* Items list */}
           {box.items.length > 0 && (
@@ -272,10 +325,55 @@ function BoxCard({
             </div>
           )}
 
+          {/* Box details */}
+          <div
+            className="rounded-lg p-3 space-y-3"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            <div className="text-xs font-semibold text-zinc-400">Box Details</div>
+            <div className="flex gap-2 flex-wrap">
+              <div className="flex-1 min-w-[100px]">
+                <label className="text-[11px] text-zinc-500 mb-1 block">Weight (kg)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={weightInput}
+                  onChange={(e) => { setWeightInput(e.target.value); setDetailsSaved(false); }}
+                  placeholder="0.0"
+                  className="input-field text-sm w-full"
+                />
+              </div>
+              <div className="flex-[2] min-w-[160px]">
+                <label className="text-[11px] text-zinc-500 mb-1 block">Box Size</label>
+                <select
+                  value={sizeId}
+                  onChange={(e) => { setSizeId(e.target.value); setDetailsSaved(false); }}
+                  className="input-field text-sm w-full"
+                >
+                  <option value="">— Select size —</option>
+                  {boxSizes.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.lengthCm}×{s.widthCm}×{s.heightCm} cm)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {detailsError && <p className="text-xs text-rose-400">{detailsError}</p>}
+            <button
+              type="button"
+              onClick={handleSaveDetails}
+              disabled={savingDetails}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-40"
+              style={{ background: 'rgba(255,255,255,0.06)', color: detailsSaved ? '#4ade80' : '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              {savingDetails ? 'Saving…' : detailsSaved ? 'Saved ✓' : 'Save Details'}
+            </button>
+          </div>
+
           {/* Seal box */}
-          {sealError && (
-            <p className="text-xs text-rose-400">{sealError}</p>
-          )}
+          {sealError && <p className="text-xs text-rose-400">{sealError}</p>}
           <div>
             <input
               ref={photoRef}
@@ -293,7 +391,7 @@ function BoxCard({
               className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
               style={{ background: box.items.length > 0 ? '#22c55e' : undefined, color: '#fff' }}
             >
-              {sealing ? 'Sealing…' : box.items.length === 0 ? 'Add items to seal' : `Seal Box (take photo)`}
+              {sealing ? 'Sealing…' : box.items.length === 0 ? 'Add items to seal' : 'Seal Box (take photo)'}
             </button>
             {box.items.length === 0 && (
               <p className="text-xs text-zinc-600 text-center mt-1">Scan at least one unit before sealing</p>
@@ -308,25 +406,25 @@ function BoxCard({
 // ─── Main DOPackingPanel ──────────────────────────────────────────────────────
 export function DOPackingPanel({
   do: initialDO,
+  boxSizes,
   role,
+  canApprove = false,
 }: {
-  do:   DispatchOrderFull;
-  role: string;
+  do:          DispatchOrderFull;
+  boxSizes:    BoxSizeOption[];
+  role:        string;
+  canApprove?: boolean;
 }) {
   const router = useRouter();
-  const [doData, setDOData] = useState<DispatchOrderFull>(initialDO);
-
-  // OPEN state — declare box count
-  const [boxCount, setBoxCount]       = useState(1);
-  const [starting, setStarting]       = useState(false);
-  const [startError, setStartError]   = useState('');
-
-  // PACKING state — submit
+  const [doData, setDOData]           = useState<DispatchOrderFull>(initialDO);
+  const [addingBox, setAddingBox]     = useState(false);
+  const [addBoxError, setAddBoxError] = useState('');
   const [submitting, setSubmitting]   = useState(false);
   const [submitError, setSubmitError] = useState('');
 
+  const isActive   = doData.status === 'OPEN' || doData.status === 'PACKING';
   const sealedCount = doData.boxes.filter((b) => b.isSealed).length;
-  const totalBoxes  = doData.totalBoxes ?? doData.boxes.length;
+  const totalBoxes  = doData.boxes.length;
   const allSealed   = totalBoxes > 0 && sealedCount === totalBoxes;
 
   // Update a single box in state
@@ -337,55 +435,35 @@ export function DOPackingPanel({
     }));
   }
 
-  // Start packing — PATCH with totalBoxes
-  async function handleStartPacking() {
-    setStartError('');
-    setStarting(true);
+  // Add a new box dynamically
+  async function handleAddBox() {
+    setAddBoxError('');
+    setAddingBox(true);
     try {
-      const res = await fetch(`/api/dispatch-orders/${doData.id}`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ totalBoxes: boxCount }),
-      });
-      const data = await res.json() as DispatchOrderFull & { error?: string };
-      if (!res.ok) {
-        setStartError((data as any).error ?? 'Failed to start packing');
-        return;
-      }
-      // Server returns full DO with boxes — serialize dates if needed
-      const boxes = (data.boxes ?? []).map((b: any) => ({
-        ...b,
-        createdAt: typeof b.createdAt === 'string' ? b.createdAt : new Date(b.createdAt).toISOString(),
-        items: (b.items ?? []).map((item: any) => ({
-          ...item,
-          scannedAt: typeof item.scannedAt === 'string' ? item.scannedAt : new Date(item.scannedAt).toISOString(),
-        })),
+      const res = await fetch(`/api/dispatch-orders/${doData.id}/boxes`, { method: 'POST' });
+      const data = await res.json() as { box?: PackingBoxRow; error?: string };
+      if (!res.ok) { setAddBoxError(data.error ?? 'Failed to add box'); return; }
+      setDOData((prev) => ({
+        ...prev,
+        status: 'PACKING',
+        boxes: [...prev.boxes, data.box!],
       }));
-      setDOData((prev) => ({ ...prev, ...data, boxes }));
     } catch {
-      setStartError('Network error');
+      setAddBoxError('Network error');
     } finally {
-      setStarting(false);
+      setAddingBox(false);
     }
   }
 
   // Submit to accounts
   async function handleSubmit() {
     setSubmitError('');
-    if (!allSealed) {
-      setSubmitError('Seal all boxes before submitting.');
-      return;
-    }
+    if (!allSealed) { setSubmitError('Seal all boxes before submitting.'); return; }
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/dispatch-orders/${doData.id}/submit`, {
-        method: 'POST',
-      });
+      const res = await fetch(`/api/dispatch-orders/${doData.id}/submit`, { method: 'POST' });
       const data = await res.json() as { error?: string };
-      if (!res.ok) {
-        setSubmitError(data.error ?? 'Submit failed');
-        return;
-      }
+      if (!res.ok) { setSubmitError(data.error ?? 'Submit failed'); return; }
       router.push('/shipping');
     } catch {
       setSubmitError('Network error');
@@ -416,87 +494,71 @@ export function DOPackingPanel({
         </div>
       </div>
 
-      {/* ── OPEN STATE ── */}
-      {doData.status === 'OPEN' && (
-        <div className="card p-4 space-y-4">
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-white">Start Packing</div>
-            <div className="text-xs text-zinc-500">
-              Order: {doData.order.quantity} unit{doData.order.quantity !== 1 ? 's' : ''} · {doData.order.product.code} {doData.order.product.name}
-            </div>
-            <div className="text-xs text-zinc-500">Created by {doData.createdBy.name}</div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm text-zinc-300 font-medium">Number of Boxes</label>
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={boxCount}
-              onChange={(e) => setBoxCount(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
-              className="input-field text-sm w-32"
-            />
-            <p className="text-xs text-zinc-600">Between 1 and 50 boxes</p>
-          </div>
-
-          {startError && <p className="text-xs text-rose-400">{startError}</p>}
-
-          <button
-            type="button"
-            onClick={handleStartPacking}
-            disabled={starting}
-            className="btn-primary w-full disabled:opacity-40"
-          >
-            {starting ? 'Starting…' : `Start Packing (${boxCount} box${boxCount !== 1 ? 'es' : ''})`}
-          </button>
-        </div>
-      )}
-
-      {/* ── PACKING STATE ── */}
-      {doData.status === 'PACKING' && (
+      {/* ── OPEN / PACKING STATE ── */}
+      {isActive && (
         <div className="space-y-4">
-          {/* Progress + action bar */}
+          {/* Add box + progress bar */}
           <div className="card p-4 space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-zinc-400">Boxes Sealed</span>
-              <span className="font-mono font-bold text-white">{sealedCount} / {totalBoxes}</span>
-            </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${totalBoxes > 0 ? Math.min(100, (sealedCount / totalBoxes) * 100) : 0}%`,
-                  background: allSealed ? '#22c55e' : '#0ea5e9',
-                }}
-              />
-            </div>
-
-            <div className="flex gap-2 flex-wrap pt-1">
-              <a
-                href={`/print/dispatch-order/${doData.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 text-center py-2.5 rounded-lg text-sm font-semibold"
-                style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}
-              >
-                Print DO
-              </a>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="text-sm text-zinc-400">
+                {totalBoxes === 0
+                  ? 'No boxes yet — add your first box to start packing'
+                  : `${sealedCount} of ${totalBoxes} box${totalBoxes !== 1 ? 'es' : ''} sealed`}
+              </div>
               <button
                 type="button"
-                onClick={handleSubmit}
-                disabled={submitting || !allSealed}
-                title={!allSealed ? 'Seal all boxes before submitting' : undefined}
-                className="flex-1 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
-                style={{ background: allSealed ? '#22c55e' : undefined, color: '#fff',
-                  ...(allSealed ? {} : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }) }}
+                onClick={handleAddBox}
+                disabled={addingBox}
+                className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
+                style={{ background: '#0ea5e9', color: '#fff' }}
               >
-                {submitting ? 'Submitting…' : 'Submit to Accounts'}
+                {addingBox ? 'Adding…' : '+ Add Box'}
               </button>
             </div>
 
+            {totalBoxes > 0 && (
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, (sealedCount / totalBoxes) * 100)}%`,
+                    background: allSealed ? '#22c55e' : '#0ea5e9',
+                  }}
+                />
+              </div>
+            )}
+
+            {addBoxError && <p className="text-xs text-rose-400">{addBoxError}</p>}
+
+            {/* Action buttons */}
+            {totalBoxes > 0 && (
+              <div className="flex gap-2 flex-wrap pt-1">
+                <a
+                  href={`/print/packing-list/${doData.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 text-center py-2.5 rounded-lg text-sm font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}
+                >
+                  Packing List
+                </a>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={submitting || !allSealed}
+                  title={!allSealed ? 'Seal all boxes before submitting' : undefined}
+                  className="flex-1 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
+                  style={allSealed
+                    ? { background: '#22c55e', color: '#fff' }
+                    : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }}
+                >
+                  {submitting ? 'Submitting…' : 'Submit to Accounts'}
+                </button>
+              </div>
+            )}
+
             {submitError && <p className="text-xs text-rose-400">{submitError}</p>}
-            {!allSealed && (
+            {totalBoxes > 0 && !allSealed && (
               <p className="text-xs text-zinc-600 text-center">Seal all boxes before submitting</p>
             )}
           </div>
@@ -508,7 +570,8 @@ export function DOPackingPanel({
                 key={box.id}
                 box={box}
                 doId={doData.id}
-                totalBoxes={totalBoxes}
+                doNumber={doData.doNumber}
+                boxSizes={boxSizes}
                 onBoxUpdate={handleBoxUpdate}
               />
             ))}
@@ -524,13 +587,24 @@ export function DOPackingPanel({
             style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)' }}
           >
             <div className="text-sm font-semibold" style={{ color: '#c4b5fd' }}>
-              Submitted — awaiting accounts approval
+              {canApprove ? 'Submitted — ready for your approval' : 'Submitted — awaiting accounts approval'}
             </div>
             <div className="text-xs text-zinc-400">
               {doData.boxes.reduce((s, b) => s + b.items.length, 0)} unit{doData.boxes.reduce((s, b) => s + b.items.length, 0) !== 1 ? 's' : ''} across {totalBoxes} box{totalBoxes !== 1 ? 'es' : ''}
             </div>
           </div>
-          <ReadOnlyBoxList boxes={doData.boxes} totalBoxes={totalBoxes} />
+          <div className="flex gap-2">
+            <a
+              href={`/print/packing-list/${doData.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 rounded-lg text-sm font-semibold"
+              style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              Packing List
+            </a>
+          </div>
+          <ReadOnlyBoxList boxes={doData.boxes} />
         </div>
       )}
 
@@ -544,11 +618,22 @@ export function DOPackingPanel({
             <div className="text-sm font-semibold text-green-400">Approved</div>
             {doData.invoices && doData.invoices.length > 0 && (
               <div className="text-xs text-zinc-400">
-                Invoice{doData.invoices.length > 1 ? 's' : ''} generated: {doData.invoices.map((inv) => inv.invoiceNumber).join(', ')}
+                Invoice{doData.invoices.length > 1 ? 's' : ''}: {doData.invoices.map((inv) => inv.invoiceNumber).join(', ')}
               </div>
             )}
           </div>
-          <ReadOnlyBoxList boxes={doData.boxes} totalBoxes={totalBoxes} />
+          <div className="flex gap-2">
+            <a
+              href={`/print/packing-list/${doData.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 rounded-lg text-sm font-semibold"
+              style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              Packing List
+            </a>
+          </div>
+          <ReadOnlyBoxList boxes={doData.boxes} />
         </div>
       )}
 
@@ -564,7 +649,7 @@ export function DOPackingPanel({
               <div className="text-xs text-zinc-400">Reason: {doData.rejectedReason}</div>
             )}
           </div>
-          <ReadOnlyBoxList boxes={doData.boxes} totalBoxes={totalBoxes} />
+          <ReadOnlyBoxList boxes={doData.boxes} />
         </div>
       )}
     </div>
@@ -572,14 +657,14 @@ export function DOPackingPanel({
 }
 
 // ─── ReadOnlyBoxList ──────────────────────────────────────────────────────────
-function ReadOnlyBoxList({ boxes, totalBoxes }: { boxes: PackingBoxRow[]; totalBoxes: number }) {
+function ReadOnlyBoxList({ boxes }: { boxes: PackingBoxRow[] }) {
   return (
     <div className="flex flex-col gap-4">
       {boxes.map((box) => (
         <div key={box.id} className="card p-4 space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
-              <span className="text-sm font-semibold text-white">Box {box.boxNumber} of {totalBoxes}</span>
+              <span className="text-sm font-semibold text-white">Box {box.boxNumber}</span>
               <span className="ml-2 font-mono text-sm text-zinc-400">{box.boxLabel}</span>
             </div>
             {box.isSealed ? (
@@ -595,6 +680,13 @@ function ReadOnlyBoxList({ boxes, totalBoxes }: { boxes: PackingBoxRow[]; totalB
               </span>
             )}
           </div>
+
+          {(box.weightKg || box.boxSize) && (
+            <div className="text-xs text-zinc-400 flex gap-3 flex-wrap">
+              {box.weightKg && <span>{box.weightKg} kg</span>}
+              {box.boxSize && <span>{box.boxSize.name} ({box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm)</span>}
+            </div>
+          )}
 
           {box.photoUrl && (
             <a href={box.photoUrl} target="_blank" rel="noopener noreferrer">
@@ -624,6 +716,16 @@ function ReadOnlyBoxList({ boxes, totalBoxes }: { boxes: PackingBoxRow[]; totalB
               </div>
             </div>
           )}
+
+          <a
+            href={`/print/box-label/${box.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
+            style={{ background: 'rgba(14,165,233,0.12)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}
+          >
+            Print Packing Slip
+          </a>
         </div>
       ))}
     </div>
