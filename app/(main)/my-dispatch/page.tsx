@@ -1,16 +1,27 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
-/* ── Types ── */
+// ─── Types ────────────────────────────────────────────────────────────────────
 type DOStatus = 'OPEN' | 'PACKING' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+
+type ReadyOrder = {
+  id: string;
+  orderNumber: string;
+  quantity: number;
+  readyCount: number;
+  client: { customerName: string } | null;
+  product: { code: string; name: string };
+};
 
 type DispatchOrder = {
   id: string;
   doNumber: string;
   status: DOStatus;
+  totalBoxes: number | null;
   createdAt: string;
   approvedAt: string | null;
   order: {
@@ -24,248 +35,319 @@ type DispatchOrder = {
   boxes: { _count: { items: number } }[];
 };
 
-type ReadyOrder = {
-  id: string;
-  orderNumber: string;
-  quantity: number;
-  readyCount: number;
-  client: { customerName: string } | null;
-  product: { code: string; name: string };
-};
+type Tab = 'ready' | 'packing' | 'shipped';
 
-type Tab = 'ready' | 'active' | 'shipped';
-
-/* ── Status badge ── */
-const STATUS_STYLE: Record<DOStatus, string> = {
-  OPEN:      'bg-amber-500/20 text-amber-400 border border-amber-500/30',
-  PACKING:   'bg-blue-500/20 text-blue-400 border border-blue-500/30',
-  SUBMITTED: 'bg-purple-500/20 text-purple-400 border border-purple-500/30',
-  APPROVED:  'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-  REJECTED:  'bg-red-500/20 text-red-400 border border-red-500/30',
-};
-const STATUS_LABEL: Record<DOStatus, string> = {
-  OPEN:      'Open',
-  PACKING:   'Packing',
-  SUBMITTED: 'Pending Approval',
-  APPROVED:  'Dispatched ✓',
-  REJECTED:  'Rejected',
-};
-
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-/* ── Ready Order Card ── */
-function ReadyCard({ order }: { order: ReadyOrder }) {
+// ─── DOStatusBadge ────────────────────────────────────────────────────────────
+function DOStatusBadge({ status }: { status: DOStatus }) {
+  const cfg: Record<DOStatus, { label: string; color: string; bg: string }> = {
+    OPEN:      { label: 'Open',      color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
+    PACKING:   { label: 'Packing',   color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+    SUBMITTED: { label: 'Submitted', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+    APPROVED:  { label: 'Approved',  color: '#4ade80', bg: 'rgba(74,222,128,0.12)' },
+    REJECTED:  { label: 'Rejected',  color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
+  };
+  const c = cfg[status];
   return (
-    <div className="rounded-xl border p-4 space-y-2"
-      style={{ background: 'rgba(20,83,45,0.12)', borderColor: 'rgba(74,222,128,0.2)' }}>
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="font-mono text-sm text-sky-400">{order.orderNumber}</p>
-          <p className="text-sm font-medium text-white mt-0.5">{order.product.name}</p>
-          {order.client && (
-            <p className="text-xs text-slate-400 mt-0.5">{order.client.customerName}</p>
-          )}
-        </div>
-        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
-          Ready for Dispatch
-        </span>
-      </div>
-      <div className="flex items-center gap-3 text-xs text-slate-400">
-        <span>{order.readyCount} of {order.quantity} units ready</span>
-        {order.readyCount === order.quantity && (
-          <span className="text-emerald-400">● All units ready</span>
-        )}
-      </div>
-      {/* Progress bar */}
-      <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-emerald-500 transition-all"
-          style={{ width: `${Math.min(100, (order.readyCount / order.quantity) * 100)}%` }}
-        />
-      </div>
-    </div>
+    <span
+      className="text-[11px] font-bold px-2 py-0.5 rounded"
+      style={{ color: c.color, background: c.bg }}
+    >
+      {c.label}
+    </span>
   );
 }
 
-/* ── DO Card ── */
-function DOCard({ do: d }: { do: DispatchOrder }) {
-  const totalBoxes = d.boxes.length;
-  const sealedBoxes = 0; // We don't have isSealed in this query — show box count
-  const totalUnits = d.boxes.reduce((s, b) => s + b._count.items, 0);
-
-  return (
-    <div className="rounded-xl border p-4 space-y-3"
-      style={{ background: 'rgba(15,23,42,0.8)', borderColor: 'rgba(148,163,184,0.1)' }}>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="font-mono text-sm font-bold text-sky-400">{d.doNumber}</p>
-          <p className="text-sm font-medium text-white mt-0.5">{d.order.product.name}</p>
-          {d.order.client && (
-            <p className="text-xs text-slate-400 mt-0.5">{d.order.client.customerName}</p>
-          )}
-        </div>
-        <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${STATUS_STYLE[d.status]}`}>
-          {STATUS_LABEL[d.status]}
-        </span>
-      </div>
-
-      {/* Meta */}
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-lg p-2" style={{ background: 'rgba(15,23,42,0.6)' }}>
-          <p className="text-xs text-slate-500">Order</p>
-          <p className="text-xs font-mono text-slate-300 truncate">{d.order.orderNumber}</p>
-        </div>
-        <div className="rounded-lg p-2" style={{ background: 'rgba(15,23,42,0.6)' }}>
-          <p className="text-xs text-slate-500">Units Packed</p>
-          <p className="text-sm font-semibold text-white">{totalUnits}</p>
-        </div>
-        <div className="rounded-lg p-2" style={{ background: 'rgba(15,23,42,0.6)' }}>
-          <p className="text-xs text-slate-500">Boxes</p>
-          <p className="text-sm font-semibold text-white">{totalBoxes}</p>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>Created {fmt(d.createdAt)} by {d.createdBy.name}</span>
-        {d.approvedAt && d.approvedBy && (
-          <span className="text-emerald-400">Dispatched {fmt(d.approvedAt)}</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ── Main Page ── */
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function MyDispatchPage() {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>('ready');
-  const [readyOrders, setReadyOrders] = useState<ReadyOrder[]>([]);
-  const [activeDOs, setActiveDOs]     = useState<DispatchOrder[]>([]);
-  const [shippedDOs, setShippedDOs]   = useState<DispatchOrder[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState('');
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError('');
-      try {
-        // Active DOs (OPEN, PACKING, SUBMITTED) + Shipped (APPROVED)
-        const [doRes, readyRes] = await Promise.all([
-          fetch('/api/dispatch-orders/employee'),
-          fetch('/api/shipping/ready-summary'),
-        ]);
+  // Data
+  const [readyOrders,  setReadyOrders]  = useState<ReadyOrder[] | null>(null);
+  const [packingDOs,   setPackingDOs]   = useState<DispatchOrder[] | null>(null);
+  const [shippedDOs,   setShippedDOs]   = useState<DispatchOrder[] | null>(null);
 
-        if (!doRes.ok) throw new Error('Failed to load dispatch orders');
-        if (!readyRes.ok) throw new Error('Failed to load ready orders');
+  // Loading/error per tab
+  const [loadingReady,   setLoadingReady]   = useState(false);
+  const [loadingPacking, setLoadingPacking] = useState(false);
+  const [loadingShipped, setLoadingShipped] = useState(false);
+  const [errorReady,     setErrorReady]     = useState('');
+  const [errorPacking,   setErrorPacking]   = useState('');
+  const [errorShipped,   setErrorShipped]   = useState('');
 
-        const dos: DispatchOrder[]  = await doRes.json();
-        const ready: ReadyOrder[]   = await readyRes.json();
+  // Create DO state
+  const [creating,     setCreating]     = useState<string | null>(null);
+  const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
 
-        setActiveDOs(dos.filter((d) => ['OPEN', 'PACKING', 'SUBMITTED'].includes(d.status)));
-        setShippedDOs(dos.filter((d) => d.status === 'APPROVED'));
-        setReadyOrders(ready);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Error loading data');
-      } finally {
-        setLoading(false);
-      }
+  // Load ready orders
+  async function loadReady() {
+    setLoadingReady(true);
+    setErrorReady('');
+    try {
+      const res = await fetch('/api/shipping/ready-summary');
+      if (!res.ok) throw new Error('Failed to load ready orders');
+      const data: ReadyOrder[] = await res.json();
+      setReadyOrders(data);
+    } catch (e) {
+      setErrorReady(e instanceof Error ? e.message : 'Error loading data');
+    } finally {
+      setLoadingReady(false);
     }
-    load();
+  }
+
+  // Load packing DOs (OPEN or PACKING)
+  async function loadPacking() {
+    setLoadingPacking(true);
+    setErrorPacking('');
+    try {
+      const res = await fetch('/api/dispatch-orders/employee');
+      if (!res.ok) throw new Error('Failed to load dispatch orders');
+      const data: DispatchOrder[] = await res.json();
+      setPackingDOs(data.filter((d) => d.status === 'OPEN' || d.status === 'PACKING'));
+    } catch (e) {
+      setErrorPacking(e instanceof Error ? e.message : 'Error loading data');
+    } finally {
+      setLoadingPacking(false);
+    }
+  }
+
+  // Load shipped DOs (APPROVED)
+  async function loadShipped() {
+    setLoadingShipped(true);
+    setErrorShipped('');
+    try {
+      const res = await fetch('/api/dispatch-orders/employee');
+      if (!res.ok) throw new Error('Failed to load dispatch orders');
+      const data: DispatchOrder[] = await res.json();
+      setShippedDOs(data.filter((d) => d.status === 'APPROVED'));
+    } catch (e) {
+      setErrorShipped(e instanceof Error ? e.message : 'Error loading data');
+    } finally {
+      setLoadingShipped(false);
+    }
+  }
+
+  // Tab change handler — lazy load
+  function handleTabChange(t: Tab) {
+    setTab(t);
+    if (t === 'ready'   && readyOrders  === null) loadReady();
+    if (t === 'packing' && packingDOs   === null) loadPacking();
+    if (t === 'shipped' && shippedDOs   === null) loadShipped();
+  }
+
+  // Load ready tab on mount
+  useEffect(() => {
+    loadReady();
   }, []);
 
-  const tabs: { key: Tab; label: string; count: number }[] = [
-    { key: 'ready',  label: 'Ready',       count: readyOrders.length },
-    { key: 'active', label: 'In Dispatch',  count: activeDOs.length },
-    { key: 'shipped',label: 'Shipped',      count: shippedDOs.length },
+  // Create Dispatch Order and navigate to packing page
+  async function createDO(orderId: string) {
+    setCreating(orderId);
+    setCreateErrors((prev) => ({ ...prev, [orderId]: '' }));
+    try {
+      const res = await fetch('/api/dispatch-orders', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ orderId }),
+      });
+      const data = await res.json() as { id?: string; doNumber?: string; error?: string };
+      if (!res.ok || !data.id) {
+        setCreateErrors((prev) => ({ ...prev, [orderId]: data.error ?? 'Failed to create dispatch order' }));
+        return;
+      }
+      router.push(`/shipping/do/${data.id}`);
+    } catch {
+      setCreateErrors((prev) => ({ ...prev, [orderId]: 'Network error' }));
+    } finally {
+      setCreating(null);
+    }
+  }
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'ready',   label: 'Ready' },
+    { key: 'packing', label: 'Packing' },
+    { key: 'shipped', label: 'Shipped' },
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-2xl mx-auto">
       {/* Header */}
       <div>
-        <h2 className="text-xl font-semibold text-white">Dispatch Tracker</h2>
-        <p className="text-sm text-slate-400 mt-0.5">Track orders from production to delivery</p>
+        <h2 className="text-xl font-semibold text-white">Dispatch</h2>
+        <p className="text-sm text-zinc-400 mt-0.5">Pack and ship completed orders</p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(15,23,42,0.8)' }}>
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
         {tabs.map((t) => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
-              tab === t.key
-                ? 'bg-sky-500/20 text-sky-400 shadow-sm'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
+            type="button"
+            onClick={() => handleTabChange(t.key)}
+            className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${tab === t.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+            style={tab === t.key ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}
           >
             {t.label}
-            {t.count > 0 && (
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
-                tab === t.key ? 'bg-sky-500/30 text-sky-300' : 'bg-slate-700 text-slate-400'
-              }`}>
-                {t.count}
-              </span>
-            )}
           </button>
         ))}
       </div>
 
-      {/* Content */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : error ? (
-        <div className="rounded-xl p-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-          {error}
-        </div>
-      ) : tab === 'ready' ? (
-        readyOrders.length === 0 ? (
-          <EmptyState message="No orders are ready for dispatch" sub="Units must complete Final Assembly and be approved" />
-        ) : (
-          <div className="space-y-3">
-            {readyOrders.map((o) => <ReadyCard key={o.id} order={o} />)}
-          </div>
-        )
-      ) : tab === 'active' ? (
-        activeDOs.length === 0 ? (
-          <EmptyState message="No active dispatch orders" sub="Dispatch orders will appear here once shipping starts packing" />
-        ) : (
-          <div className="space-y-3">
-            {activeDOs.map((d) => <DOCard key={d.id} do={d} />)}
-          </div>
-        )
-      ) : (
-        shippedDOs.length === 0 ? (
-          <EmptyState message="No dispatched orders yet" sub="Approved dispatch orders will appear here" />
-        ) : (
-          <div className="space-y-3">
-            {shippedDOs.map((d) => <DOCard key={d.id} do={d} />)}
-          </div>
-        )
-      )}
-    </div>
-  );
-}
+      {/* ── READY TAB ── */}
+      {tab === 'ready' && (
+        <div className="space-y-3">
+          {loadingReady && <div className="text-zinc-500 text-sm">Loading…</div>}
 
-function EmptyState({ message, sub }: { message: string; sub: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center gap-2">
-      <div className="w-12 h-12 rounded-full flex items-center justify-center mb-2"
-        style={{ background: 'rgba(148,163,184,0.08)' }}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
-          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-          <line x1="12" y1="22.08" x2="12" y2="12" />
-        </svg>
-      </div>
-      <p className="text-slate-400 font-medium">{message}</p>
-      <p className="text-xs text-slate-600">{sub}</p>
+          {errorReady && (
+            <div className="rounded-xl p-4 text-sm text-rose-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              {errorReady}
+            </div>
+          )}
+
+          {!loadingReady && readyOrders !== null && readyOrders.length === 0 && (
+            <div className="text-sm text-zinc-500 text-center py-6">No orders are ready for dispatch.</div>
+          )}
+
+          {!loadingReady && (readyOrders ?? []).map((o) => (
+            <div key={o.id} className="card p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">
+                    #{o.orderNumber}
+                    {o.client && <span className="text-zinc-400 font-normal"> · {o.client.customerName}</span>}
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-0.5">{o.product.name}</div>
+                </div>
+                <div className="text-right text-xs">
+                  <div className="font-bold text-sky-400">{o.readyCount} ready</div>
+                  <div className="text-zinc-600">of {o.quantity} ordered</div>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, (o.readyCount / o.quantity) * 100)}%`,
+                    background: o.readyCount >= o.quantity ? '#22c55e' : '#0ea5e9',
+                  }}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => createDO(o.id)}
+                disabled={creating === o.id || o.readyCount === 0}
+                className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
+                style={{ background: '#0ea5e9', color: '#fff' }}
+              >
+                {creating === o.id ? 'Creating…' : `Create Dispatch Order (${o.readyCount} unit${o.readyCount !== 1 ? 's' : ''})`}
+              </button>
+              {createErrors[o.id] && (
+                <p className="text-xs text-rose-400">{createErrors[o.id]}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── PACKING TAB ── */}
+      {tab === 'packing' && (
+        <div className="space-y-3">
+          {loadingPacking && <div className="text-zinc-500 text-sm">Loading…</div>}
+
+          {errorPacking && (
+            <div className="rounded-xl p-4 text-sm text-rose-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              {errorPacking}
+            </div>
+          )}
+
+          {!loadingPacking && packingDOs !== null && packingDOs.length === 0 && (
+            <div className="text-sm text-zinc-500 text-center py-6">No active dispatch orders.</div>
+          )}
+
+          {!loadingPacking && (packingDOs ?? []).map((d) => {
+            const unitCount  = d.boxes.reduce((sum, b) => sum + (b._count?.items ?? 0), 0);
+            const totalBoxes = d.totalBoxes ?? d.boxes.length;
+            return (
+              <div key={d.id} className="card p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold text-sm text-white">{d.doNumber}</span>
+                      <DOStatusBadge status={d.status} />
+                    </div>
+                    <div className="text-sm text-zinc-400 mt-0.5">
+                      {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      {d.order.product.name} · {totalBoxes > 0 ? `${totalBoxes} box${totalBoxes !== 1 ? 'es' : ''}` : 'boxes not set'} · {unitCount} unit{unitCount !== 1 ? 's' : ''} scanned
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/shipping/do/${d.id}`)}
+                  className="w-full py-2.5 rounded-lg text-sm font-semibold"
+                  style={{ background: '#0ea5e9', color: '#fff' }}
+                >
+                  Continue Packing →
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── SHIPPED TAB ── */}
+      {tab === 'shipped' && (
+        <div className="space-y-3">
+          {loadingShipped && <div className="text-zinc-500 text-sm">Loading…</div>}
+
+          {errorShipped && (
+            <div className="rounded-xl p-4 text-sm text-rose-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              {errorShipped}
+            </div>
+          )}
+
+          {!loadingShipped && shippedDOs !== null && shippedDOs.length === 0 && (
+            <div className="text-sm text-zinc-500 text-center py-6">No dispatched orders yet.</div>
+          )}
+
+          {!loadingShipped && (shippedDOs ?? []).map((d) => {
+            const unitCount  = d.boxes.reduce((sum, b) => sum + (b._count?.items ?? 0), 0);
+            const totalBoxes = d.totalBoxes ?? d.boxes.length;
+            return (
+              <div key={d.id} className="card p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold text-sm text-white">{d.doNumber}</span>
+                      <DOStatusBadge status={d.status} />
+                    </div>
+                    <div className="text-sm text-zinc-400 mt-0.5">
+                      {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      {d.order.product.name} · {totalBoxes} box{totalBoxes !== 1 ? 'es' : ''} · {unitCount} unit{unitCount !== 1 ? 's' : ''}
+                    </div>
+                    {d.approvedAt && d.approvedBy && (
+                      <div className="text-xs text-green-400 mt-1">
+                        Dispatched {fmt(d.approvedAt)} · Approved by {d.approvedBy.name}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

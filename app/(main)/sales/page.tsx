@@ -15,7 +15,7 @@ export default async function SalesPage({
   const canAccess = ['ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_MANAGER'].includes(session.role);
   if (!canAccess) redirect('/dashboard');
 
-  const [proformas, invoices] = await Promise.all([
+  const [proformas, invoices, returns] = await Promise.all([
     prisma.proformaInvoice.findMany({
       where: session.role === 'SALES' ? { createdById: session.id } : {},
       include: {
@@ -32,6 +32,16 @@ export default async function SalesPage({
         client:        { select: { id: true, code: true, customerName: true, globalOrIndian: true } },
         dispatchOrder: { select: { doNumber: true, approvedAt: true } },
         _count:        { select: { items: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    }),
+
+    prisma.returnRequest.findMany({
+      where: session.role === 'SALES' ? { reportedById: session.id } : {},
+      include: {
+        client:     { select: { code: true, customerName: true } },
+        reportedBy: { select: { name: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -58,12 +68,19 @@ export default async function SalesPage({
       : null,
   }));
 
+  const serializedReturns = returns.map((r) => ({
+    ...r,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  }));
+
   const canCreate = session.role === 'ADMIN' || session.role === 'SALES';
 
   const rawTab = searchParams?.tab;
   const initialTab =
     rawTab === 'invoice' ? 'invoice' :
     rawTab === 'returns' ? 'returns' :
+    rawTab === 'status'  ? 'status'  :
     'pi';
 
   return (
@@ -79,8 +96,9 @@ export default async function SalesPage({
       <ProformaList
         proformas={serialized as any}
         role={session.role}
-        initialTab={initialTab}
+        initialTab={initialTab as any}
         invoices={serializedInvoices as any}
+        returnRequests={serializedReturns as any}
       />
     </div>
   );

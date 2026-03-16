@@ -2,9 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
-import { ProformaList } from '../sales/ProformaList';
-import { DispatchApprovals } from './DispatchApprovals';
-import { DOApprovals } from './DOApprovals';
+import { AccountsPanel } from './AccountsPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +13,7 @@ export default async function AccountsPage() {
   const canAccess = ['ADMIN', 'ACCOUNTS'].includes(session.role);
   if (!canAccess) redirect('/dashboard');
 
-  const [proformas, submittedDispatches, submittedDOs] = await Promise.all([
+  const [proformas, submittedDispatches, submittedDOs, invoices, returns] = await Promise.all([
     prisma.proformaInvoice.findMany({
       include: {
         client:    { select: { id: true, code: true, customerName: true, globalOrIndian: true } },
@@ -92,6 +90,25 @@ export default async function AccountsPage() {
       },
       orderBy: { submittedAt: 'asc' },
     }),
+
+    prisma.invoice.findMany({
+      include: {
+        client:        { select: { id: true, code: true, customerName: true, globalOrIndian: true } },
+        dispatchOrder: { select: { doNumber: true, approvedAt: true } },
+        _count:        { select: { items: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    }),
+
+    prisma.returnRequest.findMany({
+      include: {
+        client:     { select: { code: true, customerName: true } },
+        reportedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    }),
   ]);
 
   const serializedProformas = proformas.map((p) => ({
@@ -130,6 +147,24 @@ export default async function AccountsPage() {
     })),
   }));
 
+  const serializedInvoices = invoices.map((inv) => ({
+    ...inv,
+    createdAt:     inv.createdAt.toISOString(),
+    updatedAt:     inv.updatedAt.toISOString(),
+    dispatchOrder: inv.dispatchOrder
+      ? {
+          ...inv.dispatchOrder,
+          approvedAt: inv.dispatchOrder.approvedAt?.toISOString() ?? null,
+        }
+      : null,
+  }));
+
+  const serializedReturns = returns.map((r) => ({
+    ...r,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  }));
+
   const pendingProformas  = proformas.filter((p) => p.status === 'PENDING_APPROVAL').length;
   const pendingDispatches = submittedDispatches.length;
   const pendingDOs        = submittedDOs.length;
@@ -161,21 +196,17 @@ export default async function AccountsPage() {
           href="/accounts/settings"
           className="text-sm text-zinc-400 hover:text-white transition-colors border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2"
         >
-          ⚙️ LUT Settings
+          Settings
         </Link>
       </div>
 
-      {/* DO approvals — shown above legacy dispatch approvals */}
-      {pendingDOs > 0 && (
-        <DOApprovals dispatches={serializedDOs as any} />
-      )}
-
-      {/* Legacy dispatch approvals — shown when pending */}
-      {pendingDispatches > 0 && (
-        <DispatchApprovals dispatches={serializedDispatches as any} />
-      )}
-
-      <ProformaList proformas={serializedProformas as any} role={session.role} />
+      <AccountsPanel
+        proformas={serializedProformas as any}
+        invoices={serializedInvoices as any}
+        returns={serializedReturns as any}
+        dispatches={serializedDispatches as any}
+        doDispatches={serializedDOs as any}
+      />
     </div>
   );
 }

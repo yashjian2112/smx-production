@@ -9,7 +9,7 @@ export default async function DOPackingPage({ params }: { params: { id: string }
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const allowed = ['ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'ACCOUNTS'];
+  const allowed = ['ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'ACCOUNTS', 'PRODUCTION_EMPLOYEE'];
   if (!allowed.includes(session.role)) redirect('/dashboard');
 
   const dispatchOrder = await prisma.dispatchOrder.findUnique({
