@@ -123,6 +123,12 @@ const Icons = {
       <line x1="2" y1="10" x2="22" y2="10" />
     </svg>
   ),
+  Status: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  ),
 };
 
 type NavItem = { href: string; label: string; icon: keyof typeof Icons };
@@ -151,11 +157,11 @@ const employeeNav: NavItem[] = [
   { href: '/my-performance', label: 'Performance', icon: 'Performance' },
 ];
 
-// SALES: 3 items — PI, Returns & Replacement, Clients
+// SALES: 3 items — Invoices, Order Status, Clients
 const salesNav: NavItem[] = [
-  { href: '/sales',             label: 'PI',      icon: 'Invoice'  },
-  { href: '/sales?tab=returns', label: 'Returns', icon: 'Returns'  },
-  { href: '/sales/clients',     label: 'Clients', icon: 'Clients'  },
+  { href: '/sales',            label: 'Invoices', icon: 'Invoice' },
+  { href: '/sales?tab=status', label: 'Status',   icon: 'Status'  },
+  { href: '/sales/clients',    label: 'Clients',  icon: 'Clients' },
 ];
 
 // ACCOUNTS: 4 items — Approvals, AR, Invoices (→ /sales), Settings
