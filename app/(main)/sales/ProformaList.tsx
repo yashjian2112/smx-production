@@ -135,7 +135,7 @@ export function ProformaList({
   const piList = proformas.filter((p) => p.invoiceNumber.startsWith('TSM/PI/') && p.invoiceType === 'SALE');
 
   const tabs: Array<{ key: TabKey; label: string; count: number }> = [
-    { key: 'pi',      label: 'Invoicing', count: piList.length         },
+    { key: 'pi',      label: 'Proforma',  count: piList.length         },
     { key: 'invoice', label: 'Invoice',   count: invoices.length       },
     { key: 'returns', label: 'Returns',   count: returnRequests.length },
     { key: 'status',  label: 'Status',    count: 0                     },
