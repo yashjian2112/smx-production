@@ -31,10 +31,13 @@ export async function GET() {
 }
 
 const postSchema = z.object({
-  clientId:      z.string().min(1),
+  // clientId can be omitted when serialNumber is provided (resolved server-side)
+  clientId:      z.string().optional(),
   serialNumber:  z.string().optional(),
   type:          z.enum(['WARRANTY', 'DAMAGE', 'WRONG_ITEM', 'OTHER']),
   reportedIssue: z.string().min(1),
+}).refine((d) => d.clientId || d.serialNumber, {
+  message: 'Either clientId or serialNumber is required',
 });
 
 export async function POST(req: Request) {
@@ -70,25 +73,33 @@ export async function POST(req: Request) {
 
   const returnNumber = `${prefix}${String(next).padStart(3, '0')}`;
 
-  // Look up unit/order from serial number if provided
-  let unitId:  string | undefined;
-  let orderId: string | undefined;
+  // Look up unit/order/client from serial number if provided
+  let unitId:           string | undefined;
+  let orderId:          string | undefined;
+  let resolvedClientId: string = data.clientId ?? '';
 
   if (data.serialNumber) {
     const unit = await prisma.controllerUnit.findFirst({
       where:  { serialNumber: data.serialNumber },
-      select: { id: true, orderId: true },
+      select: { id: true, orderId: true, order: { select: { clientId: true } } },
     });
     if (unit) {
       unitId  = unit.id;
-      orderId = unit.orderId;
+      orderId = unit.orderId ?? undefined;
+      if (!resolvedClientId && unit.order?.clientId) {
+        resolvedClientId = unit.order.clientId;
+      }
     }
+  }
+
+  if (!resolvedClientId) {
+    return NextResponse.json({ error: 'Could not resolve client. Provide clientId or a valid serialNumber.' }, { status: 400 });
   }
 
   const returnRequest = await prisma.returnRequest.create({
     data: {
       returnNumber,
-      clientId:      data.clientId,
+      clientId:      resolvedClientId,
       serialNumber:  data.serialNumber ?? null,
       unitId:        unitId ?? null,
       orderId:       orderId ?? null,

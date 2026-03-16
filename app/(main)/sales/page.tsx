@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import Link from 'next/link';
 import { ProformaList } from './ProformaList';
 
 export default async function SalesPage({
@@ -89,20 +88,14 @@ export default async function SalesPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Invoices</h2>
-        {canCreate && (
-          <Link href="/sales/new" className="btn-primary py-2 px-4 text-sm tap-target">
-            + New
-          </Link>
-        )}
-      </div>
+      <h2 className="text-xl font-semibold">Invoices</h2>
       <ProformaList
         proformas={serialized as any}
         role={session.role}
         initialTab={initialTab as any}
         invoices={serializedInvoices as any}
         returnRequests={serializedReturns as any}
+        canCreate={canCreate}
       />
     </div>
   );

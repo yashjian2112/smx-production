@@ -103,12 +103,14 @@ export function ProformaList({
   initialTab,
   invoices = [],
   returnRequests = [],
+  canCreate = false,
 }: {
   proformas: ProformaRow[];
   role: string;
   initialTab?: TabKey;
   invoices?: InvoiceRow[];
   returnRequests?: ReturnRequestRow[];
+  canCreate?: boolean;
 }) {
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'pi');
   const [search, setSearch] = useState('');
@@ -171,15 +173,37 @@ export function ProformaList({
 
   return (
     <div>
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl mb-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-        {tabs.map((t) => (
-          <button key={t.key} type="button" onClick={() => setTab(t.key)}
-            className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${tab === t.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
-            style={tab === t.key ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
-            {t.key === 'status' ? 'Status' : `${t.label} (${t.count})`}
-          </button>
-        ))}
+      {/* Tabs + contextual action button */}
+      <div className="flex items-center gap-2 mb-4">
+        <div className="flex flex-1 gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          {tabs.map((t) => (
+            <button key={t.key} type="button" onClick={() => setTab(t.key)}
+              className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${tab === t.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+              style={tab === t.key ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
+              {t.key === 'status' ? 'Status' : `${t.label} (${t.count})`}
+            </button>
+          ))}
+        </div>
+        {/* + New button — only on PI tab */}
+        {tab === 'pi' && canCreate && (
+          <Link
+            href="/sales/new"
+            className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
+            style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}
+          >
+            + New
+          </Link>
+        )}
+        {/* + New Return button — only on Returns tab */}
+        {tab === 'returns' && canCreateReturn && (
+          <Link
+            href="/sales/returns/new"
+            className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
+            style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}
+          >
+            + New Return
+          </Link>
+        )}
       </div>
 
       {/* Search — not shown on status tab */}
@@ -318,18 +342,9 @@ export function ProformaList({
         {/* ── Returns tab ── */}
         {tab === 'returns' && (
           <>
-            {/* Header with New Return button */}
-            <div className="flex items-center justify-between mb-2">
+            {/* Count row */}
+            <div className="mb-2">
               <span className="text-xs text-zinc-500">{filteredReturns.length} return{filteredReturns.length !== 1 ? 's' : ''}</span>
-              {canCreateReturn && (
-                <Link
-                  href="/sales/returns/new"
-                  className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-                  style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}
-                >
-                  + New Return
-                </Link>
-              )}
             </div>
 
             {filteredReturns.length === 0 ? (
