@@ -91,18 +91,27 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
 
-    // No existing OPEN/PACKING/SUBMITTED dispatch order for the same orderId
+    // If an active DO already exists, return it so the client can resume packing
     const existing = await prisma.dispatchOrder.findFirst({
       where: {
         orderId,
         status: { in: ['OPEN', 'PACKING', 'SUBMITTED'] },
       },
+      include: {
+        order: {
+          select: {
+            orderNumber: true,
+            quantity: true,
+            client: { select: { customerName: true, globalOrIndian: true } },
+            product: { select: { code: true, name: true } },
+          },
+        },
+        createdBy: { select: { name: true } },
+        boxes: true,
+      },
     });
     if (existing)
-      return NextResponse.json(
-        { error: `An active dispatch order (${existing.doNumber}) already exists for this order` },
-        { status: 400 }
-      );
+      return NextResponse.json({ ...existing, existing: true }, { status: 200 });
 
     const doNumber = await generateNextDONumber();
 

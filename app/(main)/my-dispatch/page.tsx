@@ -192,7 +192,7 @@ function ReadyOrderCard({
         <p className="text-xs text-rose-400">{error}</p>
       )}
 
-      {/* Create button */}
+      {/* Start packing button */}
       <button
         type="button"
         onClick={handleCreate}
@@ -202,7 +202,9 @@ function ReadyOrderCard({
       >
         {creating
           ? 'Creating…'
-          : `Create Dispatch Order (${selected.size} unit${selected.size !== 1 ? 's' : ''})`}
+          : noneSelected
+            ? 'Select units to start packing'
+            : `Start Packing — ${selected.size} unit${selected.size !== 1 ? 's' : ''} →`}
       </button>
     </div>
   );
@@ -290,7 +292,7 @@ export default function MyDispatchPage() {
     loadReady();
   }, [loadReady]);
 
-  // Create Dispatch Order and navigate to packing page
+  // Create (or resume) a Dispatch Order and navigate to packing page
   async function createDO(orderId: string) {
     setCreateErrors((prev) => ({ ...prev, [orderId]: '' }));
     const res = await fetch('/api/dispatch-orders', {
@@ -298,12 +300,13 @@ export default function MyDispatchPage() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ orderId }),
     });
-    const data = await res.json() as { id?: string; doNumber?: string; error?: string };
-    if (!res.ok || !data.id) {
+    const data = await res.json() as { id?: string; doNumber?: string; existing?: boolean; error?: string };
+    if (!data.id) {
       const msg = data.error ?? 'Failed to create dispatch order';
       setCreateErrors((prev) => ({ ...prev, [orderId]: msg }));
       throw new Error(msg);
     }
+    // Whether new or existing, go straight to the packing panel
     router.push(`/shipping/do/${data.id}`);
   }
 
