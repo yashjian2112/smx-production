@@ -30,7 +30,8 @@ export async function GET() {
             currentStatus: 'APPROVED',
             readyForDispatch: false,
           },
-          select: { id: true },
+          select: { id: true, serialNumber: true },
+          orderBy: { serialNumber: 'asc' },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -43,6 +44,7 @@ export async function GET() {
       readyCount: o.units.length,
       client: o.client ? { customerName: o.client.customerName } : null,
       product: { code: o.product.code, name: o.product.name },
+      units: o.units.map((u) => ({ id: u.id, serialNumber: u.serialNumber })),
     }));
 
     return NextResponse.json(result);

@@ -324,19 +324,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         data: { currentStage: next, currentStatus: nextStatus, ...stageBarcode },
       });
     } else {
-      // Final stage — mark fully complete
+      // Final stage — auto-approve immediately (no manager sign-off needed)
       await prisma.controllerUnit.update({
         where: { id },
-        data: { currentStatus: UnitStatus.COMPLETED },
+        data: { currentStatus: UnitStatus.APPROVED },
       });
       await appendTimeline({
         unitId:     id,
         userId:     session.id,
         action:     'final_assembly_completed',
         stage:      completedStage,
-        statusFrom: UnitStatus.COMPLETED,
-        statusTo:   UnitStatus.COMPLETED,
-        remarks:    'Unit fully assembled and ready for dispatch',
+        statusFrom: UnitStatus.IN_PROGRESS,
+        statusTo:   UnitStatus.APPROVED,
+        remarks:    'Unit fully assembled — auto-approved and ready for dispatch',
       });
     }
   } catch (e) {
