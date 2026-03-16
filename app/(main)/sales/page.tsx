@@ -27,7 +27,11 @@ export default async function SalesPage({
       take: 200,
     }),
 
+    // For SALES: only show invoices linked to proformas they created
     prisma.invoice.findMany({
+      where: session.role === 'SALES'
+        ? { proforma: { createdById: session.id } }
+        : {},
       include: {
         client:        { select: { id: true, code: true, customerName: true, globalOrIndian: true } },
         dispatchOrder: { select: { doNumber: true, approvedAt: true } },

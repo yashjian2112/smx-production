@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
@@ -47,7 +48,7 @@ function StatusBadge({ status }: { status: string }) {
 export default async function ReworkPage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (!['ADMIN', 'PRODUCTION_MANAGER'].includes(session.role)) redirect('/dashboard');
+  if (!['ADMIN', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE'].includes(session.role)) redirect('/dashboard');
 
   const raw = await prisma.proformaInvoice.findMany({
     where: { invoiceType: 'REPLACEMENT' },
@@ -81,9 +82,18 @@ export default async function ReworkPage() {
   return (
     <div className="space-y-6 pb-24">
       {/* Header */}
-      <div>
-        <h2 className="text-lg font-semibold text-white">Customer Returns</h2>
-        <p className="text-xs text-slate-500 mt-0.5">Replacement requests logged by Sales — units requiring rework / servicing</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Customer Returns</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Replacement requests — units requiring rework / servicing</p>
+        </div>
+        <Link
+          href="/rework/new"
+          className="px-3 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+          style={{ background: '#0ea5e9' }}
+        >
+          + New Replacement
+        </Link>
       </div>
 
       {/* Stats */}

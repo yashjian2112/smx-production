@@ -110,9 +110,7 @@ export function ProformaList({
   invoices?: InvoiceRow[];
   returnRequests?: ReturnRequestRow[];
 }) {
-  // Guard: SALES role cannot see Invoice tab — fall back to 'pi'
-  const safeInitialTab: TabKey = (initialTab === 'invoice' && role === 'SALES') ? 'pi' : (initialTab ?? 'pi');
-  const [tab, setTab]       = useState<TabKey>(safeInitialTab);
+  const [tab, setTab] = useState<TabKey>(initialTab ?? 'pi');
   const [search, setSearch] = useState('');
 
   // Status tab state
@@ -137,10 +135,10 @@ export function ProformaList({
   const piList = proformas.filter((p) => p.invoiceNumber.startsWith('TSM/PI/') && p.invoiceType === 'SALE');
 
   const tabs: Array<{ key: TabKey; label: string; count: number }> = [
-    { key: 'pi',      label: 'Invoicing', count: piList.length          },
-    ...(role !== 'SALES' ? [{ key: 'invoice' as TabKey, label: 'Invoice', count: invoices.length }] : []),
-    { key: 'returns', label: 'Returns',   count: returnRequests.length  },
-    { key: 'status',  label: 'Status',    count: 0                      },
+    { key: 'pi',      label: 'Invoicing', count: piList.length         },
+    { key: 'invoice', label: 'Invoice',   count: invoices.length       },
+    { key: 'returns', label: 'Returns',   count: returnRequests.length },
+    { key: 'status',  label: 'Status',    count: 0                     },
   ];
 
   const filteredPI = piList.filter((p) => {
@@ -384,49 +382,92 @@ export function ProformaList({
               <p className="text-zinc-500 text-sm">No active orders found.</p>
             </div>
           ) : (
-            statusData.map((order) => (
-              <div key={order.id} className="card p-4">
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-semibold text-sm text-white">{order.orderNumber}</span>
-                      {order.readyForDispatch > 0 && (
-                        <span
-                          className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                          style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}
-                        >
-                          {order.readyForDispatch} ready
-                        </span>
-                      )}
+            statusData.map((order) => {
+              const stages = order.stages;
+              const inProduction = stages.PS + stages.BB + stages.CA + stages.QC + stages.RW;
+              const inFinalAssembly = stages.FA;
+              const completed = order.readyForDispatch;
+              const remaining = order.quantity - completed;
+
+              // Human-readable status summary
+              let statusLine = '';
+              if (completed === order.quantity) {
+                statusLine = `All ${order.quantity} units complete — ready to dispatch`;
+              } else if (completed > 0) {
+                statusLine = `${completed} unit${completed !== 1 ? 's' : ''} complete · ${remaining} remaining`;
+              } else if (inFinalAssembly > 0) {
+                statusLine = `${inFinalAssembly} unit${inFinalAssembly !== 1 ? 's' : ''} in final assembly`;
+              } else if (inProduction > 0) {
+                statusLine = `Manufacturing in progress · ${inProduction} unit${inProduction !== 1 ? 's' : ''} being built`;
+              } else {
+                statusLine = 'Waiting to start';
+              }
+
+              const pct = order.quantity > 0 ? Math.round((completed / order.quantity) * 100) : 0;
+
+              return (
+                <div key={order.id} className="card p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-semibold text-sm text-white">{order.orderNumber}</span>
+                        {completed === order.quantity && order.quantity > 0 ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80' }}>
+                            Ready ✓
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(56,189,248,0.1)', color: '#38bdf8' }}>
+                            Manufacturing
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-zinc-400 text-sm mt-0.5">
+                        {order.productName}{order.clientName ? ` · ${order.clientName}` : ''}
+                      </p>
                     </div>
-                    <p className="text-zinc-400 text-xs mt-0.5">
-                      {order.productName}
-                      {order.clientName ? ` · ${order.clientName}` : ''}
-                      {' · '}qty {order.quantity}
-                    </p>
+                    <span className="text-xs font-semibold text-zinc-300 shrink-0">{pct}%</span>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${pct}%`,
+                        background: pct === 100
+                          ? 'linear-gradient(90deg,#22c55e,#16a34a)'
+                          : 'linear-gradient(90deg,#38bdf8,#0ea5e9)',
+                      }}
+                    />
+                  </div>
+
+                  {/* Status line */}
+                  <p className="text-xs text-zinc-400">{statusLine}</p>
+
+                  {/* Stage pills — only show non-zero stages */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {STAGE_LABELS.map(({ key, label, color }) => {
+                      const count = stages[key];
+                      if (count === 0) return null;
+                      return (
+                        <span
+                          key={key}
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded"
+                          style={{ background: `${color}15`, border: `1px solid ${color}35`, color }}
+                        >
+                          {label} · {count}
+                        </span>
+                      );
+                    })}
+                    {completed > 0 && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#4ade80' }}>
+                        Done · {completed}
+                      </span>
+                    )}
                   </div>
                 </div>
-                {/* Stage pills */}
-                <div className="flex flex-wrap gap-1.5">
-                  {STAGE_LABELS.map(({ key, label, color }) => {
-                    const count = order.stages[key];
-                    if (count === 0) return null;
-                    return (
-                      <span
-                        key={key}
-                        className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded"
-                        style={{ background: `${color}18`, border: `1px solid ${color}44`, color }}
-                      >
-                        {label}: {count}
-                      </span>
-                    );
-                  })}
-                  {STAGE_LABELS.every(({ key }) => order.stages[key] === 0) && (
-                    <span className="text-xs text-zinc-600">All units dispatched or no units</span>
-                  )}
-                </div>
-              </div>
-            ))
+              );
+            })
           )
         )}
       </div>

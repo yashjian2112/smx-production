@@ -8,9 +8,13 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Get all active orders with their units grouped by stage
+  // SALES: only show orders linked to proformas they created
+  const salesFilter = session.role === 'SALES'
+    ? { proformaInvoice: { createdById: session.id } }
+    : {};
+
   const orders = await prisma.order.findMany({
-    where: { status: { in: ['ACTIVE', 'HOLD'] } },
+    where: { status: { in: ['ACTIVE', 'HOLD'] }, ...salesFilter },
     include: {
       product: { select: { name: true, code: true } },
       client:  { select: { customerName: true } },
