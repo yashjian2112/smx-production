@@ -17,6 +17,9 @@ const ROLE_OPTIONS = [
   { value: 'PRODUCTION_MANAGER',  label: 'Production Manager' },
   { value: 'SALES',               label: 'Sales' },
   { value: 'ACCOUNTS',            label: 'Accounts' },
+  { value: 'SHIPPING',            label: 'Shipping' },
+  { value: 'PURCHASE_MANAGER',    label: 'Purchase Manager' },
+  { value: 'STORE_MANAGER',       label: 'Store Manager' },
   { value: 'ADMIN',               label: 'Admin' },
 ];
 
@@ -26,6 +29,10 @@ const ROLE_BADGE: Record<string, string> = {
   PRODUCTION_EMPLOYEE: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
   SALES:               'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   ACCOUNTS:            'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  SHIPPING:            'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  PURCHASE_MANAGER:    'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  STORE_MANAGER:       'bg-teal-500/20 text-teal-400 border-teal-500/30',
+  PACKING:             'bg-pink-500/20 text-pink-400 border-pink-500/30',
 };
 const ROLE_LABEL: Record<string, string> = {
   ADMIN:               'Admin',
@@ -33,6 +40,10 @@ const ROLE_LABEL: Record<string, string> = {
   PRODUCTION_EMPLOYEE: 'Employee',
   SALES:               'Sales',
   ACCOUNTS:            'Accounts',
+  SHIPPING:            'Shipping',
+  PURCHASE_MANAGER:    'Purchase Manager',
+  STORE_MANAGER:       'Store Manager',
+  PACKING:             'Packing',
 };
 
 export function UsersAdmin({ users: initial }: { users: User[] }) {
