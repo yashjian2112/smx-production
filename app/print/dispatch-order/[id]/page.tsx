@@ -10,23 +10,19 @@ export default async function PrintDispatchOrderPage({ params }: { params: { id:
         include: {
           client: true,
           product: { select: { code: true, name: true } },
-          units: {
-            where: { readyForDispatch: false },
-            select: {
-              serialNumber: true,
-              finalAssemblyBarcode: true,
-              currentStatus: true,
-              currentStage: true,
-            },
-            take: 200,
-          },
         },
       },
-      createdBy: { select: { name: true } },
+      createdBy:  { select: { name: true } },
+      approvedBy: { select: { name: true } },
       boxes: {
         include: {
+          boxSize: {
+            select: { name: true, lengthCm: true, widthCm: true, heightCm: true },
+          },
           items: {
-            include: { unit: { select: { serialNumber: true } } },
+            include: {
+              unit: { select: { serialNumber: true, finalAssemblyBarcode: true } },
+            },
           },
         },
         orderBy: { boxNumber: 'asc' },
@@ -34,7 +30,9 @@ export default async function PrintDispatchOrderPage({ params }: { params: { id:
     },
   });
 
-  if (!dispatchOrder) return <div style={{ padding: 40, fontFamily: 'Arial' }}>Dispatch Order not found.</div>;
+  if (!dispatchOrder) return (
+    <div style={{ padding: 40, fontFamily: 'Arial' }}>Dispatch Order not found.</div>
+  );
 
   const settings = await getAllSettings();
 

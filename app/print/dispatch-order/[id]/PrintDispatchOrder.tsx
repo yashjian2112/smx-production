@@ -3,16 +3,17 @@
 import { useEffect } from 'react';
 import { Barcode128 } from '@/components/Barcode128';
 
-type Unit = {
-  serialNumber: string;
-  finalAssemblyBarcode: string | null;
-  currentStatus: string;
-  currentStage: string;
+/* ── Types ── */
+type BoxSize = {
+  name: string;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
 };
 
 type BoxItem = {
   id: string;
-  unit: { serialNumber: string };
+  unit: { serialNumber: string; finalAssemblyBarcode: string | null };
 };
 
 type Box = {
@@ -20,6 +21,8 @@ type Box = {
   boxNumber: number;
   boxLabel: string;
   isSealed: boolean;
+  weightKg: number | null;
+  boxSize: BoxSize | null;
   items: BoxItem[];
 };
 
@@ -33,38 +36,42 @@ type Order = {
     shippingAddress: string | null;
   } | null;
   product: { code: string; name: string };
-  units: Unit[];
 };
 
 type DispatchOrder = {
   id: string;
   doNumber: string;
   status: string;
-  totalBoxes: number | null;
   createdAt: string | Date;
-  createdBy: { name: string };
+  approvedAt: string | Date | null;
+  createdBy:  { name: string };
+  approvedBy: { name: string } | null;
   order: Order;
   boxes: Box[];
 };
 
 type Settings = Record<string, string>;
 
+/* ── Helpers ── */
 function fmtDate(d: string | Date) {
   return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function stageLabel(stage: string) {
-  return stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
+const STATUS_LABEL: Record<string, string> = {
+  OPEN:      'Open',
+  PACKING:   'In Packing',
+  SUBMITTED: 'Pending Approval',
+  APPROVED:  'Dispatched',
+  REJECTED:  'Rejected',
+};
 
-function statusBadgeColor(status: string): string {
-  switch (status) {
-    case 'COMPLETED': return '#166534';
-    case 'APPROVED': return '#1a3a6b';
-    case 'IN_PROGRESS': return '#92400e';
-    default: return '#6b7280';
-  }
-}
+const STATUS_COLOR: Record<string, string> = {
+  OPEN:      '#92400e',
+  PACKING:   '#1e3a6e',
+  SUBMITTED: '#5b21b6',
+  APPROVED:  '#166534',
+  REJECTED:  '#991b1b',
+};
 
 export function PrintDispatchOrder({
   dispatchOrder,
@@ -73,16 +80,30 @@ export function PrintDispatchOrder({
   dispatchOrder: DispatchOrder;
   settings: Settings;
 }) {
-  const s = (k: string) => settings[k] ?? '';
+  const s     = (k: string) => settings[k] ?? '';
   const coName = s('company_name') || 'SMX Drives';
 
   const order = dispatchOrder.order;
-  const client = order.client;
-  const hasPacking = dispatchOrder.boxes.length > 0;
 
-  // Units that are at FINAL_ASSEMBLY stage and not yet dispatched
-  const dispatchUnits = order.units.filter((u) => u.currentStage === 'FINAL_ASSEMBLY');
-  const allUnits = order.units;
+  /* Units come from boxes — only units actually in THIS dispatch order */
+  const doUnits = dispatchOrder.boxes.flatMap((box) =>
+    box.items.map((item) => ({
+      serialNumber:        item.unit.serialNumber,
+      finalAssemblyBarcode: item.unit.finalAssemblyBarcode,
+      boxNumber:           box.boxNumber,
+      boxLabel:            box.boxLabel,
+    }))
+  );
+
+  const totalBoxes   = dispatchOrder.boxes.length;
+  const totalUnits   = doUnits.length;
+  const isDispatched = dispatchOrder.status === 'APPROVED';
+
+  /* Date shown: Dispatch Date (approvedAt) if dispatched, else Created Date */
+  const docDate  = isDispatched && dispatchOrder.approvedAt
+    ? fmtDate(dispatchOrder.approvedAt)
+    : fmtDate(dispatchOrder.createdAt);
+  const dateLabel = isDispatched ? 'Dispatch Date' : 'Date Created';
 
   useEffect(() => {
     const t = setTimeout(() => window.print(), 600);
@@ -113,7 +134,7 @@ export function PrintDispatchOrder({
         .doc-number { font-size: 11px; font-weight: 700; color: #1a3a6b; margin-top: 5px; }
         .doc-barcode { margin-top: 6px; }
 
-        .info-bar { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid #c8d8f0; background: #f0f5ff; }
+        .info-bar { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid #c8d8f0; background: #f0f5ff; }
         .info-cell { padding: 5px 10px; }
         .info-cell:not(:last-child) { border-right: 1px solid #c8d8f0; }
         .info-label { font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: #1a3a6b; margin-bottom: 1.5px; }
@@ -143,10 +164,8 @@ export function PrintDispatchOrder({
         .sign-line { border-top: 1px solid #1a3a6b; padding-top: 3px; font-size: 8.5px; font-weight: 700; color: #1a3a6b; margin-top: 28px; }
         .comp-gen { text-align: center; font-size: 7.5px; color: #999; padding: 4px; background: #f8faff; border-top: 1px solid #e8edf5; }
 
-        .dest-bar { display: flex; gap: 32px; background: #f0f5ff; border-bottom: 1px solid #c8d8f0; padding: 6px 10px; }
-        .dest-block { }
-        .dest-label { font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: #1a3a6b; margin-bottom: 1.5px; }
-        .dest-value { font-size: 9px; font-weight: 600; color: #111; line-height: 1.5; white-space: pre-line; }
+
+        .dispatch-stamp { border: 2px solid #166534; color: #166534; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; padding: 3px 10px; display: inline-block; transform: rotate(-4deg); margin-top: 6px; }
       `}</style>
 
       {/* Print controls */}
@@ -163,7 +182,7 @@ export function PrintDispatchOrder({
         >
           Close
         </button>
-        <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>Use Chrome → Print → Save as PDF for best results</span>
+        <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>Chrome → Print → Save as PDF for best results</span>
       </div>
 
       <div className="page-wrap">
@@ -177,9 +196,9 @@ export function PrintDispatchOrder({
               {s('company_address')?.split('\n').map((line, i) => <span key={i}>{line}<br /></span>)}
             </div>
             <div className="co-gstin">
-              {s('company_gstin') && <>GSTIN: <strong>{s('company_gstin')}</strong></>}
+              {s('company_gstin')      && <>GSTIN: <strong>{s('company_gstin')}</strong></>}
               {s('company_state_code') && <>&nbsp; | &nbsp;State Code: <strong>{s('company_state_code')}</strong></>}
-              {s('company_phone') && <>&nbsp; | &nbsp;Ph: {s('company_phone')}</>}
+              {s('company_phone')      && <>&nbsp; | &nbsp;Ph: {s('company_phone')}</>}
             </div>
           </div>
           <div className="hdr-right">
@@ -195,27 +214,45 @@ export function PrintDispatchOrder({
                 lineColor="#000000"
               />
             </div>
+            {isDispatched && (
+              <div className="dispatch-stamp">Dispatched</div>
+            )}
           </div>
         </div>
 
-        {/* INFO BAR ROW 1 */}
+        {/* INFO BAR ROW 1 — DO#, Date, Status, Dispatched By */}
         <div className="info-bar">
           <div className="info-cell">
             <div className="info-label">DO Number</div>
             <div className="info-value">{dispatchOrder.doNumber}</div>
           </div>
           <div className="info-cell">
-            <div className="info-label">Date</div>
-            <div className="info-value">{fmtDate(dispatchOrder.createdAt)}</div>
+            <div className="info-label">{dateLabel}</div>
+            <div className="info-value">{docDate}</div>
           </div>
           <div className="info-cell">
             <div className="info-label">Status</div>
-            <div className="info-value">{dispatchOrder.status.replace(/_/g, ' ')}</div>
+            <div className="info-value">
+              <span
+                className="status-badge"
+                style={{ background: STATUS_COLOR[dispatchOrder.status] ?? '#6b7280' }}
+              >
+                {STATUS_LABEL[dispatchOrder.status] ?? dispatchOrder.status}
+              </span>
+            </div>
+          </div>
+          <div className="info-cell">
+            <div className="info-label">{isDispatched ? 'Dispatched By' : 'Created By'}</div>
+            <div className="info-value">
+              {isDispatched && dispatchOrder.approvedBy
+                ? dispatchOrder.approvedBy.name
+                : dispatchOrder.createdBy.name}
+            </div>
           </div>
         </div>
 
-        {/* INFO BAR ROW 2 */}
-        <div className="info-bar info-bar-2">
+        {/* INFO BAR ROW 2 — Order#, Product, Dispatch Qty, Boxes */}
+        <div className="info-bar info-bar-2" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
           <div className="info-cell">
             <div className="info-label">Order Number</div>
             <div className="info-value">{order.orderNumber}</div>
@@ -225,66 +262,48 @@ export function PrintDispatchOrder({
             <div className="info-value">{order.product.code} — {order.product.name}</div>
           </div>
           <div className="info-cell">
-            <div className="info-label">Order Qty / Boxes</div>
-            <div className="info-value">{order.quantity} units{dispatchOrder.totalBoxes ? ` / ${dispatchOrder.totalBoxes} boxes` : ''}</div>
+            <div className="info-label">Units in This DO</div>
+            <div className="info-value">{totalUnits} of {order.quantity}</div>
+          </div>
+          <div className="info-cell">
+            <div className="info-label">Total Boxes</div>
+            <div className="info-value">{totalBoxes} box{totalBoxes !== 1 ? 'es' : ''}</div>
           </div>
         </div>
 
-        {/* DESTINATION */}
-        {client && (
-          <div className="dest-bar">
-            <div className="dest-block">
-              <div className="dest-label">Customer</div>
-              <div className="dest-value">{client.customerName}</div>
-            </div>
-            {client.state && (
-              <div className="dest-block">
-                <div className="dest-label">State</div>
-                <div className="dest-value">{client.state}</div>
-              </div>
-            )}
-            {client.shippingAddress && (
-              <div className="dest-block" style={{ flex: 1 }}>
-                <div className="dest-label">Shipping Address</div>
-                <div className="dest-value">{client.shippingAddress}</div>
-              </div>
-            )}
-            {client.phone && (
-              <div className="dest-block">
-                <div className="dest-label">Phone</div>
-                <div className="dest-value">{client.phone}</div>
-              </div>
-            )}
-          </div>
-        )}
 
-        {/* UNITS TABLE */}
-        <div className="section-title">Units to Dispatch ({allUnits.length} not yet dispatched)</div>
+        {/* UNITS TABLE — only units that are in boxes for this DO */}
+        <div className="section-title">
+          Units Dispatched ({totalUnits} unit{totalUnits !== 1 ? 's' : ''})
+        </div>
         <table>
           <thead>
             <tr>
               <th style={{ width: '5%' }} className="c">S.No</th>
-              <th style={{ width: '28%' }}>Serial Number</th>
-              <th style={{ width: '32%' }}>Barcode</th>
-              <th style={{ width: '20%' }}>Stage</th>
-              <th style={{ width: '15%' }} className="c">Status</th>
+              <th style={{ width: '25%' }}>Serial Number</th>
+              <th style={{ width: '10%' }} className="c">Box #</th>
+              <th style={{ width: '60%' }}>Barcode</th>
             </tr>
           </thead>
           <tbody>
-            {allUnits.length === 0 && (
+            {doUnits.length === 0 ? (
               <tr>
-                <td colSpan={5} className="c" style={{ padding: 16, color: '#888', fontStyle: 'italic' }}>
-                  No units pending dispatch for this order.
+                <td colSpan={4} className="c" style={{ padding: 16, color: '#888', fontStyle: 'italic' }}>
+                  No units assigned to boxes yet.
                 </td>
               </tr>
-            )}
-            {allUnits.map((unit, i) => (
-              <tr key={unit.serialNumber}>
-                <td className="c" style={{ color: '#888', fontSize: 8 }}>{i + 1}</td>
-                <td style={{ fontFamily: 'monospace', fontSize: 9, fontWeight: 600 }}>{unit.serialNumber}</td>
-                <td>
-                  {unit.finalAssemblyBarcode ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            ) : (
+              doUnits.map((unit, i) => (
+                <tr key={unit.serialNumber}>
+                  <td className="c" style={{ color: '#888', fontSize: 8 }}>{i + 1}</td>
+                  <td style={{ fontFamily: 'monospace', fontSize: 9.5, fontWeight: 700 }}>
+                    {unit.serialNumber}
+                  </td>
+                  <td className="c" style={{ fontWeight: 700, color: '#1a3a6b' }}>
+                    {unit.boxNumber}
+                  </td>
+                  <td>
+                    {unit.finalAssemblyBarcode ? (
                       <Barcode128
                         value={unit.finalAssemblyBarcode}
                         width={1.1}
@@ -294,52 +313,50 @@ export function PrintDispatchOrder({
                         background="#ffffff"
                         lineColor="#000000"
                       />
-                    </div>
-                  ) : (
-                    <span style={{ color: '#aaa', fontSize: 8 }}>—</span>
-                  )}
-                </td>
-                <td style={{ fontSize: 8.5 }}>{stageLabel(unit.currentStage)}</td>
-                <td className="c">
-                  <span
-                    className="status-badge"
-                    style={{ background: statusBadgeColor(unit.currentStatus) }}
-                  >
-                    {unit.currentStatus.replace(/_/g, ' ')}
-                  </span>
-                </td>
-              </tr>
-            ))}
+                    ) : (
+                      <span style={{ color: '#aaa', fontSize: 8 }}>—</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
 
-        {/* BOX SUMMARY TABLE (if packing started) */}
-        {hasPacking && (
+        {/* BOX SUMMARY TABLE */}
+        {totalBoxes > 0 && (
           <>
             <div className="section-title" style={{ marginTop: 8 }}>
-              Box Summary ({dispatchOrder.boxes.length} box{dispatchOrder.boxes.length !== 1 ? 'es' : ''})
+              Box Summary ({totalBoxes} box{totalBoxes !== 1 ? 'es' : ''})
             </div>
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: '8%' }} className="c">Box #</th>
-                  <th style={{ width: '38%' }}>Box Label</th>
-                  <th style={{ width: '8%' }} className="c">Items</th>
-                  <th style={{ width: '12%' }} className="c">Sealed</th>
-                  <th style={{ width: '34%' }}>Serials</th>
+                  <th style={{ width: '7%'  }} className="c">Box #</th>
+                  <th style={{ width: '22%' }}>Box Label</th>
+                  <th style={{ width: '20%' }}>Size</th>
+                  <th style={{ width: '10%' }} className="c">Weight</th>
+                  <th style={{ width: '7%'  }} className="c">Units</th>
+                  <th style={{ width: '10%' }} className="c">Sealed</th>
+                  <th style={{ width: '24%' }}>Serial Numbers</th>
                 </tr>
               </thead>
               <tbody>
                 {dispatchOrder.boxes.map((box) => (
                   <tr key={box.id}>
                     <td className="c" style={{ fontWeight: 700, fontSize: 10 }}>{box.boxNumber}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: 8.5 }}>{box.boxLabel}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: 8 }}>{box.boxLabel}</td>
+                    <td style={{ fontSize: 8 }}>
+                      {box.boxSize
+                        ? `${box.boxSize.name} (${box.boxSize.lengthCm}×${box.boxSize.widthCm}×${box.boxSize.heightCm} cm)`
+                        : <span style={{ color: '#aaa' }}>—</span>}
+                    </td>
+                    <td className="c" style={{ fontWeight: 600 }}>
+                      {box.weightKg != null ? `${box.weightKg} kg` : <span style={{ color: '#aaa' }}>—</span>}
+                    </td>
                     <td className="c">{box.items.length}</td>
                     <td className="c">
-                      <span
-                        className="status-badge"
-                        style={{ background: box.isSealed ? '#166534' : '#92400e' }}
-                      >
+                      <span className="status-badge" style={{ background: box.isSealed ? '#166534' : '#92400e' }}>
                         {box.isSealed ? 'Sealed' : 'Open'}
                       </span>
                     </td>
@@ -348,6 +365,15 @@ export function PrintDispatchOrder({
                     </td>
                   </tr>
                 ))}
+                {/* Totals row */}
+                <tr style={{ background: '#f0f5ff', fontWeight: 700 }}>
+                  <td colSpan={3} style={{ fontSize: 8, color: '#1a3a6b', padding: '4px 7px' }}>Total</td>
+                  <td className="c" style={{ fontSize: 8.5 }}>
+                    {dispatchOrder.boxes.reduce((s, b) => s + (b.weightKg ?? 0), 0).toFixed(2)} kg
+                  </td>
+                  <td className="c" style={{ fontSize: 8.5 }}>{totalUnits}</td>
+                  <td colSpan={2} />
+                </tr>
               </tbody>
             </table>
           </>
@@ -356,10 +382,16 @@ export function PrintDispatchOrder({
         {/* FOOTER */}
         <div className="footer-row" style={{ marginTop: 'auto' }}>
           <div className="footer-col">
-            <div className="f-label">Created By</div>
-            <div style={{ fontSize: 9, color: '#333', marginBottom: 4 }}>{dispatchOrder.createdBy.name}</div>
-            <div style={{ fontSize: 8, color: '#888' }}>Date: {fmtDate(dispatchOrder.createdAt)}</div>
-            <div style={{ marginTop: 10, fontSize: 8, color: '#555' }}>
+            <div className="f-label">Prepared By</div>
+            <div style={{ fontSize: 9, color: '#333', marginBottom: 2 }}>{dispatchOrder.createdBy.name}</div>
+            <div style={{ fontSize: 8, color: '#888' }}>Created: {fmtDate(dispatchOrder.createdAt)}</div>
+            {isDispatched && dispatchOrder.approvedAt && (
+              <div style={{ fontSize: 8, color: '#166534', marginTop: 2, fontWeight: 600 }}>
+                Dispatched: {fmtDate(dispatchOrder.approvedAt)}
+                {dispatchOrder.approvedBy ? ` by ${dispatchOrder.approvedBy.name}` : ''}
+              </div>
+            )}
+            <div style={{ marginTop: 8, fontSize: 8, color: '#555' }}>
               This Dispatch Order is an internal document. Please retain for production records.
             </div>
           </div>
