@@ -89,7 +89,7 @@ function movementColor(type: string) {
 }
 
 // ─── Stock Tab ───────────────────────────────────────────────────────────────
-function StockTab({ isAdmin }: { isAdmin: boolean }) {
+function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (tab: Tab) => void }) {
   const [data, setData]         = useState<{ materials: RawMaterial[]; lowStockCount: number; totalValue: number } | null>(null);
   const [loading, setLoading]   = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -280,8 +280,27 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
       </div>
 
       {/* Material list */}
+      {data?.materials.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          <div className="text-5xl mb-4">📦</div>
+          <h3 className="text-white text-lg font-semibold mb-2">No materials yet</h3>
+          <p className="text-zinc-400 text-sm mb-6 max-w-xs">
+            Start by creating your raw materials in the Materials tab, then add opening stock here.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button onClick={() => onSwitchTab('Materials')}
+              className="px-5 py-2.5 rounded-xl text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors">
+              + Add New Material
+            </button>
+            <button onClick={() => onSwitchTab('GRN')}
+              className="px-5 py-2.5 rounded-xl text-sm font-medium border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors">
+              Record Stock Receipt
+            </button>
+          </div>
+        </div>
+      )}
       <div className="space-y-2">
-        {filtered.length === 0 && <p className="text-zinc-400 text-sm py-4 text-center">No materials found</p>}
+        {data?.materials.length !== 0 && filtered.length === 0 && <p className="text-zinc-400 text-sm py-4 text-center">No materials match your search</p>}
         {filtered.map(m => (
           <div key={m.id} className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
             <div className="p-4">
@@ -1052,6 +1071,21 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
+      {materials.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          <div className="text-5xl mb-4">🗂️</div>
+          <h3 className="text-white text-lg font-semibold mb-2">No materials created yet</h3>
+          <p className="text-zinc-400 text-sm mb-6 max-w-xs">
+            Create your raw materials catalogue — set name, unit, HSN code, reorder levels, and preferred vendor.
+          </p>
+          {isAdmin && (
+            <button onClick={openNewMat}
+              className="px-5 py-2.5 rounded-xl text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors">
+              + Create First Material
+            </button>
+          )}
+        </div>
+      )}
       <div className="space-y-2">
         {materials.map(m => (
           <div key={m.id} className="rounded-xl p-4 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
@@ -1602,7 +1636,7 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
         ))}
       </div>
 
-      {activeTab === 'Stock'     && <StockTab     isAdmin={canManageStock} />}
+      {activeTab === 'Stock'     && <StockTab     isAdmin={canManageStock} onSwitchTab={setActiveTab} />}
       {activeTab === 'GRN'       && <GRNTab       isAdmin={canManageStock} />}
       {activeTab === 'Materials' && <MaterialsTab isAdmin={canManageMaterials} />}
       {activeTab === 'Reports'   && <ReportsTab   isAdmin={canManageMaterials} />}
