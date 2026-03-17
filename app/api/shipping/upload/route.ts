@@ -10,7 +10,7 @@ import { put } from '@vercel/blob';
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING', 'PACKING');
 
     const formData = await req.formData();
     const file = formData.get('file') as File | null;

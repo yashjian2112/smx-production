@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 
 const scanSchema = z.object({
-  barcode: z.string().min(1),
+  barcode:            z.string().min(1),
+  inspectionPhotoUrl: z.string().url().optional(),
 });
 
 export async function POST(
@@ -20,7 +21,7 @@ export async function POST(
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { barcode } = parsed.data;
+    const { barcode, inspectionPhotoUrl } = parsed.data;
 
     // Fetch the dispatch order
     const dispatchOrder = await prisma.dispatchOrder.findUnique({
@@ -90,11 +91,12 @@ export async function POST(
     // Create the PackingBoxItem
     await prisma.packingBoxItem.create({
       data: {
-        boxId: params.boxId,
-        unitId: unit.id,
-        serial: unit.serialNumber,
-        barcode: unit.finalAssemblyBarcode ?? unit.serialNumber,
-        scannedById: session.id,
+        boxId:              params.boxId,
+        unitId:             unit.id,
+        serial:             unit.serialNumber,
+        barcode:            unit.finalAssemblyBarcode ?? unit.serialNumber,
+        scannedById:        session.id,
+        inspectionPhotoUrl: inspectionPhotoUrl ?? null,
       },
     });
 

@@ -38,6 +38,7 @@ type DispatchOrderFull = {
   status:         string;
   totalBoxes:     number | null;
   rejectedReason: string | null;
+  orderId:        string;
   order: {
     orderNumber: string;
     quantity:    number;
@@ -69,60 +70,313 @@ function DOStatusBadge({ status }: { status: string }) {
   );
 }
 
+// ─── InspectionStep ───────────────────────────────────────────────────────────
+type InspectedUnit = { id: string; serialNumber: string; finalAssemblyBarcode: string | null };
+
+function InspectionStep({
+  unit,
+  doId,
+  boxId,
+  orderId,
+  onPass,
+  onCancel,
+}: {
+  unit:     InspectedUnit;
+  doId:     string;
+  boxId:    string;
+  orderId:  string;
+  onPass:   (item: PackingBoxItemRow) => void;
+  onCancel: () => void;
+}) {
+  const photoRef = useRef<HTMLInputElement>(null);
+
+  const [photoFile,    setPhotoFile]    = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [uploading,    setUploading]    = useState(false);
+
+  const [showReject,  setShowReject]  = useState(false);
+  const [issue,       setIssue]       = useState('');
+  const [rejecting,   setRejecting]   = useState(false);
+  const [rejectError, setRejectError] = useState('');
+
+  const [passing,   setPassing]   = useState(false);
+  const [passError, setPassError] = useState('');
+
+  // Handle photo capture / selection
+  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }
+
+  // Upload photo to Vercel Blob, return URL
+  async function uploadPhoto(file: File): Promise<string | null> {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('type', 'inspection');
+      const res  = await fetch('/api/shipping/upload', { method: 'POST', body: fd });
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok) return null;
+      return data.url ?? null;
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // PASS — confirm unit is good, add to box
+  async function handlePass() {
+    setPassError('');
+    setPassing(true);
+    try {
+      let inspectionPhotoUrl: string | undefined;
+      if (photoFile) {
+        const url = await uploadPhoto(photoFile);
+        if (url) inspectionPhotoUrl = url;
+      }
+      const res = await fetch(`/api/dispatch-orders/${doId}/boxes/${boxId}/scan`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          barcode:            unit.finalAssemblyBarcode ?? unit.serialNumber,
+          inspectionPhotoUrl,
+        }),
+      });
+      const data = await res.json() as { item?: PackingBoxItemRow; error?: string };
+      if (!res.ok) { setPassError(data.error ?? 'Failed to add to box'); return; }
+      onPass(data.item!);
+    } catch {
+      setPassError('Network error');
+    } finally {
+      setPassing(false);
+    }
+  }
+
+  // REJECT — mark defective, send back for rework
+  async function handleReject() {
+    if (!issue.trim()) { setRejectError('Please describe the issue'); return; }
+    setRejectError('');
+    setRejecting(true);
+    try {
+      let photoUrl: string | undefined;
+      if (photoFile) {
+        const url = await uploadPhoto(photoFile);
+        if (url) photoUrl = url;
+      }
+      const res = await fetch(`/api/dispatch-orders/${doId}/boxes/${boxId}/reject-unit`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ unitId: unit.id, issue: issue.trim(), photoUrl }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) { setRejectError(data.error ?? 'Reject failed'); return; }
+      onCancel(); // go back to scan input
+    } catch {
+      setRejectError('Network error');
+    } finally {
+      setRejecting(false);
+    }
+  }
+
+  return (
+    <div
+      className="rounded-xl p-4 space-y-4"
+      style={{ background: 'rgba(251,191,36,0.04)', border: '1px solid rgba(251,191,36,0.2)' }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <div className="text-xs font-semibold text-amber-400 mb-0.5">🔍 Inspect Controller</div>
+          <div className="font-mono text-sm font-bold text-white">{unit.serialNumber}</div>
+          {unit.finalAssemblyBarcode && (
+            <div className="text-xs text-zinc-500">{unit.finalAssemblyBarcode}</div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1 rounded"
+        >
+          ✕ Cancel
+        </button>
+      </div>
+
+      {/* Photo capture */}
+      <div>
+        <input
+          ref={photoRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handlePhotoChange}
+        />
+        {photoPreview ? (
+          <div className="space-y-2">
+            <img
+              src={photoPreview}
+              alt="Controller"
+              className="w-full max-h-52 object-contain rounded-lg border border-zinc-700"
+            />
+            <button
+              type="button"
+              onClick={() => photoRef.current?.click()}
+              className="text-xs text-zinc-400 hover:text-white"
+            >
+              📷 Retake photo
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => photoRef.current?.click()}
+            className="w-full py-3 rounded-lg text-sm font-medium border-2 border-dashed border-zinc-600 text-zinc-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+          >
+            📷 Take photo of controller
+          </button>
+        )}
+        {uploading && <p className="text-xs text-zinc-500 mt-1">Uploading photo…</p>}
+      </div>
+
+      {/* Question */}
+      <div
+        className="rounded-lg p-3 text-center"
+        style={{ background: 'rgba(255,255,255,0.04)' }}
+      >
+        <p className="text-sm text-zinc-300 font-medium">Any marks or dents on this controller?</p>
+      </div>
+
+      {/* Reject form */}
+      {showReject && (
+        <div className="space-y-2">
+          <textarea
+            value={issue}
+            onChange={(e) => setIssue(e.target.value)}
+            placeholder="Describe the issue (e.g. dent on top panel, scratch on display…)"
+            rows={3}
+            className="input-field text-sm w-full resize-none"
+            autoFocus
+          />
+          {rejectError && <p className="text-xs text-rose-400">{rejectError}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowReject(false)}
+              className="flex-1 py-2 rounded-lg text-sm text-zinc-400 hover:text-white"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={handleReject}
+              disabled={rejecting || !issue.trim()}
+              className="flex-1 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
+              style={{ background: '#ef4444' }}
+            >
+              {rejecting ? 'Rejecting…' : 'Confirm Reject'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Pass / Reject buttons */}
+      {!showReject && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowReject(true)}
+            className="flex-1 py-2.5 rounded-lg text-sm font-semibold"
+            style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}
+          >
+            ✗ Yes — Reject
+          </button>
+          <button
+            type="button"
+            onClick={handlePass}
+            disabled={passing || uploading}
+            className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
+            style={{ background: '#22c55e' }}
+          >
+            {passing ? 'Adding…' : '✓ No — Pass'}
+          </button>
+        </div>
+      )}
+
+      {passError && <p className="text-xs text-rose-400">{passError}</p>}
+    </div>
+  );
+}
+
 // ─── BoxCard ──────────────────────────────────────────────────────────────────
 function BoxCard({
   box,
   doId,
+  orderId,
   doNumber,
   boxSizes,
   onBoxUpdate,
 }: {
   box:         PackingBoxRow;
   doId:        string;
+  orderId:     string;
   doNumber:    string;
   boxSizes:    BoxSizeOption[];
   onBoxUpdate: (updated: PackingBoxRow) => void;
 }) {
-  const [barcode, setBarcode]       = useState('');
-  const [scanning, setScanning]     = useState(false);
-  const [scanError, setScanError]   = useState('');
-  const [removing, setRemoving]     = useState<string | null>(null);
-  const [sealing, setSealing]       = useState(false);
-  const [sealError, setSealError]   = useState('');
+  const [barcode, setBarcode]     = useState('');
+  const [looking, setLooking]     = useState(false);
+  const [lookupError, setLookupError] = useState('');
+  const [inspecting, setInspecting]   = useState<InspectedUnit | null>(null);
+  const [removing, setRemoving]       = useState<string | null>(null);
+  const [sealing, setSealing]         = useState(false);
+  const [sealError, setSealError]     = useState('');
 
   // Box details
   const [weightInput, setWeightInput]   = useState(box.weightKg?.toString() ?? '');
   const [sizeId, setSizeId]             = useState(box.boxSizeId ?? '');
   const [savingDetails, setSavingDetails] = useState(false);
-  const [detailsError, setDetailsError] = useState('');
-  const [detailsSaved, setDetailsSaved] = useState(false);
+  const [detailsError, setDetailsError]   = useState('');
+  const [detailsSaved, setDetailsSaved]   = useState(false);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   const photoRef   = useRef<HTMLInputElement>(null);
 
-  // Scan a barcode into this box
+  // Step 1: Look up the unit by barcode (validate without adding to box)
   async function handleScan(e: React.FormEvent) {
     e.preventDefault();
     const b = barcode.trim().toUpperCase();
     if (!b) return;
-    setScanError('');
-    setScanning(true);
+    setLookupError('');
+    setLooking(true);
     try {
-      const res = await fetch(`/api/dispatch-orders/${doId}/boxes/${box.id}/scan`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ barcode: b }),
-      });
-      const data = await res.json() as { item?: PackingBoxItemRow; error?: string };
-      if (!res.ok) { setScanError(data.error ?? 'Scan failed'); return; }
-      onBoxUpdate({ ...box, items: [...box.items, data.item!] });
+      const res = await fetch(
+        `/api/dispatch-orders/lookup-unit?barcode=${encodeURIComponent(b)}&orderId=${encodeURIComponent(orderId)}`
+      );
+      const data = await res.json() as (InspectedUnit & { error?: string });
+      if (!res.ok) { setLookupError(data.error ?? 'Unit not found'); return; }
+      setInspecting(data);
       setBarcode('');
     } catch {
-      setScanError('Network error');
+      setLookupError('Network error');
     } finally {
-      setScanning(false);
-      barcodeRef.current?.focus();
+      setLooking(false);
     }
+  }
+
+  // Step 2a: Unit passed inspection — add to box
+  function handleInspectionPass(item: PackingBoxItemRow) {
+    onBoxUpdate({ ...box, items: [...box.items, item] });
+    setInspecting(null);
+    setTimeout(() => barcodeRef.current?.focus(), 50);
+  }
+
+  // Step 2b: Inspection cancelled (or rejected)
+  function handleInspectionCancel() {
+    setInspecting(null);
+    setTimeout(() => barcodeRef.current?.focus(), 50);
   }
 
   // Remove an item from this box
@@ -136,10 +390,10 @@ function BoxCard({
         onBoxUpdate({ ...box, items: box.items.filter((i) => i.id !== itemId) });
       } else {
         const data = await res.json() as { error?: string };
-        setScanError(data.error ?? 'Failed to remove item');
+        setLookupError(data.error ?? 'Failed to remove item');
       }
     } catch {
-      setScanError('Network error');
+      setLookupError('Network error');
     } finally {
       setRemoving(null);
     }
@@ -275,29 +529,42 @@ function BoxCard({
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Scan input */}
-          <form onSubmit={handleScan} className="flex gap-2">
-            <input
-              ref={barcodeRef}
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
-              placeholder="Scan barcode or serial…"
-              className="input-field text-sm font-mono flex-1"
-              autoComplete="off"
-              spellCheck={false}
-              disabled={scanning}
+          {/* Inspection step — shown after scanning a barcode */}
+          {inspecting ? (
+            <InspectionStep
+              unit={inspecting}
+              doId={doId}
+              boxId={box.id}
+              orderId={orderId}
+              onPass={handleInspectionPass}
+              onCancel={handleInspectionCancel}
             />
-            <button
-              type="submit"
-              disabled={scanning || !barcode.trim()}
-              className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
-              style={{ background: '#0ea5e9', color: '#fff' }}
-            >
-              {scanning ? '…' : 'Add'}
-            </button>
-          </form>
-
-          {scanError && <p className="text-xs text-rose-400">{scanError}</p>}
+          ) : (
+            <>
+              {/* Scan input */}
+              <form onSubmit={handleScan} className="flex gap-2">
+                <input
+                  ref={barcodeRef}
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  placeholder="Scan barcode or serial…"
+                  className="input-field text-sm font-mono flex-1"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={looking}
+                />
+                <button
+                  type="submit"
+                  disabled={looking || !barcode.trim()}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+                  style={{ background: '#0ea5e9', color: '#fff' }}
+                >
+                  {looking ? '…' : 'Add'}
+                </button>
+              </form>
+              {lookupError && <p className="text-xs text-rose-400">{lookupError}</p>}
+            </>
+          )}
 
           {/* Items list */}
           {box.items.length > 0 && (
@@ -570,6 +837,7 @@ export function DOPackingPanel({
                 key={box.id}
                 box={box}
                 doId={doData.id}
+                orderId={doData.orderId}
                 doNumber={doData.doNumber}
                 boxSizes={boxSizes}
                 onBoxUpdate={handleBoxUpdate}

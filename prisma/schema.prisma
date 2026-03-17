@@ -669,13 +669,14 @@ model PackingBox {
 }
 
 model PackingBoxItem {
-  id          String         @id @default(cuid())
-  boxId       String         @map("box_id")
-  unitId      String         @unique @map("unit_id")  // one unit → one box only
-  serial      String
-  barcode     String
-  scannedAt   DateTime       @default(now()) @map("scanned_at")
-  scannedById String         @map("scanned_by_id")
+  id                  String         @id @default(cuid())
+  boxId               String         @map("box_id")
+  unitId              String         @unique @map("unit_id")  // one unit → one box only
+  serial              String
+  barcode             String
+  scannedAt           DateTime       @default(now()) @map("scanned_at")
+  scannedById         String         @map("scanned_by_id")
+  inspectionPhotoUrl  String?        @map("inspection_photo_url")  // photo taken during packing inspection
 
   box       PackingBox     @relation(fields: [boxId], references: [id], onDelete: Cascade)
   unit      ControllerUnit @relation(fields: [unitId], references: [id])
