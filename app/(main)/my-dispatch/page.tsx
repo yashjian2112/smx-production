@@ -344,6 +344,8 @@ export default function MyDispatchPage() {
         ? `Dispatch Order ${data.doNumber ?? ''} already exists — packing team will handle it`
         : `Dispatch Order ${data.doNumber ?? ''} created — handed off to packing team ✓`;
       setCreateSuccess(msg);
+      // Auto-open the print slip in a new tab
+      if (data.id) window.open(`/print/dispatch-order/${data.id}`, '_blank');
       await load();
       setTab('active');
     } catch {

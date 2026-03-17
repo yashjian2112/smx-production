@@ -181,7 +181,6 @@ export function PrintDispatchOrder({
           style={{ background: '#3f3f46', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>
           Close
         </button>
-        <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>Chrome → Print → Save as PDF for best results</span>
       </div>
 
       <div className="page-wrap">
@@ -231,16 +230,8 @@ export function PrintDispatchOrder({
           </div>
         </div>
 
-        {/* ── INFO BAR 2: Status, Units, Created By ── */}
+        {/* ── INFO BAR 2: Units, Created By, Approved By ── */}
         <div className="info-bar info-bar-2">
-          <div className="info-cell">
-            <div className="info-label">Status</div>
-            <div className="info-value">
-              <span className="status-badge" style={{ background: STATUS_COLOR[dispatchOrder.status] ?? '#6b7280' }}>
-                {STATUS_LABEL[dispatchOrder.status] ?? dispatchOrder.status}
-              </span>
-            </div>
-          </div>
           <div className="info-cell">
             <div className="info-label">Units</div>
             <div className="info-value">{totalUnits}</div>
@@ -250,11 +241,15 @@ export function PrintDispatchOrder({
             <div className="info-value">{dispatchOrder.createdBy.name}</div>
           </div>
           <div className="info-cell">
-            <div className="info-label">{isDispatched ? 'Approved By' : 'Created On'}</div>
+            <div className="info-label">Created On</div>
+            <div className="info-value">{fmtDate(dispatchOrder.createdAt)}</div>
+          </div>
+          <div className="info-cell">
+            <div className="info-label">Approved By</div>
             <div className="info-value">
               {isDispatched && dispatchOrder.approvedBy
                 ? dispatchOrder.approvedBy.name
-                : fmtDate(dispatchOrder.createdAt)}
+                : '—'}
             </div>
           </div>
         </div>
