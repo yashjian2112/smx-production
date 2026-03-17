@@ -91,13 +91,14 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
   const [filter, setFilter]     = useState<'all' | 'low' | 'critical'>('all');
 
   // Add Stock modal
-  const [addMat, setAddMat]       = useState<RawMaterial | null>(null);
-  const [addType, setAddType]     = useState<'OPENING' | 'ADJUSTMENT'>('OPENING');
-  const [addQty, setAddQty]       = useState('');
-  const [addPrice, setAddPrice]   = useState('');
-  const [addNotes, setAddNotes]   = useState('');
-  const [addSaving, setAddSaving] = useState(false);
-  const [addError, setAddError]   = useState('');
+  const [addMat, setAddMat]           = useState<RawMaterial | null>(null);
+  const [addType, setAddType]         = useState<'OPENING' | 'ADJUSTMENT'>('OPENING');
+  const [addMode, setAddMode]         = useState<'add' | 'physical'>('add'); // add qty vs set exact qty
+  const [addQty, setAddQty]           = useState('');
+  const [addPrice, setAddPrice]       = useState('');
+  const [addNotes, setAddNotes]       = useState('');
+  const [addSaving, setAddSaving]     = useState(false);
+  const [addError, setAddError]       = useState('');
 
   // Issue Stock modal
   const [issueMat, setIssueMat]       = useState<RawMaterial | null>(null);
@@ -129,12 +130,15 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
     e.preventDefault();
     setAddError('');
     setAddSaving(true);
-    const qty = parseFloat(addQty);
-    if (!addMat || isNaN(qty) || qty <= 0) { setAddError('Enter a valid positive quantity'); setAddSaving(false); return; }
+    const inputQty = parseFloat(addQty);
+    if (!addMat || isNaN(inputQty) || inputQty < 0) { setAddError('Enter a valid quantity'); setAddSaving(false); return; }
+    // Physical count: delta = entered qty - current stock
+    const qty = addMode === 'physical' ? inputQty - addMat.currentStock : inputQty;
+    if (addMode === 'add' && qty <= 0) { setAddError('Quantity must be greater than 0'); setAddSaving(false); return; }
     const res = await fetch('/api/inventory/adjust', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rawMaterialId: addMat.id, type: addType, quantity: qty, reason: addNotes, unitPrice: parseFloat(addPrice || '0') }),
+      body: JSON.stringify({ rawMaterialId: addMat.id, type: 'ADJUSTMENT', quantity: qty, reason: addNotes || (addMode === 'physical' ? 'Physical stock count' : 'Manual addition'), unitPrice: parseFloat(addPrice || '0') }),
     });
     setAddSaving(false);
     if (res.ok) { setAddMat(null); setAddQty(''); setAddNotes(''); setAddPrice(''); load(); }
@@ -315,38 +319,53 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
         ))}
       </div>
 
-      {/* Add Stock Modal */}
+      {/* Add Stock / Physical Count Modal */}
       {addMat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
           <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'rgb(24,24,27)' }}>
-            <h3 className="text-white font-semibold mb-1">Add Stock</h3>
-            <p className="text-zinc-400 text-xs mb-4">{addMat.name} · Current: {fmt(addMat.currentStock)} {addMat.unit}</p>
+            <h3 className="text-white font-semibold mb-1">{addMode === 'physical' ? 'Physical Stock Count' : 'Add Stock'}</h3>
+            <p className="text-zinc-400 text-xs mb-3">{addMat.name} · Current: <span className="text-white font-medium">{fmt(addMat.currentStock)}</span> {addMat.unit}</p>
+            {/* Mode toggle */}
+            <div className="flex rounded-lg overflow-hidden border border-zinc-700 mb-4 text-xs">
+              <button type="button" onClick={() => { setAddMode('add'); setAddQty(''); }}
+                className={`flex-1 py-2 transition-colors ${addMode === 'add' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
+                + Add Quantity
+              </button>
+              <button type="button" onClick={() => { setAddMode('physical'); setAddQty(String(addMat.currentStock)); }}
+                className={`flex-1 py-2 transition-colors ${addMode === 'physical' ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
+                Physical Count
+              </button>
+            </div>
             <form onSubmit={handleAdd} className="space-y-3">
               <div>
-                <label className="text-zinc-400 text-xs">Stock Type</label>
-                <select value={addType} onChange={e => setAddType(e.target.value as any)}
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
-                  style={{ background: 'rgb(39,39,42)' }}>
-                  <option value="OPENING">Opening / Initial Stock</option>
-                  <option value="ADJUSTMENT">Manual Addition (e.g. found stock, return)</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-zinc-400 text-xs">Quantity to Add ({addMat.unit})</label>
-                <input type="number" step="any" min="0.01" value={addQty} onChange={e => setAddQty(e.target.value)} required
+                <label className="text-zinc-400 text-xs">
+                  {addMode === 'physical' ? `Actual counted quantity (${addMat.unit})` : `Quantity to Add (${addMat.unit})`}
+                </label>
+                <input type="number" step="any" min="0" value={addQty} onChange={e => setAddQty(e.target.value)} required
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
                   style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
+                {addMode === 'physical' && addQty !== '' && (
+                  <p className="text-xs mt-1">
+                    {parseFloat(addQty) > addMat.currentStock
+                      ? <span className="text-emerald-400">+{fmt(parseFloat(addQty) - addMat.currentStock)} {addMat.unit} will be added</span>
+                      : parseFloat(addQty) < addMat.currentStock
+                      ? <span className="text-red-400">−{fmt(addMat.currentStock - parseFloat(addQty))} {addMat.unit} will be deducted</span>
+                      : <span className="text-zinc-400">No change</span>}
+                  </p>
+                )}
               </div>
+              {addMode === 'add' && (
+                <div>
+                  <label className="text-zinc-400 text-xs">Unit Price ₹ (optional)</label>
+                  <input type="number" step="any" min="0" value={addPrice} onChange={e => setAddPrice(e.target.value)}
+                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                    style={{ background: 'rgb(39,39,42)' }} placeholder="0.00" />
+                </div>
+              )}
               <div>
-                <label className="text-zinc-400 text-xs">Unit Price ₹ (optional)</label>
-                <input type="number" step="any" min="0" value={addPrice} onChange={e => setAddPrice(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
-                  style={{ background: 'rgb(39,39,42)' }} placeholder="0.00" />
-              </div>
-              <div>
-                <label className="text-zinc-400 text-xs">Reason / Notes *</label>
-                <input value={addNotes} onChange={e => setAddNotes(e.target.value)} required
-                  placeholder="e.g. Opening stock entry, Returned from production…"
+                <label className="text-zinc-400 text-xs">Reason / Notes {addMode === 'add' && '*'}</label>
+                <input value={addNotes} onChange={e => setAddNotes(e.target.value)} required={addMode === 'add'}
+                  placeholder={addMode === 'physical' ? 'e.g. Annual stock count, Quarterly audit…' : 'e.g. Cash purchase, Returned from production…'}
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
@@ -355,8 +374,8 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
                 <button type="button" onClick={() => setAddMat(null)}
                   className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Cancel</button>
                 <button type="submit" disabled={addSaving}
-                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50">
-                  {addSaving ? 'Adding…' : 'Add Stock'}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 ${addMode === 'physical' ? 'bg-sky-600 hover:bg-sky-500' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
+                  {addSaving ? 'Saving…' : addMode === 'physical' ? 'Save Count' : 'Add Stock'}
                 </button>
               </div>
             </form>
@@ -427,22 +446,48 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState('');
 
+  // Direct Receipt (without PO)
+  const [showDirect, setShowDirect]   = useState(false);
+  const [allMats, setAllMats]         = useState<{ id: string; name: string; unit: string; code: string }[]>([]);
+  const [drSupplier, setDrSupplier]   = useState('');
+  const [drInvoice, setDrInvoice]     = useState('');
+  const [drNotes, setDrNotes]         = useState('');
+  const [drItems, setDrItems]         = useState<{ rawMaterialId: string; quantity: string; unitPrice: string }[]>([{ rawMaterialId: '', quantity: '', unitPrice: '' }]);
+  const [drSaving, setDrSaving]       = useState(false);
+  const [drError, setDrError]         = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
-    const [grnRes, poRes] = await Promise.all([
+    const [grnRes, poRes, matRes] = await Promise.all([
       fetch('/api/inventory/grn'),
       fetch('/api/purchase/orders'),
+      fetch('/api/inventory/materials'),
     ]);
     if (grnRes.ok) setGrns(await grnRes.json());
     if (poRes.ok) {
       const allPOs: PurchaseOrder[] = await poRes.json();
-      // Only POs that are not fully received
       setPos(allPOs.filter(p => !['RECEIVED', 'CANCELLED'].includes(p.status)));
     }
+    if (matRes.ok) setAllMats(await matRes.json());
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  async function handleDirectSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setDrError(''); setDrSaving(true);
+    const items = drItems.filter(i => i.rawMaterialId && parseFloat(i.quantity) > 0)
+      .map(i => ({ rawMaterialId: i.rawMaterialId, quantity: parseFloat(i.quantity), unitPrice: parseFloat(i.unitPrice || '0') }));
+    if (items.length === 0) { setDrError('Add at least one item with quantity'); setDrSaving(false); return; }
+    const res = await fetch('/api/inventory/direct-receipt', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ supplier: drSupplier || undefined, invoiceRef: drInvoice || undefined, notes: drNotes || undefined, items }),
+    });
+    setDrSaving(false);
+    if (res.ok) { setShowDirect(false); setDrSupplier(''); setDrInvoice(''); setDrNotes(''); setDrItems([{ rawMaterialId: '', quantity: '', unitPrice: '' }]); load(); }
+    else { const e = await res.json(); setDrError(e.error || 'Failed'); }
+  }
 
   function selectPO(po: PurchaseOrder) {
     setSelectedPO(po);
@@ -514,7 +559,15 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {/* GRN History */}
-      <h3 className="text-white font-medium mb-3">GRN History</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-white font-medium">GRN History</h3>
+        {isAdmin && (
+          <button onClick={() => { setShowDirect(true); setDrError(''); }}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors">
+            + Direct Receipt
+          </button>
+        )}
+      </div>
       <div className="space-y-2">
         {grns.length === 0 && <p className="text-zinc-400 text-sm py-4 text-center">No goods receipts yet</p>}
         {grns.map(grn => (
@@ -576,6 +629,104 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
           </div>
         ))}
       </div>
+
+      {/* Direct Receipt Modal */}
+      {showDirect && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.75)' }}>
+          <div className="w-full max-w-lg rounded-2xl p-6 my-4" style={{ background: 'rgb(24,24,27)' }}>
+            <h3 className="text-white font-semibold mb-4">Direct Receipt (without PO)</h3>
+            <form onSubmit={handleDirectSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-zinc-400 text-xs">Supplier / Vendor</label>
+                  <input value={drSupplier} onChange={e => setDrSupplier(e.target.value)}
+                    placeholder="e.g. ABC Traders"
+                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                    style={{ background: 'rgb(39,39,42)' }} />
+                </div>
+                <div>
+                  <label className="text-zinc-400 text-xs">Invoice / Bill Ref</label>
+                  <input value={drInvoice} onChange={e => setDrInvoice(e.target.value)}
+                    placeholder="e.g. INV-2024-001"
+                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                    style={{ background: 'rgb(39,39,42)' }} />
+                </div>
+              </div>
+              <div>
+                <label className="text-zinc-400 text-xs">Notes (optional)</label>
+                <input value={drNotes} onChange={e => setDrNotes(e.target.value)}
+                  placeholder="e.g. Cash purchase, sample received…"
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                  style={{ background: 'rgb(39,39,42)' }} />
+              </div>
+
+              {/* Line items */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-zinc-400 text-xs">Items</label>
+                  <button type="button"
+                    onClick={() => setDrItems(prev => [...prev, { rawMaterialId: '', quantity: '', unitPrice: '' }])}
+                    className="text-xs text-sky-400 hover:text-sky-300">+ Add row</button>
+                </div>
+                <div className="space-y-2">
+                  {drItems.map((item, idx) => {
+                    const mat = allMats.find(m => m.id === item.rawMaterialId);
+                    return (
+                      <div key={idx} className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-3">
+                            <select value={item.rawMaterialId}
+                              onChange={e => setDrItems(prev => prev.map((r, i) => i === idx ? { ...r, rawMaterialId: e.target.value } : r))}
+                              className="w-full px-2 py-1.5 rounded-lg text-sm text-white border border-zinc-700"
+                              style={{ background: 'rgb(39,39,42)' }}>
+                              <option value="">— Select material —</option>
+                              {allMats.map(m => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-zinc-500 text-xs">Qty {mat ? `(${mat.unit})` : ''}</label>
+                            <input type="number" step="any" min="0.01" value={item.quantity}
+                              onChange={e => setDrItems(prev => prev.map((r, i) => i === idx ? { ...r, quantity: e.target.value } : r))}
+                              placeholder="0"
+                              className="w-full mt-0.5 px-2 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                              style={{ background: 'rgb(39,39,42)' }} />
+                          </div>
+                          <div>
+                            <label className="text-zinc-500 text-xs">Unit Price (₹)</label>
+                            <input type="number" step="any" min="0" value={item.unitPrice}
+                              onChange={e => setDrItems(prev => prev.map((r, i) => i === idx ? { ...r, unitPrice: e.target.value } : r))}
+                              placeholder="0"
+                              className="w-full mt-0.5 px-2 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                              style={{ background: 'rgb(39,39,42)' }} />
+                          </div>
+                          <div className="flex items-end">
+                            {drItems.length > 1 && (
+                              <button type="button" onClick={() => setDrItems(prev => prev.filter((_, i) => i !== idx))}
+                                className="w-full py-1.5 rounded-lg text-xs text-red-400 border border-red-900 hover:border-red-600 transition-colors">
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {drError && <p className="text-red-400 text-xs">{drError}</p>}
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setShowDirect(false)}
+                  className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Cancel</button>
+                <button type="submit" disabled={drSaving}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors disabled:opacity-50">
+                  {drSaving ? 'Saving…' : 'Receive Stock'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* GRN Form Modal */}
       {showForm && selectedPO && (
@@ -658,13 +809,15 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [editMat,    setEditMat]    = useState<RawMaterial | null>(null);
 
   // Form state
-  const [fName,  setFName]  = useState('');
-  const [fUnit,  setFUnit]  = useState('');
-  const [fCatId, setFCatId] = useState('');
-  const [fMin,   setFMin]   = useState('0');
-  const [fReord, setFReord] = useState('0');
-  const [fSaving,setFSaving]= useState(false);
-  const [fError, setFError] = useState('');
+  const [fName,     setFName]     = useState('');
+  const [fUnit,     setFUnit]     = useState('');
+  const [fCatId,    setFCatId]    = useState('');
+  const [fMin,      setFMin]      = useState('0');
+  const [fReord,    setFReord]    = useState('0');
+  const [fOpenQty,  setFOpenQty]  = useState('');   // opening stock qty
+  const [fOpenPrice,setFOpenPrice]= useState('');   // opening stock unit price
+  const [fSaving,   setFSaving]   = useState(false);
+  const [fError,    setFError]    = useState('');
 
   const [cName,  setCName]  = useState('');
   const [cDesc,  setCDesc]  = useState('');
@@ -684,7 +837,8 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => { load(); }, [load]);
 
   function openNewMat() {
-    setEditMat(null); setFName(''); setFUnit(''); setFCatId(''); setFMin('0'); setFReord('0'); setFError('');
+    setEditMat(null); setFName(''); setFUnit(''); setFCatId(''); setFMin('0'); setFReord('0');
+    setFOpenQty(''); setFOpenPrice(''); setFError('');
     setShowMatForm(true);
   }
 
@@ -701,8 +855,26 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
       ? await fetch(`/api/inventory/materials/${editMat.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       : await fetch('/api/inventory/materials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     setFSaving(false);
-    if (res.ok) { setShowMatForm(false); load(); }
-    else { const e = await res.json(); setFError(e.error || 'Failed'); }
+    if (!res.ok) { const e = await res.json(); setFError(e.error || 'Failed'); return; }
+    // For new material: if opening stock was entered, add it
+    if (!editMat) {
+      const mat = await res.json();
+      const openQty = parseFloat(fOpenQty);
+      if (!isNaN(openQty) && openQty > 0) {
+        await fetch('/api/inventory/adjust', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rawMaterialId: mat.id,
+            type:     'OPENING',
+            quantity: openQty,
+            reason:   'Opening stock entry',
+            unitPrice: parseFloat(fOpenPrice || '0'),
+          }),
+        });
+      }
+    }
+    setShowMatForm(false); load();
   }
 
   async function toggleActive(m: RawMaterial) {
@@ -819,6 +991,26 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                     style={{ background: 'rgb(39,39,42)' }} />
                 </div>
               </div>
+              {/* Opening stock — only for new materials */}
+              {!editMat && (
+                <div className="pt-2 border-t border-zinc-800">
+                  <p className="text-zinc-400 text-xs mb-2">Opening Stock <span className="text-zinc-600">(optional)</span></p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-zinc-500 text-xs">Qty ({fUnit || 'unit'})</label>
+                      <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                        style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
+                    </div>
+                    <div>
+                      <label className="text-zinc-500 text-xs">Unit Price ₹</label>
+                      <input type="number" step="any" min="0" value={fOpenPrice} onChange={e => setFOpenPrice(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                        style={{ background: 'rgb(39,39,42)' }} placeholder="0.00" />
+                    </div>
+                  </div>
+                </div>
+              )}
               {fError && <p className="text-red-400 text-xs">{fError}</p>}
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={() => setShowMatForm(false)}
