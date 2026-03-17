@@ -363,7 +363,7 @@ export default function MyDispatchPage() {
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: 'ready',   label: 'Ready',      count: readyOrders.length },
     { key: 'active',  label: 'In Dispatch', count: activeGroups.length },
-    { key: 'history', label: 'History',     count: historyGroups.length },
+    { key: 'history', label: 'Dispatch History', count: historyGroups.length },
   ];
 
   return (
@@ -447,7 +447,7 @@ export default function MyDispatchPage() {
         historyGroups.length === 0 ? (
           <EmptyState
             message="No dispatch history yet"
-            sub="Approved and rejected dispatch orders will appear here"
+            sub="Dispatched and rejected orders will appear here"
           />
         ) : (
           <div className="space-y-3">
