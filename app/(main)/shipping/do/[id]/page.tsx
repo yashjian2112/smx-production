@@ -24,6 +24,10 @@ export default async function DOPackingPage({ params }: { params: { id: string }
             product: { select: { code: true, name: true } },
           },
         },
+        scans: {
+          orderBy: { scannedAt: 'asc' },
+          select:  { id: true, serial: true, barcode: true },
+        },
         boxes: {
           orderBy: { boxNumber: 'asc' },
           include: {

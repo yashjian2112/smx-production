@@ -1,0 +1,94 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { requireSession, requireRole } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
+
+// POST /api/dispatch-orders/[id]/scans
+// Scan a unit barcode into the staging table for this DO
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await requireSession();
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING');
+
+    const { barcode } = await req.json() as { barcode?: string };
+    if (!barcode) return NextResponse.json({ error: 'barcode required' }, { status: 400 });
+
+    const dispatchOrder = await prisma.dispatchOrder.findUnique({
+      where:  { id: params.id },
+      select: { id: true, status: true, orderId: true },
+    });
+    if (!dispatchOrder) return NextResponse.json({ error: 'Dispatch order not found' }, { status: 404 });
+    if (dispatchOrder.status !== 'OPEN')
+      return NextResponse.json({ error: 'Can only scan while DO is OPEN' }, { status: 400 });
+
+    // Look up the unit by any barcode
+    const unit = await prisma.controllerUnit.findFirst({
+      where: {
+        OR: [
+          { finalAssemblyBarcode: barcode },
+          { assemblyBarcode: barcode },
+          { qcBarcode: barcode },
+          { serialNumber: barcode },
+        ],
+      },
+      select: { id: true, serialNumber: true, finalAssemblyBarcode: true, orderId: true, readyForDispatch: true },
+    });
+
+    if (!unit) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
+    if (unit.orderId !== dispatchOrder.orderId)
+      return NextResponse.json({ error: 'Unit does not belong to this order' }, { status: 400 });
+    if (!unit.readyForDispatch)
+      return NextResponse.json({ error: 'Unit is not ready for dispatch' }, { status: 400 });
+
+    // Check if already staged for this DO
+    const existing = await prisma.dispatchOrderScan.findUnique({ where: { unitId: unit.id } });
+    if (existing)
+      return NextResponse.json({ error: 'Unit already scanned for this dispatch order' }, { status: 409 });
+
+    // Check if already in a box of a different DO
+    const inBox = await prisma.packingBoxItem.findUnique({ where: { unitId: unit.id } });
+    if (inBox) return NextResponse.json({ error: 'Unit is already packed in another dispatch' }, { status: 409 });
+
+    const scan = await prisma.dispatchOrderScan.create({
+      data: {
+        dispatchOrderId: params.id,
+        unitId:          unit.id,
+        serial:          unit.serialNumber,
+        barcode:         barcode,
+        passed:          true,
+        scannedById:     session.id,
+      },
+    });
+
+    return NextResponse.json({ scan, serial: unit.serialNumber }, { status: 201 });
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Unauthorized')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (e instanceof Error && e.message === 'Forbidden')
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    console.error(e);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
+
+// GET /api/dispatch-orders/[id]/scans
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await requireSession();
+    const scans = await prisma.dispatchOrderScan.findMany({
+      where:   { dispatchOrderId: params.id },
+      orderBy: { scannedAt: 'asc' },
+    });
+    return NextResponse.json({ scans });
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Unauthorized')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    console.error(e);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}

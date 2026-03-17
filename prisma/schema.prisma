@@ -44,6 +44,7 @@ model User {
   dispatchOrders       DispatchOrder[]        @relation("DOCreatedBy")
   approvedDOs          DispatchOrder[]        @relation("DOApprovedBy")
   boxItemsScanned      PackingBoxItem[]       @relation("BoxItemScannedBy")
+  doScans              DispatchOrderScan[]    @relation("DOScanBy")
   // New relations
   invoicesApproved     Invoice[]              @relation("InvoiceApprovedBy")
   payments             Payment[]
@@ -66,6 +67,8 @@ enum Role {
   ACCOUNTS
   SHIPPING        // deprecated — use ACCOUNTS for shipping approval
   PURCHASE_MANAGER
+  PACKING         // legacy — kept for existing data
+  STORE_MANAGER   // legacy — kept for existing data
 }
 
 // ----- Products / Models -----
@@ -222,9 +225,10 @@ model ControllerUnit {
   timelineLogs TimelineLog[]
   componentChecks ComponentCheck[]
   workSubmissions StageWorkSubmission[]
-  dispatchItems   DispatchItem[]
-  packingBoxItem  PackingBoxItem?
-  returnRequests  ReturnRequest[]
+  dispatchItems        DispatchItem[]
+  packingBoxItem       PackingBoxItem?
+  dispatchOrderScans   DispatchOrderScan[]
+  returnRequests       ReturnRequest[]
 }
 
 enum StageType {
@@ -628,25 +632,61 @@ model DispatchOrder {
   createdBy  User          @relation("DOCreatedBy", fields: [createdById], references: [id])
   approvedBy User?         @relation("DOApprovedBy", fields: [approvedById], references: [id])
   boxes      PackingBox[]
+  scans      DispatchOrderScan[]
   invoices   Invoice[]
 
   @@map("dispatch_orders")
 }
 
+model BoxSize {
+  id        String     @id @default(cuid())
+  name      String     @unique            // "Small", "Medium", "Large", etc.
+  lengthCm  Float      @map("length_cm")
+  widthCm   Float      @map("width_cm")
+  heightCm  Float      @map("height_cm")
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  boxes     PackingBox[]
+
+  @@map("box_sizes")
+}
+
 model PackingBox {
-  id              String        @id @default(cuid())
-  dispatchOrderId String        @map("dispatch_order_id")
-  boxNumber       Int           @map("box_number")
-  boxLabel        String        @map("box_label")  // TSM/DO/26-27/0001-BOX-1of3
-  photoUrl        String?       @map("photo_url")
-  isSealed        Boolean       @default(false) @map("is_sealed")
-  createdAt       DateTime      @default(now()) @map("created_at")
+  id              String     @id @default(cuid())
+  dispatchOrderId String     @map("dispatch_order_id")
+  boxNumber       Int        @map("box_number")
+  boxLabel        String     @map("box_label")      // TSM/DO/26-27/0001-BOX-1of3
+  photoUrl        String?    @map("photo_url")
+  isSealed        Boolean    @default(false) @map("is_sealed")
+  labelScanned    Boolean    @default(false) @map("label_scanned")
+  weightKg        Float?     @map("weight_kg")
+  boxSizeId       String?    @map("box_size_id")
+  createdAt       DateTime   @default(now()) @map("created_at")
 
   dispatchOrder DispatchOrder   @relation(fields: [dispatchOrderId], references: [id], onDelete: Cascade)
+  boxSize       BoxSize?        @relation(fields: [boxSizeId], references: [id])
   items         PackingBoxItem[]
 
   @@unique([dispatchOrderId, boxNumber])
   @@map("packing_boxes")
+}
+
+model DispatchOrderScan {
+  id              String   @id @default(cuid())
+  dispatchOrderId String   @map("dispatch_order_id")
+  unitId          String   @unique @map("unit_id")  // one unit → one staging slot
+  serial          String
+  barcode         String
+  passed          Boolean  @default(true)           // inspection result
+  scannedAt       DateTime @default(now()) @map("scanned_at")
+  scannedById     String   @map("scanned_by_id")
+
+  dispatchOrder DispatchOrder  @relation(fields: [dispatchOrderId], references: [id], onDelete: Cascade)
+  unit          ControllerUnit @relation(fields: [unitId], references: [id])
+  scannedBy     User           @relation("DOScanBy", fields: [scannedById], references: [id])
+
+  @@map("dispatch_order_scans")
 }
 
 model PackingBoxItem {

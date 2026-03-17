@@ -12,24 +12,22 @@ export type BoxSizeOption = {
   heightCm: number;
 };
 
-type PackingBoxItemRow = {
-  id:        string;
-  serial:    string;
-  barcode:   string;
-  scannedAt: string;
-  unit:      { serialNumber: string; finalAssemblyBarcode: string | null };
+type StagedScan = {
+  id:      string;
+  serial:  string;
+  barcode: string;
 };
 
 type PackingBoxRow = {
-  id:        string;
-  boxNumber: number;
-  boxLabel:  string;
-  photoUrl:  string | null;
-  isSealed:  boolean;
-  weightKg:  number | null;
-  boxSizeId: string | null;
-  boxSize:   BoxSizeOption | null;
-  items:     PackingBoxItemRow[];
+  id:           string;
+  boxNumber:    number;
+  boxLabel:     string;
+  isSealed:     boolean;
+  labelScanned: boolean;
+  weightKg:     number | null;
+  boxSizeId:    string | null;
+  boxSize:      BoxSizeOption | null;
+  items: { id: string; unit: { serialNumber: string } }[];
 };
 
 type DispatchOrderFull = {
@@ -38,18 +36,20 @@ type DispatchOrderFull = {
   status:         string;
   totalBoxes:     number | null;
   rejectedReason: string | null;
+  scans:          StagedScan[];
   order: {
     orderNumber: string;
     quantity:    number;
     client:      { customerName: string } | null;
     product:     { code: string; name: string };
   };
-  boxes:      PackingBoxRow[];
-  createdBy:  { name: string };
-  invoices?:  { invoiceNumber: string }[];
+  boxes:     PackingBoxRow[];
+  createdBy: { name: string };
+  invoices?: { invoiceNumber: string }[];
 };
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
+type BoxFormEntry = { boxSizeId: string; weightKg: string };
+
 function DOStatusBadge({ status }: { status: string }) {
   const cfg: Record<string, { label: string; color: string; bg: string }> = {
     OPEN:      { label: 'Open',      color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
@@ -60,674 +60,399 @@ function DOStatusBadge({ status }: { status: string }) {
   };
   const c = cfg[status] ?? cfg.OPEN;
   return (
-    <span
-      className="text-[11px] font-bold px-2 py-0.5 rounded"
-      style={{ color: c.color, background: c.bg }}
-    >
+    <span className="text-[11px] font-bold px-2 py-0.5 rounded" style={{ color: c.color, background: c.bg }}>
       {c.label}
     </span>
   );
 }
 
-// ─── BoxCard ──────────────────────────────────────────────────────────────────
-function BoxCard({
-  box,
-  doId,
-  doNumber,
-  boxSizes,
-  onBoxUpdate,
-}: {
-  box:         PackingBoxRow;
-  doId:        string;
-  doNumber:    string;
-  boxSizes:    BoxSizeOption[];
-  onBoxUpdate: (updated: PackingBoxRow) => void;
+function PhaseAScan({ doId, orderQty, scans, onScansChange, onNext }: {
+  doId: string; orderQty: number; scans: StagedScan[];
+  onScansChange: (s: StagedScan[]) => void; onNext: () => void;
 }) {
-  const [barcode, setBarcode]       = useState('');
-  const [scanning, setScanning]     = useState(false);
-  const [scanError, setScanError]   = useState('');
-  const [removing, setRemoving]     = useState<string | null>(null);
-  const [sealing, setSealing]       = useState(false);
-  const [sealError, setSealError]   = useState('');
+  const [input, setInput]       = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [error, setError]       = useState('');
+  const [removing, setRemoving] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Box details
-  const [weightInput, setWeightInput]   = useState(box.weightKg?.toString() ?? '');
-  const [sizeId, setSizeId]             = useState(box.boxSizeId ?? '');
-  const [savingDetails, setSavingDetails] = useState(false);
-  const [detailsError, setDetailsError] = useState('');
-  const [detailsSaved, setDetailsSaved] = useState(false);
-
-  const barcodeRef = useRef<HTMLInputElement>(null);
-  const photoRef   = useRef<HTMLInputElement>(null);
-
-  // Scan a barcode into this box
   async function handleScan(e: React.FormEvent) {
     e.preventDefault();
-    const b = barcode.trim().toUpperCase();
+    const b = input.trim().toUpperCase();
     if (!b) return;
-    setScanError('');
-    setScanning(true);
+    setError(''); setScanning(true);
     try {
-      const res = await fetch(`/api/dispatch-orders/${doId}/boxes/${box.id}/scan`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ barcode: b }),
-      });
-      const data = await res.json() as { item?: PackingBoxItemRow; error?: string };
-      if (!res.ok) { setScanError(data.error ?? 'Scan failed'); return; }
-      onBoxUpdate({ ...box, items: [...box.items, data.item!] });
-      setBarcode('');
-    } catch {
-      setScanError('Network error');
-    } finally {
-      setScanning(false);
-      barcodeRef.current?.focus();
-    }
+      const res  = await fetch(`/api/dispatch-orders/${doId}/scans`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode: b }) });
+      const data = await res.json() as { scan?: StagedScan; serial?: string; error?: string };
+      if (!res.ok) { setError(data.error ?? 'Scan failed'); return; }
+      onScansChange([...scans, { id: data.scan!.id, serial: data.serial!, barcode: b }]);
+      setInput('');
+    } catch { setError('Network error'); }
+    finally { setScanning(false); inputRef.current?.focus(); }
   }
 
-  // Remove an item from this box
-  async function removeItem(itemId: string) {
-    setRemoving(itemId);
+  async function handleRemove(scanId: string) {
+    setRemoving(scanId);
     try {
-      const res = await fetch(`/api/dispatch-orders/${doId}/boxes/${box.id}/items/${itemId}`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        onBoxUpdate({ ...box, items: box.items.filter((i) => i.id !== itemId) });
-      } else {
-        const data = await res.json() as { error?: string };
-        setScanError(data.error ?? 'Failed to remove item');
-      }
-    } catch {
-      setScanError('Network error');
-    } finally {
-      setRemoving(null);
-    }
-  }
-
-  // Save box weight + size
-  async function handleSaveDetails() {
-    setDetailsError('');
-    setDetailsSaved(false);
-    setSavingDetails(true);
-    try {
-      const body: { weightKg?: number; boxSizeId?: string | null } = {};
-      const w = parseFloat(weightInput);
-      if (!isNaN(w) && w > 0) body.weightKg = w;
-      body.boxSizeId = sizeId || null;
-      const res = await fetch(`/api/dispatch-orders/${doId}/boxes/${box.id}/details`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(body),
-      });
-      const data = await res.json() as { box?: PackingBoxRow; error?: string };
-      if (!res.ok) { setDetailsError(data.error ?? 'Failed to save'); return; }
-      onBoxUpdate({ ...box, ...data.box! });
-      setDetailsSaved(true);
-    } catch {
-      setDetailsError('Network error');
-    } finally {
-      setSavingDetails(false);
-    }
-  }
-
-  // Seal box — triggered when a photo is selected
-  async function handleSealPhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSealError('');
-    setSealing(true);
-    try {
-      const fd = new FormData();
-      fd.append('photo', file);
-      const res = await fetch(`/api/dispatch-orders/${doId}/boxes/${box.id}/seal`, {
-        method: 'POST',
-        body:   fd,
-      });
-      const data = await res.json() as { box?: PackingBoxRow; error?: string };
-      if (!res.ok) { setSealError(data.error ?? 'Failed to seal box'); return; }
-      const updated = data.box!;
-      onBoxUpdate({
-        ...box,
-        isSealed: updated.isSealed ?? true,
-        photoUrl: updated.photoUrl ?? null,
-        items:    updated.items ?? box.items,
-      });
-    } catch {
-      setSealError('Network error');
-    } finally {
-      setSealing(false);
-      if (photoRef.current) photoRef.current.value = '';
-    }
+      const res = await fetch(`/api/dispatch-orders/${doId}/scans/${scanId}`, { method: 'DELETE' });
+      if (res.ok) onScansChange(scans.filter((s) => s.id !== scanId));
+      else { const d = await res.json() as { error?: string }; setError(d.error ?? 'Remove failed'); }
+    } catch { setError('Network error'); }
+    finally { setRemoving(null); }
   }
 
   return (
     <div className="card p-4 space-y-3">
-      {/* Box header */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div>
-          <span className="text-sm font-semibold text-white">Box {box.boxNumber}</span>
-          <span className="ml-2 font-mono text-sm text-zinc-400">{box.boxLabel}</span>
-        </div>
-        {box.isSealed ? (
-          <span className="bg-green-500/10 text-green-400 border border-green-500/20 text-xs px-2 py-0.5 rounded">
-            Sealed ✓
-          </span>
-        ) : (
-          <span
-            className="text-xs px-2 py-0.5 rounded"
-            style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}
-          >
-            Open
-          </span>
-        )}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="text-sm font-semibold text-white">Step 1 — Scan Products</div>
+        <div className="text-xs text-zinc-400"><span className="font-semibold text-white">{scans.length}</span> / {orderQty} units scanned</div>
       </div>
-
-      {/* Sealed state */}
-      {box.isSealed ? (
-        <div className="space-y-3">
-          {/* Photo thumbnail */}
-          {box.photoUrl && (
-            <a href={box.photoUrl} target="_blank" rel="noopener noreferrer">
-              <img
-                src={box.photoUrl}
-                alt="Box photo"
-                className="w-20 h-20 object-cover rounded-lg border border-zinc-700 hover:opacity-80 transition-opacity"
-              />
-            </a>
-          )}
-          {/* Box details summary */}
-          {(box.weightKg || box.boxSize) && (
-            <div className="text-xs text-zinc-400 flex gap-3 flex-wrap">
-              {box.weightKg && <span>{box.weightKg} kg</span>}
-              {box.boxSize && <span>{box.boxSize.name} ({box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm)</span>}
-            </div>
-          )}
-          {/* Read-only items */}
-          {box.items.length > 0 && (
-            <div className="space-y-1">
-              <div className="text-xs text-zinc-500 font-semibold">
-                {box.items.length} unit{box.items.length !== 1 ? 's' : ''} in this box
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (scans.length / orderQty) * 100)}%`, background: scans.length >= orderQty ? '#22c55e' : '#0ea5e9' }} />
+      </div>
+      <form onSubmit={handleScan} className="flex gap-2">
+        <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} placeholder="Scan barcode or serial number…" className="input-field text-sm font-mono flex-1" autoComplete="off" spellCheck={false} disabled={scanning} autoFocus />
+        <button type="submit" disabled={scanning || !input.trim()} className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40" style={{ background: '#0ea5e9', color: '#fff' }}>{scanning ? '…' : 'Scan'}</button>
+      </form>
+      {error && <p className="text-xs text-rose-400">{error}</p>}
+      {scans.length > 0 && (
+        <div className="space-y-1.5 max-h-64 overflow-y-auto">
+          {scans.map((s, idx) => (
+            <div key={s.id} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-zinc-600 w-5 text-right">{idx + 1}</span>
+                <span className="font-mono text-sm text-white">{s.serial}</span>
               </div>
-              <div className="flex flex-wrap gap-1">
-                {box.items.map((item) => (
-                  <span
-                    key={item.id}
-                    className="font-mono text-[10px] px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(255,255,255,0.06)', color: '#a1a1aa' }}
-                  >
-                    {item.unit.serialNumber}
-                  </span>
-                ))}
-              </div>
+              <button type="button" onClick={() => handleRemove(s.id)} disabled={removing === s.id} className="text-xs text-zinc-500 hover:text-rose-400 px-1.5 py-0.5 rounded transition-colors">{removing === s.id ? '…' : '✕'}</button>
             </div>
-          )}
-          {/* Print packing slip */}
-          <a
-            href={`/print/box-label/${box.id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
-            style={{ background: 'rgba(14,165,233,0.12)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}
-          >
-            Print Packing Slip
-          </a>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {/* Scan input */}
-          <form onSubmit={handleScan} className="flex gap-2">
-            <input
-              ref={barcodeRef}
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
-              placeholder="Scan barcode or serial…"
-              className="input-field text-sm font-mono flex-1"
-              autoComplete="off"
-              spellCheck={false}
-              disabled={scanning}
-            />
-            <button
-              type="submit"
-              disabled={scanning || !barcode.trim()}
-              className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
-              style={{ background: '#0ea5e9', color: '#fff' }}
-            >
-              {scanning ? '…' : 'Add'}
-            </button>
-          </form>
-
-          {scanError && <p className="text-xs text-rose-400">{scanError}</p>}
-
-          {/* Items list */}
-          {box.items.length > 0 && (
-            <div className="space-y-1.5">
-              {box.items.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between rounded-lg px-3 py-2"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-                >
-                  <div>
-                    <div className="font-mono text-sm text-white">{item.unit.serialNumber}</div>
-                    <div className="text-[11px] text-zinc-500">{item.barcode}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeItem(item.id)}
-                    disabled={removing === item.id}
-                    className="text-xs text-zinc-500 hover:text-rose-400 px-1.5 py-0.5 rounded transition-colors"
-                  >
-                    {removing === item.id ? '…' : 'Remove'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Box details */}
-          <div
-            className="rounded-lg p-3 space-y-3"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
-          >
-            <div className="text-xs font-semibold text-zinc-400">Box Details</div>
-            <div className="flex gap-2 flex-wrap">
-              <div className="flex-1 min-w-[100px]">
-                <label className="text-[11px] text-zinc-500 mb-1 block">Weight (kg)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={weightInput}
-                  onChange={(e) => { setWeightInput(e.target.value); setDetailsSaved(false); }}
-                  placeholder="0.0"
-                  className="input-field text-sm w-full"
-                />
-              </div>
-              <div className="flex-[2] min-w-[160px]">
-                <label className="text-[11px] text-zinc-500 mb-1 block">Box Size</label>
-                <select
-                  value={sizeId}
-                  onChange={(e) => { setSizeId(e.target.value); setDetailsSaved(false); }}
-                  className="input-field text-sm w-full"
-                >
-                  <option value="">— Select size —</option>
-                  {boxSizes.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.lengthCm}×{s.widthCm}×{s.heightCm} cm)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            {detailsError && <p className="text-xs text-rose-400">{detailsError}</p>}
-            <button
-              type="button"
-              onClick={handleSaveDetails}
-              disabled={savingDetails}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-40"
-              style={{ background: 'rgba(255,255,255,0.06)', color: detailsSaved ? '#4ade80' : '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}
-            >
-              {savingDetails ? 'Saving…' : detailsSaved ? 'Saved ✓' : 'Save Details'}
-            </button>
-          </div>
-
-          {/* Seal box */}
-          {sealError && <p className="text-xs text-rose-400">{sealError}</p>}
-          <div>
-            <input
-              ref={photoRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={handleSealPhotoSelect}
-              disabled={sealing}
-            />
-            <button
-              type="button"
-              onClick={() => photoRef.current?.click()}
-              disabled={sealing || box.items.length === 0}
-              className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
-              style={{ background: box.items.length > 0 ? '#22c55e' : undefined, color: '#fff' }}
-            >
-              {sealing ? 'Sealing…' : box.items.length === 0 ? 'Add items to seal' : 'Seal Box (take photo)'}
-            </button>
-            {box.items.length === 0 && (
-              <p className="text-xs text-zinc-600 text-center mt-1">Scan at least one unit before sealing</p>
-            )}
-          </div>
+          ))}
         </div>
       )}
+      <button type="button" onClick={onNext} disabled={scans.length === 0} className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all" style={scans.length > 0 ? { background: '#0ea5e9', color: '#fff' } : undefined}>
+        Verify with Order →
+      </button>
     </div>
   );
 }
 
-// ─── Main DOPackingPanel ──────────────────────────────────────────────────────
-export function DOPackingPanel({
-  do: initialDO,
-  boxSizes,
-  role,
-  canApprove = false,
-}: {
-  do:          DispatchOrderFull;
-  boxSizes:    BoxSizeOption[];
-  role:        string;
-  canApprove?: boolean;
+function PhaseBVerify({ orderQty, scans, isPartial, partialReason, onPartialChange, onReasonChange, onBack, onNext }: {
+  orderQty: number; scans: StagedScan[]; isPartial: boolean; partialReason: string;
+  onPartialChange: (v: boolean) => void; onReasonChange: (v: string) => void; onBack: () => void; onNext: () => void;
 }) {
-  const router = useRouter();
-  const [doData, setDOData]           = useState<DispatchOrderFull>(initialDO);
-  const [addingBox, setAddingBox]     = useState(false);
-  const [addBoxError, setAddBoxError] = useState('');
-  const [submitting, setSubmitting]   = useState(false);
-  const [submitError, setSubmitError] = useState('');
+  const short = scans.length < orderQty;
+  return (
+    <div className="card p-4 space-y-4">
+      <div className="text-sm font-semibold text-white">Step 2 — Verify with Order</div>
+      <div className="flex gap-4">
+        <div className="flex-1 rounded-lg p-3 text-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-1">Order Qty</div>
+          <div className="text-2xl font-black text-white">{orderQty}</div>
+        </div>
+        <div className="flex-1 rounded-lg p-3 text-center" style={{ background: scans.length >= orderQty ? 'rgba(34,197,94,0.08)' : 'rgba(251,191,36,0.08)', border: `1px solid ${scans.length >= orderQty ? 'rgba(34,197,94,0.2)' : 'rgba(251,191,36,0.2)'}` }}>
+          <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-1">Scanned</div>
+          <div className={`text-2xl font-black ${scans.length >= orderQty ? 'text-green-400' : 'text-amber-400'}`}>{scans.length}</div>
+        </div>
+      </div>
+      <div>
+        <div className="text-xs text-zinc-500 mb-2">Units to dispatch:</div>
+        <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+          {scans.map((s) => (
+            <span key={s.id} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.06)', color: '#a1a1aa', border: '1px solid rgba(255,255,255,0.08)' }}>{s.serial}</span>
+          ))}
+        </div>
+      </div>
+      {short && (
+        <div className="rounded-lg p-3 space-y-2" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)' }}>
+          <div className="text-xs text-amber-400 font-semibold">{orderQty - scans.length} unit{orderQty - scans.length !== 1 ? 's' : ''} short — is this a partial shipment?</div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={isPartial} onChange={(e) => onPartialChange(e.target.checked)} className="rounded" />
+            <span className="text-xs text-zinc-300">Yes, this is a partial shipment</span>
+          </label>
+          {isPartial && <input type="text" value={partialReason} onChange={(e) => onReasonChange(e.target.value)} placeholder="Reason for partial shipment…" className="input-field text-xs w-full mt-1" />}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button type="button" onClick={onBack} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}>← Back</button>
+        <button type="button" onClick={onNext} disabled={short && (!isPartial || !partialReason.trim())} className="flex-1 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all" style={{ background: '#0ea5e9', color: '#fff' }}>Set up Boxes →</button>
+      </div>
+    </div>
+  );
+}
 
-  const isActive   = doData.status === 'OPEN' || doData.status === 'PACKING';
-  const sealedCount = doData.boxes.filter((b) => b.isSealed).length;
-  const totalBoxes  = doData.boxes.length;
-  const allSealed   = totalBoxes > 0 && sealedCount === totalBoxes;
+function PhaseCBoxSetup({ doId, scans, boxSizes, isPartial, partialReason, onBack, onCreated }: {
+  doId: string; scans: StagedScan[]; boxSizes: BoxSizeOption[]; isPartial: boolean; partialReason: string;
+  onBack: () => void; onCreated: (boxes: PackingBoxRow[]) => void;
+}) {
+  const [boxCount, setBoxCount] = useState(1);
+  const [boxForms, setBoxForms] = useState<BoxFormEntry[]>([{ boxSizeId: '', weightKg: '' }]);
+  const [creating, setCreating] = useState(false);
+  const [error, setError]       = useState('');
 
-  // Update a single box in state
-  function handleBoxUpdate(updated: PackingBoxRow) {
-    setDOData((prev) => ({
-      ...prev,
-      boxes: prev.boxes.map((b) => (b.id === updated.id ? updated : b)),
-    }));
+  function setCount(n: number) {
+    const clamped = Math.max(1, Math.min(50, n));
+    setBoxCount(clamped);
+    setBoxForms((prev) => {
+      if (clamped > prev.length) return [...prev, ...Array.from({ length: clamped - prev.length }, () => ({ boxSizeId: '', weightKg: '' }))];
+      return prev.slice(0, clamped);
+    });
+  }
+  function updateForm(idx: number, field: keyof BoxFormEntry, value: string) {
+    setBoxForms((prev) => prev.map((f, i) => i === idx ? { ...f, [field]: value } : f));
   }
 
-  // Add a new box dynamically
-  async function handleAddBox() {
-    setAddBoxError('');
-    setAddingBox(true);
-    try {
-      const res = await fetch(`/api/dispatch-orders/${doData.id}/boxes`, { method: 'POST' });
-      const data = await res.json() as { box?: PackingBoxRow; error?: string };
-      if (!res.ok) { setAddBoxError(data.error ?? 'Failed to add box'); return; }
-      setDOData((prev) => ({
-        ...prev,
-        status: 'PACKING',
-        boxes: [...prev.boxes, data.box!],
-      }));
-    } catch {
-      setAddBoxError('Network error');
-    } finally {
-      setAddingBox(false);
-    }
-  }
+  const base = Math.floor(scans.length / boxCount);
+  const rem  = scans.length % boxCount;
+  const dist = Array.from({ length: boxCount }, (_, i) => base + (i < rem ? 1 : 0));
+  const allValid = boxForms.every((f) => f.boxSizeId && parseFloat(f.weightKg) > 0);
 
-  // Submit to accounts
-  async function handleSubmit() {
-    setSubmitError('');
-    if (!allSealed) { setSubmitError('Seal all boxes before submitting.'); return; }
-    setSubmitting(true);
+  async function handleCreate() {
+    if (!allValid) return;
+    setError(''); setCreating(true);
     try {
-      const res = await fetch(`/api/dispatch-orders/${doData.id}/submit`, { method: 'POST' });
-      const data = await res.json() as { error?: string };
-      if (!res.ok) { setSubmitError(data.error ?? 'Submit failed'); return; }
-      router.push('/shipping');
-    } catch {
-      setSubmitError('Network error');
-    } finally {
-      setSubmitting(false);
-    }
+      const res  = await fetch(`/api/dispatch-orders/${doId}/create-boxes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boxes: boxForms.map((f) => ({ boxSizeId: f.boxSizeId, weightKg: parseFloat(f.weightKg) })), isPartial, partialReason: isPartial ? partialReason : undefined }) });
+      const data = await res.json() as { boxes?: PackingBoxRow[]; error?: string };
+      if (!res.ok) { setError(data.error ?? 'Failed to create boxes'); return; }
+      onCreated(data.boxes!);
+    } catch { setError('Network error'); }
+    finally { setCreating(false); }
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => router.push('/shipping')}
-          className="text-sm text-zinc-400 hover:text-white transition-colors"
-        >
-          ← Back
-        </button>
-        <div className="flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-lg font-semibold text-white font-mono">{doData.doNumber}</span>
-            <DOStatusBadge status={doData.status} />
-          </div>
-          <div className="text-sm text-zinc-400 mt-0.5">
-            {doData.order.client?.customerName ?? '—'} · Order #{doData.order.orderNumber} · {doData.order.product.name}
-          </div>
+    <div className="card p-4 space-y-4">
+      <div className="text-sm font-semibold text-white">Step 3 — Set up Boxes</div>
+      <div>
+        <div className="text-xs text-zinc-500 mb-2">How many boxes?</div>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => setCount(boxCount - 1)} disabled={boxCount <= 1} className="w-9 h-9 rounded-lg font-bold text-lg disabled:opacity-30" style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7' }}>−</button>
+          <input type="number" min={1} max={50} value={boxCount} onChange={(e) => setCount(parseInt(e.target.value) || 1)} className="input-field text-center font-bold text-lg w-20" />
+          <button type="button" onClick={() => setCount(boxCount + 1)} disabled={boxCount >= 50} className="w-9 h-9 rounded-lg font-bold text-lg disabled:opacity-30" style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7' }}>+</button>
+          <span className="text-xs text-zinc-500">{scans.length} unit{scans.length !== 1 ? 's' : ''} across {boxCount} box{boxCount !== 1 ? 'es' : ''}</span>
         </div>
       </div>
-
-      {/* ── OPEN / PACKING STATE ── */}
-      {isActive && (
-        <div className="space-y-4">
-          {/* Add box + progress bar */}
-          <div className="card p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="text-sm text-zinc-400">
-                {totalBoxes === 0
-                  ? 'No boxes yet — add your first box to start packing'
-                  : `${sealedCount} of ${totalBoxes} box${totalBoxes !== 1 ? 'es' : ''} sealed`}
+      <div className="flex flex-wrap gap-1.5">
+        {dist.map((count, i) => (
+          <span key={i} className="text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(14,165,233,0.1)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}>Box {i + 1}: {count} unit{count !== 1 ? 's' : ''}</span>
+        ))}
+      </div>
+      <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+        {boxForms.map((form, idx) => (
+          <div key={idx} className="rounded-lg p-3 space-y-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="text-xs font-semibold text-zinc-400">Box {idx + 1} — {dist[idx]} unit{dist[idx] !== 1 ? 's' : ''}</div>
+            <div className="flex gap-2 flex-wrap">
+              <div className="flex-[2] min-w-[160px]">
+                <label className="text-[11px] text-zinc-500 mb-1 block">Box Size</label>
+                <select value={form.boxSizeId} onChange={(e) => updateForm(idx, 'boxSizeId', e.target.value)} className="input-field text-sm w-full">
+                  <option value="">— Select size —</option>
+                  {boxSizes.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.lengthCm}×{s.widthCm}×{s.heightCm} cm)</option>)}
+                </select>
               </div>
-              <button
-                type="button"
-                onClick={handleAddBox}
-                disabled={addingBox}
-                className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
-                style={{ background: '#0ea5e9', color: '#fff' }}
-              >
-                {addingBox ? 'Adding…' : '+ Add Box'}
-              </button>
-            </div>
-
-            {totalBoxes > 0 && (
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{
-                    width: `${Math.min(100, (sealedCount / totalBoxes) * 100)}%`,
-                    background: allSealed ? '#22c55e' : '#0ea5e9',
-                  }}
-                />
+              <div className="flex-1 min-w-[90px]">
+                <label className="text-[11px] text-zinc-500 mb-1 block">Weight (kg)</label>
+                <input type="number" step="0.1" min="0.1" value={form.weightKg} onChange={(e) => updateForm(idx, 'weightKg', e.target.value)} placeholder="0.0" className="input-field text-sm w-full" />
               </div>
-            )}
-
-            {addBoxError && <p className="text-xs text-rose-400">{addBoxError}</p>}
-
-            {/* Action buttons */}
-            {totalBoxes > 0 && (
-              <div className="flex gap-2 flex-wrap pt-1">
-                <a
-                  href={`/print/packing-list/${doData.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 text-center py-2.5 rounded-lg text-sm font-semibold"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}
-                >
-                  Packing List
-                </a>
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={submitting || !allSealed}
-                  title={!allSealed ? 'Seal all boxes before submitting' : undefined}
-                  className="flex-1 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
-                  style={allSealed
-                    ? { background: '#22c55e', color: '#fff' }
-                    : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }}
-                >
-                  {submitting ? 'Submitting…' : 'Submit to Accounts'}
-                </button>
-              </div>
-            )}
-
-            {submitError && <p className="text-xs text-rose-400">{submitError}</p>}
-            {totalBoxes > 0 && !allSealed && (
-              <p className="text-xs text-zinc-600 text-center">Seal all boxes before submitting</p>
-            )}
-          </div>
-
-          {/* Box cards */}
-          <div className="flex flex-col gap-4">
-            {doData.boxes.map((box) => (
-              <BoxCard
-                key={box.id}
-                box={box}
-                doId={doData.id}
-                doNumber={doData.doNumber}
-                boxSizes={boxSizes}
-                onBoxUpdate={handleBoxUpdate}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── SUBMITTED STATE ── */}
-      {doData.status === 'SUBMITTED' && (
-        <div className="space-y-4">
-          <div
-            className="rounded-xl p-4 space-y-1"
-            style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)' }}
-          >
-            <div className="text-sm font-semibold" style={{ color: '#c4b5fd' }}>
-              {canApprove ? 'Submitted — ready for your approval' : 'Submitted — awaiting accounts approval'}
-            </div>
-            <div className="text-xs text-zinc-400">
-              {doData.boxes.reduce((s, b) => s + b.items.length, 0)} unit{doData.boxes.reduce((s, b) => s + b.items.length, 0) !== 1 ? 's' : ''} across {totalBoxes} box{totalBoxes !== 1 ? 'es' : ''}
             </div>
           </div>
-          <div className="flex gap-2">
-            <a
-              href={`/print/packing-list/${doData.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 rounded-lg text-sm font-semibold"
-              style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}
-            >
-              Packing List
-            </a>
-          </div>
-          <ReadOnlyBoxList boxes={doData.boxes} />
+        ))}
+      </div>
+      {error && <p className="text-xs text-rose-400">{error}</p>}
+      <div className="flex gap-2">
+        <button type="button" onClick={onBack} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}>← Back</button>
+        <button type="button" onClick={handleCreate} disabled={creating || !allValid} className="flex-1 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all" style={allValid ? { background: '#22c55e', color: '#fff' } : undefined}>
+          {creating ? 'Creating…' : `Create ${boxCount} Box${boxCount !== 1 ? 'es' : ''} & Print Labels`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BoxScanCard({ box, doId, onUpdate }: { box: PackingBoxRow; doId: string; onUpdate: (u: PackingBoxRow) => void }) {
+  const [input, setInput]       = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [error, setError]       = useState('');
+
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault();
+    const b = input.trim().toUpperCase();
+    if (!b) return;
+    setError(''); setScanning(true);
+    try {
+      const res  = await fetch(`/api/dispatch-orders/${doId}/boxes/${box.id}/verify-label`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode: b }) });
+      const data = await res.json() as { labelScanned?: boolean; error?: string };
+      if (!res.ok) { setError(data.error ?? 'Scan failed'); return; }
+      onUpdate({ ...box, labelScanned: true, isSealed: true }); setInput('');
+    } catch { setError('Network error'); }
+    finally { setScanning(false); }
+  }
+
+  return (
+    <div className="card p-4 space-y-3" style={box.labelScanned ? { borderColor: 'rgba(34,197,94,0.3)' } : undefined}>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <span className="text-sm font-semibold text-white">Box {box.boxNumber}</span>
+          <span className="ml-2 font-mono text-xs text-zinc-500">{box.boxLabel}</span>
+        </div>
+        {box.labelScanned
+          ? <span className="text-xs font-bold px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">Label Scanned ✓</span>
+          : <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}>Awaiting Label Scan</span>
+        }
+      </div>
+      <div className="text-xs text-zinc-400 flex gap-3 flex-wrap">
+        {box.weightKg && <span>{box.weightKg} kg</span>}
+        {box.boxSize && <span>{box.boxSize.name} ({box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm)</span>}
+        <span>{box.items.length} unit{box.items.length !== 1 ? 's' : ''}</span>
+      </div>
+      {box.items.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {box.items.map((item) => <span key={item.id} className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.06)', color: '#a1a1aa' }}>{item.unit.serialNumber}</span>)}
         </div>
       )}
-
-      {/* ── APPROVED STATE ── */}
-      {doData.status === 'APPROVED' && (
-        <div className="space-y-4">
-          <div
-            className="rounded-xl p-4 space-y-1"
-            style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}
-          >
-            <div className="text-sm font-semibold text-green-400">Approved</div>
-            {doData.invoices && doData.invoices.length > 0 && (
-              <div className="text-xs text-zinc-400">
-                Invoice{doData.invoices.length > 1 ? 's' : ''}: {doData.invoices.map((inv) => inv.invoiceNumber).join(', ')}
-              </div>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <a
-              href={`/print/packing-list/${doData.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 rounded-lg text-sm font-semibold"
-              style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}
-            >
-              Packing List
-            </a>
-          </div>
-          <ReadOnlyBoxList boxes={doData.boxes} />
-        </div>
-      )}
-
-      {/* ── REJECTED STATE ── */}
-      {doData.status === 'REJECTED' && (
-        <div className="space-y-4">
-          <div
-            className="rounded-xl p-4 space-y-1"
-            style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}
-          >
-            <div className="text-sm font-semibold text-rose-400">Rejected</div>
-            {doData.rejectedReason && (
-              <div className="text-xs text-zinc-400">Reason: {doData.rejectedReason}</div>
-            )}
-          </div>
-          <ReadOnlyBoxList boxes={doData.boxes} />
+      <a href={`/print/box-label/${box.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: 'rgba(14,165,233,0.12)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}>
+        Print Box Label
+      </a>
+      {!box.labelScanned && (
+        <div className="space-y-1">
+          <div className="text-xs text-zinc-500">Stick label on box, then scan it here:</div>
+          <form onSubmit={handleVerify} className="flex gap-2">
+            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={`Scan ${box.boxLabel}…`} className="input-field text-sm font-mono flex-1" autoComplete="off" spellCheck={false} disabled={scanning} />
+            <button type="submit" disabled={scanning || !input.trim()} className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40" style={{ background: '#22c55e', color: '#fff' }}>{scanning ? '…' : 'Confirm'}</button>
+          </form>
+          {error && <p className="text-xs text-rose-400">{error}</p>}
         </div>
       )}
     </div>
   );
 }
 
-// ─── ReadOnlyBoxList ──────────────────────────────────────────────────────────
-function ReadOnlyBoxList({ boxes }: { boxes: PackingBoxRow[] }) {
+function ReadOnlyBoxList({ boxes, doId }: { boxes: PackingBoxRow[]; doId: string }) {
   return (
     <div className="flex flex-col gap-4">
       {boxes.map((box) => (
         <div key={box.id} className="card p-4 space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div>
-              <span className="text-sm font-semibold text-white">Box {box.boxNumber}</span>
-              <span className="ml-2 font-mono text-sm text-zinc-400">{box.boxLabel}</span>
-            </div>
-            {box.isSealed ? (
-              <span className="bg-green-500/10 text-green-400 border border-green-500/20 text-xs px-2 py-0.5 rounded">
-                Sealed ✓
-              </span>
-            ) : (
-              <span
-                className="text-xs px-2 py-0.5 rounded"
-                style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}
-              >
-                Open
-              </span>
-            )}
+            <div><span className="text-sm font-semibold text-white">Box {box.boxNumber}</span><span className="ml-2 font-mono text-xs text-zinc-400">{box.boxLabel}</span></div>
+            <span className="bg-green-500/10 text-green-400 border border-green-500/20 text-xs px-2 py-0.5 rounded">Sealed ✓</span>
           </div>
-
           {(box.weightKg || box.boxSize) && (
             <div className="text-xs text-zinc-400 flex gap-3 flex-wrap">
               {box.weightKg && <span>{box.weightKg} kg</span>}
               {box.boxSize && <span>{box.boxSize.name} ({box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm)</span>}
             </div>
           )}
-
-          {box.photoUrl && (
-            <a href={box.photoUrl} target="_blank" rel="noopener noreferrer">
-              <img
-                src={box.photoUrl}
-                alt="Box photo"
-                className="w-20 h-20 object-cover rounded-lg border border-zinc-700 hover:opacity-80 transition-opacity"
-              />
-            </a>
-          )}
-
-          {box.items.length > 0 && (
-            <div className="space-y-1">
-              <div className="text-xs text-zinc-500 font-semibold">
-                {box.items.length} unit{box.items.length !== 1 ? 's' : ''}
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {box.items.map((item) => (
-                  <span
-                    key={item.id}
-                    className="font-mono text-[10px] px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(255,255,255,0.06)', color: '#a1a1aa' }}
-                  >
-                    {item.unit.serialNumber}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <a
-            href={`/print/box-label/${box.id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
-            style={{ background: 'rgba(14,165,233,0.12)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}
-          >
-            Print Packing Slip
-          </a>
+          {box.items.length > 0 && <div className="flex flex-wrap gap-1">{box.items.map((item) => <span key={item.id} className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.06)', color: '#a1a1aa' }}>{item.unit.serialNumber}</span>)}</div>}
+          <a href={`/print/box-label/${box.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: 'rgba(14,165,233,0.12)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}>Print Box Label</a>
         </div>
       ))}
+    </div>
+  );
+}
+
+export function DOPackingPanel({ do: initialDO, boxSizes, role, canApprove = false }: {
+  do: DispatchOrderFull; boxSizes: BoxSizeOption[]; role: string; canApprove?: boolean;
+}) {
+  const router = useRouter();
+  const [doData, setDOData]               = useState<DispatchOrderFull>(initialDO);
+  const [scans, setScans]                 = useState<StagedScan[]>(initialDO.scans ?? []);
+  const [phase, setPhase]                 = useState<'scan' | 'verify' | 'boxes'>('scan');
+  const [isPartial, setIsPartial]         = useState(false);
+  const [partialReason, setPartialReason] = useState('');
+  const [submitting, setSubmitting]       = useState(false);
+  const [submitError, setSubmitError]     = useState('');
+
+  const isPacking  = doData.status === 'PACKING';
+  const allLabeled = isPacking && doData.boxes.length > 0 && doData.boxes.every((b) => b.labelScanned);
+
+  function handleBoxUpdate(updated: PackingBoxRow) {
+    setDOData((prev) => ({ ...prev, boxes: prev.boxes.map((b) => b.id === updated.id ? updated : b) }));
+  }
+  function handleBoxesCreated(boxes: PackingBoxRow[]) {
+    setDOData((prev) => ({ ...prev, status: 'PACKING', boxes })); setScans([]);
+  }
+
+  async function handleSubmit() {
+    setSubmitError(''); setSubmitting(true);
+    try {
+      const res  = await fetch(`/api/dispatch-orders/${doData.id}/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(isPartial ? { isPartial: true, partialReason } : {}) });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) { setSubmitError(data.error ?? 'Submit failed'); return; }
+      router.push('/shipping');
+    } catch { setSubmitError('Network error'); }
+    finally { setSubmitting(false); }
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-4">
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={() => router.push('/shipping')} className="text-sm text-zinc-400 hover:text-white transition-colors">← Back</button>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-lg font-semibold text-white font-mono">{doData.doNumber}</span>
+            <DOStatusBadge status={doData.status} />
+          </div>
+          <div className="text-sm text-zinc-400 mt-0.5">{doData.order.client?.customerName ?? '—'} · Order #{doData.order.orderNumber} · {doData.order.product.name}</div>
+        </div>
+      </div>
+
+      {doData.status === 'OPEN' && (
+        <>
+          {phase === 'scan'   && <PhaseAScan doId={doData.id} orderQty={doData.order.quantity} scans={scans} onScansChange={setScans} onNext={() => setPhase('verify')} />}
+          {phase === 'verify' && <PhaseBVerify orderQty={doData.order.quantity} scans={scans} isPartial={isPartial} partialReason={partialReason} onPartialChange={setIsPartial} onReasonChange={setPartialReason} onBack={() => setPhase('scan')} onNext={() => setPhase('boxes')} />}
+          {phase === 'boxes'  && <PhaseCBoxSetup doId={doData.id} scans={scans} boxSizes={boxSizes} isPartial={isPartial} partialReason={partialReason} onBack={() => setPhase('verify')} onCreated={handleBoxesCreated} />}
+        </>
+      )}
+
+      {isPacking && (
+        <div className="space-y-4">
+          <div className="card p-4 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="text-sm text-zinc-400">{doData.boxes.filter((b) => b.labelScanned).length} of {doData.boxes.length} box{doData.boxes.length !== 1 ? 'es' : ''} confirmed</div>
+              <a href={`/print/packing-list/${doData.id}`} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}>Packing List</a>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+              <div className="h-full rounded-full transition-all" style={{ width: `${doData.boxes.length > 0 ? (doData.boxes.filter((b) => b.labelScanned).length / doData.boxes.length) * 100 : 0}%`, background: allLabeled ? '#22c55e' : '#0ea5e9' }} />
+            </div>
+            {submitError && <p className="text-xs text-rose-400">{submitError}</p>}
+            <button type="button" onClick={handleSubmit} disabled={submitting || !allLabeled} className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all" style={allLabeled ? { background: '#22c55e', color: '#fff' } : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }}>
+              {submitting ? 'Submitting…' : 'Submit to Accounts'}
+            </button>
+            {!allLabeled && <p className="text-xs text-zinc-600 text-center">Print labels → stick on boxes → scan each label to confirm</p>}
+          </div>
+          <div className="flex flex-col gap-4">
+            {doData.boxes.map((box) => <BoxScanCard key={box.id} box={box} doId={doData.id} onUpdate={handleBoxUpdate} />)}
+          </div>
+        </div>
+      )}
+
+      {doData.status === 'SUBMITTED' && (
+        <div className="space-y-4">
+          <div className="rounded-xl p-4 space-y-1" style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)' }}>
+            <div className="text-sm font-semibold" style={{ color: '#c4b5fd' }}>{canApprove ? 'Submitted — ready for your approval' : 'Submitted — awaiting accounts approval'}</div>
+            <div className="text-xs text-zinc-400">{doData.boxes.reduce((s, b) => s + b.items.length, 0)} units across {doData.boxes.length} box{doData.boxes.length !== 1 ? 'es' : ''}</div>
+          </div>
+          <a href={`/print/packing-list/${doData.id}`} target="_blank" rel="noopener noreferrer" className="inline-block px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}>Packing List</a>
+          <ReadOnlyBoxList boxes={doData.boxes} doId={doData.id} />
+        </div>
+      )}
+
+      {doData.status === 'APPROVED' && (
+        <div className="space-y-4">
+          <div className="rounded-xl p-4 space-y-1" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
+            <div className="text-sm font-semibold text-green-400">Approved</div>
+            {doData.invoices && doData.invoices.length > 0 && <div className="text-xs text-zinc-400">Invoice{doData.invoices.length > 1 ? 's' : ''}: {doData.invoices.map((i) => i.invoiceNumber).join(', ')}</div>}
+          </div>
+          <a href={`/print/packing-list/${doData.id}`} target="_blank" rel="noopener noreferrer" className="inline-block px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}>Packing List</a>
+          <ReadOnlyBoxList boxes={doData.boxes} doId={doData.id} />
+        </div>
+      )}
+
+      {doData.status === 'REJECTED' && (
+        <div className="space-y-4">
+          <div className="rounded-xl p-4 space-y-1" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
+            <div className="text-sm font-semibold text-rose-400">Rejected</div>
+            {doData.rejectedReason && <div className="text-xs text-zinc-400">Reason: {doData.rejectedReason}</div>}
+          </div>
+          <ReadOnlyBoxList boxes={doData.boxes} doId={doData.id} />
+        </div>
+      )}
     </div>
   );
 }
