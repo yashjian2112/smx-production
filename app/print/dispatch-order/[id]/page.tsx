@@ -8,17 +8,24 @@ export default async function PrintDispatchOrderPage({ params }: { params: { id:
     include: {
       order: {
         include: {
-          client: true,
           product: { select: { code: true, name: true } },
+          // Fetch ready units on the order so we can show them before packing starts
+          units: {
+            where: {
+              currentStage:    'FINAL_ASSEMBLY',
+              currentStatus:   'APPROVED',
+              readyForDispatch: false,
+            },
+            select: { serialNumber: true, finalAssemblyBarcode: true },
+            orderBy: { serialNumber: 'asc' },
+          },
         },
       },
       createdBy:  { select: { name: true } },
       approvedBy: { select: { name: true } },
       boxes: {
         include: {
-          boxSize: {
-            select: { name: true, lengthCm: true, widthCm: true, heightCm: true },
-          },
+          boxSize: { select: { name: true, lengthCm: true, widthCm: true, heightCm: true } },
           items: {
             include: {
               unit: { select: { serialNumber: true, finalAssemblyBarcode: true } },
@@ -35,6 +42,5 @@ export default async function PrintDispatchOrderPage({ params }: { params: { id:
   );
 
   const settings = await getAllSettings();
-
   return <PrintDispatchOrder dispatchOrder={dispatchOrder as any} settings={settings} />;
 }
