@@ -88,8 +88,8 @@ export async function POST(
     if (unit.packingBoxItem)
       return NextResponse.json({ error: 'Unit is already packed in a box' }, { status: 400 });
 
-    // Create the PackingBoxItem
-    await prisma.packingBoxItem.create({
+    // Create the PackingBoxItem and return it directly (with unit info)
+    const item = await prisma.packingBoxItem.create({
       data: {
         boxId:              params.boxId,
         unitId:             unit.id,
@@ -98,22 +98,12 @@ export async function POST(
         scannedById:        session.id,
         inspectionPhotoUrl: inspectionPhotoUrl ?? null,
       },
-    });
-
-    // Return updated box with items
-    const updatedBox = await prisma.packingBox.findUnique({
-      where: { id: params.boxId },
       include: {
-        items: {
-          orderBy: { scannedAt: 'asc' },
-          include: {
-            unit: { select: { serialNumber: true, finalAssemblyBarcode: true } },
-          },
-        },
+        unit: { select: { serialNumber: true, finalAssemblyBarcode: true } },
       },
     });
 
-    return NextResponse.json(updatedBox, { status: 201 });
+    return NextResponse.json({ item }, { status: 201 });
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
