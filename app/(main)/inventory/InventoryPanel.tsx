@@ -6,7 +6,7 @@ const TABS = ['Stock', 'GRN', 'Materials', 'Movements'] as const;
 type Tab = typeof TABS[number];
 
 interface RawMaterial {
-  id: string; code: string; name: string; unit: string;
+  id: string; code: string; name: string; unit: string; active: boolean;
   currentStock: number; minimumStock: number; reorderPoint: number;
   category?: { id: string; name: string } | null;
   stockValue?: number; isLowStock?: boolean; isCritical?: boolean; batchCount?: number;
