@@ -8,7 +8,7 @@ export async function POST(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'PACKING');
 
     const dispatchOrder = await prisma.dispatchOrder.findUnique({
       where:  { id: params.id },

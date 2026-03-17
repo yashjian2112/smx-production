@@ -12,6 +12,7 @@ type DOListItem = {
   createdAt:   string;
   submittedAt: string | null;
   approvedAt:  string | null;
+  rejectedAt:  string | null;
   rejectedReason: string | null;
   order: {
     orderNumber: string;
@@ -71,7 +72,10 @@ export function ShippingPanel({
     setLoadingDOs(true);
     try {
       let url = '';
-      if (tab === 'processing') url = '/api/dispatch-orders?status=SUBMITTED';
+      const isPackingRole = sessionRole === 'PACKING';
+      if (tab === 'processing') url = isPackingRole
+        ? '/api/dispatch-orders?status=OPEN,PACKING'
+        : '/api/dispatch-orders?status=SUBMITTED';
       if (tab === 'completed')  url = '/api/dispatch-orders?status=APPROVED,REJECTED';
       if (!url) return;
       const res  = await fetch(url);
@@ -95,8 +99,10 @@ export function ShippingPanel({
     loadDOs('processing');
   }, []);
 
+  const isPackingRole = sessionRole === 'PACKING';
+
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'processing', label: 'Processing' },
+    { key: 'processing', label: isPackingRole ? 'To Pack' : 'Processing' },
     { key: 'completed',  label: 'Completed' },
   ];
 
@@ -137,14 +143,18 @@ export function ShippingPanel({
           {loadingDOs && <div className="text-zinc-500 text-sm">Loading…</div>}
 
           {!loadingDOs && processingDOs !== null && processingDOs.length === 0 && (
-            <div className="text-sm text-zinc-500 text-center py-6">No dispatch orders pending approval.</div>
+            <div className="text-sm text-zinc-500 text-center py-6">
+              {isPackingRole ? 'No dispatch orders to pack.' : 'No dispatch orders pending approval.'}
+            </div>
           )}
 
           {!loadingDOs && (processingDOs ?? []).map((d) => {
             const unitCount  = d.boxes.reduce((sum: number, b) => sum + (b._count?.items ?? 0), 0);
             const boxCount   = d.totalBoxes ?? d.boxes.length;
-            const dateStr    = d.submittedAt
-              ? new Date(d.submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+            const dateRef    = isPackingRole ? d.createdAt : d.submittedAt;
+            const dateLabel  = isPackingRole ? 'Created' : 'Submitted';
+            const dateStr    = dateRef
+              ? new Date(dateRef).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
               : '—';
             return (
               <div key={d.id} className="card p-4 space-y-2">
@@ -158,7 +168,7 @@ export function ShippingPanel({
                       {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
                     </div>
                     <div className="text-xs text-zinc-500 mt-0.5">
-                      {d.order.product.name} · {boxCount} box{boxCount !== 1 ? 'es' : ''} · {unitCount} unit{unitCount !== 1 ? 's' : ''} · Submitted {dateStr}
+                      {d.order.product.name} · {boxCount > 0 ? `${boxCount} box${boxCount !== 1 ? 'es' : ''} · ` : ''}{unitCount > 0 ? `${unitCount} unit${unitCount !== 1 ? 's' : ''} · ` : ''}{dateLabel} {dateStr}
                     </div>
                     <div className="text-xs text-zinc-600 mt-0.5">by {d.createdBy.name}</div>
                   </div>
@@ -168,7 +178,7 @@ export function ShippingPanel({
                     className="text-xs px-3 py-1.5 rounded-lg font-semibold"
                     style={{ background: 'rgba(14,165,233,0.12)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}
                   >
-                    View
+                    {isPackingRole ? 'Pack' : 'View'}
                   </button>
                 </div>
               </div>
