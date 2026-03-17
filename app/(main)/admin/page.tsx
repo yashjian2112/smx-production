@@ -1,11 +1,35 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getSession, requireRole } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
+
+/** Auto-run any pending DB enum migrations so Vercel deploys self-heal */
+async function runPendingMigrations() {
+  try {
+    // Add PACKING to Role enum if not present
+    const res = await prisma.$queryRaw<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid
+        WHERE t.typname = 'Role' AND e.enumlabel = 'PACKING'
+      ) AS exists
+    `;
+    if (!res[0]?.exists) {
+      await prisma.$executeRaw`ALTER TYPE "Role" ADD VALUE 'PACKING'`;
+      console.log('[migration] Added PACKING to Role enum');
+    }
+  } catch (e) {
+    // Non-fatal — log and continue
+    console.warn('[migration] PACKING enum migration skipped:', e);
+  }
+}
 
 export default async function AdminPage() {
   const session = await getSession();
   if (!session) redirect('/login');
   try { requireRole(session, 'ADMIN'); } catch { redirect('/dashboard'); }
+
+  // Self-healing migration — runs once, no-ops after
+  await runPendingMigrations();
 
   return (
     <div className="space-y-6">
