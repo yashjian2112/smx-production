@@ -99,7 +99,7 @@ export async function POST(req: Request) {
       });
 
       // 3. Update POItem.receivedQuantity
-      await tx.poItem.update({
+      await tx.pOItem.update({
         where: { id: item.poItemId },
         data:  { receivedQuantity: { increment: item.quantity } },
       });
@@ -143,7 +143,7 @@ export async function POST(req: Request) {
     }
 
     // 7. Determine updated PO status based on received quantities
-    const updatedItems = await tx.poItem.findMany({ where: { purchaseOrderId: data.purchaseOrderId } });
+    const updatedItems = await tx.pOItem.findMany({ where: { purchaseOrderId: data.purchaseOrderId } });
     const allReceived  = updatedItems.every(i => i.receivedQuantity >= i.quantity);
     const anyReceived  = updatedItems.some(i => i.receivedQuantity > 0);
 
