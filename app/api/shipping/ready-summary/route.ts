@@ -10,9 +10,15 @@ export async function GET() {
   try {
     await requireSession();
 
-    // Find orders with at least 1 ready unit
+    // Find orders with at least 1 ready unit AND no active dispatch order
     const orders = await prisma.order.findMany({
       where: {
+        // No active (OPEN / PACKING / SUBMITTED) dispatch order for this order
+        dispatchOrders: {
+          none: {
+            status: { in: ['OPEN', 'PACKING', 'SUBMITTED'] },
+          },
+        },
         units: {
           some: {
             currentStage: 'FINAL_ASSEMBLY',
