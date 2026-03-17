@@ -677,11 +677,11 @@ model DispatchOrderScan {
   id              String   @id @default(cuid())
   dispatchOrderId String   @map("dispatch_order_id")
   unitId          String   @unique @map("unit_id")  // one unit → one staging slot
-  serial          String
-  barcode         String
-  passed          Boolean  @default(true)           // inspection result
-  scannedAt       DateTime @default(now()) @map("scanned_at")
-  scannedById     String   @map("scanned_by_id")
+  serial             String
+  barcode            String
+  inspectionPhotoUrl String?  @map("inspection_photo_url")
+  scannedAt          DateTime @default(now()) @map("scanned_at")
+  scannedById        String   @map("scanned_by_id")
 
   dispatchOrder DispatchOrder  @relation(fields: [dispatchOrderId], references: [id], onDelete: Cascade)
   unit          ControllerUnit @relation(fields: [unitId], references: [id])
@@ -694,10 +694,11 @@ model PackingBoxItem {
   id          String         @id @default(cuid())
   boxId       String         @map("box_id")
   unitId      String         @unique @map("unit_id")  // one unit → one box only
-  serial      String
-  barcode     String
-  scannedAt   DateTime       @default(now()) @map("scanned_at")
-  scannedById String         @map("scanned_by_id")
+  serial             String
+  barcode            String
+  scannedAt          DateTime @default(now()) @map("scanned_at")
+  scannedById        String   @map("scanned_by_id")
+  inspectionPhotoUrl String?  @map("inspection_photo_url")
 
   box       PackingBox     @relation(fields: [boxId], references: [id], onDelete: Cascade)
   unit      ControllerUnit @relation(fields: [unitId], references: [id])

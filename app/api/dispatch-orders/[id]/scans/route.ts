@@ -57,7 +57,7 @@ export async function POST(
         unitId:          unit.id,
         serial:          unit.serialNumber,
         barcode:         barcode,
-        passed:          true,
+
         scannedById:     session.id,
       },
     });
