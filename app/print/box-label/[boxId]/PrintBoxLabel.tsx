@@ -16,12 +16,6 @@ type DispatchOrder = {
   createdAt: string | Date;
   order: {
     orderNumber: string;
-    client: {
-      customerName: string;
-      state: string | null;
-      shippingAddress: string | null;
-      phone: string | null;
-    } | null;
     product: { code: string; name: string };
   };
 };
@@ -55,7 +49,6 @@ export function PrintBoxLabel({ box, settings }: { box: Box; settings: Settings 
   const s = (k: string) => settings[k] ?? '';
   const coName = s('company_name') || 'SMX Drives';
   const order = box.dispatchOrder.order;
-  const client = order.client;
   const totalBoxes = box.dispatchOrder.totalBoxes ?? '?';
 
   useEffect(() => {
@@ -107,7 +100,7 @@ export function PrintBoxLabel({ box, settings }: { box: Box; settings: Settings 
 
         .lbl-info { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #c8d8f0; }
         .lbl-info-cell { padding: 4px 8px; }
-        .lbl-info-cell:first-child { border-right: 1px solid #c8d8f0; }
+        .lbl-info-cell:nth-child(odd) { border-right: 1px solid #c8d8f0; }
         .lbl-info-label { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #1a3a6b; margin-bottom: 1px; }
         .lbl-info-value { font-size: 9px; font-weight: 600; color: #111; line-height: 1.4; }
 
@@ -169,18 +162,10 @@ export function PrintBoxLabel({ box, settings }: { box: Box; settings: Settings 
         {/* Info grid */}
         <div className="lbl-info">
           <div className="lbl-info-cell">
-            <div className="lbl-info-label">Customer</div>
-            <div className="lbl-info-value">{client?.customerName ?? '—'}</div>
-          </div>
-          <div className="lbl-info-cell">
             <div className="lbl-info-label">Product</div>
             <div className="lbl-info-value">{order.product.code}</div>
           </div>
-          <div className="lbl-info-cell" style={{ borderTop: '1px solid #c8d8f0' }}>
-            <div className="lbl-info-label">Destination</div>
-            <div className="lbl-info-value">{client?.state ?? '—'}</div>
-          </div>
-          <div className="lbl-info-cell" style={{ borderTop: '1px solid #c8d8f0' }}>
+          <div className="lbl-info-cell">
             <div className="lbl-info-label">Date</div>
             <div className="lbl-info-value">{fmtDate(box.createdAt)}</div>
           </div>

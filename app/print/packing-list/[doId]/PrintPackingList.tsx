@@ -32,7 +32,6 @@ type DispatchOrderData = {
   order: {
     orderNumber: string;
     quantity: number;
-    client: { customerName: string; shippingAddress: string | null; state: string | null } | null;
     product: { code: string; name: string };
   };
   boxes: Box[];
@@ -55,7 +54,6 @@ export function PrintPackingList({
   const s = (k: string) => settings[k] ?? '';
   const coName = s('company_name') || 'SMX Drives';
   const order = dispatchOrder.order;
-  const client = order.client;
   const boxes = dispatchOrder.boxes;
   const totalUnits = boxes.reduce((sum, b) => sum + b.items.length, 0);
   const totalWeight = boxes.reduce((sum, b) => sum + (b.weightKg ?? 0), 0);
@@ -116,25 +114,15 @@ export function PrintPackingList({
           </div>
         </div>
 
-        {/* Customer + Product info */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-          <div style={{ border: '1px solid #c8d8f0', borderRadius: 4, padding: '8px 10px' }}>
-            <div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: '#1a3a6b', marginBottom: 4 }}>Bill To / Ship To</div>
-            {client ? (
-              <>
-                <div style={{ fontSize: 11, fontWeight: 700 }}>{client.customerName}</div>
-                {client.shippingAddress && <div style={{ fontSize: 9, color: '#444', marginTop: 2, lineHeight: 1.4 }}>{client.shippingAddress}</div>}
-                {client.state && <div style={{ fontSize: 9, color: '#444' }}>{client.state}</div>}
-              </>
-            ) : (
-              <div style={{ fontSize: 9, color: '#aaa' }}>—</div>
-            )}
-          </div>
-          <div style={{ border: '1px solid #c8d8f0', borderRadius: 4, padding: '8px 10px' }}>
-            <div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: '#1a3a6b', marginBottom: 4 }}>Product Details</div>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>{order.product.code}</div>
-            <div style={{ fontSize: 9, color: '#444', marginTop: 1 }}>{order.product.name}</div>
-            <div style={{ marginTop: 6, display: 'flex', gap: 16 }}>
+        {/* Product info */}
+        <div style={{ border: '1px solid #c8d8f0', borderRadius: 4, padding: '8px 10px', marginBottom: 14 }}>
+          <div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: '#1a3a6b', marginBottom: 4 }}>Product Details</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>{order.product.code}</div>
+              <div style={{ fontSize: 9, color: '#444', marginTop: 1 }}>{order.product.name}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 16, marginLeft: 16 }}>
               <div>
                 <div style={{ fontSize: 7, textTransform: 'uppercase', color: '#888', letterSpacing: 0.5 }}>Order Qty</div>
                 <div style={{ fontSize: 11, fontWeight: 700 }}>{order.quantity} units</div>

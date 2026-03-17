@@ -8,7 +8,6 @@ export default async function PrintPackingListPage({ params }: { params: { doId:
     include: {
       order: {
         include: {
-          client: true,
           product: { select: { code: true, name: true } },
         },
       },
