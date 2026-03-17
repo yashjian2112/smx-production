@@ -159,8 +159,9 @@ const adminNav: NavItem[] = [
 
 const employeeNav: NavItem[] = [
   { href: '/dashboard',      label: 'My Work',     icon: 'Dashboard'   },
-  { href: '/my-tasks',       label: 'Tasks',       icon: 'Tasks'       },
+  { href: '/orders',         label: 'Orders',      icon: 'Orders'      },
   { href: '/my-dispatch',    label: 'Dispatch',    icon: 'Dispatch'    },
+  { href: '/rework',         label: 'Rework',      icon: 'Returns'     },
   { href: '/my-performance', label: 'Performance', icon: 'Performance' },
 ];
 
