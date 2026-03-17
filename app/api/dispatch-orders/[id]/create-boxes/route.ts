@@ -43,7 +43,7 @@ export async function POST(
       return NextResponse.json({ error: 'No units scanned yet' }, { status: 400 });
 
     // Validate all box sizes exist
-    const sizeIds = [...new Set(boxDefs.map((b) => b.boxSizeId))];
+    const sizeIds = Array.from(new Set(boxDefs.map((b) => b.boxSizeId)));
     const sizes = await prisma.boxSize.findMany({ where: { id: { in: sizeIds } } });
     if (sizes.length !== sizeIds.length)
       return NextResponse.json({ error: 'One or more box sizes not found' }, { status: 400 });
