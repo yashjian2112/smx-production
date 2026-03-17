@@ -64,7 +64,7 @@ export default async function DOPackingPage({ params }: { params: { id: string }
     boxes: dispatchOrder.boxes.map((box) => ({
       ...box,
       createdAt: box.createdAt.toISOString(),
-      boxSize: box.boxSize ? { ...box.boxSize, createdAt: box.boxSize.createdAt.toISOString() } : null,
+      boxSize: box.boxSize ? { ...box.boxSize, createdAt: box.boxSize.createdAt.toISOString(), updatedAt: box.boxSize.updatedAt.toISOString() } : null,
       items: box.items.map((item) => ({
         ...item,
         scannedAt: item.scannedAt.toISOString(),
@@ -72,7 +72,7 @@ export default async function DOPackingPage({ params }: { params: { id: string }
     })),
   };
 
-  const serializedBoxSizes = boxSizes.map((bs) => ({ ...bs, createdAt: bs.createdAt.toISOString() }));
+  const serializedBoxSizes = boxSizes.map((bs) => ({ ...bs, createdAt: bs.createdAt.toISOString(), updatedAt: bs.updatedAt.toISOString() }));
 
   const canApprove = ['ADMIN', 'ACCOUNTS'].includes(session.role);
 
