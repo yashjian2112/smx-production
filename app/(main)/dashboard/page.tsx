@@ -8,6 +8,16 @@ async function getDashboardData(role: string, userId: string) {
   today.setHours(0, 0, 0, 0);
 
   try {
+    if (role === 'PACKING') {
+      const [openDOs, packingDOs, submittedDOs, sealedBoxesToday] = await Promise.all([
+        prisma.dispatchOrder.count({ where: { status: 'OPEN' } }),
+        prisma.dispatchOrder.count({ where: { status: 'PACKING' } }),
+        prisma.dispatchOrder.count({ where: { status: 'SUBMITTED' } }),
+        prisma.packingBox.count({ where: { isSealed: true, updatedAt: { gte: today } } }),
+      ]);
+      return { role: 'packing', openDOs, packingDOs, submittedDOs, sealedBoxesToday };
+    }
+
     if (role === 'PRODUCTION_EMPLOYEE') {
       const [myActive, completedToday] = await Promise.all([
         // Units the employee is actively working on (has an IN_PROGRESS submission)
@@ -89,6 +99,59 @@ export default async function DashboardPage() {
   const session = await getSession();
   if (!session) return null;
   const data = await getDashboardData(session.role, session.id);
+
+  if (session.role === 'PACKING') {
+    const pd = data as { openDOs: number; packingDOs: number; submittedDOs: number; sealedBoxesToday: number };
+    return (
+      <div className="space-y-6">
+        <h2 className="text-xl font-semibold">Packing Dashboard</h2>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="card p-4">
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-1">Waiting to Pack</p>
+            <p className="text-2xl font-semibold text-amber-400">{pd.openDOs}</p>
+            <p className="text-zinc-600 text-xs mt-1">Open dispatch orders</p>
+          </div>
+          <div className="card p-4">
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-1">In Packing</p>
+            <p className="text-2xl font-semibold text-blue-400">{pd.packingDOs}</p>
+            <p className="text-zinc-600 text-xs mt-1">Currently packing</p>
+          </div>
+          <div className="card p-4">
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-1">Awaiting Approval</p>
+            <p className="text-2xl font-semibold text-purple-400">{pd.submittedDOs}</p>
+            <p className="text-zinc-600 text-xs mt-1">Submitted DOs</p>
+          </div>
+          <div className="card p-4">
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-wide mb-1">Boxes Sealed Today</p>
+            <p className="text-2xl font-semibold text-emerald-400">{pd.sealedBoxesToday}</p>
+            <p className="text-zinc-600 text-xs mt-1">Sealed today</p>
+          </div>
+        </div>
+
+        {/* Quick action */}
+        <Link
+          href="/shipping"
+          className="flex items-center gap-3 p-4 rounded-xl tap-target"
+          style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.25)' }}
+        >
+          <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-sky-400">Go to Packing Floor</p>
+            <p className="text-xs text-zinc-500 mt-0.5">View and pack open dispatch orders</p>
+          </div>
+          <svg className="ml-auto text-zinc-600" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+        </Link>
+      </div>
+    );
+  }
 
   if (session.role === 'PRODUCTION_EMPLOYEE') {
     type ActiveSub = {
