@@ -90,14 +90,22 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
   const [search, setSearch]     = useState('');
   const [filter, setFilter]     = useState<'all' | 'low' | 'critical'>('all');
 
-  // Adjust modal
-  const [adjustMat, setAdjustMat]   = useState<RawMaterial | null>(null);
-  const [adjType, setAdjType]       = useState<'OPENING' | 'ADJUSTMENT'>('ADJUSTMENT');
-  const [adjQty, setAdjQty]         = useState('');
-  const [adjReason, setAdjReason]   = useState('');
-  const [adjPrice, setAdjPrice]     = useState('');
-  const [adjSaving, setAdjSaving]   = useState(false);
-  const [adjError, setAdjError]     = useState('');
+  // Add Stock modal
+  const [addMat, setAddMat]       = useState<RawMaterial | null>(null);
+  const [addType, setAddType]     = useState<'OPENING' | 'ADJUSTMENT'>('OPENING');
+  const [addQty, setAddQty]       = useState('');
+  const [addPrice, setAddPrice]   = useState('');
+  const [addNotes, setAddNotes]   = useState('');
+  const [addSaving, setAddSaving] = useState(false);
+  const [addError, setAddError]   = useState('');
+
+  // Issue Stock modal
+  const [issueMat, setIssueMat]       = useState<RawMaterial | null>(null);
+  const [issueQty, setIssueQty]       = useState('');
+  const [issuePurpose, setIssuePurpose] = useState('PRODUCTION');
+  const [issueNotes, setIssueNotes]   = useState('');
+  const [issueSaving, setIssueSaving] = useState(false);
+  const [issueError, setIssueError]   = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,20 +123,38 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
     return !q || m.name.toLowerCase().includes(q) || m.code.toLowerCase().includes(q) || m.category?.name.toLowerCase().includes(q);
   });
 
-  async function handleAdjust(e: React.FormEvent) {
+  const lowStockItems = (data?.materials ?? []).filter(m => m.isLowStock);
+
+  async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    setAdjError('');
-    setAdjSaving(true);
-    const qty = parseFloat(adjQty);
-    if (!adjustMat || isNaN(qty) || qty === 0) { setAdjError('Enter a valid non-zero quantity'); setAdjSaving(false); return; }
+    setAddError('');
+    setAddSaving(true);
+    const qty = parseFloat(addQty);
+    if (!addMat || isNaN(qty) || qty <= 0) { setAddError('Enter a valid positive quantity'); setAddSaving(false); return; }
     const res = await fetch('/api/inventory/adjust', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rawMaterialId: adjustMat.id, type: adjType, quantity: qty, reason: adjReason, unitPrice: parseFloat(adjPrice || '0') }),
+      body: JSON.stringify({ rawMaterialId: addMat.id, type: addType, quantity: qty, reason: addNotes, unitPrice: parseFloat(addPrice || '0') }),
     });
-    setAdjSaving(false);
-    if (res.ok) { setAdjustMat(null); setAdjQty(''); setAdjReason(''); setAdjPrice(''); load(); }
-    else { const e = await res.json(); setAdjError(e.error || 'Failed'); }
+    setAddSaving(false);
+    if (res.ok) { setAddMat(null); setAddQty(''); setAddNotes(''); setAddPrice(''); load(); }
+    else { const e = await res.json(); setAddError(e.error || 'Failed'); }
+  }
+
+  async function handleIssue(e: React.FormEvent) {
+    e.preventDefault();
+    setIssueError('');
+    setIssueSaving(true);
+    const qty = parseFloat(issueQty);
+    if (!issueMat || isNaN(qty) || qty <= 0) { setIssueError('Enter a valid positive quantity'); setIssueSaving(false); return; }
+    const res = await fetch('/api/inventory/issue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rawMaterialId: issueMat.id, quantity: qty, purpose: issuePurpose, notes: issueNotes }),
+    });
+    setIssueSaving(false);
+    if (res.ok) { setIssueMat(null); setIssueQty(''); setIssueNotes(''); load(); }
+    else { const e = await res.json(); setIssueError(e.error || 'Failed'); }
   }
 
   if (loading) return <p className="text-zinc-400 text-sm py-6">Loading stock…</p>;
@@ -150,6 +176,42 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
           <p className="text-lg font-bold text-emerald-400 mt-1">{fmtCur(data?.totalValue ?? 0)}</p>
         </div>
       </div>
+
+      {/* Reorder Alerts Panel */}
+      {lowStockItems.length > 0 && (
+        <div className="mb-5 rounded-xl border border-red-900/40 overflow-hidden" style={{ background: 'rgba(239,68,68,0.06)' }}>
+          <div className="px-4 py-3 border-b border-red-900/30 flex items-center justify-between">
+            <span className="text-red-400 text-sm font-medium">⚠ Reorder Alerts ({lowStockItems.length})</span>
+          </div>
+          <div className="divide-y divide-red-900/20">
+            {lowStockItems.map(m => (
+              <div key={m.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium truncate">{m.name}</p>
+                  <p className="text-xs mt-0.5">
+                    <span className={m.isCritical ? 'text-red-400' : 'text-yellow-400'}>
+                      {fmt(m.currentStock)} {m.unit} in stock
+                    </span>
+                    <span className="text-zinc-500"> · Reorder at {fmt(m.reorderPoint)} {m.unit}</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {isAdmin && (
+                    <button onClick={() => { setAddMat(m); setAddType('OPENING'); setAddQty(''); setAddNotes(''); setAddPrice(''); }}
+                      className="px-2 py-1 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/30 transition-colors">
+                      + Add Stock
+                    </button>
+                  )}
+                  <a href={`/purchase?preMaterial=${m.id}&preQty=${Math.max(0, m.reorderPoint - m.currentStock)}`}
+                    className="px-2 py-1 rounded-lg text-xs font-medium bg-sky-600/20 text-sky-400 border border-sky-600/30 hover:bg-sky-600/30 transition-colors">
+                    Create PR
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search + Filter */}
       <div className="flex gap-2 mb-4">
@@ -184,15 +246,22 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
                     <span className={`text-lg font-bold ${stockColor(m)}`}>{fmt(m.currentStock)} <span className="text-sm font-normal text-zinc-400">{m.unit}</span></span>
                     <span className="text-zinc-500 text-xs">Reorder: {fmt(m.reorderPoint)} {m.unit}</span>
                     <span className="text-zinc-500 text-xs">Min: {fmt(m.minimumStock)} {m.unit}</span>
-                    {m.stockValue !== undefined && <span className="text-zinc-400 text-xs">{fmtCur(m.stockValue)}</span>}
+                    {m.stockValue !== undefined && m.stockValue > 0 && <span className="text-zinc-400 text-xs">{fmtCur(m.stockValue)}</span>}
                   </div>
                 </div>
-                <div className="flex gap-2 shrink-0">
+                <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
                   {isAdmin && (
-                    <button onClick={() => { setAdjustMat(m); setAdjType('ADJUSTMENT'); }}
-                      className="px-2 py-1 rounded-lg text-xs text-zinc-300 border border-zinc-700 hover:border-sky-500 hover:text-sky-400 transition-colors">
-                      Adjust
-                    </button>
+                    <>
+                      <button onClick={() => { setAddMat(m); setAddType('OPENING'); setAddQty(''); setAddNotes(''); setAddPrice(''); }}
+                        className="px-2 py-1 rounded-lg text-xs font-medium text-emerald-400 border border-emerald-700/50 hover:bg-emerald-700/20 transition-colors">
+                        + Add
+                      </button>
+                      <button onClick={() => { setIssueMat(m); setIssueQty(''); setIssueNotes(''); setIssuePurpose('PRODUCTION'); }}
+                        className="px-2 py-1 rounded-lg text-xs font-medium text-orange-400 border border-orange-700/50 hover:bg-orange-700/20 transition-colors"
+                        disabled={m.currentStock <= 0}>
+                        Issue
+                      </button>
+                    </>
                   )}
                   <button onClick={() => setExpanded(expanded === m.id ? null : m.id)}
                     className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
@@ -200,16 +269,6 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
                   </button>
                 </div>
               </div>
-
-              {/* Low-stock Create PR link */}
-              {m.isLowStock && (
-                <div className="mt-2 pt-2 border-t border-zinc-800">
-                  <a href={`/purchase?preMaterial=${m.id}&preQty=${Math.max(0, m.reorderPoint - m.currentStock)}`}
-                    className="text-xs text-sky-400 hover:text-sky-300 transition-colors">
-                    + Create Purchase Request (shortfall: {fmt(Math.max(0, m.reorderPoint - m.currentStock))} {m.unit})
-                  </a>
-                </div>
-              )}
             </div>
 
             {/* Batch list */}
@@ -228,7 +287,7 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
                             <th className="text-right pb-1">Unit Price</th>
                             <th className="text-left pb-1">GRN</th>
                             <th className="text-left pb-1">Received</th>
-                            <th className="text-left pb-1">Action</th>
+                            <th className="text-left pb-1">Label</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -242,7 +301,7 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
                               <td className="py-1 text-zinc-400">{b.goodsReceipt ? fmtDate(b.goodsReceipt.receivedAt) : fmtDate(b.createdAt)}</td>
                               <td className="py-1">
                                 <a href={`/print/grn-label/${b.id}`} target="_blank"
-                                  className="text-purple-400 hover:text-purple-300 transition-colors">Label</a>
+                                  className="text-purple-400 hover:text-purple-300 transition-colors">Print</a>
                               </td>
                             </tr>
                           ))}
@@ -256,46 +315,95 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
         ))}
       </div>
 
-      {/* Adjust Modal */}
-      {adjustMat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
+      {/* Add Stock Modal */}
+      {addMat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
           <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'rgb(24,24,27)' }}>
-            <h3 className="text-white font-semibold mb-4">Stock Adjustment — {adjustMat.name}</h3>
-            <form onSubmit={handleAdjust} className="space-y-3">
+            <h3 className="text-white font-semibold mb-1">Add Stock</h3>
+            <p className="text-zinc-400 text-xs mb-4">{addMat.name} · Current: {fmt(addMat.currentStock)} {addMat.unit}</p>
+            <form onSubmit={handleAdd} className="space-y-3">
               <div>
-                <label className="text-zinc-400 text-xs">Type</label>
-                <select value={adjType} onChange={e => setAdjType(e.target.value as any)}
+                <label className="text-zinc-400 text-xs">Stock Type</label>
+                <select value={addType} onChange={e => setAddType(e.target.value as any)}
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
                   style={{ background: 'rgb(39,39,42)' }}>
-                  <option value="OPENING">Opening Stock</option>
-                  <option value="ADJUSTMENT">Physical Count Adjustment</option>
+                  <option value="OPENING">Opening / Initial Stock</option>
+                  <option value="ADJUSTMENT">Manual Addition (e.g. found stock, return)</option>
                 </select>
               </div>
               <div>
-                <label className="text-zinc-400 text-xs">Quantity ({adjustMat.unit}) — negative to deduct</label>
-                <input type="number" step="any" value={adjQty} onChange={e => setAdjQty(e.target.value)} required
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                  style={{ background: 'rgb(39,39,42)' }} />
+                <label className="text-zinc-400 text-xs">Quantity to Add ({addMat.unit})</label>
+                <input type="number" step="any" min="0.01" value={addQty} onChange={e => setAddQty(e.target.value)} required
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                  style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
               </div>
               <div>
-                <label className="text-zinc-400 text-xs">Unit Price (₹) — for opening stock</label>
-                <input type="number" step="any" min="0" value={adjPrice} onChange={e => setAdjPrice(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                  style={{ background: 'rgb(39,39,42)' }} />
+                <label className="text-zinc-400 text-xs">Unit Price ₹ (optional)</label>
+                <input type="number" step="any" min="0" value={addPrice} onChange={e => setAddPrice(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                  style={{ background: 'rgb(39,39,42)' }} placeholder="0.00" />
               </div>
               <div>
-                <label className="text-zinc-400 text-xs">Reason *</label>
-                <input value={adjReason} onChange={e => setAdjReason(e.target.value)} required placeholder="e.g. Physical count, Damage write-off…"
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                <label className="text-zinc-400 text-xs">Reason / Notes *</label>
+                <input value={addNotes} onChange={e => setAddNotes(e.target.value)} required
+                  placeholder="e.g. Opening stock entry, Returned from production…"
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
-              {adjError && <p className="text-red-400 text-xs">{adjError}</p>}
+              {addError && <p className="text-red-400 text-xs">{addError}</p>}
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setAdjustMat(null)}
+                <button type="button" onClick={() => setAddMat(null)}
                   className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Cancel</button>
-                <button type="submit" disabled={adjSaving}
-                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50">
-                  {adjSaving ? 'Saving…' : 'Save'}
+                <button type="submit" disabled={addSaving}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50">
+                  {addSaving ? 'Adding…' : 'Add Stock'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Issue Stock Modal */}
+      {issueMat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'rgb(24,24,27)' }}>
+            <h3 className="text-white font-semibold mb-1">Issue / Consume Stock</h3>
+            <p className="text-zinc-400 text-xs mb-4">{issueMat.name} · Available: {fmt(issueMat.currentStock)} {issueMat.unit}</p>
+            <form onSubmit={handleIssue} className="space-y-3">
+              <div>
+                <label className="text-zinc-400 text-xs">Purpose</label>
+                <select value={issuePurpose} onChange={e => setIssuePurpose(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                  style={{ background: 'rgb(39,39,42)' }}>
+                  <option value="PRODUCTION">Production / Assembly</option>
+                  <option value="SCRAP">Scrap / Waste</option>
+                  <option value="SAMPLE">Sample / Testing</option>
+                  <option value="DAMAGE">Damage Write-off</option>
+                  <option value="RETURN_TO_VENDOR">Return to Vendor</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-zinc-400 text-xs">Quantity to Issue ({issueMat.unit})</label>
+                <input type="number" step="any" min="0.01" max={issueMat.currentStock} value={issueQty} onChange={e => setIssueQty(e.target.value)} required
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-orange-500"
+                  style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-zinc-400 text-xs">Notes / Reference *</label>
+                <input value={issueNotes} onChange={e => setIssueNotes(e.target.value)} required
+                  placeholder="e.g. Order #ORD-001, Batch damaged in storage…"
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-orange-500"
+                  style={{ background: 'rgb(39,39,42)' }} />
+              </div>
+              {issueError && <p className="text-red-400 text-xs">{issueError}</p>}
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setIssueMat(null)}
+                  className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Cancel</button>
+                <button type="submit" disabled={issueSaving}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-orange-600 hover:bg-orange-500 text-white transition-colors disabled:opacity-50">
+                  {issueSaving ? 'Issuing…' : 'Issue Stock'}
                 </button>
               </div>
             </form>
