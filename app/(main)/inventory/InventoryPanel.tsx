@@ -2,13 +2,16 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const TABS = ['Stock', 'GRN', 'Materials', 'Movements'] as const;
+const TABS = ['Stock', 'GRN', 'Materials', 'Reports', 'Movements'] as const;
 type Tab = typeof TABS[number];
 
 interface RawMaterial {
   id: string; code: string; name: string; unit: string; active: boolean;
+  description?: string | null; hsnCode?: string | null;
+  purchasePrice?: number; leadTimeDays?: number;
   currentStock: number; minimumStock: number; reorderPoint: number;
   category?: { id: string; name: string } | null;
+  preferredVendor?: { id: string; name: string } | null;
   stockValue?: number; isLowStock?: boolean; isCritical?: boolean; batchCount?: number;
   batches?: Batch[];
 }
@@ -16,8 +19,11 @@ interface RawMaterial {
 interface Batch {
   id: string; batchCode: string; quantity: number; remainingQty: number;
   unitPrice: number; condition: string; createdAt: string;
+  expiryDate?: string | null; manufacturingDate?: string | null;
   goodsReceipt?: { grnNumber: string; receivedAt: string } | null;
 }
+
+interface Vendor { id: string; name: string; code: string; }
 
 interface GRN {
   id: string; grnNumber: string; receivedAt: string; notes?: string;
@@ -45,7 +51,7 @@ interface PurchaseOrder {
 }
 
 interface StockMovement {
-  id: string; type: string; quantity: number; reference?: string; notes?: string; createdAt: string;
+  id: string; type: string; quantity: number; reference?: string; notes?: string; adjustmentType?: string; createdAt: string;
   rawMaterial: { name: string; code: string; unit: string };
   createdBy: { name: string };
 }
@@ -91,14 +97,19 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
   const [filter, setFilter]     = useState<'all' | 'low' | 'critical'>('all');
 
   // Add Stock modal
-  const [addMat, setAddMat]           = useState<RawMaterial | null>(null);
-  const [addType, setAddType]         = useState<'OPENING' | 'ADJUSTMENT'>('OPENING');
-  const [addMode, setAddMode]         = useState<'add' | 'physical'>('add'); // add qty vs set exact qty
-  const [addQty, setAddQty]           = useState('');
-  const [addPrice, setAddPrice]       = useState('');
-  const [addNotes, setAddNotes]       = useState('');
-  const [addSaving, setAddSaving]     = useState(false);
-  const [addError, setAddError]       = useState('');
+  const [addMat, setAddMat]               = useState<RawMaterial | null>(null);
+  const [addType, setAddType]             = useState<'OPENING' | 'ADJUSTMENT'>('OPENING');
+  const [addMode, setAddMode]             = useState<'add' | 'physical' | 'adjustment'>('add');
+  const [addQty, setAddQty]               = useState('');
+  const [addPrice, setAddPrice]           = useState('');
+  const [addNotes, setAddNotes]           = useState('');
+  const [addAdjType, setAddAdjType]       = useState('DAMAGE'); // for adjustment mode
+  const [addAdjSign, setAddAdjSign]       = useState<1 | -1>(1); // +1 or -1
+  const [addExpiryDate, setAddExpiryDate] = useState('');
+  const [addSaving, setAddSaving]         = useState(false);
+  const [addError, setAddError]           = useState('');
+  const [reorderBusy, setReorderBusy]     = useState(false);
+  const [reorderMsg, setReorderMsg]       = useState('');
 
   // Issue Stock modal
   const [issueMat, setIssueMat]       = useState<RawMaterial | null>(null);
@@ -132,17 +143,45 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
     setAddSaving(true);
     const inputQty = parseFloat(addQty);
     if (!addMat || isNaN(inputQty) || inputQty < 0) { setAddError('Enter a valid quantity'); setAddSaving(false); return; }
-    // Physical count: delta = entered qty - current stock
-    const qty = addMode === 'physical' ? inputQty - addMat.currentStock : inputQty;
+    let qty: number;
+    let adjustmentType: string | undefined;
+    if (addMode === 'physical') {
+      qty = inputQty - addMat.currentStock;
+      adjustmentType = 'PHYSICAL_COUNT';
+    } else if (addMode === 'adjustment') {
+      qty = inputQty * addAdjSign;
+      adjustmentType = addAdjType;
+    } else {
+      qty = inputQty;
+      adjustmentType = undefined;
+    }
     if (addMode === 'add' && qty <= 0) { setAddError('Quantity must be greater than 0'); setAddSaving(false); return; }
     const res = await fetch('/api/inventory/adjust', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rawMaterialId: addMat.id, type: 'ADJUSTMENT', quantity: qty, reason: addNotes || (addMode === 'physical' ? 'Physical stock count' : 'Manual addition'), unitPrice: parseFloat(addPrice || '0') }),
+      body: JSON.stringify({
+        rawMaterialId:  addMat.id,
+        type:           'ADJUSTMENT',
+        adjustmentType,
+        quantity:       qty,
+        reason:         addNotes || (addMode === 'physical' ? 'Physical stock count' : addMode === 'adjustment' ? addAdjType : 'Manual addition'),
+        unitPrice:      parseFloat(addPrice || '0'),
+        expiryDate:     addExpiryDate || undefined,
+      }),
     });
     setAddSaving(false);
-    if (res.ok) { setAddMat(null); setAddQty(''); setAddNotes(''); setAddPrice(''); load(); }
+    if (res.ok) { setAddMat(null); setAddQty(''); setAddNotes(''); setAddPrice(''); setAddExpiryDate(''); load(); }
     else { const e = await res.json(); setAddError(e.error || 'Failed'); }
+  }
+
+  async function handleCreateAllPRs() {
+    setReorderBusy(true); setReorderMsg('');
+    const res = await fetch('/api/inventory/reorder-prs', { method: 'POST' });
+    setReorderBusy(false);
+    const data = await res.json();
+    if (res.ok) setReorderMsg(`✓ Created ${data.created} PR${data.created !== 1 ? 's' : ''}`);
+    else setReorderMsg('Failed to create PRs');
+    setTimeout(() => setReorderMsg(''), 4000);
   }
 
   async function handleIssue(e: React.FormEvent) {
@@ -184,8 +223,17 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
       {/* Reorder Alerts Panel */}
       {lowStockItems.length > 0 && (
         <div className="mb-5 rounded-xl border border-red-900/40 overflow-hidden" style={{ background: 'rgba(239,68,68,0.06)' }}>
-          <div className="px-4 py-3 border-b border-red-900/30 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-red-900/30 flex items-center justify-between gap-3">
             <span className="text-red-400 text-sm font-medium">⚠ Reorder Alerts ({lowStockItems.length})</span>
+            <div className="flex items-center gap-2">
+              {reorderMsg && <span className="text-xs text-emerald-400">{reorderMsg}</span>}
+              {isAdmin && (
+                <button onClick={handleCreateAllPRs} disabled={reorderBusy}
+                  className="px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-700 hover:bg-sky-600 text-white transition-colors disabled:opacity-50">
+                  {reorderBusy ? 'Creating…' : 'Create All PRs'}
+                </button>
+              )}
+            </div>
           </div>
           <div className="divide-y divide-red-900/20">
             {lowStockItems.map(m => (
@@ -291,11 +339,17 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
                             <th className="text-right pb-1">Unit Price</th>
                             <th className="text-left pb-1">GRN</th>
                             <th className="text-left pb-1">Received</th>
+                            <th className="text-left pb-1">Expiry</th>
                             <th className="text-left pb-1">Label</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {m.batches.map(b => (
+                          {m.batches.map(b => {
+                            const now = new Date();
+                            const expiry = b.expiryDate ? new Date(b.expiryDate) : null;
+                            const isExpired = expiry && expiry < now;
+                            const isExpiringSoon = expiry && !isExpired && expiry <= new Date(now.getTime() + 30*24*60*60*1000);
+                            return (
                             <tr key={b.id} className="border-b border-zinc-800/50">
                               <td className="py-1 text-sky-400 font-mono">{b.batchCode}</td>
                               <td className="py-1 text-right text-zinc-300">{fmt(b.quantity)}</td>
@@ -304,11 +358,18 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
                               <td className="py-1 text-zinc-400">{b.goodsReceipt?.grnNumber ?? '—'}</td>
                               <td className="py-1 text-zinc-400">{b.goodsReceipt ? fmtDate(b.goodsReceipt.receivedAt) : fmtDate(b.createdAt)}</td>
                               <td className="py-1">
+                                {isExpired ? <Badge color="red">EXPIRED</Badge>
+                                  : isExpiringSoon ? <Badge color="yellow">{fmtDate(b.expiryDate!)}</Badge>
+                                  : expiry ? <span className="text-zinc-400">{fmtDate(b.expiryDate!)}</span>
+                                  : <span className="text-zinc-600">—</span>}
+                              </td>
+                              <td className="py-1">
                                 <a href={`/print/grn-label/${b.id}`} target="_blank"
                                   className="text-purple-400 hover:text-purple-300 transition-colors">Print</a>
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -319,17 +380,23 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
         ))}
       </div>
 
-      {/* Add Stock / Physical Count Modal */}
+      {/* Add Stock / Physical Count / Adjustment Modal */}
       {addMat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
           <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'rgb(24,24,27)' }}>
-            <h3 className="text-white font-semibold mb-1">{addMode === 'physical' ? 'Physical Stock Count' : 'Add Stock'}</h3>
+            <h3 className="text-white font-semibold mb-1">
+              {addMode === 'physical' ? 'Physical Count' : addMode === 'adjustment' ? 'Inventory Adjustment' : 'Add Stock'}
+            </h3>
             <p className="text-zinc-400 text-xs mb-3">{addMat.name} · Current: <span className="text-white font-medium">{fmt(addMat.currentStock)}</span> {addMat.unit}</p>
             {/* Mode toggle */}
             <div className="flex rounded-lg overflow-hidden border border-zinc-700 mb-4 text-xs">
               <button type="button" onClick={() => { setAddMode('add'); setAddQty(''); }}
                 className={`flex-1 py-2 transition-colors ${addMode === 'add' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
-                + Add Quantity
+                + Add Stock
+              </button>
+              <button type="button" onClick={() => { setAddMode('adjustment'); setAddQty(''); setAddAdjSign(-1); }}
+                className={`flex-1 py-2 transition-colors ${addMode === 'adjustment' ? 'bg-orange-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
+                Adjustment
               </button>
               <button type="button" onClick={() => { setAddMode('physical'); setAddQty(String(addMat.currentStock)); }}
                 className={`flex-1 py-2 transition-colors ${addMode === 'physical' ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
@@ -337,9 +404,41 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
               </button>
             </div>
             <form onSubmit={handleAdd} className="space-y-3">
+              {addMode === 'adjustment' && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-zinc-400 text-xs">Reason</label>
+                    <select value={addAdjType} onChange={e => {
+                      setAddAdjType(e.target.value);
+                      // FOUND is positive, others negative by default
+                      setAddAdjSign(e.target.value === 'FOUND' || e.target.value === 'CORRECTION' ? 1 : -1);
+                    }}
+                      className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                      style={{ background: 'rgb(39,39,42)' }}>
+                      <option value="DAMAGE">Damage Write-off</option>
+                      <option value="THEFT">Theft / Loss</option>
+                      <option value="EXPIRY">Expiry Write-off</option>
+                      <option value="FOUND">Found / Excess</option>
+                      <option value="CORRECTION">Stock Correction</option>
+                    </select>
+                  </div>
+                  {(addAdjType === 'FOUND' || addAdjType === 'CORRECTION') && (
+                    <div className="flex rounded-lg overflow-hidden border border-zinc-700 text-xs">
+                      <button type="button" onClick={() => setAddAdjSign(1)}
+                        className={`flex-1 py-1.5 transition-colors ${addAdjSign === 1 ? 'bg-emerald-700 text-white' : 'text-zinc-400'}`}>
+                        + Add
+                      </button>
+                      <button type="button" onClick={() => setAddAdjSign(-1)}
+                        className={`flex-1 py-1.5 transition-colors ${addAdjSign === -1 ? 'bg-red-700 text-white' : 'text-zinc-400'}`}>
+                        − Deduct
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="text-zinc-400 text-xs">
-                  {addMode === 'physical' ? `Actual counted quantity (${addMat.unit})` : `Quantity to Add (${addMat.unit})`}
+                  {addMode === 'physical' ? `Actual counted quantity (${addMat.unit})` : `Quantity (${addMat.unit})`}
                 </label>
                 <input type="number" step="any" min="0" value={addQty} onChange={e => setAddQty(e.target.value)} required
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
@@ -353,19 +452,32 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
                       : <span className="text-zinc-400">No change</span>}
                   </p>
                 )}
+                {addMode === 'adjustment' && addQty !== '' && parseFloat(addQty) > 0 && (
+                  <p className="text-xs mt-1 text-orange-300">
+                    {addAdjSign > 0 ? '+' : '−'}{fmt(parseFloat(addQty))} {addMat.unit} adjustment
+                  </p>
+                )}
               </div>
               {addMode === 'add' && (
-                <div>
-                  <label className="text-zinc-400 text-xs">Unit Price ₹ (optional)</label>
-                  <input type="number" step="any" min="0" value={addPrice} onChange={e => setAddPrice(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
-                    style={{ background: 'rgb(39,39,42)' }} placeholder="0.00" />
-                </div>
+                <>
+                  <div>
+                    <label className="text-zinc-400 text-xs">Unit Price ₹ (optional)</label>
+                    <input type="number" step="any" min="0" value={addPrice} onChange={e => setAddPrice(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                      style={{ background: 'rgb(39,39,42)' }} placeholder="0.00" />
+                  </div>
+                  <div>
+                    <label className="text-zinc-400 text-xs">Expiry Date (optional)</label>
+                    <input type="date" value={addExpiryDate} onChange={e => setAddExpiryDate(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                      style={{ background: 'rgb(39,39,42)' }} />
+                  </div>
+                </>
               )}
               <div>
-                <label className="text-zinc-400 text-xs">Reason / Notes {addMode === 'add' && '*'}</label>
-                <input value={addNotes} onChange={e => setAddNotes(e.target.value)} required={addMode === 'add'}
-                  placeholder={addMode === 'physical' ? 'e.g. Annual stock count, Quarterly audit…' : 'e.g. Cash purchase, Returned from production…'}
+                <label className="text-zinc-400 text-xs">Notes {(addMode === 'add' || addMode === 'adjustment') && '*'}</label>
+                <input value={addNotes} onChange={e => setAddNotes(e.target.value)} required={addMode !== 'physical'}
+                  placeholder={addMode === 'physical' ? 'e.g. Annual stock count…' : addMode === 'adjustment' ? 'e.g. Found during audit, Damaged in storage…' : 'e.g. Cash purchase, Returned from production…'}
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
@@ -374,8 +486,8 @@ function StockTab({ isAdmin }: { isAdmin: boolean }) {
                 <button type="button" onClick={() => setAddMat(null)}
                   className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Cancel</button>
                 <button type="submit" disabled={addSaving}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 ${addMode === 'physical' ? 'bg-sky-600 hover:bg-sky-500' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
-                  {addSaving ? 'Saving…' : addMode === 'physical' ? 'Save Count' : 'Add Stock'}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 ${addMode === 'physical' ? 'bg-sky-600 hover:bg-sky-500' : addMode === 'adjustment' ? 'bg-orange-600 hover:bg-orange-500' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
+                  {addSaving ? 'Saving…' : addMode === 'physical' ? 'Save Count' : addMode === 'adjustment' ? 'Apply Adjustment' : 'Add Stock'}
                 </button>
               </div>
             </form>
@@ -809,28 +921,36 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [editMat,    setEditMat]    = useState<RawMaterial | null>(null);
 
   // Form state
-  const [fName,     setFName]     = useState('');
-  const [fUnit,     setFUnit]     = useState('');
-  const [fCatId,    setFCatId]    = useState('');
-  const [fMin,      setFMin]      = useState('0');
-  const [fReord,    setFReord]    = useState('0');
-  const [fOpenQty,  setFOpenQty]  = useState('');   // opening stock qty
-  const [fOpenPrice,setFOpenPrice]= useState('');   // opening stock unit price
-  const [fSaving,   setFSaving]   = useState(false);
-  const [fError,    setFError]    = useState('');
+  const [fName,      setFName]      = useState('');
+  const [fUnit,      setFUnit]      = useState('');
+  const [fCatId,     setFCatId]     = useState('');
+  const [fMin,       setFMin]       = useState('0');
+  const [fReord,     setFReord]     = useState('0');
+  const [fDesc,      setFDesc]      = useState('');
+  const [fHsn,       setFHsn]       = useState('');
+  const [fPrice,     setFPrice]     = useState('0');
+  const [fLead,      setFLead]      = useState('0');
+  const [fVendorId,  setFVendorId]  = useState('');
+  const [fOpenQty,   setFOpenQty]   = useState('');
+  const [fOpenPrice, setFOpenPrice] = useState('');
+  const [fSaving,    setFSaving]    = useState(false);
+  const [fError,     setFError]     = useState('');
 
+  const [vendors,  setVendors]  = useState<Vendor[]>([]);
   const [cName,  setCName]  = useState('');
   const [cDesc,  setCDesc]  = useState('');
   const [cSaving,setCSaving]= useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [mRes, cRes] = await Promise.all([
+    const [mRes, cRes, vRes] = await Promise.all([
       fetch('/api/inventory/materials'),
       fetch('/api/inventory/categories'),
+      fetch('/api/purchase/vendors'),
     ]);
     if (mRes.ok) setMaterials(await mRes.json());
     if (cRes.ok) setCategories(await cRes.json());
+    if (vRes.ok) setVendors(await vRes.json());
     setLoading(false);
   }, []);
 
@@ -838,19 +958,29 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
 
   function openNewMat() {
     setEditMat(null); setFName(''); setFUnit(''); setFCatId(''); setFMin('0'); setFReord('0');
+    setFDesc(''); setFHsn(''); setFPrice('0'); setFLead('0'); setFVendorId('');
     setFOpenQty(''); setFOpenPrice(''); setFError('');
     setShowMatForm(true);
   }
 
   function openEditMat(m: RawMaterial) {
     setEditMat(m); setFName(m.name); setFUnit(m.unit); setFCatId(m.category?.id ?? '');
-    setFMin(String(m.minimumStock)); setFReord(String(m.reorderPoint)); setFError('');
+    setFMin(String(m.minimumStock)); setFReord(String(m.reorderPoint));
+    setFDesc(m.description ?? ''); setFHsn(m.hsnCode ?? '');
+    setFPrice(String(m.purchasePrice ?? 0)); setFLead(String(m.leadTimeDays ?? 0));
+    setFVendorId(m.preferredVendor?.id ?? ''); setFError('');
     setShowMatForm(true);
   }
 
   async function handleMatSubmit(e: React.FormEvent) {
     e.preventDefault(); setFError(''); setFSaving(true);
-    const body = { name: fName, unit: fUnit, categoryId: fCatId || undefined, minimumStock: parseFloat(fMin), reorderPoint: parseFloat(fReord) };
+    const body = {
+      name: fName, unit: fUnit, categoryId: fCatId || undefined,
+      description: fDesc || undefined, hsnCode: fHsn || undefined,
+      purchasePrice: parseFloat(fPrice || '0'), leadTimeDays: parseInt(fLead || '0'),
+      preferredVendorId: fVendorId || undefined,
+      minimumStock: parseFloat(fMin), reorderPoint: parseFloat(fReord),
+    };
     const res = editMat
       ? await fetch(`/api/inventory/materials/${editMat.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       : await fetch('/api/inventory/materials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -933,7 +1063,9 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                 {!m.active && <Badge color="zinc">Inactive</Badge>}
               </div>
               <p className="text-zinc-400 text-xs mt-1">
-                Unit: {m.unit} · Min: {fmt(m.minimumStock)} · Reorder: {fmt(m.reorderPoint)}
+                {m.unit} · Min: {fmt(m.minimumStock)} · Reorder: {fmt(m.reorderPoint)}
+                {m.hsnCode && <> · HSN: <span className="text-zinc-300">{m.hsnCode}</span></>}
+                {m.preferredVendor && <> · Vendor: <span className="text-zinc-300">{m.preferredVendor.name}</span></>}
               </p>
             </div>
             {isAdmin && (
@@ -952,20 +1084,47 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
 
       {/* Material Form Modal */}
       {showMatForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
-          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'rgb(24,24,27)' }}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.75)' }}>
+          <div className="w-full max-w-md rounded-2xl p-6 my-4" style={{ background: 'rgb(24,24,27)' }}>
             <h3 className="text-white font-semibold mb-4">{editMat ? 'Edit Material' : 'New Material'}</h3>
             <form onSubmit={handleMatSubmit} className="space-y-3">
-              <div>
-                <label className="text-zinc-400 text-xs">Name *</label>
-                <input value={fName} onChange={e => setFName(e.target.value)} required
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                  style={{ background: 'rgb(39,39,42)' }} />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="col-span-2">
+                  <label className="text-zinc-400 text-xs">Name *</label>
+                  <input value={fName} onChange={e => setFName(e.target.value)} required
+                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                    style={{ background: 'rgb(39,39,42)' }} />
+                </div>
+                <div>
+                  <label className="text-zinc-400 text-xs">Unit (pcs, kg, mtrs…) *</label>
+                  <input value={fUnit} onChange={e => setFUnit(e.target.value)} required
+                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                    style={{ background: 'rgb(39,39,42)' }} />
+                </div>
+                <div>
+                  <label className="text-zinc-400 text-xs">HSN / SAC Code</label>
+                  <input value={fHsn} onChange={e => setFHsn(e.target.value)} placeholder="e.g. 7318"
+                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                    style={{ background: 'rgb(39,39,42)' }} />
+                </div>
+                <div>
+                  <label className="text-zinc-400 text-xs">Default Purchase Price ₹</label>
+                  <input type="number" step="any" min="0" value={fPrice} onChange={e => setFPrice(e.target.value)}
+                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                    style={{ background: 'rgb(39,39,42)' }} />
+                </div>
+                <div>
+                  <label className="text-zinc-400 text-xs">Lead Time (days)</label>
+                  <input type="number" min="0" value={fLead} onChange={e => setFLead(e.target.value)}
+                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                    style={{ background: 'rgb(39,39,42)' }} />
+                </div>
               </div>
               <div>
-                <label className="text-zinc-400 text-xs">Unit (pcs, kg, mtrs…) *</label>
-                <input value={fUnit} onChange={e => setFUnit(e.target.value)} required
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                <label className="text-zinc-400 text-xs">Description</label>
+                <textarea value={fDesc} onChange={e => setFDesc(e.target.value)} rows={2}
+                  placeholder="Optional description or specifications…"
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500 resize-none"
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
               <div>
@@ -975,6 +1134,15 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                   style={{ background: 'rgb(39,39,42)' }}>
                   <option value="">None</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-zinc-400 text-xs">Preferred Vendor</label>
+                <select value={fVendorId} onChange={e => setFVendorId(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                  style={{ background: 'rgb(39,39,42)' }}>
+                  <option value="">None</option>
+                  {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({v.code})</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -1065,22 +1233,33 @@ function MovementsTab() {
   const [loading, setLoading] = useState(true);
   const [page,    setPage]    = useState(1);
   const [typeFilter, setTypeFilter] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate,   setToDate]   = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page) });
     if (typeFilter) params.set('type', typeFilter);
+    if (fromDate)   params.set('from', fromDate);
+    if (toDate)     params.set('to',   toDate);
     const res = await fetch(`/api/inventory/movements?${params}`);
     if (res.ok) setData(await res.json());
     setLoading(false);
-  }, [page, typeFilter]);
+  }, [page, typeFilter, fromDate, toDate]);
 
   useEffect(() => { load(); }, [load]);
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-zinc-400 text-sm">{data.total} movements</span>
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
+        <span className="text-zinc-400 text-sm flex-1 min-w-0">{data.total} movements</span>
+        <input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setPage(1); }}
+          className="px-2 py-1.5 rounded-lg text-xs text-white border border-zinc-700"
+          style={{ background: 'rgb(24,24,27)' }} />
+        <span className="text-zinc-500 text-xs">to</span>
+        <input type="date" value={toDate} onChange={e => { setToDate(e.target.value); setPage(1); }}
+          className="px-2 py-1.5 rounded-lg text-xs text-white border border-zinc-700"
+          style={{ background: 'rgb(24,24,27)' }} />
         <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
           className="px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700"
           style={{ background: 'rgb(24,24,27)' }}>
@@ -1089,6 +1268,10 @@ function MovementsTab() {
           <option value="OUT">OUT</option>
           <option value="ADJUSTMENT">Adjustment</option>
         </select>
+        {(fromDate || toDate || typeFilter) && (
+          <button onClick={() => { setFromDate(''); setToDate(''); setTypeFilter(''); setPage(1); }}
+            className="px-2 py-1.5 text-xs text-zinc-400 hover:text-white transition-colors">Clear</button>
+        )}
       </div>
 
       {loading
@@ -1141,6 +1324,261 @@ function MovementsTab() {
   );
 }
 
+// ─── Reports Tab ─────────────────────────────────────────────────────────────
+type ReportView = 'summary' | 'valuation' | 'reorder' | 'movements';
+
+interface SummaryRow { id: string; code: string; name: string; unit: string; category?: { name: string } | null; openingQty: number; qtyIn: number; qtyOut: number; closingQty: number; stockValue: number; isLowStock: boolean; isCritical: boolean; }
+interface ReorderRow { id: string; code: string; name: string; unit: string; category?: { name: string } | null; currentStock: number; reorderPoint: number; suggestedQty: number; leadTimeDays: number; preferredVendor?: { name: string } | null; hasPendingPR: boolean; isCritical: boolean; }
+
+function ReportsTab({ isAdmin }: { isAdmin: boolean }) {
+  const [view, setView]           = useState<ReportView>('summary');
+  const [loading, setLoading]     = useState(false);
+  const [fromDate, setFromDate]   = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0];
+  });
+  const [toDate, setToDate]       = useState(() => new Date().toISOString().split('T')[0]);
+  const [summaryData, setSummaryData] = useState<{ materials: SummaryRow[]; totalValue: number } | null>(null);
+  const [reorderData, setReorderData] = useState<ReorderRow[]>([]);
+  const [reorderBusy, setReorderBusy] = useState(false);
+  const [reorderMsg,  setReorderMsg]  = useState('');
+
+  const loadSummary = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch(`/api/inventory/reports/summary?from=${fromDate}&to=${toDate}`);
+    if (res.ok) setSummaryData(await res.json());
+    setLoading(false);
+  }, [fromDate, toDate]);
+
+  const loadReorder = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch('/api/inventory/reports/reorder');
+    if (res.ok) setReorderData(await res.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (view === 'summary' || view === 'valuation') loadSummary();
+    if (view === 'reorder') loadReorder();
+  }, [view, loadSummary, loadReorder]);
+
+  async function handleCreateAllPRs() {
+    setReorderBusy(true); setReorderMsg('');
+    const res = await fetch('/api/inventory/reorder-prs', { method: 'POST' });
+    setReorderBusy(false);
+    const data = await res.json();
+    if (res.ok) { setReorderMsg(`✓ Created ${data.created} PR${data.created !== 1 ? 's' : ''}`); loadReorder(); }
+    else setReorderMsg('Failed');
+    setTimeout(() => setReorderMsg(''), 4000);
+  }
+
+  function exportCSV(rows: object[], filename: string) {
+    const headers = Object.keys(rows[0] ?? {});
+    const csv = [headers.join(','), ...rows.map(r => headers.map(h => JSON.stringify((r as any)[h] ?? '')).join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = filename;
+    a.click();
+  }
+
+  return (
+    <div>
+      {/* Sub-view pills */}
+      <div className="flex gap-1 p-1 rounded-xl mb-5" style={{ background: 'rgba(255,255,255,0.04)' }}>
+        {(['summary', 'valuation', 'reorder', 'movements'] as ReportView[]).map(v => (
+          <button key={v} onClick={() => setView(v)}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${view === v ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
+            {v === 'summary' ? 'Stock Summary' : v === 'valuation' ? 'Valuation' : v === 'reorder' ? 'Reorder' : 'Movements Log'}
+          </button>
+        ))}
+      </div>
+
+      {/* Date range — for summary/valuation */}
+      {(view === 'summary' || view === 'valuation') && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <span className="text-zinc-400 text-xs">Period:</span>
+          <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
+            className="px-2 py-1.5 rounded-lg text-xs text-white border border-zinc-700"
+            style={{ background: 'rgb(24,24,27)' }} />
+          <span className="text-zinc-500 text-xs">to</span>
+          <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
+            className="px-2 py-1.5 rounded-lg text-xs text-white border border-zinc-700"
+            style={{ background: 'rgb(24,24,27)' }} />
+          <button onClick={() => view === 'summary' || view === 'valuation' ? loadSummary() : undefined}
+            className="px-3 py-1.5 rounded-lg text-xs bg-sky-700 hover:bg-sky-600 text-white transition-colors">
+            Apply
+          </button>
+          {summaryData && (
+            <button onClick={() => exportCSV(
+              view === 'valuation'
+                ? summaryData.materials.map(m => ({ Code: m.code, Name: m.name, Unit: m.unit, 'Closing Qty': m.closingQty, 'Stock Value': m.stockValue.toFixed(2) }))
+                : summaryData.materials.map(m => ({ Code: m.code, Name: m.name, Unit: m.unit, Opening: m.openingQty, 'Qty In': m.qtyIn, 'Qty Out': m.qtyOut, Closing: m.closingQty, Value: m.stockValue.toFixed(2) })),
+              `${view}-${fromDate}.csv`
+            )}
+              className="ml-auto px-3 py-1.5 rounded-lg text-xs text-zinc-300 border border-zinc-700 hover:border-sky-500 transition-colors">
+              Export CSV
+            </button>
+          )}
+        </div>
+      )}
+
+      {loading && <p className="text-zinc-400 text-sm py-6">Loading…</p>}
+
+      {/* STOCK SUMMARY */}
+      {!loading && view === 'summary' && summaryData && (
+        <div>
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-zinc-400 text-sm">{summaryData.materials.length} materials</span>
+            <span className="text-emerald-400 text-sm font-medium ml-auto">Total: {fmtCur(summaryData.totalValue)}</span>
+          </div>
+          <div className="overflow-x-auto rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-zinc-500 border-b border-zinc-800">
+                  <th className="text-left px-3 py-2">Material</th>
+                  <th className="text-right px-3 py-2">Opening</th>
+                  <th className="text-right px-3 py-2">Qty In</th>
+                  <th className="text-right px-3 py-2">Qty Out</th>
+                  <th className="text-right px-3 py-2">Closing</th>
+                  <th className="text-right px-3 py-2">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summaryData.materials.map(m => (
+                  <tr key={m.id} className="border-b border-zinc-800/40 hover:bg-white/5">
+                    <td className="px-3 py-2">
+                      <div className="text-white">{m.name}</div>
+                      <div className="text-zinc-500">{m.code} · {m.unit}</div>
+                    </td>
+                    <td className="px-3 py-2 text-right text-zinc-400">{fmt(m.openingQty)}</td>
+                    <td className="px-3 py-2 text-right text-emerald-400">+{fmt(m.qtyIn)}</td>
+                    <td className="px-3 py-2 text-right text-red-400">−{fmt(m.qtyOut)}</td>
+                    <td className={`px-3 py-2 text-right font-medium ${m.isCritical ? 'text-red-400' : m.isLowStock ? 'text-yellow-400' : 'text-white'}`}>{fmt(m.closingQty)}</td>
+                    <td className="px-3 py-2 text-right text-zinc-300">{fmtCur(m.stockValue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* STOCK VALUATION */}
+      {!loading && view === 'valuation' && summaryData && (
+        <div>
+          <div className="rounded-xl p-4 mb-4 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+            <div>
+              <p className="text-zinc-400 text-xs">Total Inventory Value (FIFO)</p>
+              <p className="text-2xl font-bold text-emerald-400 mt-1">{fmtCur(summaryData.totalValue)}</p>
+            </div>
+            <p className="text-zinc-500 text-xs">As of {fmtDate(toDate)}</p>
+          </div>
+          <div className="overflow-x-auto rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-zinc-500 border-b border-zinc-800">
+                  <th className="text-left px-3 py-2">Material</th>
+                  <th className="text-left px-3 py-2">Category</th>
+                  <th className="text-right px-3 py-2">Qty on Hand</th>
+                  <th className="text-right px-3 py-2">Stock Value</th>
+                  <th className="text-right px-3 py-2">% of Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...summaryData.materials].sort((a, b) => b.stockValue - a.stockValue).map(m => (
+                  <tr key={m.id} className="border-b border-zinc-800/40 hover:bg-white/5">
+                    <td className="px-3 py-2">
+                      <div className="text-white">{m.name}</div>
+                      <div className="text-zinc-500">{m.code} · {m.unit}</div>
+                    </td>
+                    <td className="px-3 py-2 text-zinc-400">{m.category?.name ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-zinc-300">{fmt(m.closingQty)}</td>
+                    <td className="px-3 py-2 text-right font-medium text-emerald-400">{fmtCur(m.stockValue)}</td>
+                    <td className="px-3 py-2 text-right text-zinc-500">
+                      {summaryData.totalValue > 0 ? `${((m.stockValue / summaryData.totalValue) * 100).toFixed(1)}%` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* REORDER REPORT */}
+      {!loading && view === 'reorder' && (
+        <div>
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+            <span className="text-zinc-400 text-sm">{reorderData.length} item{reorderData.length !== 1 ? 's' : ''} below reorder point</span>
+            <div className="flex items-center gap-2">
+              {reorderMsg && <span className="text-xs text-emerald-400">{reorderMsg}</span>}
+              {isAdmin && (
+                <button onClick={handleCreateAllPRs} disabled={reorderBusy}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-700 hover:bg-sky-600 text-white transition-colors disabled:opacity-50">
+                  {reorderBusy ? 'Creating…' : 'Create All PRs'}
+                </button>
+              )}
+              {reorderData.length > 0 && (
+                <button onClick={() => exportCSV(reorderData.map(r => ({ Code: r.code, Name: r.name, Unit: r.unit, 'Current Stock': r.currentStock, 'Reorder Point': r.reorderPoint, 'Suggested Order Qty': r.suggestedQty, 'Lead Time (days)': r.leadTimeDays, 'Preferred Vendor': r.preferredVendor?.name ?? '', 'Has Open PR': r.hasPendingPR ? 'Yes' : 'No' })), 'reorder-report.csv')}
+                  className="px-3 py-1.5 rounded-lg text-xs text-zinc-300 border border-zinc-700 hover:border-sky-500 transition-colors">
+                  Export CSV
+                </button>
+              )}
+            </div>
+          </div>
+          {reorderData.length === 0
+            ? <p className="text-zinc-400 text-sm py-6 text-center">All materials are above reorder point</p>
+            : (
+              <div className="overflow-x-auto rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-zinc-500 border-b border-zinc-800">
+                      <th className="text-left px-3 py-2">Material</th>
+                      <th className="text-right px-3 py-2">Stock</th>
+                      <th className="text-right px-3 py-2">Reorder Pt</th>
+                      <th className="text-right px-3 py-2">Order Qty</th>
+                      <th className="text-right px-3 py-2">Lead Time</th>
+                      <th className="text-left px-3 py-2">Vendor</th>
+                      <th className="text-left px-3 py-2">PR Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reorderData.map(r => (
+                      <tr key={r.id} className="border-b border-zinc-800/40 hover:bg-white/5">
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-white">{r.name}</span>
+                            {r.isCritical ? <Badge color="red">OUT</Badge> : <Badge color="yellow">LOW</Badge>}
+                          </div>
+                          <div className="text-zinc-500">{r.code} · {r.unit}</div>
+                        </td>
+                        <td className={`px-3 py-2 text-right font-medium ${r.isCritical ? 'text-red-400' : 'text-yellow-400'}`}>{fmt(r.currentStock)}</td>
+                        <td className="px-3 py-2 text-right text-zinc-400">{fmt(r.reorderPoint)}</td>
+                        <td className="px-3 py-2 text-right text-sky-400 font-medium">{fmt(r.suggestedQty)}</td>
+                        <td className="px-3 py-2 text-right text-zinc-400">{r.leadTimeDays}d</td>
+                        <td className="px-3 py-2 text-zinc-300">{r.preferredVendor?.name ?? <span className="text-zinc-600">—</span>}</td>
+                        <td className="px-3 py-2">
+                          {r.hasPendingPR
+                            ? <Badge color="sky">Open PR</Badge>
+                            : isAdmin
+                              ? <a href={`/purchase?preMaterial=${r.id}&preQty=${r.suggestedQty}`}
+                                  className="text-sky-400 hover:text-sky-300 transition-colors">Create PR</a>
+                              : <span className="text-zinc-600">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+        </div>
+      )}
+
+      {/* MOVEMENTS LOG */}
+      {view === 'movements' && <MovementsTab />}
+    </div>
+  );
+}
+
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 export default function InventoryPanel({ sessionRole }: { sessionRole: string }) {
   const [activeTab, setActiveTab] = useState<Tab>('Stock');
@@ -1167,6 +1605,7 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
       {activeTab === 'Stock'     && <StockTab     isAdmin={canManageStock} />}
       {activeTab === 'GRN'       && <GRNTab       isAdmin={canManageStock} />}
       {activeTab === 'Materials' && <MaterialsTab isAdmin={canManageMaterials} />}
+      {activeTab === 'Reports'   && <ReportsTab   isAdmin={canManageMaterials} />}
       {activeTab === 'Movements' && <MovementsTab />}
     </div>
   );

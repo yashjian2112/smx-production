@@ -7,11 +7,14 @@ import { generateNextBatchCode } from '@/lib/invoice-number';
 const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;
 
 const adjustSchema = z.object({
-  rawMaterialId: z.string(),
-  type:          z.enum(['OPENING', 'ADJUSTMENT']),
-  quantity:      z.number(),  // positive = add, negative = deduct
-  reason:        z.string().min(1),
-  unitPrice:     z.number().min(0).default(0),
+  rawMaterialId:  z.string(),
+  type:           z.enum(['OPENING', 'ADJUSTMENT']),
+  adjustmentType: z.string().optional(), // DAMAGE | THEFT | EXPIRY | CORRECTION | FOUND | OPENING | PHYSICAL_COUNT
+  quantity:       z.number(),  // positive = add, negative = deduct
+  reason:         z.string().min(1),
+  unitPrice:      z.number().min(0).default(0),
+  expiryDate:     z.string().optional(), // ISO date string
+  manufacturingDate: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -41,12 +44,13 @@ export async function POST(req: Request) {
     // 2. Create StockMovement audit record
     await tx.stockMovement.create({
       data: {
-        rawMaterialId: data.rawMaterialId,
-        type:          'ADJUSTMENT',
-        quantity:      data.quantity,
-        reference:     data.type,
-        notes:         data.reason,
-        createdById:   session.id,
+        rawMaterialId:  data.rawMaterialId,
+        type:           'ADJUSTMENT',
+        quantity:       data.quantity,
+        reference:      data.type,
+        adjustmentType: data.adjustmentType ?? data.type,
+        notes:          data.reason,
+        createdById:    session.id,
       },
     });
 
@@ -56,12 +60,14 @@ export async function POST(req: Request) {
       await tx.inventoryBatch.create({
         data: {
           batchCode,
-          rawMaterialId: data.rawMaterialId,
-          quantity:      data.quantity,
-          remainingQty:  data.quantity,
-          unitPrice:     data.unitPrice,
-          condition:     'GOOD',
-          notes:         `${data.type}: ${data.reason}`,
+          rawMaterialId:    data.rawMaterialId,
+          quantity:         data.quantity,
+          remainingQty:     data.quantity,
+          unitPrice:        data.unitPrice,
+          condition:        'GOOD',
+          expiryDate:       data.expiryDate ? new Date(data.expiryDate) : null,
+          manufacturingDate: data.manufacturingDate ? new Date(data.manufacturingDate) : null,
+          notes:            `${data.type}: ${data.reason}`,
         },
       });
     }

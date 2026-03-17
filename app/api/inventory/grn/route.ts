@@ -8,11 +8,13 @@ const ALLOWED_ROLES  = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;
 const VIEW_ROLES     = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;
 
 const grnItemSchema = z.object({
-  poItemId:     z.string(),
-  rawMaterialId:z.string(),
-  quantity:     z.number().positive(),
-  unitPrice:    z.number().min(0).default(0),
-  condition:    z.enum(['GOOD', 'DAMAGED', 'REJECTED']).default('GOOD'),
+  poItemId:         z.string(),
+  rawMaterialId:    z.string(),
+  quantity:         z.number().positive(),
+  unitPrice:        z.number().min(0).default(0),
+  condition:        z.enum(['GOOD', 'DAMAGED', 'REJECTED']).default('GOOD'),
+  manufacturingDate:z.string().optional(),
+  expiryDate:       z.string().optional(),
 });
 
 const createGRNSchema = z.object({
@@ -111,13 +113,15 @@ export async function POST(req: Request) {
         const batch = await tx.inventoryBatch.create({
           data: {
             batchCode,
-            rawMaterialId:  item.rawMaterialId,
-            goodsReceiptId: grn.id,
-            poItemId:       item.poItemId,
-            quantity:       item.quantity,
-            remainingQty:   item.quantity,
-            unitPrice:      item.unitPrice,
-            condition:      'GOOD',
+            rawMaterialId:    item.rawMaterialId,
+            goodsReceiptId:   grn.id,
+            poItemId:         item.poItemId,
+            quantity:         item.quantity,
+            remainingQty:     item.quantity,
+            unitPrice:        item.unitPrice,
+            condition:        'GOOD',
+            manufacturingDate: item.manufacturingDate ? new Date(item.manufacturingDate) : null,
+            expiryDate:        item.expiryDate ? new Date(item.expiryDate) : null,
           },
         });
         batchesCreated.push(batch);

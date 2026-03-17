@@ -9,12 +9,17 @@ const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;
 const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER'] as const;
 
 const createSchema = z.object({
-  name:         z.string().min(1),
-  unit:         z.string().min(1),
-  categoryId:   z.string().optional(),
-  minimumStock: z.number().min(0).default(0),
-  reorderPoint: z.number().min(0).default(0),
-  code:         z.string().optional(), // if not provided, auto-generated
+  name:              z.string().min(1),
+  unit:              z.string().min(1),
+  description:       z.string().optional(),
+  hsnCode:           z.string().optional(),
+  purchasePrice:     z.number().min(0).default(0),
+  leadTimeDays:      z.number().int().min(0).default(0),
+  categoryId:        z.string().optional(),
+  preferredVendorId: z.string().optional(),
+  minimumStock:      z.number().min(0).default(0),
+  reorderPoint:      z.number().min(0).default(0),
+  code:              z.string().optional(), // if not provided, auto-generated
 });
 
 export async function GET() {
@@ -27,8 +32,9 @@ export async function GET() {
     where:   { active: true },
     orderBy: { name: 'asc' },
     include: {
-      category: { select: { id: true, name: true } },
-      _count:   { select: { batches: true, stockMovements: true, purchaseRequests: true } },
+      category:        { select: { id: true, name: true } },
+      preferredVendor: { select: { id: true, name: true } },
+      _count:          { select: { batches: true, stockMovements: true, purchaseRequests: true } },
     },
   });
 
@@ -56,14 +62,20 @@ export async function POST(req: Request) {
   const material = await prisma.rawMaterial.create({
     data: {
       code,
-      name:         data.name,
-      unit:         data.unit,
-      categoryId:   data.categoryId ?? null,
-      minimumStock: data.minimumStock,
-      reorderPoint: data.reorderPoint,
+      name:              data.name,
+      unit:              data.unit,
+      description:       data.description ?? null,
+      hsnCode:           data.hsnCode ?? null,
+      purchasePrice:     data.purchasePrice,
+      leadTimeDays:      data.leadTimeDays,
+      categoryId:        data.categoryId ?? null,
+      preferredVendorId: data.preferredVendorId ?? null,
+      minimumStock:      data.minimumStock,
+      reorderPoint:      data.reorderPoint,
     },
     include: {
-      category: { select: { id: true, name: true } },
+      category:        { select: { id: true, name: true } },
+      preferredVendor: { select: { id: true, name: true } },
     },
   });
 

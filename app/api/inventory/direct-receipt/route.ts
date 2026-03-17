@@ -7,9 +7,11 @@ import { generateNextBatchCode } from '@/lib/invoice-number';
 const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;
 
 const itemSchema = z.object({
-  rawMaterialId: z.string(),
-  quantity:      z.number().positive(),
-  unitPrice:     z.number().min(0).default(0),
+  rawMaterialId:    z.string(),
+  quantity:         z.number().positive(),
+  unitPrice:        z.number().min(0).default(0),
+  manufacturingDate:z.string().optional(),
+  expiryDate:       z.string().optional(),
 });
 
 const schema = z.object({
@@ -44,12 +46,14 @@ export async function POST(req: Request) {
       const batch = await tx.inventoryBatch.create({
         data: {
           batchCode,
-          rawMaterialId: item.rawMaterialId,
-          quantity:      item.quantity,
-          remainingQty:  item.quantity,
-          unitPrice:     item.unitPrice,
-          condition:     'GOOD',
-          notes:         data.supplier ? `Direct receipt from ${data.supplier}` : 'Direct receipt',
+          rawMaterialId:    item.rawMaterialId,
+          quantity:         item.quantity,
+          remainingQty:     item.quantity,
+          unitPrice:        item.unitPrice,
+          condition:        'GOOD',
+          manufacturingDate: item.manufacturingDate ? new Date(item.manufacturingDate) : null,
+          expiryDate:        item.expiryDate ? new Date(item.expiryDate) : null,
+          notes:            data.supplier ? `Direct receipt from ${data.supplier}` : 'Direct receipt',
         },
       });
       batchesCreated.push(batch);

@@ -7,12 +7,17 @@ const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;  
 const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER'] as const;                   // can PATCH
 
 const updateSchema = z.object({
-  name:         z.string().min(1).optional(),
-  unit:         z.string().min(1).optional(),
-  categoryId:   z.string().nullable().optional(),
-  minimumStock: z.number().min(0).optional(),
-  reorderPoint: z.number().min(0).optional(),
-  active:       z.boolean().optional(),
+  name:              z.string().min(1).optional(),
+  unit:              z.string().min(1).optional(),
+  description:       z.string().nullable().optional(),
+  hsnCode:           z.string().nullable().optional(),
+  purchasePrice:     z.number().min(0).optional(),
+  leadTimeDays:      z.number().int().min(0).optional(),
+  categoryId:        z.string().nullable().optional(),
+  preferredVendorId: z.string().nullable().optional(),
+  minimumStock:      z.number().min(0).optional(),
+  reorderPoint:      z.number().min(0).optional(),
+  active:            z.boolean().optional(),
 });
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
@@ -24,7 +29,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const material = await prisma.rawMaterial.findUnique({
     where:   { id: params.id },
     include: {
-      category: true,
+      category:        true,
+      preferredVendor: { select: { id: true, name: true } },
       batches: {
         where:   { remainingQty: { gt: 0 } },
         orderBy: { createdAt: 'asc' }, // FIFO: oldest first
@@ -68,7 +74,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const material = await prisma.rawMaterial.update({
     where: { id: params.id },
     data,
-    include: { category: { select: { id: true, name: true } } },
+    include: {
+      category:        { select: { id: true, name: true } },
+      preferredVendor: { select: { id: true, name: true } },
+    },
   });
 
   return NextResponse.json(material);

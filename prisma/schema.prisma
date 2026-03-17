@@ -864,19 +864,25 @@ model MaterialCategory {
 }
 
 model RawMaterial {
-  id           String   @id @default(cuid())
-  code         String   @unique
-  name         String
-  unit         String   // pcs, kg, mtrs, sets, etc.
-  currentStock Float    @default(0) @map("current_stock")
-  minimumStock Float    @default(0) @map("minimum_stock")
-  reorderPoint Float    @default(0) @map("reorder_point")
-  categoryId   String?  @map("category_id")
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                String   @id @default(cuid())
+  code              String   @unique
+  name              String
+  description       String?
+  unit              String   // pcs, kg, mtrs, sets, etc.
+  hsnCode           String?  @map("hsn_code")         // HSN/SAC code for GST
+  purchasePrice     Float    @default(0) @map("purchase_price")   // default unit cost
+  leadTimeDays      Int      @default(0) @map("lead_time_days")   // reorder lead time
+  currentStock      Float    @default(0) @map("current_stock")
+  minimumStock      Float    @default(0) @map("minimum_stock")
+  reorderPoint      Float    @default(0) @map("reorder_point")
+  categoryId        String?  @map("category_id")
+  preferredVendorId String?  @map("preferred_vendor_id")
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   category         MaterialCategory?  @relation(fields: [categoryId], references: [id])
+  preferredVendor  Vendor?            @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
   bomItems         BOMItem[]
   stockMovements   StockMovement[]
   poItems          POItem[]
@@ -903,14 +909,15 @@ model BOMItem {
 }
 
 model StockMovement {
-  id            String   @id @default(cuid())
-  rawMaterialId String   @map("raw_material_id")
-  type          String   // IN, OUT, ADJUSTMENT
-  quantity      Float
-  reference     String?  // PO number, order number, etc.
-  notes         String?
-  createdById   String   @map("created_by_id")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id             String   @id @default(cuid())
+  rawMaterialId  String   @map("raw_material_id")
+  type           String   // IN, OUT, ADJUSTMENT
+  quantity       Float
+  reference      String?  // PO number, order number, etc.
+  adjustmentType String?  @map("adjustment_type") // DAMAGE | THEFT | EXPIRY | CORRECTION | FOUND | OPENING | PHYSICAL_COUNT | PRODUCTION | SCRAP | SAMPLE | RETURN_TO_VENDOR | OTHER
+  notes          String?
+  createdById    String   @map("created_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   rawMaterial RawMaterial @relation(fields: [rawMaterialId], references: [id])
   createdBy   User        @relation(fields: [createdById], references: [id])
@@ -953,9 +960,10 @@ model Vendor {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  purchaseOrders PurchaseOrder[]
-  bidInvitations BidInvitation[]
-  bids           VendorBid[]
+  purchaseOrders   PurchaseOrder[]
+  bidInvitations   BidInvitation[]
+  bids             VendorBid[]
+  preferredFor     RawMaterial[]   @relation("PreferredVendor")
 
   @@map("vendors")
 }
@@ -1090,17 +1098,19 @@ model GoodsReceiptItem {
 }
 
 model InventoryBatch {
-  id             String   @id @default(cuid())
-  batchCode      String   @unique @map("batch_code")  // BATCH/26-27/001
-  rawMaterialId  String   @map("raw_material_id")
-  goodsReceiptId String?  @map("goods_receipt_id")   // null for opening stock / adjustments
-  poItemId       String?  @map("po_item_id")
-  quantity       Float                                // original quantity received
-  remainingQty   Float    @map("remaining_qty")      // decrements on FIFO consumption
-  unitPrice      Float    @default(0) @map("unit_price")
-  condition      String   @default("GOOD")           // GOOD, DAMAGED, REJECTED
-  notes          String?
-  createdAt      DateTime @default(now()) @map("created_at")
+  id                String    @id @default(cuid())
+  batchCode         String    @unique @map("batch_code")  // BATCH/26-27/001
+  rawMaterialId     String    @map("raw_material_id")
+  goodsReceiptId    String?   @map("goods_receipt_id")   // null for opening stock / adjustments
+  poItemId          String?   @map("po_item_id")
+  quantity          Float                                 // original quantity received
+  remainingQty      Float     @map("remaining_qty")      // decrements on FIFO consumption
+  unitPrice         Float     @default(0) @map("unit_price")
+  condition         String    @default("GOOD")            // GOOD, DAMAGED, REJECTED
+  manufacturingDate DateTime? @map("manufacturing_date")
+  expiryDate        DateTime? @map("expiry_date")
+  notes             String?
+  createdAt         DateTime  @default(now()) @map("created_at")
 
   rawMaterial  RawMaterial   @relation(fields: [rawMaterialId], references: [id])
   goodsReceipt GoodsReceipt? @relation(fields: [goodsReceiptId], references: [id])

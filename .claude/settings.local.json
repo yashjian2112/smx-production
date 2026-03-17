@@ -170,7 +170,16 @@
       "Bash(ls /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/units/[id]/dispatch/)",
       "Bash(mkdir -p /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/shipping/dispatch/[id]/scan)",
       "Bash(mkdir -p /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/shipping/dispatch/[id]/submit)",
-      "Bash(mkdir -p /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/shipping/dispatch/[id]/approve)"
+      "Bash(mkdir -p /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/shipping/dispatch/[id]/approve)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(git merge:*)",
+      "WebFetch(domain:www.zoho.com)",
+      "WebFetch(domain:help.zoho.com)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

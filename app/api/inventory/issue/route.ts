@@ -54,12 +54,13 @@ export async function POST(req: Request) {
     // Audit record
     await tx.stockMovement.create({
       data: {
-        rawMaterialId: data.rawMaterialId,
-        type:          'OUT',
-        quantity:      -data.quantity,
-        reference:     data.purpose,
-        notes:         data.notes,
-        createdById:   session.id,
+        rawMaterialId:  data.rawMaterialId,
+        type:           'OUT',
+        quantity:       -data.quantity,
+        reference:      data.purpose,
+        adjustmentType: data.purpose,
+        notes:          data.notes,
+        createdById:    session.id,
       },
     });
 
