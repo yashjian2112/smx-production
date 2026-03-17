@@ -67,7 +67,7 @@ const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: '2
 function PRTab({ isAdmin }: { isAdmin: boolean }) {
   const [requests, setRequests]   = useState<PurchaseRequest[]>([]);
   const [vendors, setVendors]     = useState<Vendor[]>([]);
-  const [materials, setMaterials] = useState<Array<{ id: string; name: string; unit: string }>>([]);
+  const [materials, setMaterials] = useState<Array<{ id: string; name: string; unit: string; currentStock: number; reorderPoint: number; isLowStock?: boolean }>>([]);
   const [loading, setLoading]     = useState(true);
   const [expanded, setExpanded]   = useState<string | null>(null);
 
@@ -75,6 +75,9 @@ function PRTab({ isAdmin }: { isAdmin: boolean }) {
   const [showNew, setShowNew]   = useState(false);
   const [form, setForm]         = useState({ rawMaterialId: '', quantityRequired: '', unit: '', urgency: 'MEDIUM', notes: '' });
   const [saving, setSaving]     = useState(false);
+
+  // Selected material info (for stock display)
+  const selectedMaterial = materials.find(m => m.id === form.rawMaterialId) ?? null;
 
   // Invite vendors form
   const [inviteFor, setInviteFor]       = useState<string | null>(null);
@@ -96,6 +99,18 @@ function PRTab({ isAdmin }: { isAdmin: boolean }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Handle ?preMaterial=&preQty= URL params from inventory low-stock alert
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const preMat = params.get('preMaterial');
+    const preQty = params.get('preQty');
+    if (preMat) {
+      setShowNew(true);
+      setForm(f => ({ ...f, rawMaterialId: preMat, quantityRequired: preQty ?? '' }));
+    }
+  }, []);
 
   async function createPR() {
     if (!form.rawMaterialId || !form.quantityRequired) return;
@@ -162,11 +177,25 @@ function PRTab({ isAdmin }: { isAdmin: boolean }) {
       {showNew && (
         <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-4 mb-4 space-y-3">
           <p className="text-sm font-medium text-white">New Purchase Request</p>
-          <select value={form.rawMaterialId} onChange={e => setForm(f => ({ ...f, rawMaterialId: e.target.value }))}
+          <select value={form.rawMaterialId}
+            onChange={e => {
+              const mat = materials.find(m => m.id === e.target.value);
+              setForm(f => ({ ...f, rawMaterialId: e.target.value, unit: mat?.unit ?? f.unit }));
+            }}
             className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white">
             <option value="">Select material…</option>
-            {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
+            {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.unit}){m.isLowStock ? ' ⚠ LOW STOCK' : ''}</option>)}
           </select>
+
+          {/* Stock info banner */}
+          {selectedMaterial && (
+            <div className={`rounded-lg px-3 py-2 text-xs flex items-center justify-between ${selectedMaterial.isLowStock ? 'bg-red-900/20 border border-red-800' : 'bg-zinc-800 border border-zinc-700'}`}>
+              <span className="text-zinc-400">Current Stock: <span className={`font-semibold ${selectedMaterial.isLowStock ? 'text-red-400' : 'text-emerald-400'}`}>{selectedMaterial.currentStock.toLocaleString('en-IN')} {selectedMaterial.unit}</span></span>
+              <span className="text-zinc-500">Reorder Point: {selectedMaterial.reorderPoint.toLocaleString('en-IN')} {selectedMaterial.unit}</span>
+              {selectedMaterial.isLowStock && <span className="text-red-400 font-medium">LOW STOCK</span>}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <input type="number" placeholder="Quantity" value={form.quantityRequired}
               onChange={e => setForm(f => ({ ...f, quantityRequired: e.target.value }))}
@@ -577,6 +606,12 @@ const TABS = ['Requests', 'Orders', 'Vendors'] as const;
 type Tab = typeof TABS[number];
 
 export default function PurchasePanel({ sessionRole }: { sessionRole: string }) {
+  const isStoreManager = sessionRole === 'STORE_MANAGER';
+  // STORE_MANAGER only sees Requests tab (to create/view PRs); not Orders or Vendors
+  const visibleTabs = isStoreManager
+    ? (['Requests'] as const)
+    : TABS;
+
   const [activeTab, setActiveTab] = useState<Tab>('Requests');
   const isAdmin = ['ADMIN', 'PURCHASE_MANAGER'].includes(sessionRole);
 
@@ -584,7 +619,7 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
     <div>
       {/* Tab bar */}
       <div className="flex gap-1 p-1 rounded-xl mb-6" style={{ background: 'rgba(255,255,255,0.04)' }}>
-        {TABS.map(tab => (
+        {visibleTabs.map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
             className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
               activeTab === tab
@@ -595,7 +630,7 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
         ))}
       </div>
 
-      {activeTab === 'Requests' && <PRTab isAdmin={isAdmin} />}
+      {activeTab === 'Requests' && <PRTab isAdmin={isAdmin || isStoreManager} />}
       {activeTab === 'Orders'   && <POTab isAdmin={isAdmin} />}
       {activeTab === 'Vendors'  && <VendorsTab isAdmin={isAdmin} />}
     </div>

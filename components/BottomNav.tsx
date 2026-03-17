@@ -151,10 +151,10 @@ const managerNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
-  { href: '/orders',    label: 'Orders',    icon: 'Orders' },
-  { href: '/shipping',  label: 'Shipping',  icon: 'Shipping' },
-  { href: '/rework',    label: 'Returns',   icon: 'Returns' },
-  { href: '/admin',     label: 'Admin',     icon: 'Admin' },
+  { href: '/orders',    label: 'Orders',    icon: 'Orders'    },
+  { href: '/purchase',  label: 'Purchase',  icon: 'Purchase'  },
+  { href: '/inventory', label: 'Inventory', icon: 'Inventory' },
+  { href: '/admin',     label: 'Admin',     icon: 'Admin'     },
 ];
 
 const employeeNav: NavItem[] = [
@@ -198,6 +198,13 @@ const purchaseNav: NavItem[] = [
   { href: '/dashboard',  label: 'Dashboard',  icon: 'Dashboard'  },
 ];
 
+// STORE_MANAGER: Inventory (GRN, Stock, Movements) · Purchase Requests · Dashboard
+const storeNav: NavItem[] = [
+  { href: '/inventory',  label: 'Inventory',  icon: 'Inventory'  },
+  { href: '/purchase',   label: 'Requests',   icon: 'Purchase'   },
+  { href: '/dashboard',  label: 'Dashboard',  icon: 'Dashboard'  },
+];
+
 export function BottomNav({ role }: { role: string }) {
   const pathname     = usePathname();
   const searchParams = useSearchParams();
@@ -211,6 +218,7 @@ export function BottomNav({ role }: { role: string }) {
     role === 'ACCOUNTS'            ? accountsNav  :
     role === 'SHIPPING'            ? shippingNav  :
     role === 'PURCHASE_MANAGER'    ? purchaseNav  :
+    role === 'STORE_MANAGER'       ? storeNav     :
     managerNav;
 
   return (

@@ -117,6 +117,76 @@ export async function generateNextDONumber(): Promise<string> {
 }
 
 /**
+ * Generates the next GRN (Goods Receipt Note) number: GRN/YY-YY/001
+ * Resets to 001 on 1st April each year.
+ */
+export async function generateNextGRNNumber(): Promise<string> {
+  const fy     = getFiscalYear();
+  const prefix = `GRN/${fy}/`;
+
+  const latest = await prisma.goodsReceipt.findFirst({
+    where: { grnNumber: { startsWith: prefix } },
+    orderBy: { grnNumber: 'desc' },
+    select: { grnNumber: true },
+  });
+
+  let next = 1;
+  if (latest) {
+    const parts = latest.grnNumber.split('/');
+    const seq   = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+
+  return `${prefix}${String(next).padStart(3, '0')}`;
+}
+
+/**
+ * Generates the next inventory batch code: BATCH/YY-YY/001
+ * Resets to 001 on 1st April each year.
+ */
+export async function generateNextBatchCode(): Promise<string> {
+  const fy     = getFiscalYear();
+  const prefix = `BATCH/${fy}/`;
+
+  const latest = await prisma.inventoryBatch.findFirst({
+    where: { batchCode: { startsWith: prefix } },
+    orderBy: { batchCode: 'desc' },
+    select: { batchCode: true },
+  });
+
+  let next = 1;
+  if (latest) {
+    const parts = latest.batchCode.split('/');
+    const seq   = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+
+  return `${prefix}${String(next).padStart(3, '0')}`;
+}
+
+/**
+ * Generates the next Material code: MAT/001
+ */
+export async function generateNextMaterialCode(): Promise<string> {
+  const prefix = `MAT/`;
+
+  const latest = await prisma.rawMaterial.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: 'desc' },
+    select: { code: true },
+  });
+
+  let next = 1;
+  if (latest) {
+    const parts = latest.code.split('/');
+    const seq   = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+
+  return `${prefix}${String(next).padStart(3, '0')}`;
+}
+
+/**
  * Generates the next Invoice number from the invoices table (NOT proforma_invoices).
  * Export:   TSM/ES/YY-YY/0001
  * Domestic: TSM/DS/YY-YY/0001

@@ -31,7 +31,7 @@ async function generatePRNumber(): Promise<string> {
 
 export async function GET() {
   const session = await requireSession();
-  if (!['ADMIN', 'PURCHASE_MANAGER', 'ACCOUNTS'].includes(session.role)) {
+  if (!['ADMIN', 'PURCHASE_MANAGER', 'ACCOUNTS', 'STORE_MANAGER'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -55,7 +55,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const session = await requireSession();
-  if (!['ADMIN', 'PURCHASE_MANAGER'].includes(session.role)) {
+  if (!['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

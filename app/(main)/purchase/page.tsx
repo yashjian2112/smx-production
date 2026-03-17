@@ -5,7 +5,7 @@ import PurchasePanel from './PurchasePanel';
 export default async function PurchasePage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (!['ADMIN', 'PURCHASE_MANAGER', 'ACCOUNTS'].includes(session.role)) redirect('/dashboard');
+  if (!['ADMIN', 'PURCHASE_MANAGER', 'ACCOUNTS', 'STORE_MANAGER'].includes(session.role)) redirect('/dashboard');
 
   return (
     <main className="min-h-screen pb-24" style={{ background: 'rgb(9,9,11)' }}>

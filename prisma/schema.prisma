@@ -68,6 +68,7 @@ enum Role {
   SHIPPING        // deprecated — use ACCOUNTS for shipping approval
   PURCHASE_MANAGER
   PACKING         // packing team — scans/packs/seals dispatch orders
+  STORE_MANAGER   // warehouse/store: receives goods (GRN), stock adjustments, creates PRs
 }
 
 // ----- Products / Models -----
@@ -875,12 +876,13 @@ model RawMaterial {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  category       MaterialCategory?  @relation(fields: [categoryId], references: [id])
-  bomItems       BOMItem[]
-  stockMovements StockMovement[]
-  poItems        POItem[]
-  receiptItems   GoodsReceiptItem[]
+  category         MaterialCategory?  @relation(fields: [categoryId], references: [id])
+  bomItems         BOMItem[]
+  stockMovements   StockMovement[]
+  poItems          POItem[]
+  receiptItems     GoodsReceiptItem[]
   purchaseRequests PurchaseRequest[]
+  batches          InventoryBatch[]
 
   @@map("raw_materials")
 }
@@ -1047,15 +1049,17 @@ model POItem {
   unitPrice        Float   @map("unit_price")
   receivedQuantity Float   @default(0) @map("received_quantity")
 
-  purchaseOrder PurchaseOrder    @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  rawMaterial   RawMaterial      @relation(fields: [rawMaterialId], references: [id])
+  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  rawMaterial   RawMaterial        @relation(fields: [rawMaterialId], references: [id])
   receiptItems  GoodsReceiptItem[]
+  batches       InventoryBatch[]
 
   @@map("po_items")
 }
 
 model GoodsReceipt {
   id              String   @id @default(cuid())
+  grnNumber       String   @unique @map("grn_number")  // GRN/26-27/001
   purchaseOrderId String   @map("purchase_order_id")
   receivedById    String   @map("received_by_id")
   receivedAt      DateTime @default(now()) @map("received_at")
@@ -1064,6 +1068,7 @@ model GoodsReceipt {
   purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
   receivedBy    User               @relation(fields: [receivedById], references: [id])
   items         GoodsReceiptItem[]
+  batches       InventoryBatch[]
 
   @@map("goods_receipts")
 }
@@ -1074,6 +1079,7 @@ model GoodsReceiptItem {
   poItemId       String  @map("po_item_id")
   rawMaterialId  String  @map("raw_material_id")
   quantity       Float
+  unitPrice      Float   @default(0) @map("unit_price")
   condition      String  @default("GOOD")  // GOOD, DAMAGED, REJECTED
 
   goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
@@ -1081,6 +1087,26 @@ model GoodsReceiptItem {
   rawMaterial  RawMaterial  @relation(fields: [rawMaterialId], references: [id])
 
   @@map("goods_receipt_items")
+}
+
+model InventoryBatch {
+  id             String   @id @default(cuid())
+  batchCode      String   @unique @map("batch_code")  // BATCH/26-27/001
+  rawMaterialId  String   @map("raw_material_id")
+  goodsReceiptId String?  @map("goods_receipt_id")   // null for opening stock / adjustments
+  poItemId       String?  @map("po_item_id")
+  quantity       Float                                // original quantity received
+  remainingQty   Float    @map("remaining_qty")      // decrements on FIFO consumption
+  unitPrice      Float    @default(0) @map("unit_price")
+  condition      String   @default("GOOD")           // GOOD, DAMAGED, REJECTED
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  rawMaterial  RawMaterial   @relation(fields: [rawMaterialId], references: [id])
+  goodsReceipt GoodsReceipt? @relation(fields: [goodsReceiptId], references: [id])
+  poItem       POItem?       @relation(fields: [poItemId], references: [id])
+
+  @@map("inventory_batches")
 }
 
 // ----- Attendance & Shifts -----
