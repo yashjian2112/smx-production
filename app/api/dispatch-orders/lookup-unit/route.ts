@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
         readyForDispatch:     true,
         orderId:              true,
         packingBoxItem:       { select: { id: true } },
+        dispatchOrderScan:    { select: { id: true } },
       },
     });
 
@@ -50,6 +51,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unit does not belong to this order' }, { status: 400 });
     if (unit.packingBoxItem)
       return NextResponse.json({ error: 'Unit is already packed in a box' }, { status: 400 });
+    if (unit.dispatchOrderScan)
+      return NextResponse.json({ error: 'Unit is already staged in a dispatch order' }, { status: 400 });
 
     return NextResponse.json({
       id:                   unit.id,

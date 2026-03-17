@@ -10,14 +10,14 @@ const rejectSchema = z.object({
 });
 
 /**
- * POST /api/dispatch-orders/[id]/boxes/[boxId]/reject-unit
- * Reject a unit during packing inspection (marks/dents found).
+ * POST /api/dispatch-orders/[id]/reject-scan
+ * Reject a unit during the staging-scan (OPEN) phase.
+ * No boxId required — used before boxes are created.
  * Sets unit status → REJECTED_BACK, creates StageLog + ReworkRecord + TimelineLog.
- * The unit is NOT added to the box — it goes back for rework.
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string; boxId: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
     const session = await requireSession();
@@ -30,38 +30,31 @@ export async function POST(
 
     const { unitId, issue, photoUrl } = parsed.data;
 
-    // Verify the dispatch order exists and is in the right state
     const dispatchOrder = await prisma.dispatchOrder.findUnique({
       where:  { id: params.id },
       select: { id: true, status: true, orderId: true },
     });
     if (!dispatchOrder) return NextResponse.json({ error: 'Dispatch order not found' }, { status: 404 });
-    if (dispatchOrder.status !== 'OPEN' && dispatchOrder.status !== 'PACKING')
-      return NextResponse.json({ error: 'Dispatch order must be in OPEN or PACKING status' }, { status: 400 });
+    if (dispatchOrder.status !== 'OPEN')
+      return NextResponse.json({ error: 'Dispatch order must be in OPEN status' }, { status: 400 });
 
-    // Verify the unit exists, belongs to this order, and is in the right state
     const unit = await prisma.controllerUnit.findUnique({
       where:  { id: unitId },
-      select: { id: true, currentStage: true, currentStatus: true, orderId: true, packingBoxItem: { select: { id: true } } },
+      select: { id: true, currentStage: true, currentStatus: true, orderId: true },
     });
     if (!unit) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
     if (unit.orderId !== dispatchOrder.orderId)
       return NextResponse.json({ error: 'Unit does not belong to this order' }, { status: 400 });
     if (unit.currentStage !== 'FINAL_ASSEMBLY')
       return NextResponse.json({ error: 'Unit is not in FINAL_ASSEMBLY stage' }, { status: 400 });
-    if (unit.packingBoxItem)
-      return NextResponse.json({ error: 'Unit is already packed in a box — remove it first' }, { status: 400 });
 
     const prevStatus = unit.currentStatus;
 
-    // Apply rejection in a transaction
     await prisma.$transaction([
-      // 1. Change unit status to REJECTED_BACK
       prisma.controllerUnit.update({
         where: { id: unitId },
         data:  { currentStatus: 'REJECTED_BACK' },
       }),
-      // 2. Stage log entry
       prisma.stageLog.create({
         data: {
           unitId,
@@ -72,17 +65,15 @@ export async function POST(
           remarks:    `Packing inspection rejected: ${issue}${photoUrl ? ` [photo: ${photoUrl}]` : ''}`,
         },
       }),
-      // 3. Rework record
       prisma.reworkRecord.create({
         data: {
           unitId,
-          assignedUserId:  null,
-          rootCauseStage:  'FINAL_ASSEMBLY',
+          assignedUserId:   null,
+          rootCauseStage:   'FINAL_ASSEMBLY',
           correctiveAction: `Packing inspection issue: ${issue}`,
-          status:          'OPEN',
+          status:           'OPEN',
         },
       }),
-      // 4. Timeline audit log
       prisma.timelineLog.create({
         data: {
           unitId,
@@ -92,7 +83,7 @@ export async function POST(
           statusFrom: prevStatus,
           statusTo:   'REJECTED_BACK',
           remarks:    issue,
-          metadata:   JSON.stringify({ dispatchOrderId: params.id, boxId: params.boxId, photoUrl: photoUrl ?? null }),
+          metadata:   JSON.stringify({ dispatchOrderId: params.id, photoUrl: photoUrl ?? null }),
         },
       }),
     ]);

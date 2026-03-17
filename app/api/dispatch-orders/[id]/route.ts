@@ -25,9 +25,16 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         },
         createdBy: { select: { id: true, name: true } },
         approvedBy: { select: { id: true, name: true } },
+        scans: {
+          orderBy: { scannedAt: 'asc' },
+          include: {
+            unit: { select: { serialNumber: true, finalAssemblyBarcode: true } },
+          },
+        },
         boxes: {
           orderBy: { boxNumber: 'asc' },
           include: {
+            boxSize: true,
             items: {
               orderBy: { scannedAt: 'asc' },
               include: {

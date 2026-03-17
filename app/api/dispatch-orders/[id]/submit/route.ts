@@ -36,11 +36,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (dispatchOrder.status !== 'PACKING')
       return NextResponse.json({ error: 'Dispatch order must be in PACKING status to submit' }, { status: 400 });
 
-    // All boxes must be sealed with a photoUrl
-    const unsealedBoxes = dispatchOrder.boxes.filter((b) => !b.isSealed || !b.photoUrl);
+    // All boxes must be confirmed (isSealed = true)
+    const unsealedBoxes = dispatchOrder.boxes.filter((b) => !b.isSealed);
     if (unsealedBoxes.length > 0)
       return NextResponse.json(
-        { error: `${unsealedBoxes.length} box(es) are not sealed or missing a photo` },
+        { error: `${unsealedBoxes.length} box(es) are not yet confirmed` },
         { status: 400 }
       );
 

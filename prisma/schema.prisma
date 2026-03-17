@@ -44,6 +44,7 @@ model User {
   dispatchOrders       DispatchOrder[]        @relation("DOCreatedBy")
   approvedDOs          DispatchOrder[]        @relation("DOApprovedBy")
   boxItemsScanned      PackingBoxItem[]       @relation("BoxItemScannedBy")
+  doScansScanned       DispatchOrderScan[]    @relation("DOScanScannedBy")
   // New relations
   invoicesApproved     Invoice[]              @relation("InvoiceApprovedBy")
   payments             Payment[]
@@ -223,9 +224,10 @@ model ControllerUnit {
   timelineLogs TimelineLog[]
   componentChecks ComponentCheck[]
   workSubmissions StageWorkSubmission[]
-  dispatchItems   DispatchItem[]
-  packingBoxItem  PackingBoxItem?
-  returnRequests  ReturnRequest[]
+  dispatchItems     DispatchItem[]
+  packingBoxItem    PackingBoxItem?
+  dispatchOrderScan DispatchOrderScan?
+  returnRequests    ReturnRequest[]
 }
 
 enum StageType {
@@ -629,6 +631,7 @@ model DispatchOrder {
   createdBy  User          @relation("DOCreatedBy", fields: [createdById], references: [id])
   approvedBy User?         @relation("DOApprovedBy", fields: [approvedById], references: [id])
   boxes      PackingBox[]
+  scans      DispatchOrderScan[]
   invoices   Invoice[]
 
   @@map("dispatch_orders")
@@ -656,6 +659,7 @@ model PackingBox {
   boxLabel        String        @map("box_label")  // TSM/DO/26-27/0001-BOX-1of3
   photoUrl        String?       @map("photo_url")
   isSealed        Boolean       @default(false) @map("is_sealed")
+  labelScanned    Boolean       @default(false) @map("label_scanned")
   weightKg        Float?        @map("weight_kg")
   boxSizeId       String?       @map("box_size_id")
   createdAt       DateTime      @default(now()) @map("created_at")
@@ -683,6 +687,24 @@ model PackingBoxItem {
   scannedBy User           @relation("BoxItemScannedBy", fields: [scannedById], references: [id])
 
   @@map("packing_box_items")
+}
+
+// ----- Dispatch Order Scans (staging: scanned before boxes are created) -----
+model DispatchOrderScan {
+  id                 String   @id @default(cuid())
+  dispatchOrderId    String   @map("dispatch_order_id")
+  unitId             String   @unique @map("unit_id")  // one unit staged per DO only
+  serial             String
+  barcode            String
+  inspectionPhotoUrl String?  @map("inspection_photo_url")
+  scannedById        String   @map("scanned_by_id")
+  scannedAt          DateTime @default(now()) @map("scanned_at")
+
+  dispatchOrder DispatchOrder  @relation(fields: [dispatchOrderId], references: [id], onDelete: Cascade)
+  unit          ControllerUnit @relation(fields: [unitId], references: [id])
+  scannedBy     User           @relation("DOScanScannedBy", fields: [scannedById], references: [id])
+
+  @@map("dispatch_order_scans")
 }
 
 // ----- Tax Invoice (auto-generated on DO approval) -----

@@ -24,6 +24,12 @@ export default async function DOPackingPage({ params }: { params: { id: string }
             product: { select: { code: true, name: true } },
           },
         },
+        scans: {
+          orderBy: { scannedAt: 'asc' },
+          include: {
+            unit: { select: { serialNumber: true, finalAssemblyBarcode: true } },
+          },
+        },
         boxes: {
           orderBy: { boxNumber: 'asc' },
           include: {
@@ -57,6 +63,10 @@ export default async function DOPackingPage({ params }: { params: { id: string }
     updatedAt:   dispatchOrder.updatedAt.toISOString(),
     submittedAt: dispatchOrder.submittedAt?.toISOString() ?? null,
     approvedAt:  dispatchOrder.approvedAt?.toISOString() ?? null,
+    scans: dispatchOrder.scans.map((scan) => ({
+      ...scan,
+      scannedAt: scan.scannedAt.toISOString(),
+    })),
     boxes: dispatchOrder.boxes.map((box) => ({
       ...box,
       createdAt: box.createdAt.toISOString(),
