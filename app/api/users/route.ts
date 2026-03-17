@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole, hashPassword } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { ensurePackingRole } from '@/lib/db-migrations';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -38,6 +39,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
     const { email, password, name, role } = parsed.data;
+
+    // Ensure PACKING enum value exists in live DB before writing
+    await ensurePackingRole();
+
     const existing = await prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
     });

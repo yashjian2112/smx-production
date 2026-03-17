@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole, hashPassword } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { ensurePackingRole } from '@/lib/db-migrations';
 import { z } from 'zod';
 
 const updateSchema = z.object({
@@ -20,10 +21,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
+    // Ensure PACKING enum value exists in live DB before writing
+    await ensurePackingRole();
+
     const updateData: Record<string, unknown> = {};
-    if (parsed.data.name !== undefined) updateData.name = parsed.data.name;
-    if (parsed.data.role !== undefined) updateData.role = parsed.data.role;
-    if (parsed.data.active !== undefined) updateData.active = parsed.data.active;
+    if (parsed.data.name !== undefined)     updateData.name         = parsed.data.name;
+    if (parsed.data.role !== undefined)     updateData.role         = parsed.data.role;
+    if (parsed.data.active !== undefined)   updateData.active       = parsed.data.active;
     if (parsed.data.password !== undefined) updateData.passwordHash = await hashPassword(parsed.data.password);
 
     const user = await prisma.user.update({
