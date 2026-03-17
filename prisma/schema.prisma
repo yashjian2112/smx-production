@@ -66,6 +66,7 @@ enum Role {
   ACCOUNTS
   SHIPPING        // deprecated — use ACCOUNTS for shipping approval
   PURCHASE_MANAGER
+  PACKING         // packing team — scans/packs/seals dispatch orders
 }
 
 // ----- Products / Models -----

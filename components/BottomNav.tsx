@@ -161,8 +161,12 @@ const employeeNav: NavItem[] = [
   { href: '/dashboard',      label: 'My Work',     icon: 'Dashboard'   },
   { href: '/my-tasks',       label: 'Tasks',       icon: 'Tasks'       },
   { href: '/my-dispatch',    label: 'Dispatch',    icon: 'Dispatch'    },
-  { href: '/shipping',       label: 'Packing',     icon: 'Pack'        },
   { href: '/my-performance', label: 'Performance', icon: 'Performance' },
+];
+
+const packingNav: NavItem[] = [
+  { href: '/shipping',    label: 'Packing',   icon: 'Pack'      },
+  { href: '/dashboard',   label: 'Dashboard', icon: 'Dashboard' },
 ];
 
 // SALES: 3 items — Invoices, Order Status, Clients
@@ -200,6 +204,7 @@ export function BottomNav({ role }: { role: string }) {
 
   const items =
     role === 'PRODUCTION_EMPLOYEE' ? employeeNav  :
+    role === 'PACKING'             ? packingNav   :
     role === 'ADMIN'               ? adminNav     :
     role === 'SALES'               ? salesNav     :
     role === 'ACCOUNTS'            ? accountsNav  :

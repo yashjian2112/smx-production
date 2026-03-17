@@ -8,7 +8,7 @@ export default async function ShippingPage() {
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const allowed = ['ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING', 'PRODUCTION_EMPLOYEE'];
+  const allowed = ['ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING', 'PACKING'];
   if (!allowed.includes(session.role)) redirect('/dashboard');
 
   return (

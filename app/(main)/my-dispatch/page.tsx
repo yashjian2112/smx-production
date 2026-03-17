@@ -105,7 +105,7 @@ function ReadyCard({ order, onCreateDO, creating }: {
 }
 
 /* ── DO Card ── */
-function DOCard({ do: d, showPack }: { do: DispatchOrder; showPack?: boolean }) {
+function DOCard({ do: d }: { do: DispatchOrder }) {
   const router = useRouter();
   const totalBoxes = d.boxes.length;
   const totalUnits = d.boxes.reduce((s, b) => s + b._count.items, 0);
@@ -151,16 +151,11 @@ function DOCard({ do: d, showPack }: { do: DispatchOrder; showPack?: boolean }) 
         )}
       </div>
 
-      {/* Continue Packing button */}
-      {showPack && ['OPEN', 'PACKING'].includes(d.status) && (
-        <button
-          type="button"
-          onClick={() => router.push(`/shipping/do/${d.id}`)}
-          className="w-full py-2.5 rounded-lg text-sm font-semibold mt-2"
-          style={{ background: '#0ea5e9', color: '#fff' }}
-        >
-          Continue Packing →
-        </button>
+      {/* Status info — employees track only, packing team handles packing */}
+      {['OPEN', 'PACKING'].includes(d.status) && (
+        <p className="text-xs text-zinc-500 text-center mt-1">
+          Packing team is handling this order
+        </p>
       )}
     </div>
   );
@@ -175,8 +170,9 @@ export default function MyDispatchPage() {
   const [shippedDOs, setShippedDOs]   = useState<DispatchOrder[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
-  const [creating, setCreating]       = useState<string | null>(null);
-  const [createError, setCreateError] = useState('');
+  const [creating, setCreating]         = useState<string | null>(null);
+  const [createError, setCreateError]   = useState('');
+  const [createSuccess, setCreateSuccess] = useState('');
 
   useEffect(() => {
     async function load() {
@@ -210,18 +206,36 @@ export default function MyDispatchPage() {
   async function createDO(orderId: string) {
     setCreating(orderId);
     setCreateError('');
+    setCreateSuccess('');
     try {
       const res  = await fetch('/api/dispatch-orders', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ orderId }),
       });
-      const data = await res.json() as { id?: string; error?: string };
+      const data = await res.json() as { id?: string; doNumber?: string; existing?: boolean; error?: string };
       if (!res.ok || !data.id) {
         setCreateError(data.error ?? 'Failed to create dispatch order');
         return;
       }
-      router.push(`/shipping/do/${data.id}`);
+      // Show success — DO created, packing team will handle the rest
+      const msg = data.existing
+        ? `Dispatch Order ${data.doNumber ?? ''} already exists — packing team will handle it`
+        : `Dispatch Order ${data.doNumber ?? ''} created — handed off to packing team ✓`;
+      setCreateSuccess(msg);
+      // Refresh list so this order moves off the Ready tab
+      const [doRes, readyRes] = await Promise.all([
+        fetch('/api/dispatch-orders/employee'),
+        fetch('/api/shipping/ready-summary'),
+      ]);
+      if (doRes.ok && readyRes.ok) {
+        const dos: DispatchOrder[] = await doRes.json();
+        const ready: ReadyOrder[]  = await readyRes.json();
+        setActiveDOs(dos.filter((d) => ['OPEN', 'PACKING', 'SUBMITTED'].includes(d.status)));
+        setShippedDOs(dos.filter((d) => d.status === 'APPROVED'));
+        setReadyOrders(ready);
+        setTab('active');
+      }
     } catch {
       setCreateError('Network error');
     } finally {
@@ -281,6 +295,11 @@ export default function MyDispatchPage() {
           <EmptyState message="No orders are ready for dispatch" sub="Units must complete Final Assembly and be approved" />
         ) : (
           <div className="space-y-3">
+            {createSuccess && (
+              <div className="rounded-xl p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
+                {createSuccess}
+              </div>
+            )}
             {createError && (
               <div className="rounded-xl p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
                 {createError}
@@ -296,7 +315,7 @@ export default function MyDispatchPage() {
           <EmptyState message="No active dispatch orders" sub="Dispatch orders will appear here once shipping starts packing" />
         ) : (
           <div className="space-y-3">
-            {activeDOs.map((d) => <DOCard key={d.id} do={d} showPack={true} />)}
+            {activeDOs.map((d) => <DOCard key={d.id} do={d} />)}
           </div>
         )
       ) : (

@@ -6,8 +6,11 @@ const ROLE_LABEL: Record<string, string> = {
   ADMIN:               'Admin',
   PRODUCTION_MANAGER:  'Manager',
   PRODUCTION_EMPLOYEE: 'Employee',
+  PACKING:             'Packing',
   SALES:               'Sales',
   ACCOUNTS:            'Accounts',
+  PURCHASE_MANAGER:    'Purchase',
+  SHIPPING:            'Shipping',
 };
 
 export function Header({ title, user }: { title: string; user: { name: string; role: string } }) {
