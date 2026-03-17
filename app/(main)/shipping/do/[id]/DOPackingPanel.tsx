@@ -135,11 +135,10 @@ function PhaseAScan({ doId, orderQty, scans, onScansChange, onNext }: {
   );
 }
 
-function PhaseBVerify({ orderQty, scans, isPartial, partialReason, onPartialChange, onReasonChange, onBack, onNext }: {
-  orderQty: number; scans: StagedScan[]; isPartial: boolean; partialReason: string;
-  onPartialChange: (v: boolean) => void; onReasonChange: (v: string) => void; onBack: () => void; onNext: () => void;
+function PhaseBVerify({ orderQty, scans, onBack, onNext }: {
+  orderQty: number; scans: StagedScan[]; onBack: () => void; onNext: () => void;
 }) {
-  const short = scans.length < orderQty;
+  const allScanned = scans.length >= orderQty;
   return (
     <div className="card p-4 space-y-4">
       <div className="text-sm font-semibold text-white">Step 2 — Verify with Order</div>
@@ -148,9 +147,9 @@ function PhaseBVerify({ orderQty, scans, isPartial, partialReason, onPartialChan
           <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-1">Order Qty</div>
           <div className="text-2xl font-black text-white">{orderQty}</div>
         </div>
-        <div className="flex-1 rounded-lg p-3 text-center" style={{ background: scans.length >= orderQty ? 'rgba(34,197,94,0.08)' : 'rgba(251,191,36,0.08)', border: `1px solid ${scans.length >= orderQty ? 'rgba(34,197,94,0.2)' : 'rgba(251,191,36,0.2)'}` }}>
+        <div className="flex-1 rounded-lg p-3 text-center" style={{ background: allScanned ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${allScanned ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
           <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-1">Scanned</div>
-          <div className={`text-2xl font-black ${scans.length >= orderQty ? 'text-green-400' : 'text-amber-400'}`}>{scans.length}</div>
+          <div className={`text-2xl font-black ${allScanned ? 'text-green-400' : 'text-rose-400'}`}>{scans.length}</div>
         </div>
       </div>
       <div>
@@ -161,26 +160,21 @@ function PhaseBVerify({ orderQty, scans, isPartial, partialReason, onPartialChan
           ))}
         </div>
       </div>
-      {short && (
-        <div className="rounded-lg p-3 space-y-2" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)' }}>
-          <div className="text-xs text-amber-400 font-semibold">{orderQty - scans.length} unit{orderQty - scans.length !== 1 ? 's' : ''} short — is this a partial shipment?</div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={isPartial} onChange={(e) => onPartialChange(e.target.checked)} className="rounded" />
-            <span className="text-xs text-zinc-300">Yes, this is a partial shipment</span>
-          </label>
-          {isPartial && <input type="text" value={partialReason} onChange={(e) => onReasonChange(e.target.value)} placeholder="Reason for partial shipment…" className="input-field text-xs w-full mt-1" />}
+      {!allScanned && (
+        <div className="rounded-lg p-3" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <div className="text-xs text-rose-400 font-semibold">{orderQty - scans.length} unit{orderQty - scans.length !== 1 ? 's' : ''} missing — all {orderQty} units must be scanned before packing.</div>
         </div>
       )}
       <div className="flex gap-2">
         <button type="button" onClick={onBack} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}>← Back</button>
-        <button type="button" onClick={onNext} disabled={short && (!isPartial || !partialReason.trim())} className="flex-1 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all" style={{ background: '#0ea5e9', color: '#fff' }}>Set up Boxes →</button>
+        <button type="button" onClick={onNext} disabled={!allScanned} className="flex-1 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all" style={{ background: '#0ea5e9', color: '#fff' }}>Set up Boxes →</button>
       </div>
     </div>
   );
 }
 
-function PhaseCBoxSetup({ doId, scans, boxSizes, isPartial, partialReason, onBack, onCreated }: {
-  doId: string; scans: StagedScan[]; boxSizes: BoxSizeOption[]; isPartial: boolean; partialReason: string;
+function PhaseCBoxSetup({ doId, scans, boxSizes, onBack, onCreated }: {
+  doId: string; scans: StagedScan[]; boxSizes: BoxSizeOption[];
   onBack: () => void; onCreated: (boxes: PackingBoxRow[]) => void;
 }) {
   const [boxCount, setBoxCount] = useState(1);
@@ -209,7 +203,7 @@ function PhaseCBoxSetup({ doId, scans, boxSizes, isPartial, partialReason, onBac
     if (!allValid) return;
     setError(''); setCreating(true);
     try {
-      const res  = await fetch(`/api/dispatch-orders/${doId}/create-boxes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boxes: boxForms.map((f) => ({ boxSizeId: f.boxSizeId, weightKg: parseFloat(f.weightKg) })), isPartial, partialReason: isPartial ? partialReason : undefined }) });
+      const res  = await fetch(`/api/dispatch-orders/${doId}/create-boxes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boxes: boxForms.map((f) => ({ boxSizeId: f.boxSizeId, weightKg: parseFloat(f.weightKg) })) }) });
       const data = await res.json() as { boxes?: PackingBoxRow[]; error?: string };
       if (!res.ok) { setError(data.error ?? 'Failed to create boxes'); return; }
       onCreated(data.boxes!);
@@ -352,10 +346,8 @@ export function DOPackingPanel({ do: initialDO, boxSizes, role, canApprove = fal
   const router = useRouter();
   const [doData, setDOData]               = useState<DispatchOrderFull>(initialDO);
   const [scans, setScans]                 = useState<StagedScan[]>(initialDO.scans ?? []);
-  const [phase, setPhase]                 = useState<'scan' | 'verify' | 'boxes'>('scan');
-  const [isPartial, setIsPartial]         = useState(false);
-  const [partialReason, setPartialReason] = useState('');
-  const [submitting, setSubmitting]       = useState(false);
+  const [phase, setPhase]           = useState<'scan' | 'verify' | 'boxes'>('scan');
+  const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError]     = useState('');
 
   const isPacking  = doData.status === 'PACKING';
@@ -371,7 +363,7 @@ export function DOPackingPanel({ do: initialDO, boxSizes, role, canApprove = fal
   async function handleSubmit() {
     setSubmitError(''); setSubmitting(true);
     try {
-      const res  = await fetch(`/api/dispatch-orders/${doData.id}/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(isPartial ? { isPartial: true, partialReason } : {}) });
+      const res  = await fetch(`/api/dispatch-orders/${doData.id}/submit`, { method: 'POST' });
       const data = await res.json() as { error?: string };
       if (!res.ok) { setSubmitError(data.error ?? 'Submit failed'); return; }
       router.push('/shipping');
@@ -395,8 +387,8 @@ export function DOPackingPanel({ do: initialDO, boxSizes, role, canApprove = fal
       {doData.status === 'OPEN' && (
         <>
           {phase === 'scan'   && <PhaseAScan doId={doData.id} orderQty={doData.order.quantity} scans={scans} onScansChange={setScans} onNext={() => setPhase('verify')} />}
-          {phase === 'verify' && <PhaseBVerify orderQty={doData.order.quantity} scans={scans} isPartial={isPartial} partialReason={partialReason} onPartialChange={setIsPartial} onReasonChange={setPartialReason} onBack={() => setPhase('scan')} onNext={() => setPhase('boxes')} />}
-          {phase === 'boxes'  && <PhaseCBoxSetup doId={doData.id} scans={scans} boxSizes={boxSizes} isPartial={isPartial} partialReason={partialReason} onBack={() => setPhase('verify')} onCreated={handleBoxesCreated} />}
+          {phase === 'verify' && <PhaseBVerify orderQty={doData.order.quantity} scans={scans} onBack={() => setPhase('scan')} onNext={() => setPhase('boxes')} />}
+          {phase === 'boxes'  && <PhaseCBoxSetup doId={doData.id} scans={scans} boxSizes={boxSizes} onBack={() => setPhase('verify')} onCreated={handleBoxesCreated} />}
         </>
       )}
 
