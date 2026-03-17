@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +10,7 @@ type DOStatus = 'OPEN' | 'PACKING' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
 type DispatchOrder = {
   id: string;
   doNumber: string;
+  orderId: string;
   status: DOStatus;
   createdAt: string;
   approvedAt: string | null;
@@ -32,11 +32,21 @@ type ReadyOrder = {
   readyCount: number;
   client: { customerName: string } | null;
   product: { code: string; name: string };
+  units: { id: string; serialNumber: string }[];
 };
 
-type Tab = 'ready' | 'active' | 'shipped';
+type OrderGroup = {
+  orderId: string;
+  orderNumber: string;
+  quantity: number;
+  client: { customerName: string } | null;
+  product: { code: string; name: string };
+  dos: DispatchOrder[];
+};
 
-/* ── Status badge ── */
+type Tab = 'ready' | 'active' | 'history';
+
+/* ── Helpers ── */
 const STATUS_STYLE: Record<DOStatus, string> = {
   OPEN:      'bg-amber-500/20 text-amber-400 border border-amber-500/30',
   PACKING:   'bg-blue-500/20 text-blue-400 border border-blue-500/30',
@@ -56,12 +66,33 @@ function fmt(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function groupByOrder(dos: DispatchOrder[]): OrderGroup[] {
+  const map = new Map<string, OrderGroup>();
+  for (const d of dos) {
+    const key = d.orderId;
+    if (!map.has(key)) {
+      map.set(key, {
+        orderId:     d.orderId,
+        orderNumber: d.order.orderNumber,
+        quantity:    d.order.quantity,
+        client:      d.order.client,
+        product:     d.order.product,
+        dos:         [],
+      });
+    }
+    map.get(key)!.dos.push(d);
+  }
+  return Array.from(map.values());
+}
+
 /* ── Ready Order Card ── */
 function ReadyCard({ order, onCreateDO, creating }: {
   order: ReadyOrder;
   onCreateDO: (id: string) => void;
   creating: string | null;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <div className="rounded-xl border p-4 space-y-2"
       style={{ background: 'rgba(20,83,45,0.12)', borderColor: 'rgba(74,222,128,0.2)' }}>
@@ -77,12 +108,23 @@ function ReadyCard({ order, onCreateDO, creating }: {
           Ready for Dispatch
         </span>
       </div>
+
       <div className="flex items-center gap-3 text-xs text-slate-400">
         <span>{order.readyCount} of {order.quantity} units ready</span>
         {order.readyCount === order.quantity && (
           <span className="text-emerald-400">● All units ready</span>
         )}
+        {order.units.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setExpanded(v => !v)}
+            className="text-sky-400 hover:text-sky-300 transition-colors ml-auto"
+          >
+            {expanded ? '▲ Hide units' : `▼ Show ${order.units.length} units`}
+          </button>
+        )}
       </div>
+
       {/* Progress bar */}
       <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
         <div
@@ -90,6 +132,18 @@ function ReadyCard({ order, onCreateDO, creating }: {
           style={{ width: `${Math.min(100, (order.readyCount / order.quantity) * 100)}%` }}
         />
       </div>
+
+      {/* Unit serial list */}
+      {expanded && order.units.length > 0 && (
+        <div className="grid grid-cols-3 gap-1 pt-1">
+          {order.units.map((u) => (
+            <span key={u.id} className="font-mono text-xs text-slate-300 bg-slate-800/60 rounded px-2 py-1 text-center">
+              {u.serialNumber}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Create Dispatch Order button */}
       <button
         type="button"
@@ -104,104 +158,172 @@ function ReadyCard({ order, onCreateDO, creating }: {
   );
 }
 
-/* ── DO Card ── */
-function DOCard({ do: d }: { do: DispatchOrder }) {
-  const router = useRouter();
+/* ── DO Sub-row (inside an order group) ── */
+function DORow({ d }: { d: DispatchOrder }) {
   const totalBoxes = d.boxes.length;
   const totalUnits = d.boxes.reduce((s, b) => s + b._count.items, 0);
 
   return (
-    <div className="rounded-xl border p-4 space-y-3"
+    <div className="rounded-lg border px-3 py-2.5 flex items-center gap-3"
+      style={{ background: 'rgba(15,23,42,0.6)', borderColor: 'rgba(148,163,184,0.08)' }}>
+      {/* DO number */}
+      <div className="flex-1 min-w-0">
+        <p className="font-mono text-xs font-bold text-sky-400">{d.doNumber}</p>
+        <p className="text-[10px] text-slate-500 mt-0.5">
+          {fmt(d.createdAt)} · {d.createdBy.name}
+          {d.approvedAt && d.approvedBy && (
+            <span className="text-emerald-400"> · Dispatched {fmt(d.approvedAt)}</span>
+          )}
+        </p>
+      </div>
+
+      {/* Units + boxes */}
+      <div className="text-center px-2">
+        <p className="text-xs font-semibold text-white">{totalUnits}</p>
+        <p className="text-[10px] text-slate-500">units</p>
+      </div>
+      <div className="text-center px-2">
+        <p className="text-xs font-semibold text-white">{totalBoxes}</p>
+        <p className="text-[10px] text-slate-500">boxes</p>
+      </div>
+
+      {/* Status badge */}
+      <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${STATUS_STYLE[d.status]}`}>
+        {STATUS_LABEL[d.status]}
+      </span>
+
+      {/* Print button */}
+      <a
+        href={`/print/dispatch-order/${d.id}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition-colors whitespace-nowrap"
+        style={{ background: 'rgba(148,163,184,0.08)', color: '#94a3b8' }}
+        title="Print Dispatch Order"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 6 2 18 2 18 9" />
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+          <rect x="6" y="14" width="12" height="8" />
+        </svg>
+        Print
+      </a>
+    </div>
+  );
+}
+
+/* ── Order Group Card ── */
+function OrderGroupCard({ group }: { group: OrderGroup }) {
+  const totalDispatched = group.dos
+    .filter(d => d.status === 'APPROVED')
+    .reduce((s, d) => s + d.boxes.reduce((bs, b) => bs + b._count.items, 0), 0);
+
+  const activeDOs    = group.dos.filter(d => ['OPEN', 'PACKING', 'SUBMITTED'].includes(d.status));
+  const completedDOs = group.dos.filter(d => ['APPROVED', 'REJECTED'].includes(d.status));
+  const hasActive    = activeDOs.length > 0;
+
+  return (
+    <div className="rounded-xl border overflow-hidden"
       style={{ background: 'rgba(15,23,42,0.8)', borderColor: 'rgba(148,163,184,0.1)' }}>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2">
+      {/* Order header */}
+      <div className="flex items-start justify-between gap-2 p-4 pb-3">
         <div>
-          <p className="font-mono text-sm font-bold text-sky-400">{d.doNumber}</p>
-          <p className="text-sm font-medium text-white mt-0.5">{d.order.product.name}</p>
-          {d.order.client && (
-            <p className="text-xs text-slate-400 mt-0.5">{d.order.client.customerName}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-mono text-sm font-bold text-sky-400">{group.orderNumber}</p>
+            {hasActive && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/20">
+                Active
+              </span>
+            )}
+          </div>
+          <p className="text-sm font-medium text-white mt-0.5">{group.product.name}</p>
+          {group.client && (
+            <p className="text-xs text-slate-400 mt-0.5">{group.client.customerName}</p>
           )}
         </div>
-        <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${STATUS_STYLE[d.status]}`}>
-          {STATUS_LABEL[d.status]}
-        </span>
-      </div>
-
-      {/* Meta */}
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-lg p-2" style={{ background: 'rgba(15,23,42,0.6)' }}>
-          <p className="text-xs text-slate-500">Order</p>
-          <p className="text-xs font-mono text-slate-300 truncate">{d.order.orderNumber}</p>
-        </div>
-        <div className="rounded-lg p-2" style={{ background: 'rgba(15,23,42,0.6)' }}>
-          <p className="text-xs text-slate-500">Units Packed</p>
-          <p className="text-sm font-semibold text-white">{totalUnits}</p>
-        </div>
-        <div className="rounded-lg p-2" style={{ background: 'rgba(15,23,42,0.6)' }}>
-          <p className="text-xs text-slate-500">Boxes</p>
-          <p className="text-sm font-semibold text-white">{totalBoxes}</p>
+        <div className="text-right shrink-0">
+          <p className="text-xs text-slate-500">Total Qty</p>
+          <p className="text-sm font-semibold text-white">{group.quantity}</p>
+          {totalDispatched > 0 && (
+            <p className="text-[10px] text-emerald-400 mt-0.5">{totalDispatched} dispatched</p>
+          )}
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>Created {fmt(d.createdAt)} by {d.createdBy.name}</span>
-        {d.approvedAt && d.approvedBy && (
-          <span className="text-emerald-400">Dispatched {fmt(d.approvedAt)}</span>
+      {/* DO sub-list */}
+      <div className="px-3 pb-3 space-y-1.5">
+        {/* Active DOs first */}
+        {activeDOs.map(d => <DORow key={d.id} d={d} />)}
+
+        {/* Completed DOs */}
+        {completedDOs.length > 0 && (
+          <>
+            {activeDOs.length > 0 && (
+              <p className="text-[10px] text-slate-600 uppercase tracking-wide pt-1 pb-0.5 px-1">
+                History
+              </p>
+            )}
+            {completedDOs.map(d => <DORow key={d.id} d={d} />)}
+          </>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* Status info — employees track only, packing team handles packing */}
-      {['OPEN', 'PACKING'].includes(d.status) && (
-        <p className="text-xs text-zinc-500 text-center mt-1">
-          Packing team is handling this order
-        </p>
-      )}
+/* ── Empty State ── */
+function EmptyState({ message, sub }: { message: string; sub: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center gap-2">
+      <div className="w-12 h-12 rounded-full flex items-center justify-center mb-2"
+        style={{ background: 'rgba(148,163,184,0.08)' }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+          <line x1="12" y1="22.08" x2="12" y2="12" />
+        </svg>
+      </div>
+      <p className="text-slate-400 font-medium">{message}</p>
+      <p className="text-xs text-slate-600">{sub}</p>
     </div>
   );
 }
 
 /* ── Main Page ── */
 export default function MyDispatchPage() {
-  const router = useRouter();
   const [tab, setTab] = useState<Tab>('ready');
   const [readyOrders, setReadyOrders] = useState<ReadyOrder[]>([]);
-  const [activeDOs, setActiveDOs]     = useState<DispatchOrder[]>([]);
-  const [shippedDOs, setShippedDOs]   = useState<DispatchOrder[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState('');
-  const [creating, setCreating]         = useState<string | null>(null);
-  const [createError, setCreateError]   = useState('');
+  const [allDOs,      setAllDOs]      = useState<DispatchOrder[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState('');
+  const [creating,    setCreating]    = useState<string | null>(null);
+  const [createError,   setCreateError]   = useState('');
   const [createSuccess, setCreateSuccess] = useState('');
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError('');
-      try {
-        // Active DOs (OPEN, PACKING, SUBMITTED) + Shipped (APPROVED)
-        const [doRes, readyRes] = await Promise.all([
-          fetch('/api/dispatch-orders/employee'),
-          fetch('/api/shipping/ready-summary'),
-        ]);
+  async function load() {
+    setLoading(true);
+    setError('');
+    try {
+      const [doRes, readyRes] = await Promise.all([
+        fetch('/api/dispatch-orders/employee'),
+        fetch('/api/shipping/ready-summary'),
+      ]);
+      if (!doRes.ok)    throw new Error('Failed to load dispatch orders');
+      if (!readyRes.ok) throw new Error('Failed to load ready orders');
 
-        if (!doRes.ok) throw new Error('Failed to load dispatch orders');
-        if (!readyRes.ok) throw new Error('Failed to load ready orders');
+      const dos: DispatchOrder[] = await doRes.json();
+      const ready: ReadyOrder[]  = await readyRes.json();
 
-        const dos: DispatchOrder[]  = await doRes.json();
-        const ready: ReadyOrder[]   = await readyRes.json();
-
-        setActiveDOs(dos.filter((d) => ['OPEN', 'PACKING', 'SUBMITTED'].includes(d.status)));
-        setShippedDOs(dos.filter((d) => d.status === 'APPROVED'));
-        setReadyOrders(ready);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Error loading data');
-      } finally {
-        setLoading(false);
-      }
+      setAllDOs(dos);
+      setReadyOrders(ready);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error loading data');
+    } finally {
+      setLoading(false);
     }
-    load();
-  }, []);
+  }
+
+  useEffect(() => { load(); }, []);
 
   async function createDO(orderId: string) {
     setCreating(orderId);
@@ -218,24 +340,12 @@ export default function MyDispatchPage() {
         setCreateError(data.error ?? 'Failed to create dispatch order');
         return;
       }
-      // Show success — DO created, packing team will handle the rest
       const msg = data.existing
         ? `Dispatch Order ${data.doNumber ?? ''} already exists — packing team will handle it`
         : `Dispatch Order ${data.doNumber ?? ''} created — handed off to packing team ✓`;
       setCreateSuccess(msg);
-      // Refresh list so this order moves off the Ready tab
-      const [doRes, readyRes] = await Promise.all([
-        fetch('/api/dispatch-orders/employee'),
-        fetch('/api/shipping/ready-summary'),
-      ]);
-      if (doRes.ok && readyRes.ok) {
-        const dos: DispatchOrder[] = await doRes.json();
-        const ready: ReadyOrder[]  = await readyRes.json();
-        setActiveDOs(dos.filter((d) => ['OPEN', 'PACKING', 'SUBMITTED'].includes(d.status)));
-        setShippedDOs(dos.filter((d) => d.status === 'APPROVED'));
-        setReadyOrders(ready);
-        setTab('active');
-      }
+      await load();
+      setTab('active');
     } catch {
       setCreateError('Network error');
     } finally {
@@ -243,10 +353,17 @@ export default function MyDispatchPage() {
     }
   }
 
+  /* Derived groups */
+  const activeDOs  = allDOs.filter(d => ['OPEN', 'PACKING', 'SUBMITTED'].includes(d.status));
+  const historyDOs = allDOs.filter(d => ['APPROVED', 'REJECTED'].includes(d.status));
+
+  const activeGroups  = groupByOrder(activeDOs);
+  const historyGroups = groupByOrder(historyDOs);
+
   const tabs: { key: Tab; label: string; count: number }[] = [
-    { key: 'ready',  label: 'Ready',       count: readyOrders.length },
-    { key: 'active', label: 'In Dispatch',  count: activeDOs.length },
-    { key: 'shipped',label: 'Shipped',      count: shippedDOs.length },
+    { key: 'ready',   label: 'Ready',      count: readyOrders.length },
+    { key: 'active',  label: 'In Dispatch', count: activeGroups.length },
+    { key: 'history', label: 'History',     count: historyGroups.length },
   ];
 
   return (
@@ -292,7 +409,10 @@ export default function MyDispatchPage() {
         </div>
       ) : tab === 'ready' ? (
         readyOrders.length === 0 ? (
-          <EmptyState message="No orders are ready for dispatch" sub="Units must complete Final Assembly and be approved" />
+          <EmptyState
+            message="No orders are ready for dispatch"
+            sub="Units must complete Final Assembly and be approved"
+          />
         ) : (
           <div className="space-y-3">
             {createSuccess && (
@@ -311,39 +431,32 @@ export default function MyDispatchPage() {
           </div>
         )
       ) : tab === 'active' ? (
-        activeDOs.length === 0 ? (
-          <EmptyState message="No active dispatch orders" sub="Dispatch orders will appear here once shipping starts packing" />
+        activeGroups.length === 0 ? (
+          <EmptyState
+            message="No active dispatch orders"
+            sub="Create a dispatch order from the Ready tab"
+          />
         ) : (
           <div className="space-y-3">
-            {activeDOs.map((d) => <DOCard key={d.id} do={d} />)}
+            {activeGroups.map((g) => (
+              <OrderGroupCard key={g.orderId} group={g} />
+            ))}
           </div>
         )
       ) : (
-        shippedDOs.length === 0 ? (
-          <EmptyState message="No dispatched orders yet" sub="Approved dispatch orders will appear here" />
+        historyGroups.length === 0 ? (
+          <EmptyState
+            message="No dispatch history yet"
+            sub="Approved and rejected dispatch orders will appear here"
+          />
         ) : (
           <div className="space-y-3">
-            {shippedDOs.map((d) => <DOCard key={d.id} do={d} />)}
+            {historyGroups.map((g) => (
+              <OrderGroupCard key={g.orderId} group={g} />
+            ))}
           </div>
         )
       )}
-    </div>
-  );
-}
-
-function EmptyState({ message, sub }: { message: string; sub: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center gap-2">
-      <div className="w-12 h-12 rounded-full flex items-center justify-center mb-2"
-        style={{ background: 'rgba(148,163,184,0.08)' }}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
-          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-          <line x1="12" y1="22.08" x2="12" y2="12" />
-        </svg>
-      </div>
-      <p className="text-slate-400 font-medium">{message}</p>
-      <p className="text-xs text-slate-600">{sub}</p>
     </div>
   );
 }

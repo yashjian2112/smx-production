@@ -18,6 +18,7 @@ export async function GET() {
             currentStage: 'FINAL_ASSEMBLY',
             currentStatus: 'APPROVED',
             readyForDispatch: false,
+            packingBoxItem: null,  // not yet assigned to any box
           },
         },
       },
@@ -29,6 +30,7 @@ export async function GET() {
             currentStage: 'FINAL_ASSEMBLY',
             currentStatus: 'APPROVED',
             readyForDispatch: false,
+            packingBoxItem: null,  // not yet assigned to any box
           },
           select: { id: true, serialNumber: true },
           orderBy: { serialNumber: 'asc' },
