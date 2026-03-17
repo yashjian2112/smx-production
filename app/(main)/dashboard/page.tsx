@@ -13,7 +13,7 @@ async function getDashboardData(role: string, userId: string) {
         prisma.dispatchOrder.count({ where: { status: 'OPEN' } }),
         prisma.dispatchOrder.count({ where: { status: 'PACKING' } }),
         prisma.dispatchOrder.count({ where: { status: 'SUBMITTED' } }),
-        prisma.packingBox.count({ where: { isSealed: true, updatedAt: { gte: today } } }),
+        prisma.packingBox.count({ where: { isSealed: true, createdAt: { gte: today } } }),
       ]);
       return { role: 'packing', openDOs, packingDOs, submittedDOs, sealedBoxesToday };
     }
