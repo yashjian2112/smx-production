@@ -8,7 +8,11 @@ export default async function PrintBoxLabelPage({ params }: { params: { boxId: s
     include: {
       boxSize: true,
       dispatchOrder: {
-        include: {
+        select: {
+          id: true,
+          doNumber: true,
+          totalBoxes: true,
+          createdAt: true,
           order: {
             include: {
               product: { select: { code: true, name: true } },
