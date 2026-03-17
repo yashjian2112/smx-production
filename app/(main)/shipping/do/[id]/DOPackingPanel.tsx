@@ -259,10 +259,15 @@ function PhaseCBoxSetup({ doId, scans, boxSizes, onBack, onCreated }: {
   );
 }
 
-function BoxScanCard({ box, doId, onUpdate }: { box: PackingBoxRow; doId: string; onUpdate: (u: PackingBoxRow) => void }) {
-  const [input, setInput]       = useState('');
-  const [scanning, setScanning] = useState(false);
-  const [error, setError]       = useState('');
+function BoxScanCard({ box, doId, boxSizes, onUpdate }: { box: PackingBoxRow; doId: string; boxSizes: BoxSizeOption[]; onUpdate: (u: PackingBoxRow) => void }) {
+  const [input, setInput]           = useState('');
+  const [scanning, setScanning]     = useState(false);
+  const [error, setError]           = useState('');
+  const [editing, setEditing]       = useState(false);
+  const [editSize, setEditSize]     = useState(box.boxSizeId ?? '');
+  const [editWeight, setEditWeight] = useState(box.weightKg ? String(box.weightKg) : '');
+  const [saving, setSaving]         = useState(false);
+  const [saveError, setSaveError]   = useState('');
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
@@ -278,6 +283,20 @@ function BoxScanCard({ box, doId, onUpdate }: { box: PackingBoxRow; doId: string
     finally { setScanning(false); }
   }
 
+  async function handleSaveEdit() {
+    const wt = parseFloat(editWeight);
+    if (!editSize || !wt || wt <= 0) { setSaveError('Select a size and enter weight'); return; }
+    setSaveError(''); setSaving(true);
+    try {
+      const res  = await fetch(`/api/dispatch-orders/${doId}/boxes/${box.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boxSizeId: editSize, weightKg: wt }) });
+      const data = await res.json() as { box?: PackingBoxRow; error?: string };
+      if (!res.ok) { setSaveError(data.error ?? 'Update failed'); return; }
+      onUpdate({ ...box, boxSizeId: editSize, weightKg: wt, boxSize: data.box!.boxSize });
+      setEditing(false);
+    } catch { setSaveError('Network error'); }
+    finally { setSaving(false); }
+  }
+
   return (
     <div className="card p-4 space-y-3" style={box.labelScanned ? { borderColor: 'rgba(34,197,94,0.3)' } : undefined}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -285,16 +304,46 @@ function BoxScanCard({ box, doId, onUpdate }: { box: PackingBoxRow; doId: string
           <span className="text-sm font-semibold text-white">Box {box.boxNumber}</span>
           <span className="ml-2 font-mono text-xs text-zinc-500">{box.boxLabel}</span>
         </div>
-        {box.labelScanned
-          ? <span className="text-xs font-bold px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">Label Scanned ✓</span>
-          : <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}>Awaiting Label Scan</span>
-        }
+        <div className="flex items-center gap-2">
+          {!box.labelScanned && !editing && (
+            <button type="button" onClick={() => { setEditSize(box.boxSizeId ?? ''); setEditWeight(box.weightKg ? String(box.weightKg) : ''); setEditing(true); setSaveError(''); }} className="text-xs px-2 py-0.5 rounded transition-colors" style={{ background: 'rgba(255,255,255,0.06)', color: '#a1a1aa', border: '1px solid rgba(255,255,255,0.1)' }}>Edit</button>
+          )}
+          {box.labelScanned
+            ? <span className="text-xs font-bold px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">Label Scanned ✓</span>
+            : <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}>Awaiting Label Scan</span>
+          }
+        </div>
       </div>
-      <div className="text-xs text-zinc-400 flex gap-3 flex-wrap">
-        {box.weightKg && <span>{box.weightKg} kg</span>}
-        {box.boxSize && <span>{box.boxSize.name} ({box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm)</span>}
-        <span>{box.items.length} unit{box.items.length !== 1 ? 's' : ''}</span>
-      </div>
+
+      {editing ? (
+        <div className="rounded-lg p-3 space-y-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="flex gap-2 flex-wrap">
+            <div className="flex-[2] min-w-[160px]">
+              <label className="text-[11px] text-zinc-500 mb-1 block">Box Size</label>
+              <select value={editSize} onChange={(e) => setEditSize(e.target.value)} className="input-field text-sm w-full">
+                <option value="">— Select size —</option>
+                {boxSizes.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.lengthCm}×{s.widthCm}×{s.heightCm} cm)</option>)}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[90px]">
+              <label className="text-[11px] text-zinc-500 mb-1 block">Weight (kg)</label>
+              <input type="number" step="0.1" min="0.1" value={editWeight} onChange={(e) => setEditWeight(e.target.value)} placeholder="0.0" className="input-field text-sm w-full" />
+            </div>
+          </div>
+          {saveError && <p className="text-xs text-rose-400">{saveError}</p>}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setEditing(false)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: '#a1a1aa', border: '1px solid rgba(255,255,255,0.1)' }}>Cancel</button>
+            <button type="button" onClick={handleSaveEdit} disabled={saving} className="px-4 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40" style={{ background: '#0ea5e9', color: '#fff' }}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
+      ) : (
+        <div className="text-xs text-zinc-400 flex gap-3 flex-wrap">
+          {box.weightKg && <span>{box.weightKg} kg</span>}
+          {box.boxSize && <span>{box.boxSize.name} ({box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm)</span>}
+          <span>{box.items.length} unit{box.items.length !== 1 ? 's' : ''}</span>
+        </div>
+      )}
+
       {box.items.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {box.items.map((item) => <span key={item.id} className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.06)', color: '#a1a1aa' }}>{item.unit.serialNumber}</span>)}
@@ -347,8 +396,10 @@ export function DOPackingPanel({ do: initialDO, boxSizes, role, canApprove = fal
   const [doData, setDOData]               = useState<DispatchOrderFull>(initialDO);
   const [scans, setScans]                 = useState<StagedScan[]>(initialDO.scans ?? []);
   const [phase, setPhase]           = useState<'scan' | 'verify' | 'boxes'>('scan');
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError]     = useState('');
+  const [submitting, setSubmitting]   = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [resetting, setResetting]     = useState(false);
+  const [resetError, setResetError]   = useState('');
 
   const isPacking  = doData.status === 'PACKING';
   const allLabeled = isPacking && doData.boxes.length > 0 && doData.boxes.every((b) => b.labelScanned);
@@ -358,6 +409,20 @@ export function DOPackingPanel({ do: initialDO, boxSizes, role, canApprove = fal
   }
   function handleBoxesCreated(boxes: PackingBoxRow[]) {
     setDOData((prev) => ({ ...prev, status: 'PACKING', boxes })); setScans([]);
+  }
+
+  async function handleReset() {
+    if (!confirm('Reset packing? All boxes and scans will be deleted.')) return;
+    setResetError(''); setResetting(true);
+    try {
+      const res  = await fetch(`/api/dispatch-orders/${doData.id}/reset-packing`, { method: 'POST' });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) { setResetError(data.error ?? 'Reset failed'); return; }
+      setDOData((prev) => ({ ...prev, status: 'OPEN', boxes: [], totalBoxes: null }));
+      setScans([]);
+      setPhase('scan');
+    } catch { setResetError('Network error'); }
+    finally { setResetting(false); }
   }
 
   async function handleSubmit() {
@@ -397,8 +462,12 @@ export function DOPackingPanel({ do: initialDO, boxSizes, role, canApprove = fal
           <div className="card p-4 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="text-sm text-zinc-400">{doData.boxes.filter((b) => b.labelScanned).length} of {doData.boxes.length} box{doData.boxes.length !== 1 ? 'es' : ''} confirmed</div>
-              <a href={`/print/packing-list/${doData.id}`} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}>Packing List</a>
+              <div className="flex items-center gap-2">
+                <a href={`/print/packing-list/${doData.id}`} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.06)', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.1)' }}>Packing List</a>
+                <button type="button" onClick={handleReset} disabled={resetting} className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-40 transition-colors" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>{resetting ? 'Resetting…' : 'Reset Packing'}</button>
+              </div>
             </div>
+            {resetError && <p className="text-xs text-rose-400">{resetError}</p>}
             <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
               <div className="h-full rounded-full transition-all" style={{ width: `${doData.boxes.length > 0 ? (doData.boxes.filter((b) => b.labelScanned).length / doData.boxes.length) * 100 : 0}%`, background: allLabeled ? '#22c55e' : '#0ea5e9' }} />
             </div>
@@ -409,7 +478,7 @@ export function DOPackingPanel({ do: initialDO, boxSizes, role, canApprove = fal
             {!allLabeled && <p className="text-xs text-zinc-600 text-center">Print labels → stick on boxes → scan each label to confirm</p>}
           </div>
           <div className="flex flex-col gap-4">
-            {doData.boxes.map((box) => <BoxScanCard key={box.id} box={box} doId={doData.id} onUpdate={handleBoxUpdate} />)}
+            {doData.boxes.map((box) => <BoxScanCard key={box.id} box={box} doId={doData.id} boxSizes={boxSizes} onUpdate={handleBoxUpdate} />)}
           </div>
         </div>
       )}
