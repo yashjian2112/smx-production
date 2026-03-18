@@ -80,6 +80,13 @@ function PhaseAScan({ doId, orderQty, scans, onScansChange, onNext }: {
     e.preventDefault();
     const b = input.trim().toUpperCase();
     if (!b) return;
+    // Front-end duplicate check — instant feedback without API call
+    if (scans.some((s) => s.barcode.toUpperCase() === b || s.serial.toUpperCase() === b)) {
+      setError('Already scanned — this unit is already in the list');
+      setInput('');
+      inputRef.current?.focus();
+      return;
+    }
     setError(''); setScanning(true);
     try {
       const res  = await fetch(`/api/dispatch-orders/${doId}/scans`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode: b }) });

@@ -42,14 +42,18 @@ export async function POST(
     if (!unit.readyForDispatch)
       return NextResponse.json({ error: 'Unit is not ready for dispatch' }, { status: 400 });
 
-    // Check if already staged for this DO
+    // Check if already staged (same or different DO)
     const existing = await prisma.dispatchOrderScan.findUnique({ where: { unitId: unit.id } });
-    if (existing)
-      return NextResponse.json({ error: 'Unit already scanned for this dispatch order' }, { status: 409 });
+    if (existing) {
+      const msg = existing.dispatchOrderId === params.id
+        ? 'Unit already scanned in this dispatch order'
+        : 'Unit is already staged in another active dispatch order';
+      return NextResponse.json({ error: msg }, { status: 409 });
+    }
 
-    // Check if already in a box of a different DO
+    // Check if already packed in a box (any DO)
     const inBox = await prisma.packingBoxItem.findUnique({ where: { unitId: unit.id } });
-    if (inBox) return NextResponse.json({ error: 'Unit is already packed in another dispatch' }, { status: 409 });
+    if (inBox) return NextResponse.json({ error: 'Unit is already packed in a previous dispatch — cannot scan again' }, { status: 409 });
 
     const scan = await prisma.dispatchOrderScan.create({
       data: {
