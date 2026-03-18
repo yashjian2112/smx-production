@@ -51,9 +51,24 @@ export async function POST(
       return NextResponse.json({ error: msg }, { status: 409 });
     }
 
-    // Check if already packed in a box (any DO)
+    // Check if already packed in a box (new DO flow)
     const inBox = await prisma.packingBoxItem.findUnique({ where: { unitId: unit.id } });
     if (inBox) return NextResponse.json({ error: 'Unit is already packed in a previous dispatch — cannot scan again' }, { status: 409 });
+
+    // Check if already dispatched via the old Dispatch flow (DispatchItem in an APPROVED Dispatch)
+    const oldDispatch = await prisma.dispatchItem.findFirst({
+      where: {
+        unitId:   unit.id,
+        dispatch: { status: 'APPROVED' },
+      },
+      select: { id: true, dispatch: { select: { dispatchNumber: true } } },
+    });
+    if (oldDispatch) {
+      return NextResponse.json(
+        { error: `Unit was already dispatched via ${oldDispatch.dispatch.dispatchNumber ?? 'a previous dispatch'} — cannot scan again` },
+        { status: 409 },
+      );
+    }
 
     const scan = await prisma.dispatchOrderScan.create({
       data: {
