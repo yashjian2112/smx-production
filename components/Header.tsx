@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { NotificationBell } from './NotificationBell';
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN:               'Admin',
@@ -8,6 +9,10 @@ const ROLE_LABEL: Record<string, string> = {
   PRODUCTION_EMPLOYEE: 'Employee',
   SALES:               'Sales',
   ACCOUNTS:            'Accounts',
+  SHIPPING:            'Shipping',
+  PURCHASE_MANAGER:    'Purchase Mgr',
+  STORE_MANAGER:       'Store Mgr',
+  PACKING:             'Packing',
 };
 
 export function Header({ title, user }: { title: string; user: { name: string; role: string } }) {
@@ -45,6 +50,7 @@ export function Header({ title, user }: { title: string; user: { name: string; r
 
       {/* User info + logout */}
       <div className="flex items-center gap-2">
+        <NotificationBell />
         <span className="text-zinc-500 text-xs hidden sm:inline font-light">{user.name}</span>
         <span
           className="text-[10px] font-medium text-zinc-400 px-2 py-0.5 rounded-full"

@@ -20,6 +20,7 @@ const ROLE_OPTIONS = [
   { value: 'SHIPPING',            label: 'Shipping' },
   { value: 'PURCHASE_MANAGER',    label: 'Purchase Manager' },
   { value: 'STORE_MANAGER',       label: 'Store Manager' },
+  { value: 'PACKING',             label: 'Packing' },
   { value: 'ADMIN',               label: 'Admin' },
 ];
 
