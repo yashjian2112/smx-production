@@ -66,9 +66,10 @@ function DOStatusBadge({ status }: { status: string }) {
   );
 }
 
-function PhaseAScan({ doId, orderQty, scans, onScansChange, onNext }: {
+function PhaseAScan({ doId, orderQty, scans, onScansChange, onNext, onReset, resetting }: {
   doId: string; orderQty: number; scans: StagedScan[];
   onScansChange: (s: StagedScan[]) => void; onNext: () => void;
+  onReset?: () => void; resetting?: boolean;
 }) {
   const [input, setInput]       = useState('');
   const [scanning, setScanning] = useState(false);
@@ -134,6 +135,17 @@ function PhaseAScan({ doId, orderQty, scans, onScansChange, onNext }: {
             </div>
           ))}
         </div>
+      )}
+      {scans.length > 0 && onReset && (
+        <button
+          type="button"
+          onClick={onReset}
+          disabled={resetting}
+          className="w-full py-2 rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors"
+          style={{ background: 'rgba(239,68,68,0.08)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}
+        >
+          {resetting ? 'Clearing…' : `Clear All Scans (${scans.length})`}
+        </button>
       )}
       <button type="button" onClick={onNext} disabled={scans.length < orderQty} className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all" style={scans.length >= orderQty ? { background: '#0ea5e9', color: '#fff' } : undefined}>
         {scans.length >= orderQty ? 'Verify with Order →' : `Scan ${orderQty - scans.length} more unit${orderQty - scans.length !== 1 ? 's' : ''} to continue`}
@@ -344,10 +356,19 @@ function BoxScanCard({ box, doId, boxSizes, onUpdate }: { box: PackingBoxRow; do
           </div>
         </div>
       ) : (
-        <div className="text-xs text-zinc-400 flex gap-3 flex-wrap">
-          {box.weightKg && <span>{box.weightKg} kg</span>}
-          {box.boxSize && <span>{box.boxSize.name} ({box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm)</span>}
-          <span>{box.items.length} unit{box.items.length !== 1 ? 's' : ''}</span>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 py-1">
+          <div>
+            <div className="text-[10px] text-zinc-600 uppercase tracking-wide font-semibold mb-0.5">Size</div>
+            <div className="text-xs text-zinc-300 font-medium">{box.boxSize ? box.boxSize.name : '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-zinc-600 uppercase tracking-wide font-semibold mb-0.5">Weight</div>
+            <div className="text-xs text-zinc-300 font-medium">{box.weightKg ? `${box.weightKg} kg` : '—'}</div>
+          </div>
+          <div className="col-span-2">
+            <div className="text-[10px] text-zinc-600 uppercase tracking-wide font-semibold mb-0.5">Dimensions (L×W×H)</div>
+            <div className="text-xs text-zinc-300 font-medium">{box.boxSize ? `${box.boxSize.lengthCm} × ${box.boxSize.widthCm} × ${box.boxSize.heightCm} cm` : '—'}</div>
+          </div>
         </div>
       )}
 
@@ -458,7 +479,7 @@ export function DOPackingPanel({ do: initialDO, boxSizes, role, canApprove = fal
 
       {doData.status === 'OPEN' && (
         <>
-          {phase === 'scan'   && <PhaseAScan doId={doData.id} orderQty={doData.order.quantity} scans={scans} onScansChange={setScans} onNext={() => setPhase('verify')} />}
+          {phase === 'scan'   && <PhaseAScan doId={doData.id} orderQty={doData.order.quantity} scans={scans} onScansChange={setScans} onNext={() => setPhase('verify')} onReset={handleReset} resetting={resetting} />}
           {phase === 'verify' && <PhaseBVerify orderQty={doData.order.quantity} scans={scans} onBack={() => setPhase('scan')} onNext={() => setPhase('boxes')} />}
           {phase === 'boxes'  && <PhaseCBoxSetup doId={doData.id} scans={scans} boxSizes={boxSizes} onBack={() => setPhase('verify')} onCreated={handleBoxesCreated} />}
         </>
