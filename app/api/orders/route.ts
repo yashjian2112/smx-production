@@ -25,8 +25,9 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
 
+    const validStatuses = ['ACTIVE', 'HOLD', 'CANCELLED', 'CLOSED', 'DISPATCHED'];
     const orders = await prisma.order.findMany({
-      where: status ? { status: status as 'ACTIVE' | 'HOLD' | 'CANCELLED' | 'CLOSED' } : {},
+      where: (status && validStatuses.includes(status)) ? { status: status as 'ACTIVE' | 'HOLD' | 'CANCELLED' | 'CLOSED' | 'DISPATCHED' } : {},
       include: {
         product: true,
         _count: { select: { units: true } },
