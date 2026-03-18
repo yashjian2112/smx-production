@@ -324,7 +324,7 @@ function BoxScanCard({ box, doId, boxSizes, onUpdate }: { box: PackingBoxRow; do
           <span className="ml-2 font-mono text-xs text-zinc-500">{box.boxLabel}</span>
         </div>
         <div className="flex items-center gap-2">
-          {!box.labelScanned && !editing && (
+          {!editing && (
             <button type="button" onClick={() => { setEditSize(box.boxSizeId ?? ''); setEditWeight(box.weightKg ? String(box.weightKg) : ''); setEditing(true); setSaveError(''); }} className="text-xs px-2 py-0.5 rounded transition-colors" style={{ background: 'rgba(255,255,255,0.06)', color: '#a1a1aa', border: '1px solid rgba(255,255,255,0.1)' }}>Edit</button>
           )}
           {box.labelScanned
