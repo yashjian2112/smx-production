@@ -128,8 +128,8 @@ function PhaseAScan({ doId, orderQty, scans, onScansChange, onNext }: {
           ))}
         </div>
       )}
-      <button type="button" onClick={onNext} disabled={scans.length === 0} className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all" style={scans.length > 0 ? { background: '#0ea5e9', color: '#fff' } : undefined}>
-        Verify with Order →
+      <button type="button" onClick={onNext} disabled={scans.length < orderQty} className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all" style={scans.length >= orderQty ? { background: '#0ea5e9', color: '#fff' } : undefined}>
+        {scans.length >= orderQty ? 'Verify with Order →' : `Scan ${orderQty - scans.length} more unit${orderQty - scans.length !== 1 ? 's' : ''} to continue`}
       </button>
     </div>
   );
