@@ -211,3 +211,49 @@ export async function generateNextFinalInvoiceNumber(isExport: boolean): Promise
 
   return `${prefix}${String(next).padStart(4, '0')}`;
 }
+
+/**
+ * Generates the next Packing Slip number: TSM/PS/YY-YY/0001
+ */
+export async function generateNextPackingSlipNumber(): Promise<string> {
+  const fy     = getFiscalYear();
+  const prefix = `TSM/PS/${fy}/`;
+
+  const latest = await prisma.packingSlip.findFirst({
+    where: { slipNumber: { startsWith: prefix } },
+    orderBy: { slipNumber: 'desc' },
+    select: { slipNumber: true },
+  });
+
+  let next = 1;
+  if (latest) {
+    const parts = latest.slipNumber.split('/');
+    const seq   = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+
+  return `${prefix}${String(next).padStart(4, '0')}`;
+}
+
+/**
+ * Generates the next Packing List number: TSM/PL/YY-YY/0001
+ */
+export async function generateNextPackingListNumber(): Promise<string> {
+  const fy     = getFiscalYear();
+  const prefix = `TSM/PL/${fy}/`;
+
+  const latest = await prisma.packingList.findFirst({
+    where: { listNumber: { startsWith: prefix } },
+    orderBy: { listNumber: 'desc' },
+    select: { listNumber: true },
+  });
+
+  let next = 1;
+  if (latest) {
+    const parts = latest.listNumber.split('/');
+    const seq   = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+
+  return `${prefix}${String(next).padStart(4, '0')}`;
+}
