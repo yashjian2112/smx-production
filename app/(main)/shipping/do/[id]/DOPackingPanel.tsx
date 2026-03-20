@@ -225,10 +225,12 @@ function InspectionStep({
 function PhaseAScan({
   doData,
   onScansUpdate,
+  onQtySet,
   onNext,
 }: {
   doData:        DispatchOrderFull;
   onScansUpdate: (scans: StagedScan[]) => void;
+  onQtySet:      (qty: number) => void;
   onNext:        () => void;
 }) {
   const barcodeRef = useRef<HTMLInputElement>(null);
@@ -237,6 +239,12 @@ function PhaseAScan({
   const [lookupError, setLookupError] = useState('');
   const [inspecting,  setInspecting]  = useState<InspectedUnit | null>(null);
   const [removing,    setRemoving]    = useState<string | null>(null);
+
+  // For legacy DOs with dispatchQty = 0
+  const [qtyInput,   setQtyInput]   = useState('');
+  const [savingQty,  setSavingQty]  = useState(false);
+  const [qtyError,   setQtyError]   = useState('');
+
   const scans = doData.scans;
 
   async function handleScan(e: React.FormEvent) {
@@ -264,16 +272,58 @@ function PhaseAScan({
     finally { setRemoving(null); }
   }
 
+  async function handleSetQty() {
+    const qty = parseInt(qtyInput, 10);
+    if (isNaN(qty) || qty < 1) { setQtyError('Enter a valid quantity'); return; }
+    setQtyError('');
+    setSavingQty(true);
+    try {
+      const res  = await fetch(`/api/dispatch-orders/${doData.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dispatchQty: qty }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) { setQtyError(data.error ?? 'Failed to save'); return; }
+      onQtySet(qty);
+    } catch { setQtyError('Network error'); }
+    finally { setSavingQty(false); }
+  }
+
   return (
     <div className="card p-4 space-y-3">
       {/* Step indicator */}
       <div className="flex items-center gap-2">
         <span className="w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white flex-shrink-0" style={{ background: '#0ea5e9' }}>1</span>
         <span className="text-sm font-semibold text-white">Scan all controllers</span>
-        <span className={`text-xs font-semibold ml-auto ${scans.length === doData.dispatchQty ? 'text-green-400' : 'text-zinc-400'}`}>
-          {scans.length} / {doData.dispatchQty}
-        </span>
+        {doData.dispatchQty > 0 && (
+          <span className={`text-xs font-semibold ml-auto ${scans.length === doData.dispatchQty ? 'text-green-400' : 'text-zinc-400'}`}>
+            {scans.length} / {doData.dispatchQty}
+          </span>
+        )}
       </div>
+
+      {/* Qty prompt for legacy DOs */}
+      {doData.dispatchQty === 0 && (
+        <div className="rounded-lg p-3 space-y-2" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.25)' }}>
+          <div className="text-xs font-semibold text-sky-400">Set dispatch quantity for this order</div>
+          <div className="flex gap-2">
+            <input
+              type="number" min="1" value={qtyInput}
+              onChange={(e) => { setQtyInput(e.target.value); setQtyError(''); }}
+              placeholder="e.g. 5"
+              className="input-field text-sm flex-1"
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSetQty(); } }}
+              autoFocus
+            />
+            <button onClick={handleSetQty} disabled={savingQty || !qtyInput.trim()}
+              className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+              style={{ background: '#0ea5e9', color: '#fff' }}>
+              {savingQty ? '…' : 'Set'}
+            </button>
+          </div>
+          {qtyError && <p className="text-xs text-rose-400">{qtyError}</p>}
+        </div>
+      )}
 
       {inspecting ? (
         <InspectionStep
@@ -288,8 +338,8 @@ function PhaseAScan({
             <input ref={barcodeRef} value={barcode} onChange={(e) => setBarcode(e.target.value)}
               placeholder="Scan barcode or serial number…"
               className="input-field text-sm font-mono flex-1"
-              autoComplete="off" spellCheck={false} disabled={looking} autoFocus />
-            <button type="submit" disabled={looking || !barcode.trim()}
+              autoComplete="off" spellCheck={false} disabled={looking || doData.dispatchQty === 0} autoFocus />
+            <button type="submit" disabled={looking || !barcode.trim() || doData.dispatchQty === 0}
               className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
               style={{ background: '#0ea5e9', color: '#fff' }}>
               {looking ? '…' : 'Scan'}
@@ -906,6 +956,7 @@ export function DOPackingPanel({
             <PhaseAScan
               doData={doData}
               onScansUpdate={(scans) => setDOData((prev) => ({ ...prev, scans }))}
+              onQtySet={(qty) => setDOData((prev) => ({ ...prev, dispatchQty: qty }))}
               onNext={() => setOpenPhase('verify')}
             />
           )}

@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 
 const patchSchema = z.object({
-  totalBoxes: z.number().int().min(1).max(50),
+  totalBoxes:  z.number().int().min(1).max(50).optional(),
+  dispatchQty: z.number().int().min(1).optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -74,7 +75,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { totalBoxes } = parsed.data;
+    const { totalBoxes, dispatchQty } = parsed.data;
 
     const dispatchOrder = await prisma.dispatchOrder.findUnique({
       where: { id: params.id },
@@ -82,7 +83,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     });
     if (!dispatchOrder) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     if (dispatchOrder.status !== 'OPEN')
-      return NextResponse.json({ error: 'Dispatch order must be OPEN to start packing' }, { status: 400 });
+      return NextResponse.json({ error: 'Dispatch order must be OPEN to update' }, { status: 400 });
+
+    // Simple dispatchQty update (no boxes created)
+    if (dispatchQty !== undefined && totalBoxes === undefined) {
+      await prisma.dispatchOrder.update({ where: { id: params.id }, data: { dispatchQty } });
+      return NextResponse.json({ success: true, dispatchQty });
+    }
+
+    if (totalBoxes === undefined)
+      return NextResponse.json({ error: 'totalBoxes is required' }, { status: 400 });
 
     const doNumber = dispatchOrder.doNumber;
 
