@@ -53,7 +53,7 @@ export function PrintPackingList({
   settings: Settings;
 }) {
   const s = (k: string) => settings[k] ?? '';
-  const coName = s('company_name') || 'SMX Drives';
+  const coName = s('company_name') || 'Three Shul Motors Pvt Ltd';
   const order = dispatchOrder.order;
   const client = order.client;
   const boxes = dispatchOrder.boxes;

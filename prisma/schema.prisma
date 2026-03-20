@@ -45,6 +45,9 @@ model User {
   approvedDOs          DispatchOrder[]        @relation("DOApprovedBy")
   boxItemsScanned      PackingBoxItem[]       @relation("BoxItemScannedBy")
   doScansScanned       DispatchOrderScan[]    @relation("DOScanScannedBy")
+  packingSlipsGenerated PackingSlip[]          @relation("PSGeneratedBy")
+  packingSlipsScanned   PackingSlip[]          @relation("PSScannedBy")
+  packingListsGenerated PackingList[]          @relation("PLGeneratedBy")
   // New relations
   invoicesApproved     Invoice[]              @relation("InvoiceApprovedBy")
   payments             Payment[]
@@ -68,6 +71,7 @@ enum Role {
   SHIPPING        // deprecated — use ACCOUNTS for shipping approval
   PURCHASE_MANAGER
   PACKING         // packing team — scans/packs/seals dispatch orders
+  STORE_MANAGER
 }
 
 // ----- Products / Models -----
@@ -183,7 +187,9 @@ enum OrderStatus {
   HOLD
   CANCELLED
   CLOSED
-  DISPATCHED  // all units dispatched
+  DISPATCHED         // all units dispatched from production
+  PARTIALLY_SHIPPED  // some DOs have packing lists generated
+  SHIPPED            // all DOs have packing lists generated
 }
 
 enum MotorType {
@@ -607,10 +613,11 @@ model DispatchItem {
 // ----- Dispatch Orders (employee-created, multi-box packing) -----
 enum DOStatus {
   OPEN
-  PACKING
-  SUBMITTED
-  APPROVED
-  REJECTED
+  PACKING       // legacy — kept for existing records
+  DISPATCHED    // new: boxes created, DO closed from production side
+  SUBMITTED     // legacy
+  APPROVED      // legacy
+  REJECTED      // legacy
 }
 
 model DispatchOrder {
@@ -618,6 +625,7 @@ model DispatchOrder {
   doNumber       String    @unique @map("do_number")   // TSM/DO/26-27/0001
   orderId        String    @map("order_id")
   status         DOStatus  @default(OPEN)
+  dispatchQty    Int       @default(0) @map("dispatch_qty")
   totalBoxes     Int?      @map("total_boxes")
   submittedAt    DateTime? @map("submitted_at")
   approvedAt     DateTime? @map("approved_at")
@@ -633,6 +641,8 @@ model DispatchOrder {
   boxes      PackingBox[]
   scans      DispatchOrderScan[]
   invoices   Invoice[]
+  packingSlip  PackingSlip?
+  packingLists PackingList[]
 
   @@map("dispatch_orders")
 }
@@ -705,6 +715,46 @@ model DispatchOrderScan {
   scannedBy     User           @relation("DOScanScannedBy", fields: [scannedById], references: [id])
 
   @@map("dispatch_order_scans")
+}
+
+// ----- Packing Slip (1 per DO, generated when all boxes confirmed) -----
+enum PackingSlipStatus {
+  GENERATED
+  SCANNED  // packing slip scanned to generate packing list
+}
+
+model PackingSlip {
+  id              String            @id @default(cuid())
+  slipNumber      String            @unique @map("slip_number")      // TSM/PS/25-26/0001
+  dispatchOrderId String            @unique @map("dispatch_order_id") // 1 per DO
+  status          PackingSlipStatus @default(GENERATED)
+  generatedById   String            @map("generated_by_id")
+  generatedAt     DateTime          @default(now()) @map("generated_at")
+  scannedById     String?           @map("scanned_by_id")
+  scannedAt       DateTime?         @map("scanned_at")
+
+  dispatchOrder DispatchOrder @relation(fields: [dispatchOrderId], references: [id])
+  generatedBy   User          @relation("PSGeneratedBy",  fields: [generatedById], references: [id])
+  scannedBy     User?         @relation("PSScannedBy",    fields: [scannedById],   references: [id])
+  packingList   PackingList?
+
+  @@map("packing_slips")
+}
+
+// ----- Packing List (generated when packing slip is scanned) -----
+model PackingList {
+  id              String   @id @default(cuid())
+  listNumber      String   @unique @map("list_number")   // TSM/PL/25-26/0001
+  packingSlipId   String   @unique @map("packing_slip_id")
+  dispatchOrderId String   @map("dispatch_order_id")
+  generatedById   String   @map("generated_by_id")
+  generatedAt     DateTime @default(now()) @map("generated_at")
+
+  packingSlip   PackingSlip   @relation(fields: [packingSlipId],   references: [id])
+  dispatchOrder DispatchOrder @relation(fields: [dispatchOrderId], references: [id])
+  generatedBy   User          @relation("PLGeneratedBy", fields: [generatedById], references: [id])
+
+  @@map("packing_lists")
 }
 
 // ----- Tax Invoice (auto-generated on DO approval) -----

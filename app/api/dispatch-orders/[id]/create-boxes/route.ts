@@ -67,10 +67,10 @@ export async function POST(
     const remainder = scans.length % boxCount;
 
     const result = await prisma.$transaction(async (tx) => {
-      // Transition DO → PACKING
+      // Transition DO → DISPATCHED (DO is closed from production side once boxes are confirmed)
       await tx.dispatchOrder.update({
         where: { id: params.id },
-        data: { status: 'PACKING', totalBoxes: boxCount },
+        data: { status: 'DISPATCHED', totalBoxes: boxCount },
       });
 
       let scanIdx = 0;

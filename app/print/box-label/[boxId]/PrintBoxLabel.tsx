@@ -53,7 +53,7 @@ function fmtDate(d: string | Date) {
 
 export function PrintBoxLabel({ box, settings }: { box: Box; settings: Settings }) {
   const s = (k: string) => settings[k] ?? '';
-  const coName = s('company_name') || 'SMX Drives';
+  const coName = s('company_name') || 'Three Shul Motors Pvt Ltd';
   const order = box.dispatchOrder.order;
   const client = order.client;
   const totalBoxes = box.dispatchOrder.totalBoxes ?? '?';

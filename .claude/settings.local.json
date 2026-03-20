@@ -170,7 +170,23 @@
       "Bash(ls /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/units/[id]/dispatch/)",
       "Bash(mkdir -p /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/shipping/dispatch/[id]/scan)",
       "Bash(mkdir -p /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/shipping/dispatch/[id]/submit)",
-      "Bash(mkdir -p /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/shipping/dispatch/[id]/approve)"
+      "Bash(mkdir -p /Users/mr.yash/Desktop/production/.claude/worktrees/suspicious-albattani/app/api/shipping/dispatch/[id]/approve)",
+      "Bash(ls:*)",
+      "Bash(git add:*)",
+      "Bash(git pull:*)",
+      "Bash(npx vercel:*)",
+      "Bash(xargs:*)",
+      "Bash(curl:*)",
+      "Bash(git show:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git -C /Users/mr.yash/Desktop/production show:*)",
+      "Bash(git -C /Users/mr.yash/Desktop/production log --all --oneline)",
+      "Bash(find:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node -e:*)",
+      "Bash(cat:*)"
     ]
   }
 }

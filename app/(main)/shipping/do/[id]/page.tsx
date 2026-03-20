@@ -46,6 +46,14 @@ export default async function DOPackingPage({ params }: { params: { id: string }
         invoices: {
           select: { invoiceNumber: true },
         },
+        packingSlip: {
+          include: {
+            generatedBy: { select: { name: true } },
+            packingList: {
+              select: { id: true, listNumber: true, generatedAt: true },
+            },
+          },
+        },
       },
     }),
     prisma.boxSize.findMany({
@@ -55,6 +63,23 @@ export default async function DOPackingPage({ params }: { params: { id: string }
   ]);
 
   if (!dispatchOrder) notFound();
+
+  // ── Server-side auto-fix: set dispatchQty for legacy DOs where it is 0 ──────
+  if ((dispatchOrder as any).dispatchQty === 0) {
+    const readyCount = await prisma.controllerUnit.count({
+      where: {
+        orderId:          dispatchOrder.orderId,
+        currentStage:     'FINAL_ASSEMBLY',
+        currentStatus:    { in: ['APPROVED', 'COMPLETED'] },
+        readyForDispatch: false,
+        packingBoxItem:   null,
+        dispatchOrderScan: null,
+      },
+    });
+    const qty = readyCount > 0 ? readyCount : dispatchOrder.order.quantity;
+    await prisma.dispatchOrder.update({ where: { id: params.id }, data: { dispatchQty: qty } });
+    (dispatchOrder as any).dispatchQty = qty;
+  }
 
   // Serialize dates to ISO strings
   const serialized = {
@@ -75,6 +100,15 @@ export default async function DOPackingPage({ params }: { params: { id: string }
         scannedAt: item.scannedAt.toISOString(),
       })),
     })),
+    packingSlip: dispatchOrder.packingSlip ? {
+      ...dispatchOrder.packingSlip,
+      generatedAt: dispatchOrder.packingSlip.generatedAt.toISOString(),
+      scannedAt:   dispatchOrder.packingSlip.scannedAt?.toISOString() ?? null,
+      packingList: dispatchOrder.packingSlip.packingList ? {
+        ...dispatchOrder.packingSlip.packingList,
+        generatedAt: dispatchOrder.packingSlip.packingList.generatedAt.toISOString(),
+      } : null,
+    } : null,
   };
 
   const canApprove = ['ADMIN', 'ACCOUNTS'].includes(session.role);
