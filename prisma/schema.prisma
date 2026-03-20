@@ -619,6 +619,7 @@ model DispatchOrder {
   doNumber       String    @unique @map("do_number")   // TSM/DO/26-27/0001
   orderId        String    @map("order_id")
   status         DOStatus  @default(OPEN)
+  dispatchQty    Int       @default(0) @map("dispatch_qty")
   totalBoxes     Int?      @map("total_boxes")
   submittedAt    DateTime? @map("submitted_at")
   approvedAt     DateTime? @map("approved_at")

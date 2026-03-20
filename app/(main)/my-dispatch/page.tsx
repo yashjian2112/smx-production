@@ -88,10 +88,22 @@ function groupByOrder(dos: DispatchOrder[]): OrderGroup[] {
 /* ── Ready Order Card ── */
 function ReadyCard({ order, onCreateDO, creating }: {
   order: ReadyOrder;
-  onCreateDO: (id: string) => void;
+  onCreateDO: (id: string, qty: number) => void;
   creating: string | null;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded,    setExpanded]    = useState(false);
+  const [showQtyForm, setShowQtyForm] = useState(false);
+  const [qtyInput,    setQtyInput]    = useState(String(order.readyCount));
+  const [qtyError,    setQtyError]    = useState('');
+
+  function handleConfirmCreate() {
+    const qty = parseInt(qtyInput, 10);
+    if (isNaN(qty) || qty < 1) { setQtyError('Enter a valid quantity'); return; }
+    if (qty > order.readyCount) { setQtyError(`Max ${order.readyCount} units ready`); return; }
+    setQtyError('');
+    onCreateDO(order.id, qty);
+    setShowQtyForm(false);
+  }
 
   return (
     <div className="rounded-xl border p-4 space-y-2"
@@ -144,16 +156,50 @@ function ReadyCard({ order, onCreateDO, creating }: {
         </div>
       )}
 
-      {/* Create Dispatch Order button */}
-      <button
-        type="button"
-        onClick={() => onCreateDO(order.id)}
-        disabled={creating === order.id || order.readyCount === 0}
-        className="w-full mt-3 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
-        style={{ background: '#0ea5e9', color: '#fff' }}
-      >
-        {creating === order.id ? 'Creating…' : `Create Dispatch Order (${order.readyCount} unit${order.readyCount !== 1 ? 's' : ''})`}
-      </button>
+      {/* Quantity input step */}
+      {showQtyForm ? (
+        <div className="rounded-lg p-3 space-y-2 mt-3" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
+          <div className="text-xs font-semibold text-sky-400">How many units in this dispatch order?</div>
+          <div className="text-[11px] text-zinc-500">{order.readyCount} unit{order.readyCount !== 1 ? 's' : ''} available to dispatch</div>
+          <div className="flex gap-2">
+            <input
+              type="number" min="1" max={order.readyCount}
+              value={qtyInput} onChange={(e) => { setQtyInput(e.target.value); setQtyError(''); }}
+              className="input-field text-sm flex-1"
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleConfirmCreate(); } }}
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={handleConfirmCreate}
+              disabled={creating === order.id}
+              className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+              style={{ background: '#0ea5e9', color: '#fff' }}
+            >
+              {creating === order.id ? 'Creating…' : 'Create →'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowQtyForm(false); setQtyError(''); setQtyInput(String(order.readyCount)); }}
+              className="px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-white"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              Cancel
+            </button>
+          </div>
+          {qtyError && <p className="text-xs text-rose-400">{qtyError}</p>}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => { setQtyInput(String(order.readyCount)); setShowQtyForm(true); }}
+          disabled={creating === order.id || order.readyCount === 0}
+          className="w-full mt-3 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
+          style={{ background: '#0ea5e9', color: '#fff' }}
+        >
+          {creating === order.id ? 'Creating…' : `Create Dispatch Order →`}
+        </button>
+      )}
     </div>
   );
 }
@@ -325,7 +371,7 @@ export default function MyDispatchPage() {
 
   useEffect(() => { load(); }, []);
 
-  async function createDO(orderId: string) {
+  async function createDO(orderId: string, dispatchQty: number) {
     setCreating(orderId);
     setCreateError('');
     setCreateSuccess('');
@@ -333,7 +379,7 @@ export default function MyDispatchPage() {
       const res  = await fetch('/api/dispatch-orders', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ orderId }),
+        body:    JSON.stringify({ orderId, dispatchQty }),
       });
       const data = await res.json() as { id?: string; doNumber?: string; existing?: boolean; error?: string };
       if (!res.ok || !data.id) {

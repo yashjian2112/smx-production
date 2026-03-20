@@ -6,7 +6,8 @@ import { DOStatus } from '@prisma/client';
 import { z } from 'zod';
 
 const createSchema = z.object({
-  orderId: z.string().min(1),
+  orderId:     z.string().min(1),
+  dispatchQty: z.number().int().min(1),
 });
 
 export async function GET(req: NextRequest) {
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { orderId } = parsed.data;
+    const { orderId, dispatchQty } = parsed.data;
 
     // Order must exist and be ACTIVE
     const order = await prisma.order.findUnique({
@@ -90,6 +91,11 @@ export async function POST(req: NextRequest) {
         { error: 'Order must have at least 1 unit in FINAL_ASSEMBLY with status APPROVED and not yet dispatched' },
         { status: 400 }
       );
+    if (dispatchQty > order.units.length)
+      return NextResponse.json(
+        { error: `Dispatch quantity (${dispatchQty}) exceeds ready units (${order.units.length})` },
+        { status: 400 }
+      );
 
     // Allow multiple DOs per order (partial dispatch support)
     const doNumber = await generateNextDONumber();
@@ -98,6 +104,7 @@ export async function POST(req: NextRequest) {
       data: {
         doNumber,
         orderId,
+        dispatchQty,
         status: 'OPEN',
         createdById: session.id,
       },

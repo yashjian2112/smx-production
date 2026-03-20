@@ -45,6 +45,7 @@ type DispatchOrderFull = {
   id:             string;
   doNumber:       string;
   status:         string;
+  dispatchQty:    number;
   totalBoxes:     number | null;
   rejectedReason: string | null;
   orderId:        string;
@@ -269,7 +270,9 @@ function PhaseAScan({
       <div className="flex items-center gap-2">
         <span className="w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white flex-shrink-0" style={{ background: '#0ea5e9' }}>1</span>
         <span className="text-sm font-semibold text-white">Scan all controllers</span>
-        {scans.length > 0 && <span className="text-xs text-zinc-500">{scans.length} scanned</span>}
+        <span className={`text-xs font-semibold ml-auto ${scans.length === doData.dispatchQty ? 'text-green-400' : 'text-zinc-400'}`}>
+          {scans.length} / {doData.dispatchQty}
+        </span>
       </div>
 
       {inspecting ? (
@@ -318,11 +321,21 @@ function PhaseAScan({
       )}
 
       {scans.length > 0 && !inspecting && (
-        <button onClick={onNext}
-          className="w-full py-2.5 rounded-lg text-sm font-semibold text-white"
-          style={{ background: '#22c55e' }}>
-          Verify with Order →
-        </button>
+        <div className="space-y-1">
+          <button onClick={onNext}
+            disabled={scans.length !== doData.dispatchQty}
+            className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 transition-all"
+            style={scans.length === doData.dispatchQty
+              ? { background: '#22c55e', color: '#fff' }
+              : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }}>
+            Verify with Order →
+          </button>
+          {scans.length !== doData.dispatchQty && (
+            <p className="text-xs text-zinc-500 text-center">
+              Scan {doData.dispatchQty - scans.length} more unit{doData.dispatchQty - scans.length !== 1 ? 's' : ''} to proceed
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -336,48 +349,35 @@ function PhaseBVerify({
 }: {
   doData: DispatchOrderFull;
   onBack: () => void;
-  onNext: (isPartial: boolean, partialReason: string) => void;
+  onNext: () => void;
 }) {
-  const scans            = doData.scans;
-  const orderQty         = doData.order.quantity;
-  const isShort          = scans.length < orderQty;
-
-  const [isPartial,      setIsPartial]      = useState(isShort);
-  const [partialReason,  setPartialReason]  = useState('');
-  const [error,          setError]          = useState('');
-
-  function handleConfirm() {
-    if (isShort && !isPartial) { setError('Acknowledge partial shipment to proceed'); return; }
-    if (isPartial && !partialReason.trim()) { setError('Provide a reason for partial shipment'); return; }
-    onNext(isPartial, partialReason.trim());
-  }
+  const scans       = doData.scans;
+  const dispatchQty = doData.dispatchQty;
 
   return (
     <div className="card p-4 space-y-4">
       <div className="flex items-center gap-2">
         <span className="w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white flex-shrink-0" style={{ background: '#0ea5e9' }}>2</span>
-        <span className="text-sm font-semibold text-white">Verify with order</span>
+        <span className="text-sm font-semibold text-white">Verify with dispatch order</span>
       </div>
 
       {/* Count summary */}
       <div className="rounded-lg p-3 space-y-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="flex items-center justify-between text-xs text-zinc-400">
-          <span>Order #{doData.order.orderNumber}</span>
+          <span>DO #{doData.doNumber}</span>
           <span>{doData.order.product.code} · {doData.order.product.name}</span>
         </div>
         <div className="flex gap-8">
           <div>
-            <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-0.5">Expected</div>
-            <div className="text-2xl font-bold text-white">{orderQty}</div>
+            <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-0.5">Dispatch Qty</div>
+            <div className="text-2xl font-bold text-white">{dispatchQty}</div>
           </div>
           <div>
             <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-0.5">Scanned</div>
-            <div className={`text-2xl font-bold ${scans.length === orderQty ? 'text-green-400' : 'text-amber-400'}`}>{scans.length}</div>
+            <div className="text-2xl font-bold text-green-400">{scans.length}</div>
           </div>
         </div>
-        {scans.length === orderQty
-          ? <div className="text-xs text-green-400 font-semibold">✓ All {orderQty} units accounted for</div>
-          : <div className="text-xs text-amber-400">⚠ {orderQty - scans.length} unit{orderQty - scans.length !== 1 ? 's' : ''} short of order quantity</div>}
+        <div className="text-xs text-green-400 font-semibold">✓ All {dispatchQty} units scanned</div>
       </div>
 
       {/* Serial list */}
@@ -393,29 +393,12 @@ function PhaseBVerify({
         </div>
       </div>
 
-      {/* Partial */}
-      {isShort && (
-        <div className="space-y-2 rounded-lg p-3" style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.2)' }}>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={isPartial} onChange={(e) => setIsPartial(e.target.checked)} className="accent-amber-400 w-4 h-4" />
-            <span className="text-sm text-amber-300 font-medium">This is a partial shipment</span>
-          </label>
-          {isPartial && (
-            <textarea value={partialReason} onChange={(e) => setPartialReason(e.target.value)} rows={2}
-              placeholder="Reason (e.g. remaining units still in production)…"
-              className="input-field text-sm w-full resize-none" />
-          )}
-        </div>
-      )}
-
-      {error && <p className="text-xs text-rose-400">{error}</p>}
-
       <div className="flex gap-2">
         <button onClick={onBack} className="flex-1 py-2.5 rounded-lg text-sm text-zinc-400 hover:text-white"
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
           ← Back to Scan
         </button>
-        <button onClick={handleConfirm}
+        <button onClick={onNext}
           className="flex-[2] py-2.5 rounded-lg text-sm font-semibold text-white"
           style={{ background: '#0ea5e9' }}>
           Looks Good — Set Up Boxes →
@@ -431,17 +414,13 @@ type BoxFormEntry = { boxSizeId: string };
 function PhaseCBoxSetup({
   doData,
   boxSizes,
-  isPartial,
-  partialReason,
   onBack,
   onCreated,
 }: {
-  doData:        DispatchOrderFull;
-  boxSizes:      BoxSizeOption[];
-  isPartial:     boolean;
-  partialReason: string;
-  onBack:        () => void;
-  onCreated:     (updated: DispatchOrderFull) => void;
+  doData:    DispatchOrderFull;
+  boxSizes:  BoxSizeOption[];
+  onBack:    () => void;
+  onCreated: (updated: DispatchOrderFull) => void;
 }) {
   const unitCount = doData.scans.length;
   const [boxCount,    setBoxCount]    = useState(1);
@@ -854,8 +833,6 @@ export function DOPackingPanel({
   const router = useRouter();
   const [doData,        setDOData]       = useState<DispatchOrderFull>(initialDO);
   const [openPhase,     setOpenPhase]    = useState<'scan' | 'verify' | 'boxes'>('scan');
-  const [isPartial,     setIsPartial]    = useState(false);
-  const [partialReason, setPartialReason]= useState('');
   const [submitting,    setSubmitting]   = useState(false);
   const [submitError,   setSubmitError]  = useState('');
   const [resetting,     setResetting]    = useState(false);
@@ -897,7 +874,7 @@ export function DOPackingPanel({
     try {
       const res  = await fetch(`/api/dispatch-orders/${doData.id}/submit`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(isPartial ? { isPartial: true, partialReason } : {}),
+        body: JSON.stringify({}),
       });
       const data = await res.json() as { error?: string };
       if (!res.ok) { setSubmitError(data.error ?? 'Submit failed'); return; }
@@ -936,15 +913,13 @@ export function DOPackingPanel({
             <PhaseBVerify
               doData={doData}
               onBack={() => setOpenPhase('scan')}
-              onNext={(partial, reason) => { setIsPartial(partial); setPartialReason(reason); setOpenPhase('boxes'); }}
+              onNext={() => setOpenPhase('boxes')}
             />
           )}
           {openPhase === 'boxes' && (
             <PhaseCBoxSetup
               doData={doData}
               boxSizes={boxSizes}
-              isPartial={isPartial}
-              partialReason={partialReason}
               onBack={() => setOpenPhase('verify')}
               onCreated={(updated) => setDOData(updated as DispatchOrderFull)}
             />
