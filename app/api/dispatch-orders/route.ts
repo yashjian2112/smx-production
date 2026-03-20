@@ -40,6 +40,10 @@ export async function GET(req: NextRequest) {
             _count: { select: { items: true } },
           },
         },
+        invoices: {
+          select: { invoiceNumber: true, notes: true },
+          orderBy: { createdAt: 'asc' },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
