@@ -3,14 +3,21 @@ import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 
+const boxDetailSchema = z.object({
+  boxSizeId: z.string().min(1),
+  weightKg:  z.number().positive().optional(),
+});
+
 const schema = z.object({
-  boxCount: z.number().int().min(1).max(50),
+  boxes: z.array(boxDetailSchema).min(1).max(50),
 });
 
 /**
  * POST /api/dispatch-orders/[id]/create-boxes
- * Distribute staged scans evenly into N boxes, then transition DO → PACKING.
- * Staged DispatchOrderScan records become PackingBoxItem records.
+ * Distribute staged scans evenly into N boxes (with pre-filled size/weight),
+ * then transition DO → PACKING.
+ * Body: { boxes: [ { boxSizeId, weightKg }, ... ] }
+ * Box count = boxes.length.
  */
 export async function POST(
   req: NextRequest,
@@ -25,7 +32,17 @@ export async function POST(
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { boxCount } = parsed.data;
+    const { boxes: boxDetails } = parsed.data;
+    const boxCount = boxDetails.length;
+
+    // Validate all box sizes exist
+    const sizeIds = [...new Set(boxDetails.map((b) => b.boxSizeId))];
+    const sizes = await prisma.boxSize.findMany({ where: { id: { in: sizeIds }, active: true }, select: { id: true } });
+    const validSizeIds = new Set(sizes.map((s) => s.id));
+    for (const d of boxDetails) {
+      if (!validSizeIds.has(d.boxSizeId))
+        return NextResponse.json({ error: `Box size not found: ${d.boxSizeId}` }, { status: 400 });
+    }
 
     const dispatchOrder = await prisma.dispatchOrder.findUnique({
       where: { id: params.id },
@@ -35,14 +52,7 @@ export async function POST(
         doNumber: true,
         scans: {
           orderBy: { scannedAt: 'asc' },
-          select: {
-            id: true,
-            unitId: true,
-            serial: true,
-            barcode: true,
-            scannedById: true,
-            inspectionPhotoUrl: true,
-          },
+          select: { id: true, unitId: true, serial: true, barcode: true, scannedById: true, inspectionPhotoUrl: true },
         },
       },
     });
@@ -52,22 +62,15 @@ export async function POST(
 
     const scans = dispatchOrder.scans;
     if (scans.length === 0)
-      return NextResponse.json({ error: 'No units have been staged. Scan at least one unit first.' }, { status: 400 });
-
+      return NextResponse.json({ error: 'No units scanned. Scan at least one unit first.' }, { status: 400 });
     if (boxCount > scans.length)
-      return NextResponse.json(
-        { error: `Cannot create ${boxCount} boxes for ${scans.length} unit(s). Box count must not exceed unit count.` },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: `Cannot create ${boxCount} boxes for ${scans.length} unit(s).` }, { status: 400 });
 
     const doNumber = dispatchOrder.doNumber;
-
-    // Distribute scans evenly: first `remainder` boxes get one extra unit
     const base      = Math.floor(scans.length / boxCount);
     const remainder = scans.length % boxCount;
 
-    const result = await prisma.$transaction(async (tx) => {
-      // Transition DO → PACKING
+    await prisma.$transaction(async (tx) => {
       await tx.dispatchOrder.update({
         where: { id: params.id },
         data: { status: 'PACKING', totalBoxes: boxCount },
@@ -75,20 +78,22 @@ export async function POST(
 
       let scanIdx = 0;
       for (let i = 0; i < boxCount; i++) {
-        const boxNum   = i + 1;
+        const boxNum    = i + 1;
         const itemCount = base + (i < remainder ? 1 : 0);
         const boxLabel  = `${doNumber}-BOX-${boxNum}of${boxCount}`;
+        const detail    = boxDetails[i];
 
         const box = await tx.packingBox.create({
           data: {
             dispatchOrderId: params.id,
-            boxNumber: boxNum,
+            boxNumber:  boxNum,
             boxLabel,
-            isSealed: false,
+            isSealed:   false,
+            weightKg:   detail.weightKg ?? null,
+            boxSizeId:  detail.boxSizeId,
           },
         });
 
-        // Assign scans to this box as PackingBoxItems
         for (let j = 0; j < itemCount; j++) {
           const scan = scans[scanIdx++];
           await tx.packingBoxItem.create({
@@ -104,24 +109,18 @@ export async function POST(
         }
       }
 
-      // Delete all staged scans (now promoted to PackingBoxItems)
-      await tx.dispatchOrderScan.deleteMany({
-        where: { dispatchOrderId: params.id },
-      });
-
-      return boxCount;
+      await tx.dispatchOrderScan.deleteMany({ where: { dispatchOrderId: params.id } });
     });
 
-    // Return the full updated DO
     const updated = await prisma.dispatchOrder.findUnique({
       where: { id: params.id },
       include: {
         order: {
           select: {
             orderNumber: true,
-            quantity: true,
-            client: { select: { customerName: true, globalOrIndian: true } },
-            product: { select: { code: true, name: true } },
+            quantity:    true,
+            client:      { select: { customerName: true } },
+            product:     { select: { code: true, name: true } },
           },
         },
         createdBy:  { select: { id: true, name: true } },

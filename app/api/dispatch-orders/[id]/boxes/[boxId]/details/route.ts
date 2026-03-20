@@ -14,7 +14,7 @@ export async function PATCH(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'PACKING');
 
     const body = await req.json();
     const parsed = detailsSchema.safeParse(body);
