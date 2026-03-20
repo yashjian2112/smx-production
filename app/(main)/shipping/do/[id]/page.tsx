@@ -57,15 +57,21 @@ export default async function DOPackingPage({ params }: { params: { id: string }
   if (!dispatchOrder) notFound();
 
   // Auto-fix legacy DOs where dispatchQty was never set (0 = unset)
+  // Use count of units actually ready for dispatch, not the total order quantity
   if (dispatchOrder.dispatchQty === 0) {
-    const qty = dispatchOrder.order.quantity;
-    if (qty > 0) {
-      await prisma.dispatchOrder.update({
-        where: { id: params.id },
-        data:  { dispatchQty: qty },
-      });
-      dispatchOrder.dispatchQty = qty;
-    }
+    const readyCount = await prisma.controllerUnit.count({
+      where: {
+        orderId:          dispatchOrder.orderId,
+        currentStage:     'FINAL_ASSEMBLY',
+        currentStatus:    { in: ['APPROVED', 'COMPLETED'] },
+        readyForDispatch: false,
+        packingBoxItem:   null,
+        dispatchOrderScan: null,
+      },
+    });
+    const qty = readyCount > 0 ? readyCount : dispatchOrder.order.quantity;
+    await prisma.dispatchOrder.update({ where: { id: params.id }, data: { dispatchQty: qty } });
+    dispatchOrder.dispatchQty = qty;
   }
 
   // Serialize dates to ISO strings
