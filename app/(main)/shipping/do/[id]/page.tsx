@@ -56,6 +56,18 @@ export default async function DOPackingPage({ params }: { params: { id: string }
 
   if (!dispatchOrder) notFound();
 
+  // Auto-fix legacy DOs where dispatchQty was never set (0 = unset)
+  if (dispatchOrder.dispatchQty === 0) {
+    const qty = dispatchOrder.order.quantity;
+    if (qty > 0) {
+      await prisma.dispatchOrder.update({
+        where: { id: params.id },
+        data:  { dispatchQty: qty },
+      });
+      dispatchOrder.dispatchQty = qty;
+    }
+  }
+
   // Serialize dates to ISO strings
   const serialized = {
     ...dispatchOrder,

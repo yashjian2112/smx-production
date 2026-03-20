@@ -50,6 +50,7 @@ export async function POST(
         id: true,
         status: true,
         doNumber: true,
+        dispatchQty: true,
         scans: {
           orderBy: { scannedAt: 'asc' },
           select: { id: true, unitId: true, serial: true, barcode: true, scannedById: true, inspectionPhotoUrl: true },
@@ -59,10 +60,14 @@ export async function POST(
     if (!dispatchOrder) return NextResponse.json({ error: 'Dispatch order not found' }, { status: 404 });
     if (dispatchOrder.status !== 'OPEN')
       return NextResponse.json({ error: 'Dispatch order must be OPEN to create boxes' }, { status: 400 });
+    if (dispatchOrder.dispatchQty === 0)
+      return NextResponse.json({ error: 'Dispatch quantity not set. Reload the page and try again.' }, { status: 400 });
 
     const scans = dispatchOrder.scans;
     if (scans.length === 0)
       return NextResponse.json({ error: 'No units scanned. Scan at least one unit first.' }, { status: 400 });
+    if (scans.length !== dispatchOrder.dispatchQty)
+      return NextResponse.json({ error: `Scanned ${scans.length} unit(s) but dispatch quantity is ${dispatchOrder.dispatchQty}. Scan all units first.` }, { status: 400 });
     if (boxCount > scans.length)
       return NextResponse.json({ error: `Cannot create ${boxCount} boxes for ${scans.length} unit(s).` }, { status: 400 });
 
