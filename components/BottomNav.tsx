@@ -177,8 +177,9 @@ const salesNav: NavItem[] = [
   { href: '/sales/clients',    label: 'Clients',  icon: 'Clients' },
 ];
 
-// ACCOUNTS: 4 items — Approvals, AR, Invoices (→ /sales), Settings
+// ACCOUNTS: 5 items — Shipping (approval), Approvals, AR, Invoices (→ /sales), Settings
 const accountsNav: NavItem[] = [
+  { href: '/shipping',             label: 'Shipping',  icon: 'Shipping' },
   { href: '/accounts',             label: 'Approvals', icon: 'Accounts' },
   { href: '/accounts/receivable',  label: 'AR',        icon: 'AR'       },
   { href: '/sales',                label: 'Invoices',  icon: 'Invoice'  },

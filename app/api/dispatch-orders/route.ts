@@ -41,6 +41,10 @@ export async function GET(req: NextRequest) {
             _count: { select: { items: true } },
           },
         },
+        invoices: {
+          select: { invoiceNumber: true, notes: true },
+          orderBy: { createdAt: 'asc' },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -75,8 +79,8 @@ export async function POST(req: NextRequest) {
       include: {
         units: {
           where: {
-            currentStage: 'FINAL_ASSEMBLY',
-            currentStatus: 'APPROVED',
+            currentStage:     'FINAL_ASSEMBLY',
+            currentStatus:    { in: ['APPROVED', 'COMPLETED'] },
             readyForDispatch: false,
           },
           select: { id: true },

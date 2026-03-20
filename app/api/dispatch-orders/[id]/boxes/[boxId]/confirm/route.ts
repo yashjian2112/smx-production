@@ -34,8 +34,8 @@ export async function POST(
       select: { id: true, status: true },
     });
     if (!dispatchOrder) return NextResponse.json({ error: 'Dispatch order not found' }, { status: 404 });
-    if (dispatchOrder.status !== 'PACKING')
-      return NextResponse.json({ error: 'Dispatch order must be in PACKING status' }, { status: 400 });
+    if (!['PACKING', 'DISPATCHED'].includes(dispatchOrder.status))
+      return NextResponse.json({ error: 'Dispatch order must be in PACKING or DISPATCHED status' }, { status: 400 });
 
     const box = await prisma.packingBox.findUnique({
       where: { id: params.boxId },

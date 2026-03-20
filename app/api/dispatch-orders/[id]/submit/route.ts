@@ -1,30 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { z } from 'zod';
-
-const submitSchema = z.object({
-  isPartial: z.boolean().optional(),
-  partialReason: z.string().optional(),
-});
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
     requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'PACKING');
 
-    const body = await req.json();
-    const parsed = submitSchema.safeParse(body);
-    if (!parsed.success)
-      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
-
-    const { isPartial, partialReason } = parsed.data;
-
     // Fetch DO with boxes+items
     const dispatchOrder = await prisma.dispatchOrder.findUnique({
       where: { id: params.id },
       include: {
-        order: { select: { quantity: true } },
         boxes: {
           include: {
             _count: { select: { items: true } },
@@ -32,6 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         },
       },
     });
+
     if (!dispatchOrder) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     if (dispatchOrder.status !== 'PACKING')
       return NextResponse.json({ error: 'Dispatch order must be in PACKING status to submit' }, { status: 400 });
@@ -49,17 +36,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (totalPacked === 0)
       return NextResponse.json({ error: 'No units have been packed' }, { status: 400 });
 
-    // Partial shipment validation
-    const orderQty = dispatchOrder.order.quantity;
-    if (totalPacked < orderQty) {
-      if (!isPartial)
-        return NextResponse.json(
-          { error: 'Packed count is less than order quantity. Set isPartial=true and provide a partialReason.' },
-          { status: 400 }
-        );
-      if (!partialReason || partialReason.trim() === '')
-        return NextResponse.json({ error: 'partialReason is required for a partial shipment' }, { status: 400 });
-    }
+    // Validate packed count matches this DO's planned quantity
+    const doQty = dispatchOrder.dispatchQty;
+    if (totalPacked < doQty)
+      return NextResponse.json(
+        { error: `Only ${totalPacked} of ${doQty} planned units have been packed` },
+        { status: 400 }
+      );
 
     const updated = await prisma.dispatchOrder.update({
       where: { id: params.id },

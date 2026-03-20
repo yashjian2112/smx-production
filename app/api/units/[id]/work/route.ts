@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
-import { generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
+import { generateNextAssemblyBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
 import { put } from '@vercel/blob';
 import { StageType, UnitStatus } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
@@ -209,6 +209,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     select: {
       currentStage: true,
       currentStatus: true,
+      assemblyBarcode: true,
       qcBarcode: true,
       finalAssemblyBarcode: true,
       product: { select: { code: true } },
@@ -299,11 +300,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     if (next) {
-      // Pre-generate stage barcodes when entering QC or Final Assembly
+      // Pre-generate stage barcodes when entering Assembly, QC or Final Assembly
       // so the tech can scan the label to pull up the unit immediately.
-      const stageBarcode: { qcBarcode?: string; finalAssemblyBarcode?: string } = {};
+      const stageBarcode: { assemblyBarcode?: string; qcBarcode?: string; finalAssemblyBarcode?: string } = {};
       const productCode = unit.product?.code;
       if (productCode) {
+        if (next === StageType.CONTROLLER_ASSEMBLY) {
+          stageBarcode.assemblyBarcode = await generateNextAssemblyBarcode(productCode);
+        }
         if (next === StageType.QC_AND_SOFTWARE && !unit.qcBarcode) {
           stageBarcode.qcBarcode = await generateNextQCBarcode(productCode);
         }

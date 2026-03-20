@@ -23,10 +23,10 @@ const STAGE_PIPELINE = [
 ];
 
 // Which DB barcode field corresponds to each stage
-const STAGE_BARCODE_FIELD: Record<string, 'powerstageBarcode' | 'brainboardBarcode' | 'qcBarcode' | 'finalAssemblyBarcode' | null> = {
+const STAGE_BARCODE_FIELD: Record<string, 'powerstageBarcode' | 'brainboardBarcode' | 'assemblyBarcode' | 'qcBarcode' | 'finalAssemblyBarcode' | null> = {
   POWERSTAGE_MANUFACTURING: 'powerstageBarcode',
   BRAINBOARD_MANUFACTURING: 'brainboardBarcode',
-  CONTROLLER_ASSEMBLY:      null,
+  CONTROLLER_ASSEMBLY:      'assemblyBarcode',
   QC_AND_SOFTWARE:          'qcBarcode',
   FINAL_ASSEMBLY:           'finalAssemblyBarcode',
   REWORK:                   null,
@@ -37,8 +37,10 @@ type UnitRow = {
   serialNumber: string;
   currentStage: string;
   currentStatus: string;
+  readyForDispatch: boolean;
   powerstageBarcode: string | null;
   brainboardBarcode: string | null;
+  assemblyBarcode: string | null;
   qcBarcode: string | null;
   finalAssemblyBarcode: string | null;
 };
@@ -85,8 +87,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           currentStatus: true,
           powerstageBarcode: true,
           brainboardBarcode: true,
+          assemblyBarcode: true,
           qcBarcode: true,
           finalAssemblyBarcode: true,
+          readyForDispatch: true,
         },
         orderBy: { serialNumber: 'asc' },
       },
@@ -122,6 +126,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           serialNumber: u.serialNumber,
           currentStage: u.currentStage,
           currentStatus: u.currentStatus,
+          readyForDispatch: u.readyForDispatch,
           barcodeForStage: field && unitAtOrPastStage ? (u[field] ?? null) : null,
           derivedStatus: derivedStageStatus(u, key),
           // Pass PS + BB barcodes for Assembly multi-select modal
@@ -133,7 +138,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   });
 
   const total      = order.units.length;
-  const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED').length;
+  const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED' || u.readyForDispatch).length;
   const inProgress = order.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
   const blocked    = order.units.filter((u) => u.currentStatus === 'BLOCKED').length;
   const pct        = total > 0 ? Math.round((completed / total) * 100) : 0;

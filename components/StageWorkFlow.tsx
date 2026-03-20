@@ -223,7 +223,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
 
   // ── auto-start work on mount ───────────────────────────────────────────────
   useEffect(() => {
-    if (currentStatus === 'COMPLETED') {
+    if (currentStatus === 'COMPLETED' || currentStatus === 'APPROVED') {
       setStep('completed');
       return;
     }

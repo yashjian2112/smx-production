@@ -11,14 +11,13 @@ export default async function PrintBoxLabelPage({ params }: { params: { boxId: s
         include: {
           order: {
             include: {
-              client: true,
               product: { select: { code: true, name: true } },
             },
           },
         },
       },
       items: {
-        include: { unit: { select: { serialNumber: true } } },
+        include: { unit: { select: { serialNumber: true, finalAssemblyBarcode: true } } },
       },
     },
   });

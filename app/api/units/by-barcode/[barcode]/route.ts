@@ -30,6 +30,11 @@ export async function GET(
       if (stage && STAGE_BARCODE_FIELD[stage]) {
         const anyUnit = await findUnitByBarcode(barcode); // search all stages
         if (anyUnit) {
+          // If the unit is currently AT the requested stage, accept it regardless of barcode type
+          // (e.g. scanning the AY barcode at QC stage is fine — it's the same physical unit)
+          if (anyUnit.currentStage === stage) {
+            return NextResponse.json(anyUnit);
+          }
           const stageLabel = STAGE_LABEL[stage] ?? stage;
           return NextResponse.json({
             error: `This barcode belongs to unit ${anyUnit.serialNumber} but is NOT a ${stageLabel} barcode. Please scan the correct ${stageLabel} label (e.g. C350PS26001 for Powerstage).`,

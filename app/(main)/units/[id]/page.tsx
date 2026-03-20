@@ -202,6 +202,15 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
           currentStatus={unit.currentStatus}
           isEmployee={isEmployee}
           orderId={unit.order?.id ?? null}
+          reworkRecords={unit.reworkRecords.map((r) => ({
+            id: r.id,
+            status: r.status,
+            correctiveAction: r.correctiveAction ?? null,
+            rootCauseStage: r.rootCauseStage ?? null,
+            rootCauseCategory: r.rootCauseCategory ? { name: r.rootCauseCategory.name } : null,
+            assignedUser: r.assignedUser ? { name: r.assignedUser.name } : null,
+            createdAt: r.createdAt.toISOString(),
+          }))}
           powerstageBarcode={unit.powerstageBarcode ?? null}
           brainboardBarcode={unit.brainboardBarcode ?? null}
         />

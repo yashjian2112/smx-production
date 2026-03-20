@@ -23,7 +23,7 @@ function finalAssemblyPrefix(code: string, date = new Date()): string {
 }
 
 async function nextSequence(
-  field: 'powerstageBarcode' | 'brainboardBarcode' | 'qcBarcode' | 'finalAssemblyBarcode',
+  field: 'powerstageBarcode' | 'brainboardBarcode' | 'assemblyBarcode' | 'qcBarcode' | 'finalAssemblyBarcode',
   prefix: string,
   seqLength: number
 ): Promise<number> {
@@ -59,6 +59,16 @@ export async function generateNextBrainboardBarcode(modelCode: string): Promise<
   const barcode = `${prefix}${String(seq).padStart(3, '0')}`;
   const exists = await prisma.controllerUnit.findFirst({ where: { brainboardBarcode: barcode } });
   if (exists) throw new Error('Brainboard barcode collision');
+  return barcode;
+}
+
+/** Assembly: modelnameAY26001 */
+export async function generateNextAssemblyBarcode(modelCode: string): Promise<string> {
+  const prefix = `${modelPrefix(modelCode)}AY${YEAR_STR}`;
+  const seq = await nextSequence('assemblyBarcode', prefix, 3);
+  const barcode = `${prefix}${String(seq).padStart(3, '0')}`;
+  const exists = await prisma.controllerUnit.findFirst({ where: { assemblyBarcode: barcode } });
+  if (exists) throw new Error('Assembly barcode collision');
   return barcode;
 }
 
@@ -176,10 +186,10 @@ export async function findUnitByComponentBarcode(barcode: string) {
 }
 
 /** Map stage keys to their barcode DB field */
-export const STAGE_BARCODE_FIELD: Record<string, 'powerstageBarcode' | 'brainboardBarcode' | 'qcBarcode' | 'finalAssemblyBarcode' | null> = {
+export const STAGE_BARCODE_FIELD: Record<string, 'powerstageBarcode' | 'brainboardBarcode' | 'assemblyBarcode' | 'qcBarcode' | 'finalAssemblyBarcode' | null> = {
   POWERSTAGE_MANUFACTURING:  'powerstageBarcode',
   BRAINBOARD_MANUFACTURING:  'brainboardBarcode',
-  CONTROLLER_ASSEMBLY:       null,
+  CONTROLLER_ASSEMBLY:       'assemblyBarcode',
   QC_AND_SOFTWARE:           'qcBarcode',
   FINAL_ASSEMBLY:            'finalAssemblyBarcode',
   REWORK:                    null,
@@ -199,6 +209,7 @@ export async function findUnitByBarcode(barcode: string, stage?: string) {
         OR: [
           { powerstageBarcode: { equals: trimmed, mode: 'insensitive' as const } },
           { brainboardBarcode: { equals: trimmed, mode: 'insensitive' as const } },
+          { assemblyBarcode: { equals: trimmed, mode: 'insensitive' as const } },
           { qcBarcode: { equals: trimmed, mode: 'insensitive' as const } },
           { finalAssemblyBarcode: { equals: trimmed, mode: 'insensitive' as const } },
         ],

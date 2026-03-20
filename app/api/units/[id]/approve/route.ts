@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
-import { generateNextBrainboardBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
+import { generateNextAssemblyBarcode, generateNextBrainboardBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
 import { StageType, UnitStatus } from '@prisma/client';
 
 const STAGE_ORDER: StageType[] = [
@@ -99,12 +99,15 @@ export async function POST(
 
     // ── Intermediate stages: advance to next stage ──────────────────────────
     const product = await prisma.product.findUnique({ where: { id: unit.productId } });
-    const updateData: { currentStage: StageType; currentStatus: UnitStatus; brainboardBarcode?: string; qcBarcode?: string; finalAssemblyBarcode?: string } = {
+    const updateData: { currentStage: StageType; currentStatus: UnitStatus; brainboardBarcode?: string; assemblyBarcode?: string; qcBarcode?: string; finalAssemblyBarcode?: string } = {
       currentStage: next,
       currentStatus: 'PENDING',
     };
     if (next === StageType.BRAINBOARD_MANUFACTURING && product) {
       updateData.brainboardBarcode = await generateNextBrainboardBarcode(product.code);
+    }
+    if (next === StageType.CONTROLLER_ASSEMBLY && product) {
+      updateData.assemblyBarcode = await generateNextAssemblyBarcode(product.code);
     }
     if (next === StageType.QC_AND_SOFTWARE && product) {
       // Check if QC barcode already exists (may have been pre-generated)

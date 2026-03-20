@@ -13,18 +13,12 @@ export async function GET() {
     // Find orders with at least 1 ready unit AND no active dispatch order
     const orders = await prisma.order.findMany({
       where: {
-        // No active (OPEN / PACKING / SUBMITTED) dispatch order for this order
-        dispatchOrders: {
-          none: {
-            status: { in: ['OPEN', 'PACKING', 'SUBMITTED'] },
-          },
-        },
         units: {
           some: {
-            currentStage: 'FINAL_ASSEMBLY',
-            currentStatus: 'APPROVED',
+            currentStage:     'FINAL_ASSEMBLY',
+            currentStatus:    { in: ['APPROVED', 'COMPLETED'] },
             readyForDispatch: false,
-            packingBoxItem: null,  // not yet assigned to any box
+            packingBoxItem:   null, // not yet assigned to any box
           },
         },
       },
@@ -33,10 +27,10 @@ export async function GET() {
         product: { select: { code: true, name: true } },
         units: {
           where: {
-            currentStage: 'FINAL_ASSEMBLY',
-            currentStatus: 'APPROVED',
+            currentStage:     'FINAL_ASSEMBLY',
+            currentStatus:    { in: ['APPROVED', 'COMPLETED'] },
             readyForDispatch: false,
-            packingBoxItem: null,  // not yet assigned to any box
+            packingBoxItem:   null, // not yet assigned to any box
           },
           select: { id: true, serialNumber: true },
           orderBy: { serialNumber: 'asc' },

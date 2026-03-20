@@ -6,7 +6,7 @@ import { generateNextFinalInvoiceNumber } from '@/lib/invoice-number';
 import { z } from 'zod';
 
 const approveSchema = z.object({
-  action: z.enum(['approve', 'reject']),
+  action:         z.enum(['approve', 'reject']),
   rejectedReason: z.string().optional(),
 });
 
@@ -15,7 +15,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const session = await requireSession();
     requireRole(session, 'ADMIN', 'ACCOUNTS');
 
-    const body = await req.json();
+    const body   = await req.json();
     const parsed = approveSchema.safeParse(body);
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
@@ -32,7 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             proformaInvoice: {
               include: {
                 client: { select: { id: true, globalOrIndian: true } },
-                items: { orderBy: { sortOrder: 'asc' } },
+                items:  { orderBy: { sortOrder: 'asc' } },
               },
             },
           },
@@ -41,8 +41,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           include: {
             items: {
               select: {
-                unitId: true,
-                serial: true,
+                unitId:  true,
+                serial:  true,
                 barcode: true,
               },
             },
@@ -71,14 +71,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
         await tx.dispatchOrder.update({
           where: { id: params.id },
-          data: { status: 'REJECTED', rejectedReason: rejectedReason.trim() },
+          data:  { status: 'REJECTED', rejectedReason: rejectedReason.trim() },
         });
       });
 
       const updated = await prisma.dispatchOrder.findUnique({
-        where: { id: params.id },
+        where:   { id: params.id },
         include: {
-          order: { select: { orderNumber: true } },
+          order:     { select: { orderNumber: true } },
           createdBy: { select: { name: true } },
         },
       });
@@ -86,26 +86,43 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 
     // ── APPROVE ──────────────────────────────────────────────────────────────────
-    const packedItems = dispatchOrder.boxes.flatMap((b) => b.items);
+    const packedItems   = dispatchOrder.boxes.flatMap((b) => b.items);
     const packedUnitIds = packedItems.map((i) => i.unitId);
     const packedSerials = packedItems.map((i) => i.serial);
-    const doNumber = dispatchOrder.doNumber;
+    const doNumber      = dispatchOrder.doNumber;
 
     const proforma = dispatchOrder.order.proformaInvoice;
     const isExport =
       proforma?.currency === 'USD' ||
-      dispatchOrder.order.proformaInvoice?.client?.globalOrIndian === 'Global';
+      proforma?.client?.globalOrIndian === 'Global';
 
     const generatedInvoiceNumbers: string[] = [];
+
+    // ── Pre-generate invoice numbers OUTSIDE the transaction ─────────────────
+    // CRITICAL: generateNextFinalInvoiceNumber uses the global prisma client.
+    // Calling it inside prisma.$transaction can cause connection-pool deadlocks.
+    // Generate all needed numbers before opening the transaction.
+    let preGenNumbers: string[] = [];
+    if (proforma) {
+      if (proforma.splitInvoice && proforma.splitServicePercent != null) {
+        // Need 2 numbers: goods + service
+        const n1 = await generateNextFinalInvoiceNumber(isExport ?? false);
+        const n2 = await generateNextFinalInvoiceNumber(isExport ?? false);
+        preGenNumbers = [n1, n2];
+      } else {
+        const n1 = await generateNextFinalInvoiceNumber(isExport ?? false);
+        preGenNumbers = [n1];
+      }
+    }
 
     await prisma.$transaction(async (tx) => {
       // 1. Set DO approved
       await tx.dispatchOrder.update({
         where: { id: params.id },
-        data: {
-          status: 'APPROVED',
+        data:  {
+          status:      'APPROVED',
           approvedById: session.id,
-          approvedAt: new Date(),
+          approvedAt:  new Date(),
         },
       });
 
@@ -113,57 +130,52 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       if (packedUnitIds.length > 0) {
         await tx.controllerUnit.updateMany({
           where: { id: { in: packedUnitIds } },
-          data: { readyForDispatch: true },
+          data:  { readyForDispatch: true },
         });
       }
 
       // 3. Timeline log for each dispatched unit
       for (const item of packedItems) {
         await appendTimeline({
-          unitId: item.unitId,
-          orderId: dispatchOrder.orderId,
-          userId: session.id,
-          action: 'dispatched',
-          stage: 'FINAL_ASSEMBLY',
+          unitId:   item.unitId,
+          orderId:  dispatchOrder.orderId,
+          userId:   session.id,
+          action:   'dispatched',
+          stage:    'FINAL_ASSEMBLY',
           statusTo: 'APPROVED',
-          remarks: `Shipped via ${doNumber}`,
+          remarks:  `Shipped via ${doNumber}`,
         });
       }
 
       // 4. Check if all order units are now dispatched → close order
-      const allOrderUnits = dispatchOrder.order.units;
-      const alreadyDispatched = allOrderUnits.filter((u) => u.readyForDispatch).map((u) => u.id);
-      const nowDispatched = new Set([...alreadyDispatched, ...packedUnitIds]);
-      const allDispatched = allOrderUnits.every((u) => nowDispatched.has(u.id));
+      const allOrderUnits  = dispatchOrder.order.units;
+      const alreadyDisp    = allOrderUnits.filter((u) => u.readyForDispatch).map((u) => u.id);
+      const nowDispatched  = new Set([...alreadyDisp, ...packedUnitIds]);
+      const allDispatched  = allOrderUnits.every((u) => nowDispatched.has(u.id));
       if (allDispatched) {
         await tx.order.update({
           where: { id: dispatchOrder.orderId },
-          data: { status: 'CLOSED' },
+          data:  { status: 'CLOSED' },
         });
       }
 
-      // 5. Auto-generate Invoice(s)
-      if (proforma) {
-        const clientId = proforma.clientId;
-        const currency = proforma.currency;
+      // 5. Auto-generate Invoice(s) using pre-generated numbers
+      if (proforma && preGenNumbers.length > 0) {
+        const clientId    = proforma.clientId;
+        const currency    = proforma.currency;
         const exchangeRate = proforma.exchangeRate ?? null;
-        const notes = proforma.notes ?? null;
+        const notes       = proforma.notes ?? null;
 
         // Product items only (exclude HSN 9965 shipping line)
-        const productItems = proforma.items.filter(
-          (item) => item.hsnCode !== '9965'
-        );
+        const productItems = proforma.items.filter((item) => item.hsnCode !== '9965');
 
         if (proforma.splitInvoice && proforma.splitServicePercent != null) {
-          // ── SPLIT INVOICE ──────────────────────────────────────────────────────
+          // ── SPLIT INVOICE ──────────────────────────────────────────────────
           const servicePct = proforma.splitServicePercent;
-          const goodsPct = 100 - servicePct;
+          const goodsPct   = 100 - servicePct;
 
-          // Compute subtotal from proforma product items for service line pricing
           const subtotal = productItems.reduce((sum, item) => {
-            const lineTotal =
-              item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
-            return sum + lineTotal;
+            return sum + item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
           }, 0);
 
           const serviceLineUnitPrice =
@@ -171,31 +183,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
               ? (subtotal * servicePct) / 100 / packedUnitIds.length
               : 0;
 
-          // Invoice 1: GOODS
-          const goodsInvoiceNumber = await generateNextFinalInvoiceNumber(isExport ?? false);
-          generatedInvoiceNumbers.push(goodsInvoiceNumber);
+          const goodsInvoiceNumber   = preGenNumbers[0];
+          const serviceInvoiceNumber = preGenNumbers[1];
+          generatedInvoiceNumbers.push(goodsInvoiceNumber, serviceInvoiceNumber);
 
           const goodsItems = productItems.map((item, idx) => ({
-            description: item.description,
-            hsnCode: item.hsnCode,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice * (goodsPct / 100),
+            description:     item.description,
+            hsnCode:         item.hsnCode,
+            quantity:        item.quantity,
+            unitPrice:       item.unitPrice * (goodsPct / 100),
             discountPercent: item.discountPercent,
-            sortOrder: item.sortOrder ?? idx,
-            serialNumbers: idx === 0 ? JSON.stringify(packedSerials) : null,
+            sortOrder:       item.sortOrder ?? idx,
+            serialNumbers:   idx === 0 ? JSON.stringify(packedSerials) : null,
           }));
 
-          // Invoice 2: SERVICE
-          const serviceInvoiceNumber = await generateNextFinalInvoiceNumber(isExport ?? false);
-          generatedInvoiceNumbers.push(serviceInvoiceNumber);
-
+          // Create SERVICE invoice first
           const serviceInvoice = await tx.invoice.create({
             data: {
-              invoiceNumber: serviceInvoiceNumber,
+              invoiceNumber:   serviceInvoiceNumber,
               dispatchOrderId: params.id,
-              proformaId: proforma.id,
-              subType: 'SERVICE',
-              splitPercent: servicePct,
+              proformaId:      proforma.id,
+              subType:         'SERVICE',
+              splitPercent:    servicePct,
               clientId,
               currency,
               exchangeRate,
@@ -203,13 +212,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
               items: {
                 create: [
                   {
-                    description: 'Motor Controller Tuning Service',
-                    hsnCode: '998316',
-                    quantity: packedUnitIds.length,
-                    unitPrice: serviceLineUnitPrice,
+                    description:     'Motor Controller Tuning Service',
+                    hsnCode:         '998316',
+                    quantity:        packedUnitIds.length,
+                    unitPrice:       serviceLineUnitPrice,
                     discountPercent: 0,
-                    sortOrder: 0,
-                    serialNumbers: JSON.stringify(packedSerials),
+                    sortOrder:       0,
+                    serialNumbers:   JSON.stringify(packedSerials),
                   },
                 ],
               },
@@ -219,54 +228,49 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           // Create GOODS invoice linked to SERVICE invoice
           await tx.invoice.create({
             data: {
-              invoiceNumber: goodsInvoiceNumber,
+              invoiceNumber:   goodsInvoiceNumber,
               dispatchOrderId: params.id,
-              proformaId: proforma.id,
-              subType: 'GOODS',
-              splitPercent: goodsPct,
+              proformaId:      proforma.id,
+              subType:         'GOODS',
+              splitPercent:    goodsPct,
               relatedInvoiceId: serviceInvoice.id,
               clientId,
               currency,
               exchangeRate,
               notes,
-              items: {
-                create: goodsItems,
-              },
+              items: { create: goodsItems },
             },
           });
         } else {
-          // ── FULL INVOICE ───────────────────────────────────────────────────────
-          const fullInvoiceNumber = await generateNextFinalInvoiceNumber(isExport ?? false);
+          // ── FULL INVOICE ──────────────────────────────────────────────────
+          const fullInvoiceNumber = preGenNumbers[0];
           generatedInvoiceNumbers.push(fullInvoiceNumber);
 
-          // Copy all proforma items (including shipping line if present)
           const allItems = proforma.items.map((item, idx) => ({
-            description: item.description,
-            hsnCode: item.hsnCode,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
+            description:     item.description,
+            hsnCode:         item.hsnCode,
+            quantity:        item.quantity,
+            unitPrice:       item.unitPrice,
             discountPercent: item.discountPercent,
-            sortOrder: item.sortOrder ?? idx,
-            // Attach serials to first product item (non-shipping)
+            sortOrder:       item.sortOrder ?? idx,
             serialNumbers:
-              item.hsnCode !== '9965' && idx === proforma.items.findIndex((i) => i.hsnCode !== '9965')
+              item.hsnCode !== '9965' &&
+              idx === proforma.items.findIndex((i) => i.hsnCode !== '9965')
                 ? JSON.stringify(packedSerials)
                 : null,
           }));
 
           await tx.invoice.create({
             data: {
-              invoiceNumber: fullInvoiceNumber,
+              invoiceNumber:   fullInvoiceNumber,
               dispatchOrderId: params.id,
-              proformaId: proforma.id,
-              subType: 'FULL',
+              proformaId:      proforma.id,
+              subType:         'FULL',
               clientId,
               currency,
               exchangeRate,
               notes,
-              items: {
-                create: allItems,
-              },
+              items: { create: allItems },
             },
           });
         }
@@ -275,19 +279,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     // Return the approved DO + generated invoice numbers
     const result = await prisma.dispatchOrder.findUnique({
-      where: { id: params.id },
+      where:   { id: params.id },
       include: {
         order: {
           select: {
             orderNumber: true,
-            status: true,
-            client: { select: { customerName: true } },
-            product: { select: { code: true, name: true } },
+            status:      true,
+            client:      { select: { customerName: true } },
+            product:     { select: { code: true, name: true } },
           },
         },
-        createdBy: { select: { name: true } },
+        createdBy:  { select: { name: true } },
         approvedBy: { select: { name: true } },
-        invoices: { select: { id: true, invoiceNumber: true, subType: true } },
+        invoices:   { select: { id: true, invoiceNumber: true, subType: true } },
         boxes: {
           orderBy: { boxNumber: 'asc' },
           include: { _count: { select: { items: true } } },
@@ -298,13 +302,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({
       ...result,
       generatedInvoiceNumbers,
+      noProforma: !proforma,
     });
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     if (e instanceof Error && e.message === 'Forbidden')
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    console.error(e);
+    console.error('[approve-do]', e);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

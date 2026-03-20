@@ -12,8 +12,8 @@ export default async function PrintDispatchOrderPage({ params }: { params: { id:
           // Fetch ready units on the order so we can show them before packing starts
           units: {
             where: {
-              currentStage:    'FINAL_ASSEMBLY',
-              currentStatus:   'APPROVED',
+              currentStage:     'FINAL_ASSEMBLY',
+              currentStatus:    { in: ['APPROVED', 'COMPLETED'] },
               readyForDispatch: false,
             },
             select: { serialNumber: true, finalAssemblyBarcode: true },

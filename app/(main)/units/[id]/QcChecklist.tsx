@@ -145,7 +145,11 @@ export function QcChecklist({
       }
       setSubmittedResult(result);
       setPhase('done');
-      router.refresh();
+      if (result === 'PASS') {
+        router.push('/orders');
+      } else {
+        router.refresh();
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error submitting');
       setPhase('summary');

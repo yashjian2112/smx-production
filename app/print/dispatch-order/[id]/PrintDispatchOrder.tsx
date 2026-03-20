@@ -49,6 +49,10 @@ function fmtDate(d: string | Date) {
   });
 }
 
+function fmtTime(d: string | Date) {
+  return new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
 const STATUS_LABEL: Record<string, string> = {
   OPEN:      'Open',
   PACKING:   'In Packing',
@@ -86,7 +90,7 @@ export function PrintDispatchOrder({
    * - If DO is still OPEN (no boxes yet) → use the order's ready units
    *   so the document is useful as a handoff slip from manufacturing → packing
    */
-  type DisplayUnit = { serialNumber: string; finalAssemblyBarcode: string | null; boxNumber: number | null };
+  type DisplayUnit = { serialNumber: string; finalAssemblyBarcode: string | null; boxNumber: number | null; weightKg: number | null };
 
   const displayUnits: DisplayUnit[] = packingStarted
     ? dispatchOrder.boxes.flatMap((box) =>
@@ -94,12 +98,14 @@ export function PrintDispatchOrder({
           serialNumber:         item.unit.serialNumber,
           finalAssemblyBarcode: item.unit.finalAssemblyBarcode,
           boxNumber:            box.boxNumber,
+          weightKg:             box.weightKg,
         }))
       )
     : order.units.map((u) => ({
         serialNumber:         u.serialNumber,
         finalAssemblyBarcode: u.finalAssemblyBarcode,
         boxNumber:            null,
+        weightKg:             null,
       }));
 
   const totalUnits = displayUnits.length;
@@ -245,61 +251,45 @@ export function PrintDispatchOrder({
             <div className="info-value">{fmtDate(dispatchOrder.createdAt)}</div>
           </div>
           <div className="info-cell">
-            <div className="info-label">Approved By</div>
+            <div className="info-label">Time</div>
             <div className="info-value">
-              {isDispatched && dispatchOrder.approvedBy
-                ? dispatchOrder.approvedBy.name
-                : '—'}
+              {isDispatched && dispatchOrder.approvedAt
+                ? fmtTime(dispatchOrder.approvedAt)
+                : fmtTime(dispatchOrder.createdAt)}
             </div>
           </div>
         </div>
 
-        {/* ── UNITS TABLE ── */}
-        <div className="section-title">
-          Units ({totalUnits})
-          {!packingStarted && ' — Ready for Packing'}
-          {packingStarted && ` — ${totalBoxes} Box${totalBoxes !== 1 ? 'es' : ''}`}
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th style={{ width: '6%'  }} className="c">S.No</th>
-              <th style={{ width: '30%' }}>Serial Number</th>
-              {packingStarted && <th style={{ width: '10%' }} className="c">Box #</th>}
-              <th>Barcode</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayUnits.length === 0 ? (
-              <tr>
-                <td colSpan={packingStarted ? 4 : 3} className="c"
-                  style={{ padding: 20, color: '#888', fontStyle: 'italic' }}>
-                  No units found.
-                </td>
-              </tr>
-            ) : displayUnits.map((unit, i) => (
-              <tr key={unit.serialNumber}>
-                <td className="c" style={{ color: '#888', fontSize: 8 }}>{i + 1}</td>
-                <td style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 9.5 }}>
-                  {unit.serialNumber}
-                </td>
-                {packingStarted && (
-                  <td className="c" style={{ fontWeight: 700, color: '#1a3a6b' }}>
-                    {unit.boxNumber ?? '—'}
-                  </td>
-                )}
-                <td>
-                  {unit.finalAssemblyBarcode ? (
-                    <Barcode128 value={unit.finalAssemblyBarcode} width={1.1} height={20}
-                      fontSize={8} displayValue background="#ffffff" lineColor="#000000" />
-                  ) : (
-                    <span style={{ color: '#aaa', fontSize: 8 }}>—</span>
+        {/* ── UNITS ── */}
+        {displayUnits.length === 0 ? (
+          <div style={{ padding: '18px 12px', textAlign: 'center', color: '#888', fontStyle: 'italic', fontSize: 9, borderBottom: '1px solid #e8edf5' }}>
+            No units found.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #e8edf5' }}>
+            {/* Left: Product Name */}
+            <div style={{ flex: '0 0 190px', padding: '10px 12px', borderRight: '1px solid #c8d8f0' }}>
+              <div className="info-label">Product</div>
+              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, color: '#111' }}>{order.product.name}</div>
+              <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>{order.product.code}</div>
+            </div>
+            {/* Right: Stacked unit serial barcodes */}
+            <div style={{ flex: 1, padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {displayUnits.map((unit) => (
+                <div key={unit.serialNumber} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Barcode128 value={unit.serialNumber} width={1.2} height={28}
+                    fontSize={8} displayValue background="#ffffff" lineColor="#000000" />
+                  {unit.boxNumber != null && totalBoxes > 1 && (
+                    <div style={{ fontSize: 8, color: '#555', whiteSpace: 'nowrap', lineHeight: 1.5 }}>
+                      <div style={{ fontWeight: 700, color: '#1a3a6b' }}>Box {unit.boxNumber}</div>
+                      {unit.weightKg != null && <div>{unit.weightKg} kg</div>}
+                    </div>
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── BOX SUMMARY (only when packing started) ── */}
         {packingStarted && (

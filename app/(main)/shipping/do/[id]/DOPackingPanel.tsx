@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { BarcodeScanner } from '@/components/BarcodeScanner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type BoxSizeOption = {
@@ -237,12 +238,11 @@ function PhaseAScan({
   const [lookupError, setLookupError] = useState('');
   const [inspecting,  setInspecting]  = useState<InspectedUnit | null>(null);
   const [removing,    setRemoving]    = useState<string | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
 
   const scans = doData.scans;
 
-  async function handleScan(e: React.FormEvent) {
-    e.preventDefault();
-    const b = barcode.trim().toUpperCase();
+  async function doLookup(b: string) {
     if (!b) return;
     setLookupError('');
     setLooking(true);
@@ -254,6 +254,11 @@ function PhaseAScan({
       setBarcode('');
     } catch { setLookupError('Network error'); }
     finally { setLooking(false); }
+  }
+
+  async function handleScan(e: React.FormEvent) {
+    e.preventDefault();
+    await doLookup(barcode.trim().toUpperCase());
   }
 
   async function handleRemove(scanId: string) {
@@ -278,6 +283,15 @@ function PhaseAScan({
         </span>
       </div>
 
+      {showScanner && (
+        <BarcodeScanner
+          title="Scan Unit Barcode"
+          hint="Point at the FA barcode or serial number label"
+          onScan={(code) => { setShowScanner(false); doLookup(code); }}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
       {inspecting ? (
         <InspectionStep
           unit={inspecting}
@@ -288,14 +302,26 @@ function PhaseAScan({
       ) : (
         <>
           <form onSubmit={handleScan} className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowScanner(true)}
+              className="flex items-center justify-center w-10 h-10 rounded-lg flex-shrink-0"
+              style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}
+              title="Open camera scanner"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+            </button>
             <input ref={barcodeRef} value={barcode} onChange={(e) => setBarcode(e.target.value)}
-              placeholder="Scan barcode or serial number…"
+              placeholder="Scan or type barcode…"
               className="input-field text-sm font-mono flex-1"
               autoComplete="off" spellCheck={false} disabled={looking} autoFocus />
             <button type="submit" disabled={looking || !barcode.trim()}
               className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
               style={{ background: '#0ea5e9', color: '#fff' }}>
-              {looking ? '…' : 'Scan'}
+              {looking ? '…' : 'Go'}
             </button>
           </form>
           {lookupError && <p className="text-xs text-rose-400">{lookupError}</p>}
@@ -573,9 +599,10 @@ function BoxScanCard({
   const [weightSaved,  setWeightSaved]  = useState(box.weightKg != null);
 
   // Step 3: scan label
-  const [labelInput, setLabelInput] = useState('');
-  const [verifying,  setVerifying]  = useState(false);
-  const [labelError, setLabelError] = useState('');
+  const [labelInput,    setLabelInput]    = useState('');
+  const [verifying,     setVerifying]     = useState(false);
+  const [labelError,    setLabelError]    = useState('');
+  const [showLabelScan, setShowLabelScan] = useState(false);
 
   // Edit weight on confirmed boxes
   const [editingWeight,      setEditingWeight]      = useState(false);
@@ -601,9 +628,7 @@ function BoxScanCard({
     finally { setSavingWeight(false); }
   }
 
-  async function handleVerify(e: React.FormEvent) {
-    e.preventDefault();
-    const v = labelInput.trim().toUpperCase();
+  async function doVerify(v: string) {
     if (!v) return;
     setLabelError('');
     setVerifying(true);
@@ -618,6 +643,11 @@ function BoxScanCard({
       setLabelInput('');
     } catch { setLabelError('Network error'); }
     finally { setVerifying(false); }
+  }
+
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault();
+    await doVerify(labelInput.trim().toUpperCase());
   }
 
   async function handleEditWeight() {
@@ -800,11 +830,31 @@ function BoxScanCard({
       </div>
 
       {/* ③ Scan label to confirm — enabled only after weight saved */}
+      {showLabelScan && (
+        <BarcodeScanner
+          title="Scan Box Label"
+          hint={`Expected: ${box.boxLabel}`}
+          onScan={(code) => { setShowLabelScan(false); doVerify(code); }}
+          onClose={() => setShowLabelScan(false)}
+        />
+      )}
       <div className="rounded-lg p-3 space-y-2"
         style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
           opacity: weightSaved ? 1 : 0.4, pointerEvents: weightSaved ? 'auto' : 'none' }}>
         <div className="text-xs font-semibold text-zinc-300">③ Scan label barcode to confirm</div>
         <form onSubmit={handleVerify} className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => weightSaved && setShowLabelScan(true)}
+            className="flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0"
+            style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}
+            title="Open camera scanner"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+          </button>
           <input value={labelInput} onChange={(e) => setLabelInput(e.target.value)}
             placeholder={box.boxLabel}
             className="input-field text-xs font-mono flex-1"
@@ -895,6 +945,11 @@ export function DOPackingPanel({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-lg font-semibold text-white font-mono">{doData.doNumber}</span>
             <DOStatusBadge status={doData.status} />
+            {doData.dispatchQty < doData.order.quantity && (
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded" style={{ color: '#fb923c', background: 'rgba(251,146,60,0.12)', border: '1px solid rgba(251,146,60,0.3)' }}>
+                PARTIAL · {doData.dispatchQty}/{doData.order.quantity} units
+              </span>
+            )}
           </div>
           <div className="text-sm text-zinc-400 mt-0.5">
             {doData.order.client?.customerName ?? '—'} · Order #{doData.order.orderNumber} · {doData.order.product.name}

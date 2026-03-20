@@ -11,6 +11,7 @@ type DispatchOrder = {
   id: string;
   doNumber: string;
   orderId: string;
+  dispatchQty: number;
   status: DOStatus;
   createdAt: string;
   approvedAt: string | null;
@@ -44,7 +45,7 @@ type OrderGroup = {
   dos: DispatchOrder[];
 };
 
-type Tab = 'ready' | 'active' | 'history';
+type Tab = 'topack' | 'processing' | 'completed';
 
 /* ── Helpers ── */
 const STATUS_STYLE: Record<DOStatus, string> = {
@@ -207,7 +208,7 @@ function ReadyCard({ order, onCreateDO, creating }: {
 /* ── DO Sub-row (inside an order group) ── */
 function DORow({ d }: { d: DispatchOrder }) {
   const totalBoxes = d.boxes.length;
-  const totalUnits = d.boxes.reduce((s, b) => s + b._count.items, 0);
+  const packedUnits = d.boxes.reduce((s, b) => s + b._count.items, 0);
 
   return (
     <div className="rounded-lg border px-3 py-2.5 flex items-center gap-3"
@@ -223,9 +224,12 @@ function DORow({ d }: { d: DispatchOrder }) {
         </p>
       </div>
 
-      {/* Units + boxes */}
+      {/* Units packed / planned */}
       <div className="text-center px-2">
-        <p className="text-xs font-semibold text-white">{totalUnits}</p>
+        <p className="text-xs font-semibold text-white">
+          {packedUnits}
+          <span className="text-slate-500 font-normal">/{d.dispatchQty}</span>
+        </p>
         <p className="text-[10px] text-slate-500">units</p>
       </div>
       <div className="text-center px-2">
@@ -237,6 +241,21 @@ function DORow({ d }: { d: DispatchOrder }) {
       <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${STATUS_STYLE[d.status]}`}>
         {STATUS_LABEL[d.status]}
       </span>
+
+      {/* Pack button — only for active DOs */}
+      {['OPEN', 'PACKING'].includes(d.status) && (
+        <a
+          href={`/shipping/do/${d.id}`}
+          className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition-colors whitespace-nowrap font-semibold"
+          style={{ background: 'rgba(14,165,233,0.15)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.25)' }}
+          title="Open packing panel"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+          </svg>
+          Pack
+        </a>
+      )}
 
       {/* Print button */}
       <a
@@ -337,7 +356,7 @@ function EmptyState({ message, sub }: { message: string; sub: string }) {
 
 /* ── Main Page ── */
 export default function MyDispatchPage() {
-  const [tab, setTab] = useState<Tab>('ready');
+  const [tab, setTab] = useState<Tab>('topack');
   const [readyOrders, setReadyOrders] = useState<ReadyOrder[]>([]);
   const [allDOs,      setAllDOs]      = useState<DispatchOrder[]>([]);
   const [loading,     setLoading]     = useState(true);
@@ -393,7 +412,7 @@ export default function MyDispatchPage() {
       // Auto-open the print slip in a new tab
       if (data.id) window.open(`/print/dispatch-order/${data.id}`, '_blank');
       await load();
-      setTab('active');
+      setTab('topack');
     } catch {
       setCreateError('Network error');
     } finally {
@@ -402,16 +421,18 @@ export default function MyDispatchPage() {
   }
 
   /* Derived groups */
-  const activeDOs  = allDOs.filter(d => ['OPEN', 'PACKING', 'SUBMITTED'].includes(d.status));
-  const historyDOs = allDOs.filter(d => ['APPROVED', 'REJECTED'].includes(d.status));
+  const topackDOs     = allDOs.filter(d => ['OPEN', 'PACKING'].includes(d.status));
+  const processingDOs = allDOs.filter(d => d.status === 'SUBMITTED');
+  const completedDOs  = allDOs.filter(d => ['APPROVED', 'REJECTED'].includes(d.status));
 
-  const activeGroups  = groupByOrder(activeDOs);
-  const historyGroups = groupByOrder(historyDOs);
+  const topackGroups     = groupByOrder(topackDOs);
+  const processingGroups = groupByOrder(processingDOs);
+  const completedGroups  = groupByOrder(completedDOs);
 
   const tabs: { key: Tab; label: string; count: number }[] = [
-    { key: 'ready',   label: 'Ready',      count: readyOrders.length },
-    { key: 'active',  label: 'In Dispatch', count: activeGroups.length },
-    { key: 'history', label: 'Dispatch History', count: historyGroups.length },
+    { key: 'topack',     label: 'To Pack',    count: readyOrders.length + topackGroups.length },
+    { key: 'processing', label: 'Processing', count: processingGroups.length },
+    { key: 'completed',  label: 'Completed',  count: completedGroups.length },
   ];
 
   return (
@@ -455,11 +476,11 @@ export default function MyDispatchPage() {
         <div className="rounded-xl p-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
           {error}
         </div>
-      ) : tab === 'ready' ? (
-        readyOrders.length === 0 ? (
+      ) : tab === 'topack' ? (
+        readyOrders.length === 0 && topackGroups.length === 0 ? (
           <EmptyState
-            message="No orders are ready for dispatch"
-            sub="Units must complete Final Assembly and be approved"
+            message="No orders ready to pack"
+            sub="Units must complete Final Assembly and be approved before dispatch"
           />
         ) : (
           <div className="space-y-3">
@@ -473,33 +494,52 @@ export default function MyDispatchPage() {
                 {createError}
               </div>
             )}
-            {readyOrders.map((o) => (
-              <ReadyCard key={o.id} order={o} onCreateDO={createDO} creating={creating} />
-            ))}
+            {/* Orders with FA-completed units — create new DOs */}
+            {readyOrders.length > 0 && (
+              <>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 px-1">
+                  Ready to Dispatch
+                </p>
+                {readyOrders.map((o) => (
+                  <ReadyCard key={o.id} order={o} onCreateDO={createDO} creating={creating} />
+                ))}
+              </>
+            )}
+            {/* Existing OPEN / PACKING DOs */}
+            {topackGroups.length > 0 && (
+              <>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 px-1 pt-1">
+                  In Packing
+                </p>
+                {topackGroups.map((g) => (
+                  <OrderGroupCard key={g.orderId} group={g} />
+                ))}
+              </>
+            )}
           </div>
         )
-      ) : tab === 'active' ? (
-        activeGroups.length === 0 ? (
+      ) : tab === 'processing' ? (
+        processingGroups.length === 0 ? (
           <EmptyState
-            message="No active dispatch orders"
-            sub="Create a dispatch order from the Ready tab"
+            message="No orders pending approval"
+            sub="Submitted dispatch orders awaiting accounts review will appear here"
           />
         ) : (
           <div className="space-y-3">
-            {activeGroups.map((g) => (
+            {processingGroups.map((g) => (
               <OrderGroupCard key={g.orderId} group={g} />
             ))}
           </div>
         )
       ) : (
-        historyGroups.length === 0 ? (
+        completedGroups.length === 0 ? (
           <EmptyState
-            message="No dispatch history yet"
-            sub="Dispatched and rejected orders will appear here"
+            message="No completed dispatches yet"
+            sub="Approved and rejected dispatch orders will appear here"
           />
         ) : (
           <div className="space-y-3">
-            {historyGroups.map((g) => (
+            {completedGroups.map((g) => (
               <OrderGroupCard key={g.orderId} group={g} />
             ))}
           </div>

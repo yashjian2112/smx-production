@@ -301,6 +301,7 @@ export type UnitData = {
   serialNumber: string;
   currentStage: string;
   currentStatus: string;
+  readyForDispatch?: boolean;        // true = unit has been dispatched (FA stage only)
   barcodeForStage?: string | null;   // the physical label barcode for this station
   derivedStatus?: string;            // COMPLETED / IN_PROGRESS / PENDING / BLOCKED / REWORK
   powerstageBarcode?: string | null; // for Assembly multi-barcode select
@@ -321,14 +322,15 @@ type Props = {
 };
 
 const STATUS_STYLES: Record<string, { dot: string; text: string; label: string }> = {
-  PENDING:          { dot: 'bg-zinc-600',   text: 'text-zinc-500',   label: 'Pending'    },
-  IN_PROGRESS:      { dot: 'bg-amber-400',  text: 'text-amber-400',  label: 'In Progress'},
-  COMPLETED:        { dot: 'bg-green-400',  text: 'text-green-400',  label: 'Done'       },
-  BLOCKED:          { dot: 'bg-red-500',    text: 'text-red-400',    label: 'Blocked'    },
-  REWORK:           { dot: 'bg-orange-500', text: 'text-orange-400', label: 'Rework'     },
-  WAITING_APPROVAL: { dot: 'bg-sky-400',    text: 'text-sky-400',    label: 'Approval'   },
-  APPROVED:         { dot: 'bg-green-300',  text: 'text-green-300',  label: 'Approved'   },
-  REJECTED_BACK:    { dot: 'bg-red-400',    text: 'text-red-300',    label: 'Rejected'   },
+  PENDING:          { dot: 'bg-zinc-600',    text: 'text-zinc-500',    label: 'Pending'      },
+  IN_PROGRESS:      { dot: 'bg-amber-400',   text: 'text-amber-400',   label: 'In Progress'  },
+  COMPLETED:        { dot: 'bg-green-400',   text: 'text-green-400',   label: 'Done'         },
+  BLOCKED:          { dot: 'bg-red-500',     text: 'text-red-400',     label: 'Blocked'      },
+  REWORK:           { dot: 'bg-orange-500',  text: 'text-orange-400',  label: 'Rework'       },
+  WAITING_APPROVAL: { dot: 'bg-sky-400',     text: 'text-sky-400',     label: 'Approval'     },
+  APPROVED:         { dot: 'bg-green-300',   text: 'text-green-300',   label: 'Approved'     },
+  REJECTED_BACK:    { dot: 'bg-red-400',     text: 'text-red-300',     label: 'Rejected'     },
+  DISPATCHED:       { dot: 'bg-violet-400',  text: 'text-violet-400',  label: 'Dispatched ✓' },
 };
 
 // Pipeline order — used to derive dynamic stage accessibility
@@ -352,10 +354,16 @@ function isStageAccessible(stageKey: string, units: UnitData[]): boolean {
   if (stageIdx < 0) return false;
   return units.some((u) => STAGE_PIPELINE.indexOf(u.currentStage) >= stageIdx);
 }
+/** Resolve the display status for a unit — DISPATCHED overrides everything when readyForDispatch=true */
+function effectiveStatus(u: UnitData): string {
+  if (u.readyForDispatch) return 'DISPATCHED';
+  return u.derivedStatus ?? u.currentStatus;
+}
+
 function MiniProgress({ units }: { units: UnitData[] }) {
   const total = units.length;
   if (total === 0) return null;
-  const done = units.filter((u) => (u.derivedStatus ?? u.currentStatus) === 'COMPLETED').length;
+  const done = units.filter((u) => ['COMPLETED', 'APPROVED', 'DISPATCHED'].includes(effectiveStatus(u))).length;
   const pct = Math.round((done / total) * 100);
   return (
     <div className="mt-2">
@@ -399,9 +407,10 @@ function StageCard({
   scanLabel?: string;
 }) {
   const total      = stage.units.length;
-  const completed  = stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) === 'COMPLETED').length;
-  const inProgress = stage.units.filter((u) => ['IN_PROGRESS', 'WAITING_APPROVAL', 'APPROVED'].includes(u.derivedStatus ?? u.currentStatus)).length;
-  const blocked    = stage.units.filter((u) => ['BLOCKED', 'REWORK', 'REJECTED_BACK'].includes(u.derivedStatus ?? u.currentStatus)).length;
+  const dispatched = stage.units.filter((u) => effectiveStatus(u) === 'DISPATCHED').length;
+  const completed  = stage.units.filter((u) => ['COMPLETED', 'APPROVED'].includes(effectiveStatus(u))).length;
+  const inProgress = stage.units.filter((u) => ['IN_PROGRESS', 'WAITING_APPROVAL'].includes(effectiveStatus(u))).length;
+  const blocked    = stage.units.filter((u) => ['BLOCKED', 'REWORK', 'REJECTED_BACK'].includes(effectiveStatus(u))).length;
 
   const isLocked = isEmployee && !isAccessible;
 
@@ -437,6 +446,7 @@ function StageCard({
             {total > 0 ? (
               <p className="text-[11px] text-zinc-500 mt-0.5">
                 {completed}/{total} done
+                {dispatched > 0 && <span className="text-violet-400"> · {dispatched} dispatched</span>}
                 {inProgress > 0 && ` · ${inProgress} active`}
                 {blocked > 0 && <span className="text-red-400"> · {blocked} blocked</span>}
               </p>
@@ -504,7 +514,7 @@ function StageCard({
         <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <ul>
             {stage.units.map((u) => {
-              const status = u.derivedStatus ?? u.currentStatus;
+              const status = effectiveStatus(u);
               const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
               return (
                 <li key={u.id} className="flex items-center border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
@@ -514,9 +524,9 @@ function StageCard({
                     className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/5 transition-colors flex-1 min-w-0"
                   >
                     <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-                    <span className="font-mono text-sky-400 text-sm">{u.serialNumber}</span>
+                    <span className="font-mono text-sky-400 text-sm">{u.barcodeForStage ?? u.serialNumber}</span>
                     {u.barcodeForStage && (
-                      <span className="font-mono text-[10px] text-zinc-600 shrink-0 hidden sm:block">{u.barcodeForStage}</span>
+                      <span className="font-mono text-[10px] text-zinc-600 shrink-0 hidden sm:block">{u.serialNumber}</span>
                     )}
                     <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${s.text}`}>
                       {s.label}
@@ -561,9 +571,10 @@ function StageCard({
             ) : (
               <ul>
                 {assignedUnits.map((u) => {
-                  const status = u.derivedStatus ?? u.currentStatus;
+                  const status = effectiveStatus(u);
                   const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
-                  const isCompleted = status === 'COMPLETED';
+                  const isCompleted = status === 'COMPLETED' || status === 'APPROVED';
+                  const isDispatched = status === 'DISPATCHED';
                   return (
                     <li key={u.id} className="border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
                       {/* All assigned units are tappable:
@@ -571,9 +582,11 @@ function StageCard({
                           COMPLETED   → open unit page to view history */}
                       <a href={`/units/${u.id}`} className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/5 transition-colors">
                         <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-                        <span className="font-mono text-sky-400 text-sm flex-1 truncate">{u.serialNumber}</span>
+                        <span className="font-mono text-sky-400 text-sm flex-1 truncate">
+                          {u.barcodeForStage ?? u.serialNumber}
+                        </span>
                         <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${s.text}`}>
-                          {isCompleted ? 'Done ✓' : s.label}
+                          {isDispatched ? 'Dispatched ✓' : isCompleted ? 'Done ✓' : s.label}
                         </span>
                         <svg className="text-zinc-600 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M9 18l6-6-6-6" />
