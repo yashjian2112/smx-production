@@ -36,7 +36,7 @@ export async function POST(
     const boxCount = boxDetails.length;
 
     // Validate all box sizes exist
-    const sizeIds = [...new Set(boxDetails.map((b) => b.boxSizeId))];
+    const sizeIds = Array.from(new Set(boxDetails.map((b) => b.boxSizeId)));
     const sizes = await prisma.boxSize.findMany({ where: { id: { in: sizeIds }, active: true }, select: { id: true } });
     const validSizeIds = new Set(sizes.map((s) => s.id));
     for (const d of boxDetails) {
