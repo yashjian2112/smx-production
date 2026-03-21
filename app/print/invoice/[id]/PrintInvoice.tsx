@@ -84,7 +84,6 @@ function parseSerialNumbers(raw: string | null): string[] {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) return parsed as string[];
   } catch {
-    // not JSON — maybe comma-separated
     return raw.split(',').map((s) => s.trim()).filter(Boolean);
   }
   return [];
@@ -108,22 +107,22 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
     (i) => i.hsnCode === '9965' && i.description.toLowerCase().includes('freight')
   );
 
-  const subtotal = productItems.reduce((acc, item) => acc + calcItem(item), 0);
-  const shipping = shippingItem ? calcItem(shippingItem) : 0;
-  const gstAmount = isExport ? 0 : subtotal * 0.18;
-  const total = subtotal + gstAmount + shipping;
-  const totalINR = currency === 'INR' ? total : total * (invoice.exchangeRate ?? 1);
+  const subtotal   = productItems.reduce((acc, item) => acc + calcItem(item), 0);
+  const shipping   = shippingItem ? calcItem(shippingItem) : 0;
+  const gstAmount  = isExport ? 0 : subtotal * 0.18;
+  const total      = subtotal + gstAmount + shipping;
+  const totalINR   = currency === 'INR' ? total : total * (invoice.exchangeRate ?? 1);
+  const totalQty   = productItems.reduce((acc, i) => acc + i.quantity, 0);
 
   const fy = getFiscalYear(new Date(invoice.createdAt));
 
   const subTypeLabel =
-    invoice.subType === 'GOODS'
-      ? 'Tax Invoice (Goods)'
-      : invoice.subType === 'SERVICE'
-      ? 'Tax Invoice (Service)'
-      : 'Tax Invoice';
+    invoice.subType === 'GOODS'   ? 'Tax Invoice (Goods)'
+    : invoice.subType === 'SERVICE' ? 'Tax Invoice (Service)'
+    : 'Tax Invoice';
 
-  const isEs = invoice.invoiceNumber.startsWith('TSM/ES/');
+  // Min rows to show in items table (pad with empty rows to fill space)
+  const MIN_ROWS = 10;
 
   useEffect(() => {
     const t = setTimeout(() => window.print(), 600);
@@ -133,98 +132,92 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
   return (
     <>
       <style>{`
-        @page { size: A4; margin: 8mm 10mm; }
+        @page { size: A4 portrait; margin: 7mm 9mm; }
         @media print {
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .no-print { display: none !important; }
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, Helvetica, sans-serif; font-size: 9.5px; color: #111; background: #fff; }
+        body { font-family: Arial, Helvetica, sans-serif; font-size: 9px; color: #111; background: #fff; }
 
         /* OUTER BORDER */
-        .page-wrap { border: 1.5px solid #1a3a6b; min-height: 277mm; display: flex; flex-direction: column; }
+        .page-wrap { border: 1.5px solid #1a3a6b; min-height: 283mm; display: flex; flex-direction: column; }
 
         /* HEADER */
         .hdr { display: flex; justify-content: space-between; align-items: stretch; border-bottom: 1.5px solid #1a3a6b; }
-        .hdr-left { padding: 10px 12px; flex: 1; }
-        .hdr-right { padding: 10px 14px; text-align: right; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; border-left: 1px solid #c8d8f0; min-width: 180px; }
-        .co-name { font-size: 15px; font-weight: 700; color: #1a3a6b; letter-spacing: 0.3px; }
-        .co-tagline { font-size: 8px; color: #555; margin-top: 1px; }
-        .co-addr { font-size: 8.5px; color: #333; margin-top: 4px; line-height: 1.55; }
-        .co-gstin { font-size: 8px; color: #555; margin-top: 3px; }
+        .hdr-left { padding: 8px 12px; flex: 1; }
+        .hdr-right { padding: 8px 12px; text-align: right; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; border-left: 1px solid #c8d8f0; min-width: 170px; }
+        .co-name { font-size: 14px; font-weight: 700; color: #1a3a6b; letter-spacing: 0.3px; }
+        .co-tagline { font-size: 7.5px; color: #555; margin-top: 1px; }
+        .co-addr { font-size: 8px; color: #333; margin-top: 3px; line-height: 1.5; }
+        .co-gstin { font-size: 7.5px; color: #555; margin-top: 2px; }
         .doc-title { font-size: 13px; font-weight: 800; color: #1a3a6b; letter-spacing: 1px; text-transform: uppercase; }
         .doc-subtitle { font-size: 7.5px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
-        .split-badge { margin-top: 5px; display: inline-block; font-size: 8px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* LUT BAR — above Invoice No */
+        .lut-bar { padding: 3px 10px; background: #f8fff8; border-bottom: 1px solid #b3d9b3; font-size: 8px; color: #1a5c1a; line-height: 1.5; }
 
         /* INFO BAR */
         .info-bar { display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 1px solid #c8d8f0; background: #f0f5ff; }
-        .info-cell { padding: 5px 10px; }
+        .info-cell { padding: 4px 10px; }
         .info-cell:not(:last-child) { border-right: 1px solid #c8d8f0; }
-        .info-label { font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: #1a3a6b; margin-bottom: 1.5px; }
+        .info-label { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: #1a3a6b; margin-bottom: 1px; }
         .info-value { font-size: 9.5px; color: #111; font-weight: 600; }
-
-        /* LUT BAR */
-        .lut-bar { padding: 4px 10px; background: #f8fff8; border-bottom: 1px solid #b3d9b3; font-size: 8.5px; color: #1a5c1a; line-height: 1.6; }
-
-        /* REFERENCE BAR */
-        .ref-bar { padding: 4px 10px; background: #fffdf0; border-bottom: 1px solid #e6d472; font-size: 8.5px; color: #7a5800; display: flex; gap: 24px; }
-
-        /* SPLIT NOTICE */
-        .split-bar { padding: 4px 10px; background: #f0f5ff; border-bottom: 1px solid #c8d8f0; font-size: 8px; color: #1a3a6b; }
 
         /* PARTIES */
         .parties { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #c8d8f0; }
-        .party { padding: 8px 10px; }
+        .party { padding: 6px 10px; }
         .party:first-child { border-right: 1px solid #c8d8f0; }
-        .party-label { font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #1a3a6b; border-bottom: 1px solid #dde8f8; padding-bottom: 3px; margin-bottom: 4px; }
-        .party-name { font-size: 10.5px; font-weight: 700; color: #111; }
-        .party-line { font-size: 8.5px; color: #333; line-height: 1.6; white-space: pre-line; margin-top: 1px; }
+        .party-label { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #1a3a6b; border-bottom: 1px solid #dde8f8; padding-bottom: 2px; margin-bottom: 3px; }
+        .party-name { font-size: 10px; font-weight: 700; color: #111; }
+        .party-line { font-size: 8px; color: #333; line-height: 1.5; white-space: pre-line; margin-top: 1px; }
 
         /* TERMS */
         .terms-row { display: grid; border-bottom: 1px solid #c8d8f0; background: #fafbfd; }
         .terms-2col { grid-template-columns: 1fr 1fr; }
         .terms-3col { grid-template-columns: 1fr 1fr 1fr; }
-        .term-cell { padding: 5px 10px; }
+        .term-cell { padding: 4px 10px; }
         .term-cell:not(:last-child) { border-right: 1px solid #c8d8f0; }
-        .term-label { font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: #1a3a6b; margin-bottom: 1.5px; }
-        .term-value { font-size: 9px; color: #111; font-weight: 600; }
+        .term-label { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: #1a3a6b; margin-bottom: 1px; }
+        .term-value { font-size: 8.5px; color: #111; font-weight: 600; }
 
         /* TABLE */
-        table { width: 100%; border-collapse: collapse; }
-        thead th { background: #1a3a6b; color: #fff; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 7px; border-right: 1px solid #2a5099; }
+        table { width: 100%; border-collapse: collapse; flex: 1; }
+        thead th { background: #1a3a6b; color: #fff; font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 5px 6px; border-right: 1px solid #2a5099; }
         thead th:last-child { border-right: none; }
         thead th.c { text-align: center; }
         thead th.r { text-align: right; }
         tbody tr { border-bottom: 1px solid #e8edf5; }
         tbody tr:nth-child(even) { background: #f7f9fd; }
-        tbody td { padding: 5px 7px; font-size: 9px; color: #111; vertical-align: top; }
+        tbody td { padding: 4px 6px; font-size: 8.5px; color: #111; vertical-align: top; }
         tbody td.c { text-align: center; }
         tbody td.r { text-align: right; }
-        .empty-row td { height: 14px; background: #fff !important; }
-        .serial-list { font-family: monospace; font-size: 7.5px; color: #444; margin-top: 3px; line-height: 1.6; }
+        .empty-row td { height: 13px; background: #fff !important; border-bottom: 1px solid #f0f4f8; }
+        .serial-list { font-family: monospace; font-size: 7px; color: #444; margin-top: 2px; line-height: 1.5; }
 
         /* TOTALS */
-        .totals-wrap { display: flex; justify-content: flex-end; border-top: 1.5px solid #1a3a6b; background: #f0f5ff; padding: 8px 10px; }
-        .totals-box { width: 240px; }
-        .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; }
+        .totals-wrap { display: flex; justify-content: flex-end; border-top: 1.5px solid #1a3a6b; background: #f0f5ff; padding: 6px 10px; }
+        .totals-box { width: 250px; }
+        .t-row { display: flex; justify-content: space-between; padding: 1.5px 0; font-size: 8.5px; }
         .t-lbl { color: #444; }
-        .t-sep { border-top: 1px solid #b0c0e0; margin: 4px 0; }
-        .t-total { font-weight: 800; font-size: 11.5px; color: #1a3a6b; display: flex; justify-content: space-between; padding: 3px 0; }
+        .t-sep { border-top: 1px solid #b0c0e0; margin: 3px 0; }
+        .t-total { font-weight: 800; font-size: 11px; color: #1a3a6b; display: flex; justify-content: space-between; padding: 3px 0; }
+        .t-qty { display: flex; justify-content: space-between; padding: 2px 0; font-size: 8.5px; font-weight: 700; color: #1a3a6b; border-top: 1px solid #c8d8f0; margin-top: 3px; padding-top: 3px; }
 
         /* AMOUNT WORDS */
-        .words-bar { padding: 5px 10px; background: #f0f5ff; border-top: 1px solid #c8d8f0; font-size: 8.5px; line-height: 1.5; display: flex; justify-content: space-between; }
+        .words-bar { padding: 4px 10px; background: #f0f5ff; border-top: 1px solid #c8d8f0; font-size: 8px; line-height: 1.4; display: flex; justify-content: space-between; }
 
-        /* FOOTER */
-        .footer { display: grid; grid-template-columns: 1fr 1fr; border-top: 1.5px solid #1a3a6b; flex: 1; }
-        .footer-col { padding: 8px 10px; }
+        /* FOOTER — compact */
+        .footer { display: grid; grid-template-columns: 1fr 1fr; border-top: 1.5px solid #1a3a6b; }
+        .footer-col { padding: 5px 10px; }
         .footer-col:first-child { border-right: 1px solid #c8d8f0; }
-        .f-label { font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #1a3a6b; margin-bottom: 4px; }
-        .bank-row { font-size: 8.5px; color: #222; line-height: 1.7; }
-        .sign-wrap { display: flex; flex-direction: column; justify-content: space-between; height: 100%; }
-        .sign-line { border-top: 1px solid #1a3a6b; padding-top: 3px; font-size: 8.5px; font-weight: 700; color: #1a3a6b; }
-        .declaration { margin-top: 8px; font-size: 8px; color: #666; border-top: 1px solid #e8edf5; padding-top: 5px; line-height: 1.5; }
-        .notes-bar { padding: 5px 10px; font-size: 8.5px; color: #333; border-top: 1px solid #c8d8f0; }
-        .comp-gen { text-align: center; font-size: 7.5px; color: #999; padding: 4px; background: #f8faff; border-top: 1px solid #e8edf5; }
+        .f-label { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #1a3a6b; margin-bottom: 3px; }
+        .bank-row { font-size: 8px; color: #222; line-height: 1.6; }
+        .sign-wrap { display: flex; flex-direction: column; justify-content: space-between; height: 100%; min-height: 52px; }
+        .sign-line { border-top: 1px solid #1a3a6b; padding-top: 2px; font-size: 8px; font-weight: 700; color: #1a3a6b; }
+        .declaration { margin-top: 5px; font-size: 7.5px; color: #666; border-top: 1px solid #e8edf5; padding-top: 4px; line-height: 1.4; }
+        .notes-bar { padding: 4px 10px; font-size: 8px; color: #333; border-top: 1px solid #c8d8f0; }
+        .comp-gen { text-align: center; font-size: 7px; color: #999; padding: 3px; background: #f8faff; border-top: 1px solid #e8edf5; }
       `}</style>
 
       {/* Print controls */}
@@ -265,23 +258,18 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
             {invoice.subType !== 'FULL' && (
               <div className="doc-subtitle">{subTypeLabel}</div>
             )}
-            {isExport && <div className="doc-subtitle">Supply under LUT/Bond — Zero Rated Export</div>}
+            {isExport && <div className="doc-subtitle">Zero Rated Export</div>}
             <div className="doc-subtitle">FY {fy}</div>
-            {invoice.subType !== 'FULL' && (
-              <div
-                className="split-badge"
-                style={
-                  invoice.subType === 'GOODS'
-                    ? { background: '#dbeafe', color: '#1e40af' }
-                    : { background: '#fef9c3', color: '#7a5800' }
-                }
-              >
-                {invoice.subType === 'GOODS' ? 'Goods' : 'Service'}
-                {invoice.splitPercent != null ? ` (${invoice.splitPercent}%)` : ''}
-              </div>
-            )}
           </div>
         </div>
+
+        {/* LUT BAR — above Invoice No (export only) */}
+        {isExport && (s('lut_number') || s('lut_from')) && (
+          <div className="lut-bar">
+            Supply under Bond/LUT without payment of IGST — LUT No.: <strong>{s('lut_number')}</strong>
+            &nbsp; Valid: <strong>{s('lut_from')}</strong> to <strong>{s('lut_to')}</strong>
+          </div>
+        )}
 
         {/* INFO BAR */}
         <div className="info-bar">
@@ -299,34 +287,6 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
               {currency}{isExport && invoice.exchangeRate ? ` @ \u20b9${invoice.exchangeRate}` : ''}
             </div>
           </div>
-        </div>
-
-        {/* LUT BAR (export only) */}
-        {isExport && (s('lut_number') || s('lut_from')) && (
-          <div className="lut-bar">
-            Supply under Bond/LUT without payment of IGST — LUT No.: <strong>{s('lut_number')}</strong>
-            &nbsp; Valid: <strong>{s('lut_from')}</strong> to <strong>{s('lut_to')}</strong>
-          </div>
-        )}
-
-        {/* REFERENCE BAR */}
-        <div className="ref-bar">
-          {invoice.dispatchOrder && (
-            <span>
-              <strong>Dispatch Order:</strong> {invoice.dispatchOrder.doNumber}
-            </span>
-          )}
-          {invoice.proforma && (
-            <span>
-              <strong>Proforma Ref:</strong> {invoice.proforma.invoiceNumber}
-            </span>
-          )}
-          {invoice.relatedInvoice && (
-            <span>
-              <strong>Related Invoice:</strong> {invoice.relatedInvoice.invoiceNumber}
-              {' '}({invoice.relatedInvoice.subType === 'GOODS' ? 'Goods' : invoice.relatedInvoice.subType === 'SERVICE' ? 'Service' : 'Full'})
-            </span>
-          )}
         </div>
 
         {/* PARTIES */}
@@ -387,7 +347,7 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
               const serials = parseSerialNumbers(item.serialNumbers);
               return (
                 <tr key={item.id}>
-                  <td className="c" style={{ color: '#888', fontSize: 8 }}>{i + 1}</td>
+                  <td className="c" style={{ color: '#888', fontSize: 7.5 }}>{i + 1}</td>
                   <td style={{ fontWeight: 500 }}>
                     {item.description}
                     {serials.length > 0 && (
@@ -396,7 +356,7 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
                       </div>
                     )}
                   </td>
-                  <td className="c" style={{ fontFamily: 'monospace', fontSize: 8 }}>{item.hsnCode}</td>
+                  <td className="c" style={{ fontFamily: 'monospace', fontSize: 7.5 }}>{item.hsnCode}</td>
                   <td className="c">{item.quantity}</td>
                   <td className="c" style={{ color: '#888' }}>PCS</td>
                   <td className="r">{fmt(item.unitPrice, currency)}</td>
@@ -405,7 +365,7 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
                 </tr>
               );
             })}
-            {productItems.length < 6 && Array.from({ length: 6 - productItems.length }).map((_, i) => (
+            {productItems.length < MIN_ROWS && Array.from({ length: MIN_ROWS - productItems.length }).map((_, i) => (
               <tr key={`emp${i}`} className="empty-row"><td /><td /><td /><td /><td /><td /><td /><td /></tr>
             ))}
           </tbody>
@@ -430,14 +390,14 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
             <div className="t-sep" />
             <div className="t-total"><span>TOTAL</span><span>{fmt(total, currency)}</span></div>
             {currency === 'USD' && invoice.exchangeRate && (
-              <div className="t-row" style={{ fontSize: 8, color: '#888', marginTop: 3 }}>
-                <span>≈ INR equivalent @ \u20b9{invoice.exchangeRate}/$</span>
+              <div className="t-row" style={{ fontSize: 7.5, color: '#888', marginTop: 2 }}>
+                <span>≈ INR @ \u20b9{invoice.exchangeRate}/$</span>
                 <span>\u20b9{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
             )}
-            <div style={{ marginTop: 4, fontSize: 7.5, color: '#888', display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #c8d8f0', paddingTop: 3 }}>
+            <div className="t-qty">
               <span>Total Quantity</span>
-              <span>{productItems.reduce((acc, i) => acc + i.quantity, 0)} PCS</span>
+              <span>{totalQty} PCS</span>
             </div>
           </div>
         </div>
@@ -448,17 +408,21 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
             <strong style={{ color: '#1a3a6b' }}>Amount Chargeable (in words):</strong>&nbsp;
             {currency === 'USD' ? amountToWords(total, 'USD') : amountToWords(total, 'INR')}
           </span>
-          <span style={{ color: '#999', fontStyle: 'italic', fontSize: 8 }}>E. &amp; O.E.</span>
+          <span style={{ color: '#999', fontStyle: 'italic', fontSize: 7.5 }}>E. &amp; O.E.</span>
         </div>
 
         {/* NOTES */}
-        {invoice.notes && (
-          <div className="notes-bar">
-            <strong style={{ color: '#1a3a6b' }}>Notes: </strong>{invoice.notes}
-          </div>
-        )}
+        {invoice.notes && (() => {
+          // Strip tracking line from notes
+          const cleaned = invoice.notes.split('\n').filter(l => !l.startsWith('Tracking:')).join('\n').trim();
+          return cleaned ? (
+            <div className="notes-bar">
+              <strong style={{ color: '#1a3a6b' }}>Notes: </strong>{cleaned}
+            </div>
+          ) : null;
+        })()}
 
-        {/* FOOTER */}
+        {/* FOOTER — compact */}
         <div className="footer" style={{ marginTop: 'auto' }}>
           <div className="footer-col">
             <div className="f-label">Company Bank Details</div>
@@ -477,7 +441,7 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
             <div className="sign-wrap">
               <div>
                 <div className="f-label">For {coName}</div>
-                <div style={{ fontSize: 8, color: '#888', marginBottom: 32 }}>Authorised Signatory</div>
+                <div style={{ fontSize: 7.5, color: '#888', marginBottom: 28 }}>Authorised Signatory</div>
               </div>
               <div className="sign-line">Authorised Signatory</div>
             </div>
