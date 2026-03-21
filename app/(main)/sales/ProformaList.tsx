@@ -169,12 +169,14 @@ function InvoiceDOFolder({
   isOpen,
   onToggle,
   showTracking = false,
+  canEditTracking = true,
   onTrackingSaved,
 }: {
   grp: DOGroup;
   isOpen: boolean;
   onToggle: () => void;
   showTracking?: boolean;
+  canEditTracking?: boolean;
   onTrackingSaved?: () => void;
 }) {
   // Derive tracking from first invoice that has it, or empty
@@ -256,8 +258,8 @@ function InvoiceDOFolder({
         </div>
       </button>
 
-      {/* ── Tracking input row (Current tab only, shown even when folder collapsed) ── */}
-      {showTracking && !hasTracking && !editing && (
+      {/* ── Tracking input row (Current tab only, editable for non-SALES) ── */}
+      {showTracking && canEditTracking && !hasTracking && !editing && (
         <div
           className="flex items-center gap-2 px-3 py-2 border-t"
           style={{ borderColor: 'rgba(251,191,36,0.15)', background: 'rgba(251,191,36,0.04)' }}
@@ -277,7 +279,7 @@ function InvoiceDOFolder({
         </div>
       )}
 
-      {showTracking && editing && (
+      {showTracking && canEditTracking && editing && (
         <div
           className="flex items-center gap-2 px-3 py-2 border-t"
           style={{ borderColor: 'rgba(251,191,36,0.2)', background: 'rgba(251,191,36,0.04)' }}
@@ -605,6 +607,7 @@ export function ProformaList({
                         isOpen={doOpen}
                         onToggle={() => toggleDO(grp.key)}
                         showTracking={true}
+                        canEditTracking={role !== 'SALES'}
                       />
                     );
                   })}
