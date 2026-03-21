@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateNextMaterialCode } from '@/lib/invoice-number';
+import { generateMaterialBarcode } from '@/lib/inventory-utils';
 
 // STORE_MANAGER and INVENTORY_MANAGER can view materials
 const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'] as const;
@@ -57,18 +58,16 @@ export async function POST(req: Request) {
   const body = await req.json();
   const data = createSchema.parse(body);
 
-  const code = data.code || await generateNextMaterialCode();
+  const code    = data.code || await generateNextMaterialCode();
+  const barcode = await generateMaterialBarcode(data.categoryId);
 
   const material = await prisma.rawMaterial.create({
     data: {
       code,
-      barcode:           code,
+      barcode,
       name:              data.name,
       unit:              data.unit,
       description:       data.description ?? null,
-      hsnCode:           data.hsnCode ?? null,
-      purchasePrice:     data.purchasePrice,
-      leadTimeDays:      data.leadTimeDays,
       categoryId:        data.categoryId ?? null,
       preferredVendorId: data.preferredVendorId ?? null,
       minimumStock:      data.minimumStock,

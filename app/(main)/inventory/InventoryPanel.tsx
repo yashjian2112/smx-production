@@ -56,7 +56,7 @@ interface StockMovement {
   createdBy: { name: string };
 }
 
-interface Category { id: string; name: string; description?: string; _count: { materials: number } }
+interface Category { id: string; name: string; code: string; description?: string; _count: { materials: number } }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -955,6 +955,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
 
   // Inline create category
   const [cName,          setCName]          = useState('');
+  const [cCode,          setCCode]          = useState('');
   const [cDesc,          setCDesc]          = useState('');
   const [cSaving,        setCSaving]        = useState(false);
   const [showInlineCat,  setShowInlineCat]  = useState(false);
@@ -1040,20 +1041,20 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
 
   async function handleCatSubmit(e: React.FormEvent) {
     e.preventDefault(); setCSaving(true);
-    await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName, description: cDesc }) });
-    setCSaving(false); setShowCatForm(false); setCName(''); setCDesc(''); load();
+    await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName, code: cCode.toUpperCase(), description: cDesc || undefined }) });
+    setCSaving(false); setShowCatForm(false); setCName(''); setCCode(''); setCDesc(''); load();
   }
 
   async function saveInlineCat() {
-    if (!cName.trim()) return;
+    if (!cName.trim() || !cCode.trim()) return;
     setCSaving(true);
-    const res = await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName.trim() }) });
+    const res = await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName.trim(), code: cCode.trim().toUpperCase() }) });
     if (res.ok) {
       const cat = await res.json();
       setCategories(prev => [...prev, cat]);
       setFCatId(cat.id);
     }
-    setCSaving(false); setShowInlineCat(false); setCName('');
+    setCSaving(false); setShowInlineCat(false); setCName(''); setCCode('');
   }
 
   async function saveInlineVendor() {
@@ -1093,7 +1094,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
         <div className="flex gap-2 flex-wrap mb-4">
           {categories.map(c => (
             <span key={c.id} className="px-2 py-1 rounded-lg text-xs" style={{ background: 'rgba(14,165,233,0.1)', color: '#38bdf8' }}>
-              {c.name} ({c._count.materials})
+              <span className="font-mono text-sky-300">{c.code}</span> · {c.name} ({c._count.materials})
             </span>
           ))}
         </div>
@@ -1189,12 +1190,19 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                     <input value={cName} onChange={e => setCName(e.target.value)} placeholder="Category name *" autoFocus
                       className="w-full px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                       style={{ background: 'rgb(39,39,42)' }} />
+                    <div>
+                      <input value={cCode} onChange={e => setCCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                        placeholder="Prefix/Code * e.g. CAP, PCB, RES"
+                        className="w-full px-3 py-1.5 rounded-lg text-sm text-white font-mono border border-zinc-700 outline-none focus:border-sky-500"
+                        style={{ background: 'rgb(39,39,42)' }} />
+                      <p className="text-zinc-600 text-[10px] mt-0.5">Used for barcodes: CAP → CAP001, CAP002…</p>
+                    </div>
                     <div className="flex gap-2">
-                      <button type="button" onClick={saveInlineCat} disabled={cSaving || !cName.trim()}
+                      <button type="button" onClick={saveInlineCat} disabled={cSaving || !cName.trim() || !cCode.trim()}
                         className="px-3 py-1 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40">
                         {cSaving ? 'Saving…' : 'Save'}
                       </button>
-                      <button type="button" onClick={() => { setShowInlineCat(false); setCName(''); }}
+                      <button type="button" onClick={() => { setShowInlineCat(false); setCName(''); setCCode(''); }}
                         className="px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-white">Cancel</button>
                     </div>
                   </div>
@@ -1308,8 +1316,15 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
             <form onSubmit={handleCatSubmit} className="space-y-3">
               <div>
                 <label className="text-zinc-400 text-xs">Name *</label>
-                <input value={cName} onChange={e => setCName(e.target.value)} required
+                <input value={cName} onChange={e => setCName(e.target.value)} required autoFocus
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                  style={{ background: 'rgb(39,39,42)' }} />
+              </div>
+              <div>
+                <label className="text-zinc-400 text-xs">Prefix / Code * <span className="text-zinc-600">(up to 6 chars, used for barcodes)</span></label>
+                <input value={cCode} onChange={e => setCCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))} required
+                  placeholder="e.g. CAP, PCB, MOS, RES"
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white font-mono border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
               <div>
@@ -1319,7 +1334,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setShowCatForm(false)}
+                <button type="button" onClick={() => { setShowCatForm(false); setCName(''); setCCode(''); setCDesc(''); }}
                   className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Cancel</button>
                 <button type="submit" disabled={cSaving}
                   className="flex-1 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50">

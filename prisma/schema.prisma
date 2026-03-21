@@ -878,6 +878,7 @@ model RepairLog {
 model MaterialCategory {
   id          String   @id @default(cuid())
   name        String
+  code        String   @unique  // barcode prefix e.g. CAP, PCB, MOS, RES
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
 

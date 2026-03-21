@@ -9,6 +9,7 @@ const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'] as cons
 
 const createSchema = z.object({
   name:        z.string().min(1),
+  code:        z.string().min(1).max(6).toUpperCase(),
   description: z.string().optional(),
 });
 

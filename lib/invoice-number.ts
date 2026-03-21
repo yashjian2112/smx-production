@@ -210,6 +210,8 @@ export async function generateNextMaterialCode(): Promise<string> {
   return `${prefix}${String(next).padStart(3, '0')}`;
 }
 
+
+
 /**
  * Generates the next Invoice number from the invoices table (NOT proforma_invoices).
  * Export:   TSM/ES/YY-YY/0001
