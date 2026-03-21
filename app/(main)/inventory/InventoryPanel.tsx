@@ -58,6 +58,7 @@ interface StockMovement {
 }
 
 interface Category { id: string; name: string; code: string; description?: string; _count: { materials: number } }
+interface PackSize { id: string; name: string; purchaseUnit: string; stockUnit: string; conversionFactor: number; description?: string | null }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -935,10 +936,21 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
 function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [materials,  setMaterials]  = useState<RawMaterial[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [packSizes,  setPackSizes]  = useState<PackSize[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [showMatForm,setShowMatForm]= useState(false);
   const [showCatForm,setShowCatForm]= useState(false);
+  const [showPackForm,setShowPackForm]= useState(false);
+  const [showPackSizes,setShowPackSizes]= useState(false);
   const [editMat,    setEditMat]    = useState<RawMaterial | null>(null);
+
+  // Pack size form state
+  const [psName,    setPsName]    = useState('');
+  const [psPurchU,  setPsPurchU]  = useState('REEL');
+  const [psStockU,  setPsStockU]  = useState('PCS');
+  const [psFactor,  setPsFactor]  = useState('');
+  const [psDesc,    setPsDesc]    = useState('');
+  const [psSaving,  setPsSaving]  = useState(false);
 
   // Form state
   const [fName,      setFName]      = useState('');
@@ -972,14 +984,16 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [mRes, cRes, vRes] = await Promise.all([
+    const [mRes, cRes, vRes, psRes] = await Promise.all([
       fetch('/api/inventory/materials'),
       fetch('/api/inventory/categories'),
       fetch('/api/purchase/vendors'),
+      fetch('/api/inventory/pack-sizes'),
     ]);
     if (mRes.ok) setMaterials(await mRes.json());
     if (cRes.ok) setCategories(await cRes.json());
     if (vRes.ok) setVendors(await vRes.json());
+    if (psRes.ok) setPackSizes(await psRes.json());
     setLoading(false);
   }, []);
 
@@ -1074,6 +1088,21 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
       setFVendorId(vendor.id);
     }
     setVSaving(false); setShowInlineVendor(false); setVName(''); setVPhone(''); setVEmail('');
+  }
+
+  async function handlePackSizeSubmit(e: React.FormEvent) {
+    e.preventDefault(); setPsSaving(true);
+    const res = await fetch('/api/inventory/pack-sizes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: psName, purchaseUnit: psPurchU, stockUnit: psStockU, conversionFactor: parseFloat(psFactor), description: psDesc || undefined }),
+    });
+    if (res.ok) { const ps = await res.json(); setPackSizes(prev => [...prev, ps]); }
+    setPsSaving(false); setShowPackForm(false); setPsName(''); setPsFactor(''); setPsDesc('');
+  }
+
+  async function deletePackSize(id: string) {
+    await fetch(`/api/inventory/pack-sizes/${id}`, { method: 'DELETE' });
+    setPackSizes(prev => prev.filter(p => p.id !== id));
   }
 
   if (loading) return <p className="text-zinc-400 text-sm py-6">Loading…</p>;
@@ -1189,8 +1218,23 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
               {/* Purchase unit + conversion */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-zinc-400 text-xs">Purchase Unit <span className="text-zinc-600">(optional — if different from stock unit)</span></label>
+                  <label className="text-zinc-400 text-xs">Pack Size <span className="text-zinc-600">(optional — if purchased in a different unit)</span></label>
                 </div>
+                {/* Quick-select from saved pack sizes */}
+                {packSizes.length > 0 && (
+                  <select onChange={e => {
+                    const ps = packSizes.find(p => p.id === e.target.value);
+                    if (ps) { setFPurchaseUnit(ps.purchaseUnit); setFConvFactor(String(ps.conversionFactor)); setFUnit(ps.stockUnit); }
+                    else { setFPurchaseUnit(''); setFConvFactor(''); }
+                  }} defaultValue=""
+                    className="w-full mb-2 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                    style={{ background: 'rgb(39,39,42)' }}>
+                    <option value="">— Select a saved pack size —</option>
+                    {packSizes.map(ps => (
+                      <option key={ps.id} value={ps.id}>{ps.name} (1 {ps.purchaseUnit} = {ps.conversionFactor} {ps.stockUnit})</option>
+                    ))}
+                  </select>
+                )}
                 <div className="flex gap-2">
                   <select value={fPurchaseUnit} onChange={e => setFPurchaseUnit(e.target.value)}
                     className="flex-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
@@ -1207,7 +1251,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                 </div>
                 {fPurchaseUnit && fConvFactor && (
                   <p className="text-zinc-500 text-[10px] mt-1">
-                    1 {fPurchaseUnit} = {fConvFactor} {fUnit || 'PCS'} · Stock is always tracked in {fUnit || 'PCS'}
+                    1 {fPurchaseUnit} = {fConvFactor} {fUnit || 'PCS'} · Stock always tracked in {fUnit || 'PCS'}
                   </p>
                 )}
               </div>
@@ -1337,6 +1381,99 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                 <button type="submit" disabled={fSaving}
                   className="flex-1 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50">
                   {fSaving ? 'Saving…' : editMat ? 'Update' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pack Sizes Section ── */}
+      {isAdmin && (
+        <div className="mt-6 rounded-xl border border-zinc-800" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          <button type="button" onClick={() => setShowPackSizes(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-300 hover:text-white transition-colors">
+            <span className="font-medium">Pack Sizes <span className="text-zinc-500 font-normal text-xs ml-1">({packSizes.length} defined)</span></span>
+            <span className="text-zinc-500 text-xs">{showPackSizes ? '▲ hide' : '▼ manage'}</span>
+          </button>
+          {showPackSizes && (
+            <div className="px-4 pb-4 space-y-2 border-t border-zinc-800 pt-3">
+              <p className="text-zinc-500 text-xs mb-3">Define standard packaging units so you can quickly apply them when creating materials.</p>
+              {packSizes.map(ps => (
+                <div key={ps.id} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                  <div>
+                    <span className="text-white text-sm">{ps.name}</span>
+                    <span className="text-zinc-400 text-xs ml-2">1 {ps.purchaseUnit} = {ps.conversionFactor} {ps.stockUnit}</span>
+                    {ps.description && <span className="text-zinc-600 text-xs ml-2">· {ps.description}</span>}
+                  </div>
+                  <button onClick={() => deletePackSize(ps.id)}
+                    className="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded border border-red-900/40 hover:bg-red-900/20 transition-colors">
+                    Remove
+                  </button>
+                </div>
+              ))}
+              {packSizes.length === 0 && <p className="text-zinc-600 text-xs">No pack sizes defined yet.</p>}
+              <button onClick={() => setShowPackForm(true)}
+                className="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-sky-800 text-sky-400 hover:bg-sky-900/20 transition-colors">
+                + Add Pack Size
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Pack Size Form Modal */}
+      {showPackForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'rgb(24,24,27)' }}>
+            <h3 className="text-white font-semibold mb-1">New Pack Size</h3>
+            <p className="text-zinc-500 text-xs mb-4">e.g. "MOSFET Reel" = 1 REEL contains 2000 PCS</p>
+            <form onSubmit={handlePackSizeSubmit} className="space-y-3">
+              <div>
+                <label className="text-zinc-400 text-xs">Name *</label>
+                <input value={psName} onChange={e => setPsName(e.target.value)} required autoFocus
+                  placeholder="e.g. MOSFET Reel, SMD Cap Reel"
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                  style={{ background: 'rgb(39,39,42)' }} />
+              </div>
+              <div className="grid grid-cols-3 gap-2 items-end">
+                <div>
+                  <label className="text-zinc-400 text-xs">Purchase Unit *</label>
+                  <select value={psPurchU} onChange={e => setPsPurchU(e.target.value)}
+                    className="w-full mt-1 px-2 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                    style={{ background: 'rgb(39,39,42)' }}>
+                    {['REEL','BOX','SET','KG','MTR','LTR','ROLL'].map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-zinc-400 text-xs">Qty *</label>
+                  <input type="number" step="any" min="1" value={psFactor} onChange={e => setPsFactor(e.target.value)} required
+                    placeholder="e.g. 2000"
+                    className="w-full mt-1 px-2 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                    style={{ background: 'rgb(39,39,42)' }} />
+                </div>
+                <div>
+                  <label className="text-zinc-400 text-xs">Stock Unit *</label>
+                  <select value={psStockU} onChange={e => setPsStockU(e.target.value)}
+                    className="w-full mt-1 px-2 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                    style={{ background: 'rgb(39,39,42)' }}>
+                    {['PCS','KG','GRAM','MTR','LTR'].map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+              {psFactor && <p className="text-zinc-500 text-[10px]">1 {psPurchU} = {psFactor} {psStockU}</p>}
+              <div>
+                <label className="text-zinc-400 text-xs">Description <span className="text-zinc-600">(optional)</span></label>
+                <input value={psDesc} onChange={e => setPsDesc(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                  style={{ background: 'rgb(39,39,42)' }} />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => { setShowPackForm(false); setPsName(''); setPsFactor(''); setPsDesc(''); }}
+                  className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Cancel</button>
+                <button type="submit" disabled={psSaving}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50">
+                  {psSaving ? 'Saving…' : 'Create'}
                 </button>
               </div>
             </form>
