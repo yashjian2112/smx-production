@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type InvoiceItem = { invoiceNumber: string; notes: string | null };
+type InvoiceItem = { id: string; invoiceNumber: string; notes: string | null };
 
 type DOListItem = {
   id:             string;
@@ -544,7 +544,15 @@ export function ShippingPanel({
                       ) : (
                         <div className="space-y-0.5">
                           {(d.invoices ?? []).map((inv) => (
-                            <div key={inv.invoiceNumber} className="text-xs font-mono text-white">{inv.invoiceNumber}</div>
+                            <a
+                              key={inv.invoiceNumber}
+                              href={`/print/invoice/${inv.id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block text-xs font-mono text-sky-400 hover:text-sky-300 hover:underline"
+                            >
+                              {inv.invoiceNumber}
+                            </a>
                           ))}
                         </div>
                       )}

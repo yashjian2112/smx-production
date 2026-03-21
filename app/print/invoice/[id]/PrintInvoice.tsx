@@ -124,7 +124,6 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
 
   const approvedByName = invoice.dispatchOrder?.approvedBy?.name ?? '—';
 
-  const MIN_ROWS = 10;
 
   useEffect(() => {
     const t = setTimeout(() => window.print(), 600);
@@ -182,12 +181,10 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         thead th:last-child { border-right: none; }
         thead th.c { text-align: center; }
         thead th.r { text-align: right; }
-        tbody tr { border-bottom: 1.5px solid #b0c4de; }
         tbody tr:nth-child(even) { background: #f7f9fd; }
         tbody td { padding: 4px 6px; font-size: 8.5px; color: #111; vertical-align: top; }
         tbody td.c { text-align: center; }
         tbody td.r { text-align: right; }
-        .empty-row td { height: 13px; background: #fff !important; border-bottom: 1px solid #dde8f8; }
         .serial-list { font-family: monospace; font-size: 7px; color: #444; margin-top: 2px; line-height: 1.5; }
 
         /* TOTALS */
@@ -338,8 +335,9 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
           <tbody>
             {productItems.map((item, i) => {
               const serials = parseSerialNumbers(item.serialNumbers);
+              const showSep = productItems.length > 1 && i < productItems.length - 1;
               return (
-                <tr key={item.id}>
+                <tr key={item.id} style={showSep ? { borderBottom: '1.5px solid #b0c4de' } : {}}>
                   <td className="c" style={{ color: '#888', fontSize: 7.5 }}>{i + 1}</td>
                   <td style={{ fontWeight: 500 }}>
                     {item.description}
@@ -358,9 +356,6 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
                 </tr>
               );
             })}
-            {productItems.length < MIN_ROWS && Array.from({ length: MIN_ROWS - productItems.length }).map((_, i) => (
-              <tr key={`emp${i}`} className="empty-row"><td /><td /><td /><td /><td /><td /><td /><td /></tr>
-            ))}
           </tbody>
         </table>
 
@@ -415,7 +410,7 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         })()}
 
         {/* FOOTER */}
-        <div className="footer" style={{ marginTop: 'auto' }}>
+        <div className="footer">
           <div className="footer-col">
             <div className="f-label">Company Bank Details</div>
             <div className="bank-row">

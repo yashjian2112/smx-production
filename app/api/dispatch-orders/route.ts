@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
           },
         },
         invoices: {
-          select: { invoiceNumber: true, notes: true },
+          select: { id: true, invoiceNumber: true, notes: true },
           orderBy: { createdAt: 'asc' },
         },
       },
