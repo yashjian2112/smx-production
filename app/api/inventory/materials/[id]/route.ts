@@ -9,6 +9,8 @@ const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER'] as const;                   
 const updateSchema = z.object({
   name:              z.string().min(1).optional(),
   unit:              z.string().min(1).optional(),
+  purchaseUnit:      z.string().nullable().optional(),
+  conversionFactor:  z.number().positive().nullable().optional(),
   description:       z.string().nullable().optional(),
   hsnCode:           z.string().nullable().optional(),
   purchasePrice:     z.number().min(0).optional(),

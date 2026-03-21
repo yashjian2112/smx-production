@@ -7,6 +7,7 @@ type Tab = typeof TABS[number];
 
 interface RawMaterial {
   id: string; code: string; name: string; unit: string; active: boolean;
+  purchaseUnit?: string | null; conversionFactor?: number | null;
   description?: string | null; hsnCode?: string | null;
   purchasePrice?: number; leadTimeDays?: number;
   currentStock: number; minimumStock: number; reorderPoint: number;
@@ -946,10 +947,12 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [fMin,       setFMin]       = useState('0');
   const [fReord,     setFReord]     = useState('0');
   const [fDesc,      setFDesc]      = useState('');
-  const [fVendorId,  setFVendorId]  = useState('');
-  const [fOpenQty,   setFOpenQty]   = useState('');
-  const [fSaving,    setFSaving]    = useState(false);
-  const [fError,     setFError]     = useState('');
+  const [fVendorId,      setFVendorId]      = useState('');
+  const [fPurchaseUnit,  setFPurchaseUnit]  = useState('');
+  const [fConvFactor,    setFConvFactor]    = useState('');
+  const [fOpenQty,       setFOpenQty]       = useState('');
+  const [fSaving,        setFSaving]        = useState(false);
+  const [fError,         setFError]         = useState('');
 
   const [vendors,  setVendors]  = useState<Vendor[]>([]);
 
@@ -984,7 +987,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
 
   function openNewMat() {
     setEditMat(null); setFName(''); setFUnit('PCS'); setFCatId(''); setFMin('0'); setFReord('0');
-    setFDesc(''); setFVendorId(''); setFOpenQty(''); setFError('');
+    setFDesc(''); setFVendorId(''); setFPurchaseUnit(''); setFConvFactor(''); setFOpenQty(''); setFError('');
     setShowInlineCat(false); setShowInlineVendor(false);
     setShowMatForm(true);
   }
@@ -993,7 +996,9 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
     setEditMat(m); setFName(m.name); setFUnit(m.unit); setFCatId(m.category?.id ?? '');
     setFMin(String(m.minimumStock)); setFReord(String(m.reorderPoint));
     setFDesc(m.description ?? '');
-    setFVendorId(m.preferredVendor?.id ?? ''); setFError('');
+    setFVendorId(m.preferredVendor?.id ?? '');
+    setFPurchaseUnit(m.purchaseUnit ?? ''); setFConvFactor(m.conversionFactor ? String(m.conversionFactor) : '');
+    setFError('');
     setShowInlineCat(false); setShowInlineVendor(false);
     setShowMatForm(true);
   }
@@ -1005,6 +1010,8 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
       description: fDesc || undefined,
       preferredVendorId: fVendorId || undefined,
       minimumStock: parseFloat(fMin), reorderPoint: parseFloat(fReord),
+      purchaseUnit: fPurchaseUnit || undefined,
+      conversionFactor: fPurchaseUnit && fConvFactor ? parseFloat(fConvFactor) : undefined,
     };
     const res = editMat
       ? await fetch(`/api/inventory/materials/${editMat.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -1126,8 +1133,11 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                 {!m.active && <Badge color="zinc">Inactive</Badge>}
               </div>
               <p className="text-zinc-400 text-xs mt-1">
-                {m.unit} · Min: {fmt(m.minimumStock)} · Reorder: {fmt(m.reorderPoint)}
-                {m.hsnCode && <> · HSN: <span className="text-zinc-300">{m.hsnCode}</span></>}
+                {m.unit}
+                {m.purchaseUnit && m.conversionFactor && (
+                  <span className="text-zinc-500"> · Purchased in <span className="text-zinc-300">{m.purchaseUnit}</span> (1 {m.purchaseUnit} = {m.conversionFactor} {m.unit})</span>
+                )}
+                {' '}· Min: {fmt(m.minimumStock)} · Reorder: {fmt(m.reorderPoint)}
                 {m.preferredVendor && <> · Vendor: <span className="text-zinc-300">{m.preferredVendor.name}</span></>}
               </p>
             </div>
@@ -1174,6 +1184,32 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                   style={{ background: 'rgb(39,39,42)' }}>
                   {['PCS','REEL','KG','GRAM','MTR','SET','BOX','LTR','ROLL'].map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
+              </div>
+
+              {/* Purchase unit + conversion */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-zinc-400 text-xs">Purchase Unit <span className="text-zinc-600">(optional — if different from stock unit)</span></label>
+                </div>
+                <div className="flex gap-2">
+                  <select value={fPurchaseUnit} onChange={e => setFPurchaseUnit(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                    style={{ background: 'rgb(39,39,42)' }}>
+                    <option value="">Same as stock unit</option>
+                    {['PCS','REEL','KG','GRAM','MTR','SET','BOX','LTR','ROLL'].map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                  {fPurchaseUnit && (
+                    <input type="number" step="any" min="1" value={fConvFactor} onChange={e => setFConvFactor(e.target.value)}
+                      placeholder={`${fUnit || 'PCS'} per ${fPurchaseUnit}`}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                      style={{ background: 'rgb(39,39,42)' }} />
+                  )}
+                </div>
+                {fPurchaseUnit && fConvFactor && (
+                  <p className="text-zinc-500 text-[10px] mt-1">
+                    1 {fPurchaseUnit} = {fConvFactor} {fUnit || 'PCS'} · Stock is always tracked in {fUnit || 'PCS'}
+                  </p>
+                )}
               </div>
 
               {/* Category with inline create */}

@@ -892,10 +892,12 @@ model RawMaterial {
   code              String   @unique
   name              String
   description       String?
-  unit              String   // pcs, kg, mtrs, sets, etc.
-  hsnCode           String?  @map("hsn_code")         // HSN/SAC code for GST
-  purchasePrice     Float    @default(0) @map("purchase_price")   // default unit cost
-  leadTimeDays      Int      @default(0) @map("lead_time_days")   // reorder lead time
+  unit              String   // base/stock unit e.g. PCS (how stock is tracked & consumed)
+  purchaseUnit      String?  @map("purchase_unit")      // purchase unit e.g. REEL (if different from stock unit)
+  conversionFactor  Float?   @map("conversion_factor")  // how many stock units per purchase unit e.g. 2000 PCS per REEL
+  hsnCode           String?  @map("hsn_code")
+  purchasePrice     Float    @default(0) @map("purchase_price")
+  leadTimeDays      Int      @default(0) @map("lead_time_days")
   currentStock      Float    @default(0) @map("current_stock")
   minimumStock      Float    @default(0) @map("minimum_stock")
   reorderPoint      Float    @default(0) @map("reorder_point")

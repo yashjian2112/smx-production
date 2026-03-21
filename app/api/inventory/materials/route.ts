@@ -12,6 +12,8 @@ const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'] as cons
 const createSchema = z.object({
   name:              z.string().min(1),
   unit:              z.string().min(1),
+  purchaseUnit:      z.string().optional(),
+  conversionFactor:  z.number().positive().optional(),
   description:       z.string().optional(),
   hsnCode:           z.string().optional(),
   purchasePrice:     z.number().min(0).default(0),
@@ -20,7 +22,7 @@ const createSchema = z.object({
   preferredVendorId: z.string().optional(),
   minimumStock:      z.number().min(0).default(0),
   reorderPoint:      z.number().min(0).default(0),
-  code:              z.string().optional(), // if not provided, auto-generated
+  code:              z.string().optional(),
 });
 
 export async function GET() {
@@ -67,6 +69,8 @@ export async function POST(req: Request) {
       barcode,
       name:              data.name,
       unit:              data.unit,
+      purchaseUnit:      data.purchaseUnit ?? null,
+      conversionFactor:  data.conversionFactor ?? null,
       description:       data.description ?? null,
       categoryId:        data.categoryId ?? null,
       preferredVendorId: data.preferredVendorId ?? null,
