@@ -1172,7 +1172,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                 <select value={fUnit} onChange={e => setFUnit(e.target.value)} required
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
                   style={{ background: 'rgb(39,39,42)' }}>
-                  {['PCS','KG','MTR','SETS','LTR','BOX','ROLL'].map(u => <option key={u} value={u}>{u}</option>)}
+                  {['PCS','REEL','KG','GRAM','MTR','SET','BOX','LTR','ROLL'].map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
 
