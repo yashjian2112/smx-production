@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const TABS = ['Stock', 'Materials', 'Job Cards', 'GRN', 'Reports', 'Settings'] as const;
+const TABS = ['Stock', 'Materials', 'GRN', 'Reports', 'Settings'] as const;
 type Tab = typeof TABS[number];
 
 interface MaterialVariant { id: string; name: string; barcode: string; currentStock: number; }
@@ -2227,12 +2227,11 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
         ))}
       </div>
 
-      {activeTab === 'Stock'      && <StockTab     isAdmin={canManageStock} onSwitchTab={setActiveTab} />}
-      {activeTab === 'Materials'  && <MaterialsTab isAdmin={canManageMaterials} />}
-      {activeTab === 'Job Cards'  && <JobCardsTab  sessionRole={sessionRole} />}
-      {activeTab === 'GRN'        && <GRNTab       isAdmin={canManageStock} />}
-      {activeTab === 'Reports'    && <ReportsTab   isAdmin={canManageMaterials} />}
-      {activeTab === 'Settings'   && <SettingsTab  isAdmin={canManageMaterials} />}
+      {activeTab === 'Stock'     && <StockTab     isAdmin={canManageStock} onSwitchTab={setActiveTab} />}
+      {activeTab === 'Materials' && <MaterialsTab isAdmin={canManageMaterials} />}
+      {activeTab === 'GRN'       && <GRNTab       isAdmin={canManageStock} />}
+      {activeTab === 'Reports'   && <ReportsTab   isAdmin={canManageMaterials} />}
+      {activeTab === 'Settings'  && <SettingsTab  isAdmin={canManageMaterials} />}
     </div>
   );
 }

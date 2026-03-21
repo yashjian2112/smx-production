@@ -137,6 +137,13 @@ const Icons = {
       <polyline points="12 6 12 12 16 14" />
     </svg>
   ),
+  JobCards: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+      <rect x="9" y="3" width="6" height="4" rx="1" />
+      <polyline points="9 12 11 14 15 10" />
+    </svg>
+  ),
 };
 
 type NavItem = { href: string; label: string; icon: keyof typeof Icons };
@@ -199,9 +206,10 @@ const purchaseNav: NavItem[] = [
   { href: '/dashboard',  label: 'Dashboard',  icon: 'Dashboard'  },
 ];
 
-// INVENTORY_MANAGER / STORE_MANAGER: Inventory (GRN, Stock, Movements) · Purchase Requests · Dashboard
+// INVENTORY_MANAGER / STORE_MANAGER
 const inventoryNav: NavItem[] = [
   { href: '/inventory',  label: 'Inventory',  icon: 'Inventory'  },
+  { href: '/job-cards',  label: 'Job Cards',  icon: 'JobCards'   },
   { href: '/purchase',   label: 'Requests',   icon: 'Purchase'   },
   { href: '/dashboard',  label: 'Dashboard',  icon: 'Dashboard'  },
 ];
