@@ -201,15 +201,15 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
 
         /* FOOTER — compact, no extra lines at bottom */
         .footer { display: grid; grid-template-columns: 1fr 1fr; border-top: 1.5px solid #1a3a6b; }
-        .footer-col { padding: 5px 10px; }
+        .footer-col { padding: 4px 10px; }
         .footer-col:first-child { border-right: 1px solid #c8d8f0; }
-        .f-label { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #1a3a6b; margin-bottom: 3px; }
-        .bank-row { font-size: 8px; color: #222; line-height: 1.6; }
-        .sign-wrap { display: flex; flex-direction: column; justify-content: space-between; height: 100%; min-height: 52px; }
-        .sign-line { border-top: 1px solid #1a3a6b; padding-top: 2px; font-size: 8px; font-weight: 700; color: #1a3a6b; }
-        .declaration { margin-top: 4px; font-size: 7.5px; color: #666; padding-top: 4px; line-height: 1.4; }
-        .notes-bar { padding: 4px 10px; font-size: 8px; color: #333; border-top: 1px solid #c8d8f0; }
-        .comp-gen { text-align: center; font-size: 7px; color: #999; padding: 3px; background: #f8faff; }
+        .f-label { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #1a3a6b; margin-bottom: 2px; }
+        .bank-row { font-size: 8px; color: #222; line-height: 1.5; }
+        .sign-wrap { display: flex; flex-direction: column; }
+        .sign-line { margin-top: 18px; border-top: 1px solid #1a3a6b; padding-top: 2px; font-size: 8px; font-weight: 700; color: #1a3a6b; }
+        .declaration { margin-top: 3px; font-size: 7.5px; color: #666; line-height: 1.4; }
+        .notes-bar { padding: 3px 10px; font-size: 8px; color: #333; border-top: 1px solid #c8d8f0; }
+        .comp-gen { text-align: center; font-size: 7px; color: #999; padding: 2px; background: #f8faff; }
       `}</style>
 
       {/* Print controls */}
@@ -426,10 +426,8 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
           </div>
           <div className="footer-col">
             <div className="sign-wrap">
-              <div>
-                <div className="f-label">For {coName}</div>
-                <div style={{ fontSize: 7.5, color: '#888', marginBottom: 28 }}>Authorised Signatory</div>
-              </div>
+              <div className="f-label">For {coName}</div>
+              <div style={{ fontSize: 7.5, color: '#888', marginBottom: 2 }}>Authorised Signatory</div>
               <div className="sign-line">Authorised Signatory</div>
             </div>
           </div>

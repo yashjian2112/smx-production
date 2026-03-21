@@ -20,9 +20,10 @@ type InvoiceRow = {
   invoiceNumber: string;
   subType: string;
   currency: string;
+  totalAmount: number;
   createdAt: string;
   client: { id: string; code: string; customerName: string; globalOrIndian: string | null };
-  dispatchOrder: { doNumber: string; approvedAt: string | null } | null;
+  dispatchOrder: { doNumber: string; approvedAt: string | null; order: { orderNumber: string } | null } | null;
   _count: { items: number };
 };
 
@@ -114,6 +115,7 @@ export function ProformaList({
 }) {
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'pi');
   const [search, setSearch] = useState('');
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   // Status tab state
   const [statusData,    setStatusData]    = useState<OrderStatusRow[]>([]);
@@ -274,70 +276,125 @@ export function ProformaList({
           )
         )}
 
-        {/* ── Invoice tab ── */}
-        {tab === 'invoice' && (
-          filteredInvoices.length === 0 ? (
+        {/* ── Invoice tab — grouped by Dispatch Order (folder view) ── */}
+        {tab === 'invoice' && (() => {
+          // Group filtered invoices by DO number
+          const groups: {
+            key: string;
+            doNumber: string | null;
+            orderNumber: string | null;
+            clientName: string;
+            date: string;
+            invoices: InvoiceRow[];
+          }[] = [];
+          const seen = new Map<string, number>();
+          for (const inv of filteredInvoices) {
+            const key = inv.dispatchOrder?.doNumber ?? `no-do-${inv.id}`;
+            if (!seen.has(key)) {
+              seen.set(key, groups.length);
+              groups.push({
+                key,
+                doNumber:    inv.dispatchOrder?.doNumber ?? null,
+                orderNumber: inv.dispatchOrder?.order?.orderNumber ?? null,
+                clientName:  inv.client.customerName,
+                date:        inv.dispatchOrder?.approvedAt ?? inv.createdAt,
+                invoices:    [],
+              });
+            }
+            groups[seen.get(key)!].invoices.push(inv);
+          }
+
+          return groups.length === 0 ? (
             <div className="card p-8 text-center">
               <p className="text-zinc-500 text-sm">No invoices found.</p>
             </div>
           ) : (
-            filteredInvoices.map((inv) => {
-              const st = SUBTYPE_STYLE[inv.subType] ?? SUBTYPE_STYLE.FULL;
-              const dispatchDate = inv.dispatchOrder?.approvedAt ?? inv.createdAt;
+            groups.map((grp) => {
+              const isOpen = openGroups[grp.key] !== false; // default open
               return (
-                <div key={inv.id} className="card p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <a
-                      href={`/print/invoice/${inv.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 min-w-0 block"
+                <div key={grp.key} className="card overflow-hidden">
+                  {/* Folder header */}
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.03] transition-colors"
+                    onClick={() => setOpenGroups((p) => ({ ...p, [grp.key]: !isOpen }))}
+                  >
+                    <svg
+                      width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                      className="shrink-0 text-sky-400 transition-transform"
+                      style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
                     >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-amber-400">
+                      <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono font-semibold text-sm">{inv.invoiceNumber}</span>
-                        <span
-                          className="text-[10px] font-bold px-1.5 py-0.5 rounded border"
-                          style={{ background: st.bg, color: st.color, borderColor: st.color + '44' }}
-                        >
-                          {st.label}
+                        {grp.doNumber ? (
+                          <span className="font-mono font-semibold text-sm text-white">{grp.doNumber}</span>
+                        ) : (
+                          <span className="font-semibold text-sm text-zinc-400">No Dispatch Order</span>
+                        )}
+                        {grp.orderNumber && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">#{grp.orderNumber}</span>
+                        )}
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                          {grp.invoices.length} invoice{grp.invoices.length !== 1 ? 's' : ''}
                         </span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{inv.currency}</span>
                       </div>
-                      <p className="text-zinc-400 text-sm mt-0.5">
-                        {inv.client.customerName}
-                        {inv.client.globalOrIndian ? ` · ${inv.client.globalOrIndian}` : ''}
-                      </p>
-                      <p className="text-zinc-600 text-xs mt-0.5">
-                        {fmtDate(dispatchDate)}
-                        {inv.dispatchOrder ? ` · ${inv.dispatchOrder.doNumber}` : ''}
-                        {' · '}{inv._count.items} item{inv._count.items !== 1 ? 's' : ''}
-                      </p>
-                    </a>
-                    <div className="flex items-center gap-2 shrink-0 mt-0.5">
-                      <a
-                        href={`/print/invoice/${inv.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Download PDF"
-                        className="flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 hover:text-sky-400 transition-colors"
-                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-                      >
-                        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V8m0 8l-3-3m3 3l3-3M4 20h16" />
-                        </svg>
-                      </a>
-                      <a href={`/print/invoice/${inv.id}`} target="_blank" rel="noopener noreferrer">
-                        <svg className="w-4 h-4 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                        </svg>
-                      </a>
+                      <p className="text-zinc-500 text-xs mt-0.5">{grp.clientName} · {fmtDate(grp.date)}</p>
                     </div>
-                  </div>
+                  </button>
+
+                  {/* Invoices inside folder */}
+                  {isOpen && (
+                    <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                      {grp.invoices.map((inv, idx) => {
+                        const st = SUBTYPE_STYLE[inv.subType] ?? SUBTYPE_STYLE.FULL;
+                        return (
+                          <div
+                            key={inv.id}
+                            className="flex items-center gap-3 px-4 py-2.5"
+                            style={idx < grp.invoices.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : {}}
+                          >
+                            {/* indent line */}
+                            <div className="w-px h-5 shrink-0 ml-1" style={{ background: 'rgba(255,255,255,0.12)' }} />
+                            <a href={`/print/invoice/${inv.id}`} target="_blank" rel="noopener noreferrer" className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-sm text-sky-400 hover:text-sky-300 hover:underline">{inv.invoiceNumber}</span>
+                              <span
+                                className="text-[10px] font-bold px-1.5 py-0.5 rounded border"
+                                style={{ background: st.bg, color: st.color, borderColor: st.color + '44' }}
+                              >
+                                {st.label}
+                              </span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{inv.currency}</span>
+                              {inv.totalAmount > 0 && (
+                                <span className="text-xs text-zinc-500">{inv.currency} {inv.totalAmount.toLocaleString('en-IN')}</span>
+                              )}
+                            </a>
+                            <a
+                              href={`/print/invoice/${inv.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="View / Download PDF"
+                              className="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg text-zinc-500 hover:text-sky-400 transition-colors"
+                              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                            >
+                              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V8m0 8l-3-3m3 3l3-3M4 20h16" />
+                              </svg>
+                            </a>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })
-          )
-        )}
+          );
+        })()}
 
         {/* ── Returns tab ── */}
         {tab === 'returns' && (
