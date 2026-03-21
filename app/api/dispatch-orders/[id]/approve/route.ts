@@ -105,9 +105,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     let preGenNumbers: string[] = [];
     if (proforma) {
       if (proforma.splitInvoice && proforma.splitServicePercent != null) {
-        // Need 2 numbers: goods + service
-        const n1 = await generateNextFinalInvoiceNumber(isExport ?? false);
-        const n2 = await generateNextFinalInvoiceNumber(isExport ?? false);
+        // Need 2 numbers: goods + service — derive n2 from n1 to avoid duplicate sequence
+        const n1  = await generateNextFinalInvoiceNumber(isExport ?? false);
+        const pfx = n1.split('/').slice(0, -1).join('/') + '/';
+        const n2  = pfx + String(parseInt(n1.split('/').pop()!, 10) + 1).padStart(4, '0');
         preGenNumbers = [n1, n2];
       } else {
         const n1 = await generateNextFinalInvoiceNumber(isExport ?? false);
