@@ -58,6 +58,8 @@ model User {
   repairLogs           RepairLog[]
   notifications        Notification[]
   orderNotes           OrderNote[]            @relation("OrderNoteAuthor")
+  jobCardsCreated      JobCard[]              @relation("JCCreatedBy")
+  jobCardsIssued       JobCard[]              @relation("JCIssuedBy")
 }
 
 enum Role {
@@ -181,6 +183,7 @@ model Order {
   dispatchOrders  DispatchOrder[]
   returnRequests  ReturnRequest[]
   notes           OrderNote[]
+  jobCards        JobCard[]
 }
 
 model OrderNote {
@@ -247,6 +250,7 @@ model ControllerUnit {
   packingBoxItem    PackingBoxItem?
   dispatchOrderScan DispatchOrderScan?
   returnRequests    ReturnRequest[]
+  jobCards          JobCard[]
 }
 
 enum StageType {
@@ -897,6 +901,8 @@ model RawMaterial {
   categoryId        String?  @map("category_id")
   preferredVendorId String?  @map("preferred_vendor_id")
   active            Boolean  @default(true)
+  barcode           String?  @unique
+  batchTracking     Boolean  @default(false) @map("batch_tracking")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
@@ -908,22 +914,25 @@ model RawMaterial {
   receiptItems     GoodsReceiptItem[]
   purchaseRequests PurchaseRequest[]
   batches          InventoryBatch[]
+  jobCardItems     JobCardItem[]
 
   @@map("raw_materials")
 }
 
 model BOMItem {
-  id               String  @id @default(cuid())
-  productId        String  @map("product_id")
-  rawMaterialId    String  @map("raw_material_id")
-  quantityRequired Float   @map("quantity_required")
+  id               String     @id @default(cuid())
+  productId        String     @map("product_id")
+  rawMaterialId    String     @map("raw_material_id")
+  voltage          String?    // null = applies to all voltages
+  stage            StageType? // which production stage consumes this
+  quantityRequired Float      @map("quantity_required")
   unit             String
   notes            String?
 
   product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   rawMaterial RawMaterial @relation(fields: [rawMaterialId], references: [id])
 
-  @@unique([productId, rawMaterialId])
+  @@unique([productId, rawMaterialId, voltage])
   @@map("bom_items")
 }
 
@@ -1134,6 +1143,7 @@ model InventoryBatch {
   rawMaterial  RawMaterial   @relation(fields: [rawMaterialId], references: [id])
   goodsReceipt GoodsReceipt? @relation(fields: [goodsReceiptId], references: [id])
   poItem       POItem?       @relation(fields: [poItemId], references: [id])
+  jobCardItems JobCardItem[]
 
   @@map("inventory_batches")
 }
@@ -1185,4 +1195,50 @@ model AuditLog {
 
   user User? @relation(fields: [userId], references: [id])
   @@map("audit_logs")
+}
+
+// ----- Job Cards (production material issuance) -----
+enum JobCardStatus {
+  PENDING
+  ISSUED
+  COMPLETED
+  CANCELLED
+}
+
+model JobCard {
+  id          String        @id @default(cuid())
+  cardNumber  String        @unique @map("card_number")
+  orderId     String        @map("order_id")
+  unitId      String        @map("unit_id")
+  stage       StageType
+  status      JobCardStatus @default(PENDING)
+  notes       String?
+  createdById String        @map("created_by_id")
+  issuedById  String?       @map("issued_by_id")
+  issuedAt    DateTime?     @map("issued_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  order     Order          @relation(fields: [orderId], references: [id])
+  unit      ControllerUnit @relation(fields: [unitId], references: [id])
+  createdBy User           @relation("JCCreatedBy", fields: [createdById], references: [id])
+  issuedBy  User?          @relation("JCIssuedBy", fields: [issuedById], references: [id])
+  items     JobCardItem[]
+
+  @@map("job_cards")
+}
+
+model JobCardItem {
+  id             String  @id @default(cuid())
+  jobCardId      String  @map("job_card_id")
+  rawMaterialId  String  @map("raw_material_id")
+  batchId        String? @map("batch_id")
+  quantityReq    Float   @map("quantity_required")
+  quantityIssued Float   @default(0) @map("quantity_issued")
+
+  jobCard     JobCard         @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  rawMaterial RawMaterial     @relation(fields: [rawMaterialId], references: [id])
+  batch       InventoryBatch? @relation(fields: [batchId], references: [id])
+
+  @@map("job_card_items")
 }

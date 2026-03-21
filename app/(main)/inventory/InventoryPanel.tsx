@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const TABS = ['Stock', 'GRN', 'Materials', 'Reports', 'Movements'] as const;
+const TABS = ['Stock', 'GRN', 'Materials', 'Job Cards', 'Reports', 'Movements'] as const;
 type Tab = typeof TABS[number];
 
 interface RawMaterial {
@@ -1102,16 +1102,22 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                 {m.preferredVendor && <> · Vendor: <span className="text-zinc-300">{m.preferredVendor.name}</span></>}
               </p>
             </div>
-            {isAdmin && (
-              <div className="flex gap-2 shrink-0">
-                <button onClick={() => openEditMat(m)}
-                  className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Edit</button>
-                <button onClick={() => toggleActive(m)}
-                  className={`px-2 py-1 rounded-lg text-xs border transition-colors ${m.active ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'}`}>
-                  {m.active ? 'Deactivate' : 'Activate'}
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+              <a href={`/print/material-label/${m.id}`} target="_blank"
+                className="px-2 py-1 rounded-lg text-xs text-purple-400 border border-purple-800/50 hover:bg-purple-900/20 transition-colors">
+                Print Label
+              </a>
+              {isAdmin && (
+                <>
+                  <button onClick={() => openEditMat(m)}
+                    className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Edit</button>
+                  <button onClick={() => toggleActive(m)}
+                    className={`px-2 py-1 rounded-lg text-xs border transition-colors ${m.active ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'}`}>
+                    {m.active ? 'Deactivate' : 'Activate'}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -1257,6 +1263,161 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Job Cards Tab ────────────────────────────────────────────────────────────
+interface JobCardItem {
+  id: string;
+  rawMaterialId: string;
+  quantityReq: number;
+  quantityIssued: number;
+  rawMaterial: { id: string; name: string; code: string; unit: string; barcode?: string | null };
+  batch?: { id: string; batchCode: string; remainingQty: number } | null;
+}
+
+interface JobCard {
+  id: string;
+  cardNumber: string;
+  stage: string;
+  status: string;
+  createdAt: string;
+  issuedAt?: string | null;
+  order: { orderNumber: string };
+  unit: { serialNumber: string };
+  createdBy: { name: string };
+  issuedBy?: { name: string } | null;
+  items: JobCardItem[];
+}
+
+function JobCardsTab({ sessionRole }: { sessionRole: string }) {
+  const [pending, setPending] = useState<JobCard[]>([]);
+  const [issued,  setIssued]  = useState<JobCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [issuingId, setIssuingId] = useState<string | null>(null);
+  const [issueError, setIssueError] = useState<string>('');
+  const [showIssued, setShowIssued] = useState(false);
+
+  const canIssue = ['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN'].includes(sessionRole);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [pRes, iRes] = await Promise.all([
+      fetch('/api/inventory/job-cards?status=PENDING'),
+      fetch('/api/inventory/job-cards?status=ISSUED'),
+    ]);
+    if (pRes.ok) setPending(await pRes.json());
+    if (iRes.ok) setIssued(await iRes.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleIssue(id: string) {
+    setIssuingId(id);
+    setIssueError('');
+    const res = await fetch(`/api/inventory/job-cards/${id}/issue`, { method: 'POST' });
+    setIssuingId(null);
+    if (res.ok) { load(); }
+    else { const e = await res.json(); setIssueError(e.error || 'Failed to issue'); }
+  }
+
+  if (loading) return <p className="text-zinc-400 text-sm py-6">Loading job cards…</p>;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-white font-medium">Pending Job Cards ({pending.length})</h3>
+      </div>
+
+      {issueError && (
+        <div className="mb-3 px-4 py-2 rounded-lg text-red-400 text-sm border border-red-900/40" style={{ background: 'rgba(239,68,68,0.08)' }}>
+          {issueError}
+        </div>
+      )}
+
+      {pending.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          <p className="text-zinc-400 text-sm">No pending job cards</p>
+          <p className="text-zinc-600 text-xs mt-1">Job cards are created by production staff when starting a new unit at a stage</p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {pending.map(card => (
+          <div key={card.id} className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <div className="p-4 flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-white font-medium font-mono">{card.cardNumber}</span>
+                  <Badge color="yellow">PENDING</Badge>
+                  <Badge color="sky">{card.stage.replace(/_/g, ' ')}</Badge>
+                </div>
+                <p className="text-zinc-400 text-xs mt-1">
+                  Order: <span className="text-zinc-300">{card.order.orderNumber}</span>
+                  {' · '}Serial: <span className="text-zinc-300">{card.unit.serialNumber}</span>
+                  {' · '}By: {card.createdBy.name}
+                </p>
+                {card.items.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {card.items.map(item => (
+                      <div key={item.id} className="flex items-center gap-2 text-xs">
+                        <span className="text-zinc-500 font-mono">{item.rawMaterial.code}</span>
+                        <span className="text-zinc-300">{item.rawMaterial.name}</span>
+                        <span className="text-amber-400 ml-auto">{item.quantityReq} {item.rawMaterial.unit}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {canIssue && (
+                <button
+                  onClick={() => handleIssue(card.id)}
+                  disabled={issuingId === card.id}
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50">
+                  {issuingId === card.id ? 'Issuing…' : 'Issue Components'}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Issued cards (collapsed) */}
+      <div className="mt-6">
+        <button
+          onClick={() => setShowIssued(s => !s)}
+          className="flex items-center gap-2 text-zinc-400 hover:text-white text-sm transition-colors mb-3">
+          <span>{showIssued ? '▾' : '▸'}</span>
+          <span>Issued Job Cards ({issued.length})</span>
+        </button>
+
+        {showIssued && (
+          <div className="space-y-2">
+            {issued.length === 0 && <p className="text-zinc-500 text-xs">No issued job cards</p>}
+            {issued.map(card => (
+              <div key={card.id} className="rounded-xl p-4 flex items-center gap-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-zinc-300 font-mono text-sm">{card.cardNumber}</span>
+                    <Badge color="green">ISSUED</Badge>
+                    <Badge color="sky">{card.stage.replace(/_/g, ' ')}</Badge>
+                  </div>
+                  <p className="text-zinc-500 text-xs mt-0.5">
+                    {card.order.orderNumber} · {card.unit.serialNumber}
+                    {card.issuedBy && <> · Issued by {card.issuedBy.name}</>}
+                    {card.issuedAt && <> · {fmtDate(card.issuedAt)}</>}
+                  </p>
+                </div>
+                <div className="text-xs text-zinc-600 shrink-0">
+                  {card.items.length} item{card.items.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1618,9 +1779,9 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
   const [activeTab, setActiveTab] = useState<Tab>('Stock');
 
   // canManageStock: can record GRN, do stock adjustments, create PRs
-  const canManageStock     = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'].includes(sessionRole);
+  const canManageStock     = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'].includes(sessionRole);
   // canManageMaterials: can create/edit/deactivate materials and categories
-  const canManageMaterials = ['ADMIN', 'PURCHASE_MANAGER'].includes(sessionRole);
+  const canManageMaterials = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'].includes(sessionRole);
 
   return (
     <div>
@@ -1636,11 +1797,12 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
         ))}
       </div>
 
-      {activeTab === 'Stock'     && <StockTab     isAdmin={canManageStock} onSwitchTab={setActiveTab} />}
-      {activeTab === 'GRN'       && <GRNTab       isAdmin={canManageStock} />}
-      {activeTab === 'Materials' && <MaterialsTab isAdmin={canManageMaterials} />}
-      {activeTab === 'Reports'   && <ReportsTab   isAdmin={canManageMaterials} />}
-      {activeTab === 'Movements' && <MovementsTab />}
+      {activeTab === 'Stock'      && <StockTab     isAdmin={canManageStock} onSwitchTab={setActiveTab} />}
+      {activeTab === 'GRN'        && <GRNTab       isAdmin={canManageStock} />}
+      {activeTab === 'Materials'  && <MaterialsTab isAdmin={canManageMaterials} />}
+      {activeTab === 'Job Cards'  && <JobCardsTab  sessionRole={sessionRole} />}
+      {activeTab === 'Reports'    && <ReportsTab   isAdmin={canManageMaterials} />}
+      {activeTab === 'Movements'  && <MovementsTab />}
     </div>
   );
 }

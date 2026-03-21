@@ -4,9 +4,9 @@ import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateNextMaterialCode } from '@/lib/invoice-number';
 
-// STORE_MANAGER can view materials but not create them
-const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;
-const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER'] as const;
+// STORE_MANAGER and INVENTORY_MANAGER can view materials
+const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'] as const;
+const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'] as const;
 
 const createSchema = z.object({
   name:              z.string().min(1),
@@ -62,6 +62,7 @@ export async function POST(req: Request) {
   const material = await prisma.rawMaterial.create({
     data: {
       code,
+      barcode:           code,
       name:              data.name,
       unit:              data.unit,
       description:       data.description ?? null,
