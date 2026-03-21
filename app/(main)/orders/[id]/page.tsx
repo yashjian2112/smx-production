@@ -244,10 +244,15 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                         ? ` · ${new Date(d.approvedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
                         : ''}
                     </span>
-                    {tracking && (
+                    {tracking ? (
                       <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full"
                         style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
                         🚚 {tracking}
+                      </span>
+                    ) : (
+                      <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full"
+                        style={{ background: 'rgba(251,191,36,0.08)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}>
+                        ⏳ No tracking yet
                       </span>
                     )}
                   </div>
