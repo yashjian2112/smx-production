@@ -468,18 +468,7 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
     : '#4ade80';
 
   return (
-    <div className="card overflow-hidden group relative">
-      {/* Hover detail button */}
-      <Link
-        href={`/orders/${order.id}`}
-        className="absolute top-3 right-3 z-10 flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-        style={{ background: 'rgba(14,165,233,0.12)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}
-      >
-        View details
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-      </Link>
+    <div className="card overflow-hidden group">
       {/* Header */}
       <div className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
@@ -620,13 +609,20 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
               ? ` · ${fmtDate(order.dispatchOrders.at(-1)!.approvedAt!)}`
               : ''}
           </span>
-          <Link href={`/orders/${order.id}`}
-            className="ml-auto text-[10px] font-medium hover:underline shrink-0"
-            style={{ color: '#60a5fa' }}>
-            View details →
-          </Link>
         </div>
       )}
+
+      {/* Hover footer — view details */}
+      <Link
+        href={`/orders/${order.id}`}
+        className="flex items-center justify-center gap-1.5 py-2 text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-150 border-t"
+        style={{ borderColor: 'rgba(255,255,255,0.05)', color: '#38bdf8', background: 'rgba(14,165,233,0.05)' }}
+      >
+        View order details
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </Link>
     </div>
   );
 }
