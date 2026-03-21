@@ -588,43 +588,32 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
         )}
       </div>
 
-      {/* Dispatch rows */}
-      {order.dispatchOrders.length > 0 && (
-        <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-          {order.dispatchOrders.map((d, idx) => {
-            const tracking = d.invoices.map((inv) => parseTracking(inv.notes)).find((t) => t) ?? '';
-            const isPartial = d.dispatchQty < order.quantity;
-            return (
-              <div key={d.id} className="flex items-center gap-2 px-4 py-2.5 flex-wrap"
-                style={idx < order.dispatchOrders.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : {}}>
-                <span className="font-mono text-xs text-sky-400 shrink-0">{d.doNumber}</span>
-                {isPartial && (
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>Partial</span>
-                )}
-                <span className="text-[10px] text-zinc-500 shrink-0">
-                  ✈ {d.dispatchQty} unit{d.dispatchQty !== 1 ? 's' : ''}
-                  {d.approvedAt ? ` · ${fmtDate(d.approvedAt)}` : ''}
-                </span>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {d.invoices.map((inv) => (
-                    <a key={inv.id} href={`/print/invoice/${inv.id}`} target="_blank" rel="noopener noreferrer"
-                      className="text-[10px] font-mono text-sky-400 hover:text-sky-300 hover:underline">
-                      {inv.invoiceNumber}
-                    </a>
-                  ))}
-                </div>
-                {tracking ? (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full ml-auto shrink-0"
-                    style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
-                    🚚 {tracking}
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-zinc-600 ml-auto shrink-0">No tracking</span>
-                )}
-              </div>
-            );
-          })}
+      {/* Dispatch summary — single line; full DO/invoice/tracking detail on order page */}
+      {a.dispatched > 0 && (
+        <div className="border-t px-4 py-2.5 flex items-center gap-2 flex-wrap"
+          style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+          {a.dispatched < total ? (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+              style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>
+              Partial Dispatch
+            </span>
+          ) : (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+              style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80' }}>
+              Fully Dispatched
+            </span>
+          )}
+          <span className="text-[10px] text-zinc-400">
+            ✈ {a.dispatched} of {total} unit{total !== 1 ? 's' : ''}
+            {order.dispatchOrders.at(-1)?.approvedAt
+              ? ` · ${fmtDate(order.dispatchOrders.at(-1)!.approvedAt!)}`
+              : ''}
+          </span>
+          <Link href={`/orders/${order.id}`}
+            className="ml-auto text-[10px] font-medium hover:underline shrink-0"
+            style={{ color: '#60a5fa' }}>
+            View details →
+          </Link>
         </div>
       )}
     </div>

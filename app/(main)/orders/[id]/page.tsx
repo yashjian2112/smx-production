@@ -96,6 +96,19 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         },
         orderBy: { serialNumber: 'asc' },
       },
+      dispatchOrders: {
+        where:   { status: 'APPROVED' },
+        select: {
+          id:          true,
+          doNumber:    true,
+          dispatchQty: true,
+          approvedAt:  true,
+          invoices: {
+            select: { id: true, invoiceNumber: true, subType: true, totalAmount: true, currency: true, notes: true },
+          },
+        },
+        orderBy: { approvedAt: 'asc' },
+      },
     },
   });
   if (!order) notFound();
@@ -198,6 +211,77 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             {dispatched > 0 && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(56,189,248,0.12)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.25)' }}>✈ Dispatched: {dispatched}</span>}
           </div>
         </div>
+
+        {/* Invoices */}
+        {order.dispatchOrders.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Invoices</span>
+              <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+            </div>
+            {order.dispatchOrders.map((d) => {
+              const tracking = d.invoices
+                .map((inv) => {
+                  const line = (inv.notes ?? '').split('\n').find((l) => l.startsWith('Tracking:'));
+                  return line ? line.replace('Tracking:', '').trim() : '';
+                })
+                .find((t) => t) ?? '';
+              const isPartial = d.dispatchQty < order.units.length;
+              return (
+                <div key={d.id} className="card p-3 space-y-2">
+                  {/* DO header */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs font-semibold text-sky-400">{d.doNumber}</span>
+                    {isPartial && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>
+                        Partial
+                      </span>
+                    )}
+                    <span className="text-[10px] text-zinc-500">
+                      ✈ {d.dispatchQty} unit{d.dispatchQty !== 1 ? 's' : ''}
+                      {d.approvedAt
+                        ? ` · ${new Date(d.approvedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                        : ''}
+                    </span>
+                    {tracking && (
+                      <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full"
+                        style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
+                        🚚 {tracking}
+                      </span>
+                    )}
+                  </div>
+                  {/* Invoice download links */}
+                  <div className="flex flex-wrap gap-2">
+                    {d.invoices.map((inv) => (
+                      <a
+                        key={inv.id}
+                        href={`/print/invoice/${inv.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                        style={{ background: 'rgba(14,165,233,0.1)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}
+                      >
+                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V8m0 8l-3-3m3 3l3-3M4 20h16" />
+                        </svg>
+                        {inv.invoiceNumber}
+                        {inv.subType !== 'FULL' && (
+                          <span className="text-[9px] opacity-70">({inv.subType === 'GOODS' ? 'Goods' : 'Service'})</span>
+                        )}
+                        {inv.totalAmount > 0 && (
+                          <span className="text-[9px] opacity-60">
+                            {inv.currency} {inv.totalAmount.toLocaleString('en-IN')}
+                          </span>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Notes */}
         <OrderNotes
