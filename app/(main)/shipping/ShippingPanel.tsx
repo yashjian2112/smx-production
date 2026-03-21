@@ -151,9 +151,9 @@ export function ShippingPanel({
   const [trackingBusy,    setTrackingBusy]    = useState<Record<string, boolean>>({});
   const [trackingError,   setTrackingError]   = useState<Record<string, string>>({});
 
-  // Generate invoice state — keyed by DO id
+  // Auto-generate invoice state — keyed by DO id
   const [genInvBusy,  setGenInvBusy]  = useState<Record<string, boolean>>({});
-  const [genInvError, setGenInvError] = useState<Record<string, string>>({});
+  const [genInvDone,  setGenInvDone]  = useState<Record<string, boolean>>({});
 
   async function loadDOs(tab: Tab) {
     setLoadingDOs(true);
@@ -183,6 +183,16 @@ export function ShippingPanel({
   }
 
   useEffect(() => { loadDOs(activeTab); }, []);
+
+  // Auto-generate invoices for APPROVED DOs with no invoice (ACCOUNTS/ADMIN only)
+  useEffect(() => {
+    if (!canApprove || !completedDOs) return;
+    const missing = completedDOs.filter(
+      (d) => d.status === 'APPROVED' && (!d.invoices || d.invoices.length === 0)
+    );
+    missing.forEach((d) => autoGenerateInvoice(d));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completedDOs]);
 
   // ── Approve ──
   async function handleApprove(d: DOListItem) {
@@ -230,19 +240,17 @@ export function ShippingPanel({
     } catch { setActionError('Network error'); }
   }
 
-  // ── Generate Invoice (post-approval) ──
-  async function handleGenerateInvoice(d: DOListItem) {
-    setGenInvBusy((p)  => ({ ...p, [d.id]: true }));
-    setGenInvError((p) => ({ ...p, [d.id]: '' }));
+  // ── Auto-generate Invoice (post-approval, no button needed) ──
+  async function autoGenerateInvoice(d: DOListItem) {
+    if (genInvBusy[d.id] || genInvDone[d.id]) return;
+    setGenInvBusy((p) => ({ ...p, [d.id]: true }));
     try {
       const res  = await fetch(`/api/dispatch-orders/${d.id}/generate-invoice`, { method: 'POST' });
       const data = await res.json() as { generatedInvoiceNumbers?: string[]; error?: string };
-      if (!res.ok) { setGenInvError((p) => ({ ...p, [d.id]: data.error ?? 'Failed to generate invoice' })); return; }
-      const nums = data.generatedInvoiceNumbers ?? [];
-      setSuccessMsg(`Invoice${nums.length > 1 ? 's' : ''} generated: ${nums.join(', ')}`);
-      setCompletedDOs(null); // force reload so invoice numbers show
-      loadDOs('completed');
-    } catch { setGenInvError((p) => ({ ...p, [d.id]: 'Network error' })); }
+      if (!res.ok) return; // silently fail — may already have invoice or no proforma
+      setGenInvDone((p) => ({ ...p, [d.id]: true }));
+      loadDOs('completed'); // reload to show new invoice numbers
+    } catch { /* silent */ }
     finally { setGenInvBusy((p) => ({ ...p, [d.id]: false })); }
   }
 
@@ -493,10 +501,11 @@ export function ShippingPanel({
             <div className="text-sm text-zinc-500 text-center py-6">No dispatch history yet.</div>
           )}
           {!loadingDOs && (completedDOs ?? []).map((d) => {
-            const unitCount = d.boxes.reduce((sum: number, b) => sum + (b._count?.items ?? 0), 0);
-            const boxCount  = d.totalBoxes ?? d.boxes.length;
-            const tracking  = getTracking(d.invoices);
-            const isEditing = trackingEditing[d.id] ?? false;
+            const unitCount  = d.boxes.reduce((sum: number, b) => sum + (b._count?.items ?? 0), 0);
+            const boxCount   = d.totalBoxes ?? d.boxes.length;
+            const tracking   = getTracking(d.invoices);
+            const isEditing  = trackingEditing[d.id] ?? false;
+            const noInvoice  = d.status === 'APPROVED' && (!d.invoices || d.invoices.length === 0);
 
             return (
               <div key={d.id} className="card p-4 space-y-2">
@@ -513,92 +522,90 @@ export function ShippingPanel({
                     <div className="text-xs text-zinc-500 mt-0.5">
                       {d.order.product.name} · {boxCount} box{boxCount !== 1 ? 'es' : ''} · {unitCount} unit{unitCount !== 1 ? 's' : ''} · {fmtDate(d.approvedAt ?? d.submittedAt)}
                     </div>
-
                     {d.status === 'APPROVED' && d.approvedBy && (
-                      <div className="text-xs text-green-400 mt-1">
-                        Approved by {d.approvedBy.name}
-                        {d.invoices && d.invoices.length > 0 && (
-                          <span className="text-zinc-500">
-                            {' · '}Invoice{d.invoices.length > 1 ? 's' : ''}: {d.invoices.map((inv) => inv.invoiceNumber).join(', ')}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {/* No invoice yet — offer to generate */}
-                    {d.status === 'APPROVED' && d.invoices && d.invoices.length === 0 && canApprove && (
-                      <div className="mt-1.5 space-y-1">
-                        <div className="text-xs text-amber-400">No invoice generated — proforma may not be linked to this order.</div>
-                        <button
-                          type="button"
-                          onClick={() => handleGenerateInvoice(d)}
-                          disabled={genInvBusy[d.id]}
-                          className="text-xs px-3 py-1 rounded-lg font-semibold disabled:opacity-40"
-                          style={{ background: 'rgba(251,146,60,0.12)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.3)' }}
-                        >
-                          {genInvBusy[d.id] ? 'Generating…' : '⚡ Generate Invoice'}
-                        </button>
-                        {genInvError[d.id] && <p className="text-xs text-rose-400">{genInvError[d.id]}</p>}
-                      </div>
+                      <div className="text-xs text-green-400 mt-0.5">Approved by {d.approvedBy.name}</div>
                     )}
                     {d.status === 'REJECTED' && d.rejectedReason && (
-                      <div className="text-xs text-rose-400 mt-1">Rejected: {d.rejectedReason}</div>
-                    )}
-
-                    {/* Tracking number — APPROVED DOs only */}
-                    {d.status === 'APPROVED' && (
-                      <div className="mt-2">
-                        {tracking && !isEditing ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono text-sky-400">🚚 {tracking}</span>
-                            {canApprove && (
-                              <button type="button"
-                                onClick={() => {
-                                  setTrackingInputs((p) => ({ ...p, [d.id]: tracking }));
-                                  setTrackingEditing((p) => ({ ...p, [d.id]: true }));
-                                }}
-                                className="text-[10px] text-zinc-500 hover:text-zinc-300">
-                                edit
-                              </button>
-                            )}
-                          </div>
-                        ) : canApprove ? (
-                          <div className="space-y-1">
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                placeholder="Add tracking number…"
-                                value={trackingInputs[d.id] ?? ''}
-                                onChange={(e) => setTrackingInputs((p) => ({ ...p, [d.id]: e.target.value }))}
-                                className="flex-1 text-xs px-2.5 py-1.5 rounded-lg font-mono text-white bg-transparent outline-none"
-                                style={{ border: '1px solid rgba(255,255,255,0.15)' }}
-                                onKeyDown={(e) => { if (e.key === 'Enter') handleSetTracking(d); }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleSetTracking(d)}
-                                disabled={trackingBusy[d.id] || !trackingInputs[d.id]?.trim()}
-                                className="text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40"
-                                style={{ background: 'rgba(14,165,233,0.15)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.25)' }}
-                              >
-                                {trackingBusy[d.id] ? '…' : 'Save'}
-                              </button>
-                              {isEditing && (
-                                <button type="button"
-                                  onClick={() => setTrackingEditing((p) => ({ ...p, [d.id]: false }))}
-                                  className="text-xs px-2 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-300">
-                                  ✕
-                                </button>
-                              )}
-                            </div>
-                            {trackingError[d.id] && (
-                              <p className="text-xs text-rose-400">{trackingError[d.id]}</p>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
+                      <div className="text-xs text-rose-400 mt-0.5">Rejected: {d.rejectedReason}</div>
                     )}
                   </div>
                 </div>
+
+                {/* ── Invoice + Tracking columns (APPROVED only) ── */}
+                {d.status === 'APPROVED' && (
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                    {/* Invoice column */}
+                    <div>
+                      <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-1">Invoice</div>
+                      {noInvoice ? (
+                        <div className="text-xs text-amber-400">
+                          {genInvBusy[d.id] ? 'Generating…' : 'No invoice linked'}
+                        </div>
+                      ) : (
+                        <div className="space-y-0.5">
+                          {(d.invoices ?? []).map((inv) => (
+                            <div key={inv.invoiceNumber} className="text-xs font-mono text-white">{inv.invoiceNumber}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Tracking column */}
+                    <div>
+                      <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-1">Tracking</div>
+                      {tracking && !isEditing ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-mono text-sky-400">{tracking}</span>
+                          {canApprove && (
+                            <button type="button"
+                              onClick={() => {
+                                setTrackingInputs((p) => ({ ...p, [d.id]: tracking }));
+                                setTrackingEditing((p) => ({ ...p, [d.id]: true }));
+                              }}
+                              className="text-[10px] text-zinc-600 hover:text-zinc-400">
+                              edit
+                            </button>
+                          )}
+                        </div>
+                      ) : canApprove ? (
+                        <div className="space-y-1">
+                          <div className="flex gap-1.5">
+                            <input
+                              type="text"
+                              placeholder="Enter tracking…"
+                              value={trackingInputs[d.id] ?? ''}
+                              onChange={(e) => setTrackingInputs((p) => ({ ...p, [d.id]: e.target.value }))}
+                              className="flex-1 text-xs px-2 py-1 rounded-md font-mono text-white bg-transparent outline-none"
+                              style={{ border: '1px solid rgba(255,255,255,0.15)', minWidth: 0 }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleSetTracking(d); }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSetTracking(d)}
+                              disabled={trackingBusy[d.id] || !trackingInputs[d.id]?.trim()}
+                              className="text-xs px-2 py-1 rounded-md font-semibold shrink-0 disabled:opacity-40"
+                              style={{ background: 'rgba(14,165,233,0.15)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.25)' }}
+                            >
+                              {trackingBusy[d.id] ? '…' : 'Save'}
+                            </button>
+                            {isEditing && (
+                              <button type="button"
+                                onClick={() => setTrackingEditing((p) => ({ ...p, [d.id]: false }))}
+                                className="text-xs px-1.5 py-1 rounded-md text-zinc-500 hover:text-zinc-300">
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                          {trackingError[d.id] && (
+                            <p className="text-[10px] text-rose-400">{trackingError[d.id]}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-zinc-600">—</div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
