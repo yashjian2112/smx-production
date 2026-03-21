@@ -954,8 +954,10 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [fSaving,        setFSaving]        = useState(false);
   const [fError,         setFError]         = useState('');
 
-  const [vendors,    setVendors]    = useState<Vendor[]>([]);
-  const [filterCat,  setFilterCat]  = useState('');
+  const [vendors,      setVendors]      = useState<Vendor[]>([]);
+  const [filterCat,    setFilterCat]    = useState('');
+  const [filterStock,  setFilterStock]  = useState<'all' | 'low' | 'critical'>('all');
+  const [search,       setSearch]       = useState('');
 
   // Inline create category
   const [cName,          setCName]          = useState('');
@@ -1084,7 +1086,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <h3 className="text-white font-medium">Raw Materials ({materials.length})</h3>
         {isAdmin && (
           <div className="flex gap-2">
@@ -1100,21 +1102,40 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
         )}
       </div>
 
-      {/* Category filter */}
-      {categories.length > 0 && (
-        <div className="flex gap-2 flex-wrap mb-4">
-          <button onClick={() => setFilterCat('')}
-            className={`px-3 py-1 rounded-lg text-xs transition-colors ${filterCat === '' ? 'bg-sky-600 text-white' : 'text-zinc-400 border border-zinc-700 hover:text-white'}`}>
-            All
-          </button>
-          {categories.map(c => (
-            <button key={c.id} onClick={() => setFilterCat(filterCat === c.id ? '' : c.id)}
-              className={`px-3 py-1 rounded-lg text-xs transition-colors ${filterCat === c.id ? 'bg-sky-600 text-white' : 'text-zinc-400 border border-zinc-700 hover:text-white'}`}>
-              {c.name}
+      {/* Search + Filter bar */}
+      <div className="rounded-xl p-3 mb-4 space-y-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name or code…"
+          className="w-full px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+          style={{ background: 'rgb(39,39,42)' }}
+        />
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-zinc-500 text-xs">Stock:</span>
+          {(['all', 'low', 'critical'] as const).map(s => (
+            <button key={s} onClick={() => setFilterStock(s)}
+              className={`px-2.5 py-1 rounded-lg text-xs transition-colors capitalize ${filterStock === s ? (s === 'critical' ? 'bg-red-600 text-white' : s === 'low' ? 'bg-yellow-600 text-white' : 'bg-sky-600 text-white') : 'text-zinc-400 border border-zinc-700 hover:text-white'}`}>
+              {s === 'all' ? 'All' : s === 'low' ? 'Low Stock' : 'Critical'}
             </button>
           ))}
+          {categories.length > 0 && (
+            <>
+              <span className="text-zinc-600 text-xs ml-1">|</span>
+              <span className="text-zinc-500 text-xs">Category:</span>
+              <button onClick={() => setFilterCat('')}
+                className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${filterCat === '' ? 'bg-sky-600 text-white' : 'text-zinc-400 border border-zinc-700 hover:text-white'}`}>
+                All
+              </button>
+              {categories.map(c => (
+                <button key={c.id} onClick={() => setFilterCat(filterCat === c.id ? '' : c.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${filterCat === c.id ? 'bg-sky-600 text-white' : 'text-zinc-400 border border-zinc-700 hover:text-white'}`}>
+                  {c.name}
+                </button>
+              ))}
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {materials.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
@@ -1132,7 +1153,13 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
       <div className="space-y-2">
-        {materials.filter(m => !filterCat || m.category?.id === filterCat).map(m => (
+        {materials.filter(m => {
+          if (search && !m.name.toLowerCase().includes(search.toLowerCase()) && !m.code.toLowerCase().includes(search.toLowerCase())) return false;
+          if (filterCat && m.category?.id !== filterCat) return false;
+          if (filterStock === 'critical' && !m.isCritical) return false;
+          if (filterStock === 'low' && !m.isLowStock) return false;
+          return true;
+        }).map(m => (
           <div key={m.id} className="rounded-xl p-4 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
