@@ -468,7 +468,18 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
     : '#4ade80';
 
   return (
-    <div className="card overflow-hidden">
+    <div className="card overflow-hidden group relative">
+      {/* Hover detail button */}
+      <Link
+        href={`/orders/${order.id}`}
+        className="absolute top-3 right-3 z-10 flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+        style={{ background: 'rgba(14,165,233,0.12)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}
+      >
+        View details
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </Link>
       {/* Header */}
       <div className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
