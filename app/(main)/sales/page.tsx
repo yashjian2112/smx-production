@@ -21,6 +21,35 @@ export default async function SalesPage({
         client:    { select: { id: true, code: true, customerName: true, globalOrIndian: true } },
         createdBy: { select: { id: true, name: true } },
         _count:    { select: { items: true } },
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            quantity: true,
+            units: {
+              select: {
+                currentStage:     true,
+                currentStatus:    true,
+                readyForDispatch: true,
+                dispatchedAt:     true,
+              },
+            },
+            dispatchOrders: {
+              where:  { status: 'APPROVED' },
+              select: {
+                id:          true,
+                doNumber:    true,
+                dispatchQty: true,
+                approvedAt:  true,
+                invoices: {
+                  select: { id: true, invoiceNumber: true, notes: true },
+                },
+              },
+              orderBy: { approvedAt: 'asc' },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -57,6 +86,15 @@ export default async function SalesPage({
     approvedAt:  p.approvedAt?.toISOString() ?? null,
     createdAt:   p.createdAt.toISOString(),
     updatedAt:   p.updatedAt.toISOString(),
+    order: p.order
+      ? {
+          ...p.order,
+          dispatchOrders: p.order.dispatchOrders.map((d) => ({
+            ...d,
+            approvedAt: d.approvedAt?.toISOString() ?? null,
+          })),
+        }
+      : null,
   }));
 
   const serializedInvoices = invoices.map((inv) => ({

@@ -170,10 +170,11 @@ const packingNav: NavItem[] = [
   { href: '/dashboard',   label: 'Dashboard', icon: 'Dashboard' },
 ];
 
-// SALES: 2 items — Invoices, Clients
+// SALES: 3 items — Invoices, Order Status, Clients
 const salesNav: NavItem[] = [
-  { href: '/sales',         label: 'Invoices', icon: 'Invoice' },
-  { href: '/sales/clients', label: 'Clients',  icon: 'Clients' },
+  { href: '/sales',            label: 'Invoices', icon: 'Invoice' },
+  { href: '/sales?tab=status', label: 'Status',   icon: 'Status'  },
+  { href: '/sales/clients',    label: 'Clients',  icon: 'Clients' },
 ];
 
 // ACCOUNTS: 5 items — Shipping (approval), Approvals, AR, Invoices (→ /sales), Settings

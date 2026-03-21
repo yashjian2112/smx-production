@@ -4,6 +4,21 @@ import Link from 'next/link';
 import { useCallback } from 'react';
 import { useState } from 'react';
 
+type OrderUnit = {
+  currentStage:     string;
+  currentStatus:    string;
+  readyForDispatch: boolean;
+  dispatchedAt:     string | null;
+};
+
+type OrderDO = {
+  id:          string;
+  doNumber:    string;
+  dispatchQty: number;
+  approvedAt:  string | null;
+  invoices:    Array<{ id: string; invoiceNumber: string; notes: string | null }>;
+};
+
 type ProformaRow = {
   id: string;
   invoiceNumber: string;
@@ -11,9 +26,18 @@ type ProformaRow = {
   invoiceType: string;
   currency: string;
   status: string;
+  deliveryDays: number | null;
   client: { id: string; code: string; customerName: string; globalOrIndian: string | null };
   createdBy: { id: string; name: string };
   _count: { items: number };
+  order: {
+    id: string;
+    orderNumber: string;
+    status: string;
+    quantity: number;
+    units: OrderUnit[];
+    dispatchOrders: OrderDO[];
+  } | null;
 };
 
 type InvoiceRow = {
@@ -74,7 +98,59 @@ const RETURN_TYPE_STYLE: Record<string, { bg: string; color: string; label: stri
   OTHER:      { bg: 'rgba(113,113,122,0.1)',color: '#a1a1aa', label: 'Other'      },
 };
 
-type TabKey = 'pi' | 'invoice' | 'returns';
+type TabKey = 'pi' | 'invoice' | 'returns' | 'status';
+
+const ORDER_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
+  ACTIVE:     { bg: 'rgba(34,197,94,0.1)',   color: '#4ade80' },
+  HOLD:       { bg: 'rgba(251,191,36,0.1)',  color: '#fbbf24' },
+  CANCELLED:  { bg: 'rgba(239,68,68,0.1)',   color: '#f87171' },
+  CLOSED:     { bg: 'rgba(113,113,122,0.1)', color: '#a1a1aa' },
+  DISPATCHED: { bg: 'rgba(56,189,248,0.1)',  color: '#38bdf8' },
+};
+
+const PROD_STAGES: Array<{ key: string; label: string; color: string }> = [
+  { key: 'POWERSTAGE_MANUFACTURING', label: 'Powerstage', color: '#818cf8' },
+  { key: 'BRAINBOARD_MANUFACTURING', label: 'Brainboard',  color: '#a78bfa' },
+  { key: 'CONTROLLER_ASSEMBLY',      label: 'Assembly',    color: '#38bdf8' },
+  { key: 'QC_AND_SOFTWARE',          label: 'QC',          color: '#f59e0b' },
+  { key: 'FINAL_ASSEMBLY',           label: 'Final Assy',  color: '#34d399' },
+];
+
+function analyseUnits(units: OrderUnit[]) {
+  let notStarted   = 0; // in PS stage, still PENDING
+  let inProduction = 0; // PS/BB/CA actively being worked on
+  let inQC         = 0; // at QC_AND_SOFTWARE
+  let passedQC     = 0; // at FINAL_ASSEMBLY (not yet ready/dispatched)
+  let rework       = 0; // in REWORK stage
+  let blocked      = 0; // any BLOCKED status
+  let ready        = 0; // readyForDispatch = true
+  let dispatched   = 0; // dispatchedAt set
+
+  for (const u of units) {
+    if (u.currentStatus === 'BLOCKED') { blocked++; continue; }
+    if (u.dispatchedAt)                 { dispatched++;  continue; }
+    if (u.readyForDispatch)             { ready++;       continue; }
+    if (u.currentStage === 'REWORK')    { rework++;      continue; }
+
+    if (u.currentStage === 'FINAL_ASSEMBLY')           { passedQC++;     continue; }
+    if (u.currentStage === 'QC_AND_SOFTWARE')          { inQC++;         continue; }
+    if (u.currentStatus === 'PENDING' &&
+        u.currentStage  === 'POWERSTAGE_MANUFACTURING') { notStarted++;  continue; }
+    inProduction++;
+  }
+  return { notStarted, inProduction, inQC, passedQC, rework, blocked, ready, dispatched };
+}
+
+function getPhaseLabel(a: ReturnType<typeof analyseUnits>, total: number): { text: string; color: string } {
+  const done = a.ready + a.dispatched;
+  if (a.notStarted === total)               return { text: 'In queue — manufacturing not yet started', color: '#a1a1aa' };
+  if (done === total)                        return { text: 'All units dispatched', color: '#38bdf8' };
+  if (a.dispatched > 0 && done < total)     return { text: `Partially dispatched — ${total - done} unit${total - done !== 1 ? 's' : ''} remaining`, color: '#fbbf24' };
+  if (a.ready > 0)                          return { text: `${a.ready} unit${a.ready !== 1 ? 's' : ''} ready for dispatch`, color: '#4ade80' };
+  if (a.passedQC > 0)                       return { text: `${a.passedQC} unit${a.passedQC !== 1 ? 's' : ''} in final assembly — ${total - a.passedQC - a.dispatched - a.ready} QC/earlier`, color: '#34d399' };
+  if (a.inQC > 0)                           return { text: `${a.inQC} unit${a.inQC !== 1 ? 's' : ''} in QC — ${a.inProduction} in manufacturing`, color: '#f59e0b' };
+  return { text: 'Manufacturing in progress', color: '#818cf8' };
+}
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -391,12 +467,14 @@ export function ProformaList({
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const currentMonthLabel = now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
-  const piList = proformas.filter((p) => p.invoiceNumber.startsWith('TSM/PI/') && p.invoiceType === 'SALE');
+  const piList     = proformas.filter((p) => p.invoiceNumber.startsWith('TSM/PI/') && p.invoiceType === 'SALE');
+  const statusList = proformas.filter((p) => p.status === 'CONVERTED' && p.order);
 
   const tabs: Array<{ key: TabKey; label: string; count: number }> = [
     { key: 'pi',      label: 'Proforma', count: piList.length          },
     { key: 'invoice', label: 'Invoice',  count: invoices.length        },
     { key: 'returns', label: 'Returns',  count: returnRequests.length  },
+    { key: 'status',  label: 'Status',   count: statusList.length      },
   ];
 
   const filteredPI = piList.filter((p) => {
@@ -682,6 +760,221 @@ export function ProformaList({
               </>
             )}
           </div>
+        )}
+
+        {/* ── Status tab — production progress for converted orders ── */}
+        {tab === 'status' && (
+          <>
+            {statusList.length === 0 ? (
+              <div className="card p-8 text-center">
+                <p className="text-zinc-500 text-sm">No orders in production yet.</p>
+                <p className="text-zinc-600 text-xs mt-1">Orders appear here once a proforma is approved and converted.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {statusList.map((p) => {
+                  const order  = p.order!;
+                  const total  = order.units.length;
+                  const a      = analyseUnits(order.units);
+                  const done   = a.ready + a.dispatched;
+                  const pct    = total > 0 ? Math.round((done / total) * 100) : 0;
+                  const os     = ORDER_STATUS_STYLE[order.status] ?? ORDER_STATUS_STYLE.ACTIVE;
+                  const phase  = getPhaseLabel(a, total);
+
+                  // Due date = invoiceDate + deliveryDays (from proforma)
+                  const dueDate = p.deliveryDays
+                    ? new Date(new Date(p.invoiceDate).getTime() + p.deliveryDays * 86_400_000)
+                    : null;
+                  const dueMsLeft = dueDate ? dueDate.getTime() - Date.now() : null;
+                  const dueColor  = dueMsLeft === null ? null
+                    : dueMsLeft < 0             ? '#f87171'  // overdue
+                    : dueMsLeft < 7 * 86400_000 ? '#fbbf24'  // ≤7 days
+                    : '#4ade80';                               // safe
+
+                  const isFullyDone = done === total && total > 0;
+
+                  return (
+                    <div key={p.id} className="card overflow-hidden">
+
+                      {/* ── Header ── */}
+                      <div className="p-4 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-semibold text-sm text-white">{p.invoiceNumber}</span>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-zinc-600 shrink-0">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                              </svg>
+                              <span className="font-mono text-xs text-sky-400 font-semibold">#{order.orderNumber}</span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: os.bg, color: os.color }}>
+                                {order.status}
+                              </span>
+                              {order.status === 'HOLD' && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded animate-pulse"
+                                  style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}>⏸ ON HOLD</span>
+                              )}
+                            </div>
+                            <p className="text-zinc-300 text-sm mt-0.5 font-medium">{p.client.customerName}</p>
+                            <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                              <span className="text-zinc-600 text-xs">{order.quantity} unit{order.quantity !== 1 ? 's' : ''}</span>
+                              {dueDate && (
+                                <span className="text-xs font-medium" style={{ color: dueColor ?? '#a1a1aa' }}>
+                                  {dueMsLeft! < 0 ? '⚠ Overdue · ' : 'Due '}
+                                  {fmtDate(dueDate.toISOString())}
+                                  {p.deliveryDays ? ` (${p.deliveryDays}d)` : ''}
+                                </span>
+                              )}
+                              {role !== 'SALES' && (
+                                <span className="text-zinc-600 text-xs">· {p.createdBy.name}</span>
+                              )}
+                            </div>
+                          </div>
+                          {/* Progress circle */}
+                          <div className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl"
+                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            <span className="text-sm font-bold leading-none" style={{ color: pct === 100 ? '#4ade80' : 'white' }}>{pct}%</span>
+                            <span className="text-[9px] text-zinc-500 mt-0.5">done</span>
+                          </div>
+                        </div>
+
+                        {/* Phase label */}
+                        <p className="text-xs font-medium" style={{ color: phase.color }}>▸ {phase.text}</p>
+
+                        {/* Progress bar */}
+                        <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                          <div className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%`, background: pct === 100 ? '#4ade80' : 'linear-gradient(90deg,#818cf8,#38bdf8,#4ade80)' }} />
+                        </div>
+                      </div>
+
+                      {/* ── Production stage breakdown ── */}
+                      {!isFullyDone && (
+                        <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+                          {/* Not yet started */}
+                          {a.notStarted > 0 && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                              style={{ background: 'rgba(113,113,122,0.12)', color: '#a1a1aa', border: '1px solid rgba(113,113,122,0.2)' }}>
+                              Queue: {a.notStarted}
+                            </span>
+                          )}
+                          {/* In production stages */}
+                          {PROD_STAGES.filter(s => s.key !== 'FINAL_ASSEMBLY').map((s) => {
+                            const cnt = order.units.filter(u =>
+                              u.currentStage === s.key &&
+                              u.currentStatus !== 'BLOCKED' &&
+                              !u.readyForDispatch && !u.dispatchedAt &&
+                              u.currentStage !== 'REWORK'
+                            ).length;
+                            if (cnt === 0) return null;
+                            // Exclude notStarted from PS count
+                            const display = s.key === 'POWERSTAGE_MANUFACTURING' ? cnt - a.notStarted : cnt;
+                            if (display <= 0) return null;
+                            return (
+                              <span key={s.key} className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                                style={{ background: `${s.color}15`, color: s.color, border: `1px solid ${s.color}30` }}>
+                                {s.label}: {display}
+                              </span>
+                            );
+                          })}
+                          {/* In QC — shown separately with distinct colour */}
+                          {a.inQC > 0 && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                              style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}>
+                              In QC: {a.inQC}
+                            </span>
+                          )}
+                          {/* Passed QC / in final assembly */}
+                          {a.passedQC > 0 && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                              style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' }}>
+                              Final Assy: {a.passedQC}
+                            </span>
+                          )}
+                          {/* Rework */}
+                          {a.rework > 0 && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                              style={{ background: 'rgba(249,115,22,0.12)', color: '#fb923c', border: '1px solid rgba(249,115,22,0.3)' }}>
+                              ⚠ Rework: {a.rework}
+                            </span>
+                          )}
+                          {/* Blocked */}
+                          {a.blocked > 0 && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse"
+                              style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}>
+                              🚫 Blocked: {a.blocked}
+                            </span>
+                          )}
+                          {/* Ready for dispatch */}
+                          {a.ready > 0 && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                              style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }}>
+                              ✓ Ready: {a.ready}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ── Dispatch history (per approved DO) ── */}
+                      {order.dispatchOrders.length > 0 && (
+                        <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                          {order.dispatchOrders.map((d, idx) => {
+                            const tracking = d.invoices
+                              .map((inv) => parseTracking(inv.notes))
+                              .find((t) => t) ?? '';
+                            const isPartial = d.dispatchQty < order.quantity;
+                            return (
+                              <div key={d.id}
+                                className="flex items-center gap-2 px-4 py-2.5 flex-wrap"
+                                style={idx < order.dispatchOrders.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : {}}
+                              >
+                                {/* DO + partial badge */}
+                                <span className="font-mono text-xs text-sky-400 shrink-0">{d.doNumber}</span>
+                                {isPartial && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                                    style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>
+                                    Partial
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-zinc-500 shrink-0">
+                                  ✈ {d.dispatchQty} unit{d.dispatchQty !== 1 ? 's' : ''}
+                                  {d.approvedAt ? ` · ${fmtDate(d.approvedAt)}` : ''}
+                                </span>
+                                {/* Invoices */}
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {d.invoices.map((inv) => (
+                                    <a key={inv.id} href={`/print/invoice/${inv.id}`} target="_blank" rel="noopener noreferrer"
+                                      className="text-[10px] font-mono text-sky-400 hover:text-sky-300 hover:underline">
+                                      {inv.invoiceNumber}
+                                    </a>
+                                  ))}
+                                </div>
+                                {/* Tracking */}
+                                {tracking ? (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full ml-auto shrink-0"
+                                    style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
+                                    🚚 {tracking}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-zinc-600 ml-auto shrink-0">No tracking</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Fully dispatched footer */}
+                      {isFullyDone && (
+                        <div className="px-4 pb-3 flex items-center gap-2">
+                          <span className="text-xs font-semibold" style={{ color: '#4ade80' }}>✓ All {total} units dispatched</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
 
         {/* ── Returns tab ── */}
