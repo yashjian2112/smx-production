@@ -37,15 +37,29 @@ export async function GET() {
     include: {
       category:        { select: { id: true, name: true } },
       preferredVendor: { select: { id: true, name: true } },
+      variants:        { where: { active: true }, select: { id: true, name: true, barcode: true, currentStock: true } },
       _count:          { select: { batches: true, stockMovements: true, purchaseRequests: true } },
     },
   });
 
-  // Attach low-stock flag
+  // Compute committed stock per material from pending/issued job card items
+  const committedItems = await prisma.jobCardItem.findMany({
+    where: { jobCard: { status: { in: ['PENDING', 'ISSUED'] } } },
+    select: { rawMaterialId: true, quantityReq: true, quantityIssued: true },
+  });
+  const committedMap: Record<string, number> = {};
+  for (const item of committedItems) {
+    const pending = Math.max(0, item.quantityReq - item.quantityIssued);
+    committedMap[item.rawMaterialId] = (committedMap[item.rawMaterialId] ?? 0) + pending;
+  }
+
+  // Attach low-stock flag + committed
   const result = materials.map(m => ({
     ...m,
-    isLowStock:    m.currentStock <= m.reorderPoint,
-    isCritical:    m.currentStock <= m.minimumStock,
+    committedStock: committedMap[m.id] ?? 0,
+    availableStock: m.currentStock - (committedMap[m.id] ?? 0),
+    isLowStock:     m.currentStock <= m.reorderPoint,
+    isCritical:     m.currentStock <= m.minimumStock,
   }));
 
   return NextResponse.json(result);

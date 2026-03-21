@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const TABS = ['Stock', 'GRN', 'Materials', 'Job Cards', 'Reports', 'Movements'] as const;
+const TABS = ['Stock', 'Materials', 'Job Cards', 'GRN', 'Reports', 'Settings'] as const;
 type Tab = typeof TABS[number];
+
+interface MaterialVariant { id: string; name: string; barcode: string; currentStock: number; }
 
 interface RawMaterial {
   id: string; code: string; barcode?: string | null; name: string; unit: string; active: boolean;
@@ -11,8 +13,10 @@ interface RawMaterial {
   description?: string | null; hsnCode?: string | null;
   purchasePrice?: number; leadTimeDays?: number;
   currentStock: number; minimumStock: number; reorderPoint: number;
+  committedStock?: number; availableStock?: number;
   category?: { id: string; name: string } | null;
   preferredVendor?: { id: string; name: string } | null;
+  variants?: MaterialVariant[];
   stockValue?: number; isLowStock?: boolean; isCritical?: boolean; batchCount?: number;
   batches?: Batch[];
 }
@@ -933,12 +937,16 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
 
 // ─── Materials Tab ────────────────────────────────────────────────────────────
 function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
-  const [materials,  setMaterials]  = useState<RawMaterial[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [showMatForm,setShowMatForm]= useState(false);
-  const [showCatForm,setShowCatForm]= useState(false);
-  const [editMat,    setEditMat]    = useState<RawMaterial | null>(null);
+  const [materials,    setMaterials]    = useState<RawMaterial[]>([]);
+  const [categories,   setCategories]   = useState<Category[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [showMatForm,  setShowMatForm]  = useState(false);
+  const [showCatForm,  setShowCatForm]  = useState(false);
+  const [editMat,      setEditMat]      = useState<RawMaterial | null>(null);
+  const [expandedMat,  setExpandedMat]  = useState<string | null>(null);
+  const [addingVariant,setAddingVariant]= useState<string | null>(null);
+  const [variantName,  setVariantName]  = useState('');
+  const [vSavingVar,   setVSavingVar]   = useState(false);
 
   // Form state
   const [fName,      setFName]      = useState('');
@@ -1047,6 +1055,22 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !m.active }),
     });
+    load();
+  }
+
+  async function saveVariant(materialId: string) {
+    if (!variantName.trim()) return;
+    setVSavingVar(true);
+    const res = await fetch('/api/inventory/variants', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ materialId, name: variantName.trim() }),
+    });
+    setVSavingVar(false);
+    if (res.ok) { setAddingVariant(null); setVariantName(''); load(); }
+  }
+
+  async function deleteVariant(id: string) {
+    await fetch(`/api/inventory/variants/${id}`, { method: 'DELETE' });
     load();
   }
 
@@ -1160,39 +1184,101 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
           if (filterStock === 'low' && !m.isLowStock) return false;
           return true;
         }).map(m => (
-          <div key={m.id} className="rounded-xl p-4 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-white font-medium">{m.name}</span>
-                <span className="text-zinc-500 text-xs font-mono">{m.barcode ?? m.code}</span>
-                {m.category && <Badge color="sky">{m.category.name}</Badge>}
-                {!m.active && <Badge color="zinc">Inactive</Badge>}
+          <div key={m.id} className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            {/* Main row */}
+            <div className="p-4 flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-white font-medium">{m.name}</span>
+                  <span className="text-zinc-500 text-xs font-mono">{m.barcode ?? m.code}</span>
+                  {m.category && <Badge color="sky">{m.category.name}</Badge>}
+                  {m.isCritical && <Badge color="red">Critical</Badge>}
+                  {!m.isCritical && m.isLowStock && <Badge color="yellow">Low Stock</Badge>}
+                  {!m.active && <Badge color="zinc">Inactive</Badge>}
+                  {(m.variants?.length ?? 0) > 0 && <Badge color="purple">{m.variants!.length} Variants</Badge>}
+                </div>
+                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                  <span className="text-zinc-400 text-xs">
+                    On Hand: <span className={`font-medium ${m.isCritical ? 'text-red-400' : m.isLowStock ? 'text-yellow-400' : 'text-emerald-400'}`}>{fmt(m.currentStock)} {m.unit}</span>
+                  </span>
+                  {(m.committedStock ?? 0) > 0 && (
+                    <span className="text-zinc-500 text-xs">Committed: <span className="text-amber-400 font-medium">{fmt(m.committedStock!)} {m.unit}</span></span>
+                  )}
+                  {(m.committedStock ?? 0) > 0 && (
+                    <span className="text-zinc-500 text-xs">Available: <span className="text-sky-400 font-medium">{fmt(m.availableStock!)} {m.unit}</span></span>
+                  )}
+                  {m.purchaseUnit && m.conversionFactor && (
+                    <span className="text-zinc-600 text-xs">1 {m.purchaseUnit} = {m.conversionFactor} {m.unit}</span>
+                  )}
+                  {m.preferredVendor && <span className="text-zinc-500 text-xs">Vendor: <span className="text-zinc-300">{m.preferredVendor.name}</span></span>}
+                </div>
               </div>
-              <p className="text-zinc-400 text-xs mt-1">
-                {m.unit}
-                {m.purchaseUnit && m.conversionFactor && (
-                  <span className="text-zinc-500"> · Purchased in <span className="text-zinc-300">{m.purchaseUnit}</span> (1 {m.purchaseUnit} = {m.conversionFactor} {m.unit})</span>
-                )}
-                {' '}· Min: {fmt(m.minimumStock)} · Reorder: {fmt(m.reorderPoint)}
-                {m.preferredVendor && <> · Vendor: <span className="text-zinc-300">{m.preferredVendor.name}</span></>}
-              </p>
-            </div>
-            <div className="flex gap-2 shrink-0 flex-wrap justify-end">
-              <a href={`/print/material-label/${m.id}`} target="_blank"
-                className="px-2 py-1 rounded-lg text-xs text-purple-400 border border-purple-800/50 hover:bg-purple-900/20 transition-colors">
-                Print Label
-              </a>
-              {isAdmin && (
-                <>
-                  <button onClick={() => openEditMat(m)}
-                    className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Edit</button>
-                  <button onClick={() => toggleActive(m)}
-                    className={`px-2 py-1 rounded-lg text-xs border transition-colors ${m.active ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'}`}>
-                    {m.active ? 'Deactivate' : 'Activate'}
+              <div className="flex gap-1.5 shrink-0 flex-wrap justify-end items-center">
+                {isAdmin && (
+                  <button onClick={() => setExpandedMat(expandedMat === m.id ? null : m.id)}
+                    className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                    {expandedMat === m.id ? '▲ Less' : '▼ Variants'}
                   </button>
-                </>
-              )}
+                )}
+                <a href={`/print/material-label/${m.id}`} target="_blank"
+                  className="px-2 py-1 rounded-lg text-xs text-purple-400 border border-purple-800/50 hover:bg-purple-900/20 transition-colors">
+                  Label
+                </a>
+                {isAdmin && (
+                  <>
+                    <button onClick={() => openEditMat(m)}
+                      className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Edit</button>
+                    <button onClick={() => toggleActive(m)}
+                      className={`px-2 py-1 rounded-lg text-xs border transition-colors ${m.active ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'}`}>
+                      {m.active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
+
+            {/* Variants section */}
+            {expandedMat === m.id && (
+              <div className="px-4 pb-4 border-t border-zinc-800/60">
+                <div className="pt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-zinc-400 text-xs font-medium">Item Variants</span>
+                    {addingVariant !== m.id && (
+                      <button onClick={() => { setAddingVariant(m.id); setVariantName(''); }}
+                        className="text-[10px] text-sky-400 hover:text-sky-300 transition-colors">+ Add Variant</button>
+                    )}
+                  </div>
+                  {(m.variants?.length ?? 0) === 0 && addingVariant !== m.id && (
+                    <p className="text-zinc-600 text-xs italic">No variants — add one for different specs (e.g. 25V, 50V)</p>
+                  )}
+                  <div className="space-y-1.5">
+                    {m.variants?.map(v => (
+                      <div key={v.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                        <span className="text-white text-xs font-medium flex-1">{v.name}</span>
+                        <span className="text-zinc-500 text-xs font-mono">{v.barcode}</span>
+                        <span className="text-sky-400 text-xs">{fmt(v.currentStock)} {m.unit}</span>
+                        <button onClick={() => deleteVariant(v.id)} className="text-zinc-600 hover:text-red-400 text-xs transition-colors">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                  {addingVariant === m.id && (
+                    <div className="flex gap-2 mt-2">
+                      <input value={variantName} onChange={e => setVariantName(e.target.value)}
+                        placeholder="e.g. 25V, 50V, 100μF" autoFocus
+                        className="flex-1 px-3 py-1.5 rounded-lg text-sm text-white border border-sky-700 outline-none focus:border-sky-500"
+                        style={{ background: 'rgb(39,39,42)' }}
+                        onKeyDown={e => e.key === 'Enter' && saveVariant(m.id)} />
+                      <button onClick={() => saveVariant(m.id)} disabled={vSavingVar || !variantName.trim()}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40">
+                        {vSavingVar ? '…' : 'Add'}
+                      </button>
+                      <button onClick={() => { setAddingVariant(null); setVariantName(''); }}
+                        className="px-2 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white">✕</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -1676,10 +1762,11 @@ function MovementsTab() {
 }
 
 // ─── Reports Tab ─────────────────────────────────────────────────────────────
-type ReportView = 'summary' | 'valuation' | 'reorder' | 'movements';
+type ReportView = 'summary' | 'valuation' | 'reorder' | 'aging' | 'movements';
 
 interface SummaryRow { id: string; code: string; name: string; unit: string; category?: { name: string } | null; openingQty: number; qtyIn: number; qtyOut: number; closingQty: number; stockValue: number; isLowStock: boolean; isCritical: boolean; }
 interface ReorderRow { id: string; code: string; name: string; unit: string; category?: { name: string } | null; currentStock: number; reorderPoint: number; suggestedQty: number; leadTimeDays: number; preferredVendor?: { name: string } | null; hasPendingPR: boolean; isCritical: boolean; }
+interface AgingRow { id: string; name: string; code: string; barcode: string | null; unit: string; category: string | null; bucket0_30: number; bucket31_60: number; bucket61_90: number; bucket90plus: number; totalQty: number; totalValue: number; }
 
 function ReportsTab({ isAdmin }: { isAdmin: boolean }) {
   const [view, setView]           = useState<ReportView>('summary');
@@ -1692,6 +1779,7 @@ function ReportsTab({ isAdmin }: { isAdmin: boolean }) {
   const [reorderData, setReorderData] = useState<ReorderRow[]>([]);
   const [reorderBusy, setReorderBusy] = useState(false);
   const [reorderMsg,  setReorderMsg]  = useState('');
+  const [agingData,   setAgingData]   = useState<{ rows: AgingRow[]; totalValue: number } | null>(null);
 
   const loadSummary = useCallback(async () => {
     setLoading(true);
@@ -1707,10 +1795,18 @@ function ReportsTab({ isAdmin }: { isAdmin: boolean }) {
     setLoading(false);
   }, []);
 
+  const loadAging = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch('/api/inventory/reports/aging');
+    if (res.ok) setAgingData(await res.json());
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
     if (view === 'summary' || view === 'valuation') loadSummary();
     if (view === 'reorder') loadReorder();
-  }, [view, loadSummary, loadReorder]);
+    if (view === 'aging') loadAging();
+  }, [view, loadSummary, loadReorder, loadAging]);
 
   async function handleCreateAllPRs() {
     setReorderBusy(true); setReorderMsg('');
@@ -1734,11 +1830,11 @@ function ReportsTab({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div>
       {/* Sub-view pills */}
-      <div className="flex gap-1 p-1 rounded-xl mb-5" style={{ background: 'rgba(255,255,255,0.04)' }}>
-        {(['summary', 'valuation', 'reorder', 'movements'] as ReportView[]).map(v => (
+      <div className="flex gap-1 p-1 rounded-xl mb-5 overflow-x-auto" style={{ background: 'rgba(255,255,255,0.04)' }}>
+        {(['summary', 'valuation', 'aging', 'reorder', 'movements'] as ReportView[]).map(v => (
           <button key={v} onClick={() => setView(v)}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${view === v ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
-            {v === 'summary' ? 'Stock Summary' : v === 'valuation' ? 'Valuation' : v === 'reorder' ? 'Reorder' : 'Movements Log'}
+            className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${view === v ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
+            {v === 'summary' ? 'Stock Summary' : v === 'valuation' ? 'Valuation' : v === 'aging' ? 'Aging' : v === 'reorder' ? 'Reorder' : 'Movements'}
           </button>
         ))}
       </div>
@@ -1924,8 +2020,186 @@ function ReportsTab({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
+      {/* INVENTORY AGING */}
+      {!loading && view === 'aging' && agingData && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-zinc-400 text-sm">{agingData.rows.length} materials with stock</span>
+            <span className="text-emerald-400 text-sm font-medium">Total: {fmtCur(agingData.totalValue)}</span>
+          </div>
+          <div className="overflow-x-auto rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-zinc-500 border-b border-zinc-800">
+                  <th className="text-left px-3 py-2">Material</th>
+                  <th className="text-right px-3 py-2 text-emerald-500">0–30 days</th>
+                  <th className="text-right px-3 py-2 text-yellow-500">31–60 days</th>
+                  <th className="text-right px-3 py-2 text-orange-500">61–90 days</th>
+                  <th className="text-right px-3 py-2 text-red-500">90+ days</th>
+                  <th className="text-right px-3 py-2">Total Qty</th>
+                  <th className="text-right px-3 py-2">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {agingData.rows.map(r => (
+                  <tr key={r.id} className="border-b border-zinc-800/40 hover:bg-white/5">
+                    <td className="px-3 py-2">
+                      <div className="text-white">{r.name}</div>
+                      <div className="text-zinc-500">{r.barcode ?? r.code} · {r.unit}{r.category && ` · ${r.category}`}</div>
+                    </td>
+                    <td className="px-3 py-2 text-right text-emerald-400">{r.bucket0_30 > 0 ? fmt(r.bucket0_30) : <span className="text-zinc-700">—</span>}</td>
+                    <td className="px-3 py-2 text-right text-yellow-400">{r.bucket31_60 > 0 ? fmt(r.bucket31_60) : <span className="text-zinc-700">—</span>}</td>
+                    <td className="px-3 py-2 text-right text-orange-400">{r.bucket61_90 > 0 ? fmt(r.bucket61_90) : <span className="text-zinc-700">—</span>}</td>
+                    <td className="px-3 py-2 text-right text-red-400">{r.bucket90plus > 0 ? fmt(r.bucket90plus) : <span className="text-zinc-700">—</span>}</td>
+                    <td className="px-3 py-2 text-right text-zinc-300 font-medium">{fmt(r.totalQty)}</td>
+                    <td className="px-3 py-2 text-right text-zinc-300">{fmtCur(r.totalValue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* MOVEMENTS LOG */}
       {view === 'movements' && <MovementsTab />}
+    </div>
+  );
+}
+
+// ─── Settings Tab ─────────────────────────────────────────────────────────────
+interface UOM { id: string; name: string; symbol: string; type: string; }
+
+function SettingsTab({ isAdmin }: { isAdmin: boolean }) {
+  const [uoms,    setUoms]    = useState<UOM[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uName,   setUName]   = useState('');
+  const [uSym,    setUSym]    = useState('');
+  const [uType,   setUType]   = useState('QUANTITY');
+  const [uSaving, setUSaving] = useState(false);
+  const [uError,  setUError]  = useState('');
+
+  const PRESET_UNITS = [
+    { name: 'Pieces',      symbol: 'PCS',  type: 'QUANTITY' },
+    { name: 'Reel',        symbol: 'REEL', type: 'QUANTITY' },
+    { name: 'Set',         symbol: 'SET',  type: 'QUANTITY' },
+    { name: 'Box',         symbol: 'BOX',  type: 'QUANTITY' },
+    { name: 'Roll',        symbol: 'ROLL', type: 'QUANTITY' },
+    { name: 'Kilogram',    symbol: 'KG',   type: 'WEIGHT'   },
+    { name: 'Gram',        symbol: 'GRAM', type: 'WEIGHT'   },
+    { name: 'Litre',       symbol: 'LTR',  type: 'VOLUME'   },
+    { name: 'Metre',       symbol: 'MTR',  type: 'LENGTH'   },
+  ];
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch('/api/inventory/uom');
+    if (res.ok) setUoms(await res.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function addPreset(p: typeof PRESET_UNITS[0]) {
+    setUSaving(true);
+    await fetch('/api/inventory/uom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) });
+    setUSaving(false); load();
+  }
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault(); setUError(''); setUSaving(true);
+    const res = await fetch('/api/inventory/uom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: uName.trim(), symbol: uSym.trim().toUpperCase(), type: uType }) });
+    setUSaving(false);
+    if (!res.ok) { const err = await res.json().catch(() => ({})); setUError(err.error || 'Failed'); return; }
+    setUName(''); setUSym(''); load();
+  }
+
+  async function deleteUOM(id: string) {
+    await fetch(`/api/inventory/uom/${id}`, { method: 'DELETE' });
+    load();
+  }
+
+  const existingSymbols = new Set(uoms.map(u => u.symbol));
+  const typeColor: Record<string, string> = { QUANTITY: 'sky', WEIGHT: 'orange', VOLUME: 'purple', LENGTH: 'green' };
+
+  if (loading) return <p className="text-zinc-400 text-sm py-6">Loading…</p>;
+
+  return (
+    <div className="space-y-6">
+      {/* UOM Section */}
+      <div>
+        <h3 className="text-white font-medium mb-3">Units of Measurement</h3>
+        <p className="text-zinc-500 text-xs mb-4">Define your global unit library. These units are used across materials, BOM, and purchase orders.</p>
+
+        {/* Preset quick-add */}
+        <div className="mb-4">
+          <p className="text-zinc-400 text-xs mb-2">Quick add:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {PRESET_UNITS.filter(p => !existingSymbols.has(p.symbol)).map(p => (
+              <button key={p.symbol} onClick={() => addPreset(p)} disabled={uSaving}
+                className="px-2.5 py-1 rounded-full text-xs border border-zinc-700 text-zinc-400 hover:border-sky-500 hover:text-sky-400 transition-colors disabled:opacity-40">
+                + {p.symbol}
+              </button>
+            ))}
+            {PRESET_UNITS.every(p => existingSymbols.has(p.symbol)) && (
+              <span className="text-zinc-600 text-xs italic">All standard units added</span>
+            )}
+          </div>
+        </div>
+
+        {/* Existing UOMs */}
+        {uoms.length > 0 && (
+          <div className="rounded-xl overflow-hidden mb-4" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <div className="grid" style={{ gridTemplateColumns: '1fr 80px 100px 32px' }}>
+              <div className="px-3 py-2 text-zinc-500 text-xs border-b border-zinc-800">Name</div>
+              <div className="px-3 py-2 text-zinc-500 text-xs border-b border-zinc-800">Symbol</div>
+              <div className="px-3 py-2 text-zinc-500 text-xs border-b border-zinc-800">Type</div>
+              <div className="border-b border-zinc-800" />
+              {uoms.map(u => (
+                <>
+                  <div key={`n-${u.id}`} className="px-3 py-2 text-white text-sm border-b border-zinc-800/40">{u.name}</div>
+                  <div key={`s-${u.id}`} className="px-3 py-2 text-sky-400 text-xs font-mono font-medium border-b border-zinc-800/40">{u.symbol}</div>
+                  <div key={`t-${u.id}`} className="px-3 py-2 border-b border-zinc-800/40"><Badge color={typeColor[u.type] ?? 'zinc'}>{u.type}</Badge></div>
+                  <div key={`d-${u.id}`} className="px-3 py-2 border-b border-zinc-800/40 flex items-center justify-center">
+                    {isAdmin && <button onClick={() => deleteUOM(u.id)} className="text-zinc-600 hover:text-red-400 text-xs transition-colors">✕</button>}
+                  </div>
+                </>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Custom UOM form */}
+        {isAdmin && (
+          <form onSubmit={handleAdd} className="flex gap-2 flex-wrap items-end">
+            <div>
+              <label className="text-zinc-500 text-xs">Name</label>
+              <input value={uName} onChange={e => setUName(e.target.value)} required placeholder="e.g. Reel"
+                className="mt-1 block px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500 w-36"
+                style={{ background: 'rgb(39,39,42)' }} />
+            </div>
+            <div>
+              <label className="text-zinc-500 text-xs">Symbol</label>
+              <input value={uSym} onChange={e => setUSym(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))} required placeholder="REEL"
+                className="mt-1 block px-3 py-2 rounded-lg text-sm text-white font-mono border border-zinc-700 outline-none focus:border-sky-500 w-24"
+                style={{ background: 'rgb(39,39,42)' }} />
+            </div>
+            <div>
+              <label className="text-zinc-500 text-xs">Type</label>
+              <select value={uType} onChange={e => setUType(e.target.value)} required
+                className="mt-1 block px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 w-32"
+                style={{ background: 'rgb(39,39,42)' }}>
+                {['QUANTITY', 'WEIGHT', 'VOLUME', 'LENGTH'].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <button type="submit" disabled={uSaving}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50">
+              {uSaving ? '…' : 'Add Unit'}
+            </button>
+          </form>
+        )}
+        {uError && <p className="text-red-400 text-xs mt-2">{uError}</p>}
+      </div>
     </div>
   );
 }
@@ -1954,11 +2228,11 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
       </div>
 
       {activeTab === 'Stock'      && <StockTab     isAdmin={canManageStock} onSwitchTab={setActiveTab} />}
-      {activeTab === 'GRN'        && <GRNTab       isAdmin={canManageStock} />}
       {activeTab === 'Materials'  && <MaterialsTab isAdmin={canManageMaterials} />}
       {activeTab === 'Job Cards'  && <JobCardsTab  sessionRole={sessionRole} />}
+      {activeTab === 'GRN'        && <GRNTab       isAdmin={canManageStock} />}
       {activeTab === 'Reports'    && <ReportsTab   isAdmin={canManageMaterials} />}
-      {activeTab === 'Movements'  && <MovementsTab />}
+      {activeTab === 'Settings'   && <SettingsTab  isAdmin={canManageMaterials} />}
     </div>
   );
 }

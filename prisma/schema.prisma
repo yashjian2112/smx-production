@@ -875,6 +875,17 @@ model RepairLog {
 }
 
 // ----- Inventory -----
+
+model UnitOfMeasure {
+  id        String   @id @default(cuid())
+  name      String   // "Pieces", "Reel", "Kilogram"
+  symbol    String   @unique // "PCS", "REEL", "KG"
+  type      String   @default("QUANTITY") // QUANTITY, WEIGHT, VOLUME, LENGTH
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("units_of_measure")
+}
+
 model MaterialCategory {
   id          String   @id @default(cuid())
   name        String
@@ -918,8 +929,24 @@ model RawMaterial {
   purchaseRequests PurchaseRequest[]
   batches          InventoryBatch[]
   jobCardItems     JobCardItem[]
+  variants         MaterialVariant[]
 
   @@map("raw_materials")
+}
+
+model MaterialVariant {
+  id           String      @id @default(cuid())
+  materialId   String      @map("material_id")
+  name         String      // e.g. "25V", "50V", "2000pcs/reel"
+  barcode      String      @unique
+  currentStock Float       @default(0) @map("current_stock")
+  notes        String?
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  material RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@map("material_variants")
 }
 
 model BOMItem {
