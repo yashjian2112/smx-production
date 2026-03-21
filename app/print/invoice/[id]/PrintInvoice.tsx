@@ -41,6 +41,7 @@ type RelatedInvoice = {
 
 type DispatchOrder = {
   doNumber: string;
+  approvedBy: { name: string } | null;
   order: {
     product: { code: string; name: string };
   };
@@ -107,12 +108,12 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
     (i) => i.hsnCode === '9965' && i.description.toLowerCase().includes('freight')
   );
 
-  const subtotal   = productItems.reduce((acc, item) => acc + calcItem(item), 0);
-  const shipping   = shippingItem ? calcItem(shippingItem) : 0;
-  const gstAmount  = isExport ? 0 : subtotal * 0.18;
-  const total      = subtotal + gstAmount + shipping;
-  const totalINR   = currency === 'INR' ? total : total * (invoice.exchangeRate ?? 1);
-  const totalQty   = productItems.reduce((acc, i) => acc + i.quantity, 0);
+  const subtotal  = productItems.reduce((acc, item) => acc + calcItem(item), 0);
+  const shipping  = shippingItem ? calcItem(shippingItem) : 0;
+  const gstAmount = isExport ? 0 : subtotal * 0.18;
+  const total     = subtotal + gstAmount + shipping;
+  const totalINR  = currency === 'INR' ? total : total * (invoice.exchangeRate ?? 1);
+  const totalQty  = productItems.reduce((acc, i) => acc + i.quantity, 0);
 
   const fy = getFiscalYear(new Date(invoice.createdAt));
 
@@ -121,7 +122,8 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
     : invoice.subType === 'SERVICE' ? 'Tax Invoice (Service)'
     : 'Tax Invoice';
 
-  // Min rows to show in items table (pad with empty rows to fill space)
+  const approvedByName = invoice.dispatchOrder?.approvedBy?.name ?? '—';
+
   const MIN_ROWS = 10;
 
   useEffect(() => {
@@ -154,15 +156,17 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         .doc-title { font-size: 13px; font-weight: 800; color: #1a3a6b; letter-spacing: 1px; text-transform: uppercase; }
         .doc-subtitle { font-size: 7.5px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
 
-        /* LUT BAR — above Invoice No */
-        .lut-bar { padding: 3px 10px; background: #f8fff8; border-bottom: 1px solid #b3d9b3; font-size: 8px; color: #1a5c1a; line-height: 1.5; }
+        /* LUT BAR — bold black text */
+        .lut-bar { padding: 3px 10px; background: #f8fff8; border-bottom: 1px solid #b3d9b3; font-size: 8px; color: #000; font-weight: 700; line-height: 1.5; }
 
-        /* INFO BAR */
-        .info-bar { display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 1px solid #c8d8f0; background: #f0f5ff; }
+        /* INFO BAR — 2 rows */
+        .info-bar { border-bottom: 1px solid #c8d8f0; background: #f0f5ff; }
+        .info-row { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+        .info-row:not(:last-child) { border-bottom: 1px solid #dde8f8; }
         .info-cell { padding: 4px 10px; }
         .info-cell:not(:last-child) { border-right: 1px solid #c8d8f0; }
         .info-label { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: #1a3a6b; margin-bottom: 1px; }
-        .info-value { font-size: 9.5px; color: #111; font-weight: 600; }
+        .info-value { font-size: 9px; color: #111; font-weight: 600; }
 
         /* PARTIES */
         .parties { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #c8d8f0; }
@@ -172,27 +176,18 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         .party-name { font-size: 10px; font-weight: 700; color: #111; }
         .party-line { font-size: 8px; color: #333; line-height: 1.5; white-space: pre-line; margin-top: 1px; }
 
-        /* TERMS */
-        .terms-row { display: grid; border-bottom: 1px solid #c8d8f0; background: #fafbfd; }
-        .terms-2col { grid-template-columns: 1fr 1fr; }
-        .terms-3col { grid-template-columns: 1fr 1fr 1fr; }
-        .term-cell { padding: 4px 10px; }
-        .term-cell:not(:last-child) { border-right: 1px solid #c8d8f0; }
-        .term-label { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: #1a3a6b; margin-bottom: 1px; }
-        .term-value { font-size: 8.5px; color: #111; font-weight: 600; }
-
         /* TABLE */
-        table { width: 100%; border-collapse: collapse; flex: 1; }
+        table { width: 100%; border-collapse: collapse; }
         thead th { background: #1a3a6b; color: #fff; font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 5px 6px; border-right: 1px solid #2a5099; }
         thead th:last-child { border-right: none; }
         thead th.c { text-align: center; }
         thead th.r { text-align: right; }
-        tbody tr { border-bottom: 1px solid #e8edf5; }
+        tbody tr { border-bottom: 1.5px solid #b0c4de; }
         tbody tr:nth-child(even) { background: #f7f9fd; }
         tbody td { padding: 4px 6px; font-size: 8.5px; color: #111; vertical-align: top; }
         tbody td.c { text-align: center; }
         tbody td.r { text-align: right; }
-        .empty-row td { height: 13px; background: #fff !important; border-bottom: 1px solid #f0f4f8; }
+        .empty-row td { height: 13px; background: #fff !important; border-bottom: 1px solid #dde8f8; }
         .serial-list { font-family: monospace; font-size: 7px; color: #444; margin-top: 2px; line-height: 1.5; }
 
         /* TOTALS */
@@ -207,7 +202,7 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         /* AMOUNT WORDS */
         .words-bar { padding: 4px 10px; background: #f0f5ff; border-top: 1px solid #c8d8f0; font-size: 8px; line-height: 1.4; display: flex; justify-content: space-between; }
 
-        /* FOOTER — compact */
+        /* FOOTER — compact, no extra lines at bottom */
         .footer { display: grid; grid-template-columns: 1fr 1fr; border-top: 1.5px solid #1a3a6b; }
         .footer-col { padding: 5px 10px; }
         .footer-col:first-child { border-right: 1px solid #c8d8f0; }
@@ -215,9 +210,9 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         .bank-row { font-size: 8px; color: #222; line-height: 1.6; }
         .sign-wrap { display: flex; flex-direction: column; justify-content: space-between; height: 100%; min-height: 52px; }
         .sign-line { border-top: 1px solid #1a3a6b; padding-top: 2px; font-size: 8px; font-weight: 700; color: #1a3a6b; }
-        .declaration { margin-top: 5px; font-size: 7.5px; color: #666; border-top: 1px solid #e8edf5; padding-top: 4px; line-height: 1.4; }
+        .declaration { margin-top: 4px; font-size: 7.5px; color: #666; padding-top: 4px; line-height: 1.4; }
         .notes-bar { padding: 4px 10px; font-size: 8px; color: #333; border-top: 1px solid #c8d8f0; }
-        .comp-gen { text-align: center; font-size: 7px; color: #999; padding: 3px; background: #f8faff; border-top: 1px solid #e8edf5; }
+        .comp-gen { text-align: center; font-size: 7px; color: #999; padding: 3px; background: #f8faff; }
       `}</style>
 
       {/* Print controls */}
@@ -263,28 +258,44 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
           </div>
         </div>
 
-        {/* LUT BAR — above Invoice No (export only) */}
+        {/* LUT BAR — above Invoice No, bold black */}
         {isExport && (s('lut_number') || s('lut_from')) && (
           <div className="lut-bar">
-            Supply under Bond/LUT without payment of IGST — LUT No.: <strong>{s('lut_number')}</strong>
-            &nbsp; Valid: <strong>{s('lut_from')}</strong> to <strong>{s('lut_to')}</strong>
+            Supply under Bond/LUT without payment of IGST — LUT No.: {s('lut_number')}
+            &nbsp; Valid: {s('lut_from')} to {s('lut_to')}
           </div>
         )}
 
-        {/* INFO BAR */}
+        {/* INFO BAR — 2 rows: (Invoice No / Date / Currency) + (Payment Terms / Delivery Terms / Approved By) */}
         <div className="info-bar">
-          <div className="info-cell">
-            <div className="info-label">Invoice No.</div>
-            <div className="info-value">{invoice.invoiceNumber}</div>
+          <div className="info-row">
+            <div className="info-cell">
+              <div className="info-label">Invoice No.</div>
+              <div className="info-value">{invoice.invoiceNumber}</div>
+            </div>
+            <div className="info-cell">
+              <div className="info-label">Date</div>
+              <div className="info-value">{fmtDate(invoice.createdAt)}</div>
+            </div>
+            <div className="info-cell">
+              <div className="info-label">Currency</div>
+              <div className="info-value">
+                {currency}{isExport && invoice.exchangeRate ? ` @ \u20b9${invoice.exchangeRate}` : ''}
+              </div>
+            </div>
           </div>
-          <div className="info-cell">
-            <div className="info-label">Date</div>
-            <div className="info-value">{fmtDate(invoice.createdAt)}</div>
-          </div>
-          <div className="info-cell">
-            <div className="info-label">Currency</div>
-            <div className="info-value">
-              {currency}{isExport && invoice.exchangeRate ? ` @ \u20b9${invoice.exchangeRate}` : ''}
+          <div className="info-row">
+            <div className="info-cell">
+              <div className="info-label">Mode / Terms of Payment</div>
+              <div className="info-value">{invoice.proforma?.termsOfPayment || '—'}</div>
+            </div>
+            <div className="info-cell">
+              <div className="info-label">Delivery Terms</div>
+              <div className="info-value">{invoice.proforma?.termsOfDelivery || '—'}</div>
+            </div>
+            <div className="info-cell">
+              <div className="info-label">Approved By (Accounts)</div>
+              <div className="info-value">{approvedByName}</div>
             </div>
           </div>
         </div>
@@ -308,24 +319,6 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
             {invoice.client.phone && <div className="party-line">Ph: {invoice.client.phone}</div>}
             {invoice.client.email && <div className="party-line">Email: {invoice.client.email}</div>}
           </div>
-        </div>
-
-        {/* TERMS */}
-        <div className={`terms-row ${isExport ? 'terms-2col' : 'terms-3col'}`}>
-          <div className="term-cell">
-            <div className="term-label">Mode / Terms of Payment</div>
-            <div className="term-value">{invoice.proforma?.termsOfPayment || '—'}</div>
-          </div>
-          <div className="term-cell">
-            <div className="term-label">Delivery Terms</div>
-            <div className="term-value">{invoice.proforma?.termsOfDelivery || '—'}</div>
-          </div>
-          {!isExport && (
-            <div className="term-cell">
-              <div className="term-label">Tax</div>
-              <div className="term-value">{isIntraState ? 'CGST 9% + SGST 9%' : 'IGST 18%'}</div>
-            </div>
-          )}
         </div>
 
         {/* LINE ITEMS TABLE */}
@@ -411,9 +404,8 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
           <span style={{ color: '#999', fontStyle: 'italic', fontSize: 7.5 }}>E. &amp; O.E.</span>
         </div>
 
-        {/* NOTES */}
+        {/* NOTES — strip tracking line */}
         {invoice.notes && (() => {
-          // Strip tracking line from notes
           const cleaned = invoice.notes.split('\n').filter(l => !l.startsWith('Tracking:')).join('\n').trim();
           return cleaned ? (
             <div className="notes-bar">
@@ -422,7 +414,7 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
           ) : null;
         })()}
 
-        {/* FOOTER — compact */}
+        {/* FOOTER */}
         <div className="footer" style={{ marginTop: 'auto' }}>
           <div className="footer-col">
             <div className="f-label">Company Bank Details</div>

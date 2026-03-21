@@ -15,6 +15,7 @@ export default async function PrintInvoicePage({ params }: { params: { id: strin
               product: { select: { code: true, name: true } },
             },
           },
+          approvedBy: { select: { name: true } },
         },
       },
       proforma: {
