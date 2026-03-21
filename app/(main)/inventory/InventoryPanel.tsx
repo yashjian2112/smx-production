@@ -946,19 +946,25 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [fMin,       setFMin]       = useState('0');
   const [fReord,     setFReord]     = useState('0');
   const [fDesc,      setFDesc]      = useState('');
-  const [fHsn,       setFHsn]       = useState('');
-  const [fPrice,     setFPrice]     = useState('0');
-  const [fLead,      setFLead]      = useState('0');
   const [fVendorId,  setFVendorId]  = useState('');
   const [fOpenQty,   setFOpenQty]   = useState('');
-  const [fOpenPrice, setFOpenPrice] = useState('');
   const [fSaving,    setFSaving]    = useState(false);
   const [fError,     setFError]     = useState('');
 
   const [vendors,  setVendors]  = useState<Vendor[]>([]);
-  const [cName,  setCName]  = useState('');
-  const [cDesc,  setCDesc]  = useState('');
-  const [cSaving,setCSaving]= useState(false);
+
+  // Inline create category
+  const [cName,          setCName]          = useState('');
+  const [cDesc,          setCDesc]          = useState('');
+  const [cSaving,        setCSaving]        = useState(false);
+  const [showInlineCat,  setShowInlineCat]  = useState(false);
+
+  // Inline create vendor
+  const [vName,           setVName]           = useState('');
+  const [vPhone,          setVPhone]          = useState('');
+  const [vEmail,          setVEmail]          = useState('');
+  const [vSaving,         setVSaving]         = useState(false);
+  const [showInlineVendor,setShowInlineVendor]= useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -976,18 +982,18 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => { load(); }, [load]);
 
   function openNewMat() {
-    setEditMat(null); setFName(''); setFUnit(''); setFCatId(''); setFMin('0'); setFReord('0');
-    setFDesc(''); setFHsn(''); setFPrice('0'); setFLead('0'); setFVendorId('');
-    setFOpenQty(''); setFOpenPrice(''); setFError('');
+    setEditMat(null); setFName(''); setFUnit('PCS'); setFCatId(''); setFMin('0'); setFReord('0');
+    setFDesc(''); setFVendorId(''); setFOpenQty(''); setFError('');
+    setShowInlineCat(false); setShowInlineVendor(false);
     setShowMatForm(true);
   }
 
   function openEditMat(m: RawMaterial) {
     setEditMat(m); setFName(m.name); setFUnit(m.unit); setFCatId(m.category?.id ?? '');
     setFMin(String(m.minimumStock)); setFReord(String(m.reorderPoint));
-    setFDesc(m.description ?? ''); setFHsn(m.hsnCode ?? '');
-    setFPrice(String(m.purchasePrice ?? 0)); setFLead(String(m.leadTimeDays ?? 0));
+    setFDesc(m.description ?? '');
     setFVendorId(m.preferredVendor?.id ?? ''); setFError('');
+    setShowInlineCat(false); setShowInlineVendor(false);
     setShowMatForm(true);
   }
 
@@ -995,8 +1001,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
     e.preventDefault(); setFError(''); setFSaving(true);
     const body = {
       name: fName, unit: fUnit, categoryId: fCatId || undefined,
-      description: fDesc || undefined, hsnCode: fHsn || undefined,
-      purchasePrice: parseFloat(fPrice || '0'), leadTimeDays: parseInt(fLead || '0'),
+      description: fDesc || undefined,
       preferredVendorId: fVendorId || undefined,
       minimumStock: parseFloat(fMin), reorderPoint: parseFloat(fReord),
     };
@@ -1018,7 +1023,6 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
             type:     'OPENING',
             quantity: openQty,
             reason:   'Opening stock entry',
-            unitPrice: parseFloat(fOpenPrice || '0'),
           }),
         });
       }
@@ -1038,6 +1042,30 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
     e.preventDefault(); setCSaving(true);
     await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName, description: cDesc }) });
     setCSaving(false); setShowCatForm(false); setCName(''); setCDesc(''); load();
+  }
+
+  async function saveInlineCat() {
+    if (!cName.trim()) return;
+    setCSaving(true);
+    const res = await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName.trim() }) });
+    if (res.ok) {
+      const cat = await res.json();
+      setCategories(prev => [...prev, cat]);
+      setFCatId(cat.id);
+    }
+    setCSaving(false); setShowInlineCat(false); setCName('');
+  }
+
+  async function saveInlineVendor() {
+    if (!vName.trim()) return;
+    setVSaving(true);
+    const res = await fetch('/api/purchase/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: vName.trim(), phone: vPhone.trim() || undefined, email: vEmail.trim() || undefined }) });
+    if (res.ok) {
+      const vendor = await res.json();
+      setVendors(prev => [...prev, vendor]);
+      setFVendorId(vendor.id);
+    }
+    setVSaving(false); setShowInlineVendor(false); setVName(''); setVPhone(''); setVEmail('');
   }
 
   if (loading) return <p className="text-zinc-400 text-sm py-6">Loading…</p>;
@@ -1128,63 +1156,100 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
           <div className="w-full max-w-md rounded-2xl p-6 my-4" style={{ background: 'rgb(24,24,27)' }}>
             <h3 className="text-white font-semibold mb-4">{editMat ? 'Edit Material' : 'New Material'}</h3>
             <form onSubmit={handleMatSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="col-span-2">
-                  <label className="text-zinc-400 text-xs">Name *</label>
-                  <input value={fName} onChange={e => setFName(e.target.value)} required
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
-                <div>
-                  <label className="text-zinc-400 text-xs">Unit (pcs, kg, mtrs…) *</label>
-                  <input value={fUnit} onChange={e => setFUnit(e.target.value)} required
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
-                <div>
-                  <label className="text-zinc-400 text-xs">HSN / SAC Code</label>
-                  <input value={fHsn} onChange={e => setFHsn(e.target.value)} placeholder="e.g. 7318"
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
-                <div>
-                  <label className="text-zinc-400 text-xs">Default Purchase Price ₹</label>
-                  <input type="number" step="any" min="0" value={fPrice} onChange={e => setFPrice(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
-                <div>
-                  <label className="text-zinc-400 text-xs">Lead Time (days)</label>
-                  <input type="number" min="0" value={fLead} onChange={e => setFLead(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
-              </div>
+              {/* Name */}
               <div>
-                <label className="text-zinc-400 text-xs">Description</label>
-                <textarea value={fDesc} onChange={e => setFDesc(e.target.value)} rows={2}
-                  placeholder="Optional description or specifications…"
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500 resize-none"
+                <label className="text-zinc-400 text-xs">Name *</label>
+                <input value={fName} onChange={e => setFName(e.target.value)} required autoFocus
+                  placeholder="e.g. IGBT Module IRFB4227"
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
+
+              {/* Unit */}
               <div>
-                <label className="text-zinc-400 text-xs">Category</label>
-                <select value={fCatId} onChange={e => setFCatId(e.target.value)}
+                <label className="text-zinc-400 text-xs">Unit *</label>
+                <select value={fUnit} onChange={e => setFUnit(e.target.value)} required
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
                   style={{ background: 'rgb(39,39,42)' }}>
-                  <option value="">None</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {['PCS','KG','MTR','SETS','LTR','BOX','ROLL'].map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
+
+              {/* Category with inline create */}
               <div>
-                <label className="text-zinc-400 text-xs">Preferred Vendor</label>
-                <select value={fVendorId} onChange={e => setFVendorId(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
-                  style={{ background: 'rgb(39,39,42)' }}>
-                  <option value="">None</option>
-                  {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({v.code})</option>)}
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-zinc-400 text-xs">Category</label>
+                  {!showInlineCat && (
+                    <button type="button" onClick={() => setShowInlineCat(true)}
+                      className="text-[10px] text-sky-400 hover:text-sky-300">+ Create new</button>
+                  )}
+                </div>
+                {showInlineCat ? (
+                  <div className="p-2 rounded-lg space-y-2" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
+                    <input value={cName} onChange={e => setCName(e.target.value)} placeholder="Category name *" autoFocus
+                      className="w-full px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                      style={{ background: 'rgb(39,39,42)' }} />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={saveInlineCat} disabled={cSaving || !cName.trim()}
+                        className="px-3 py-1 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40">
+                        {cSaving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button type="button" onClick={() => { setShowInlineCat(false); setCName(''); }}
+                        className="px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-white">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <select value={fCatId} onChange={e => setFCatId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                    style={{ background: 'rgb(39,39,42)' }}>
+                    <option value="">None</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                )}
               </div>
+
+              {/* Preferred Vendor with inline create */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-zinc-400 text-xs">Preferred Vendor</label>
+                  {!showInlineVendor && (
+                    <button type="button" onClick={() => setShowInlineVendor(true)}
+                      className="text-[10px] text-sky-400 hover:text-sky-300">+ Create new</button>
+                  )}
+                </div>
+                {showInlineVendor ? (
+                  <div className="p-2 rounded-lg space-y-2" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
+                    <input value={vName} onChange={e => setVName(e.target.value)} placeholder="Vendor name *" autoFocus
+                      className="w-full px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                      style={{ background: 'rgb(39,39,42)' }} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={vPhone} onChange={e => setVPhone(e.target.value)} placeholder="Phone (optional)"
+                        className="px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                        style={{ background: 'rgb(39,39,42)' }} />
+                      <input value={vEmail} onChange={e => setVEmail(e.target.value)} placeholder="Email (optional)"
+                        className="px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                        style={{ background: 'rgb(39,39,42)' }} />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={saveInlineVendor} disabled={vSaving || !vName.trim()}
+                        className="px-3 py-1 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40">
+                        {vSaving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button type="button" onClick={() => { setShowInlineVendor(false); setVName(''); setVPhone(''); setVEmail(''); }}
+                        className="px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-white">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <select value={fVendorId} onChange={e => setFVendorId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                    style={{ background: 'rgb(39,39,42)' }}>
+                    <option value="">None</option>
+                    {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({v.code})</option>)}
+                  </select>
+                )}
+              </div>
+
+              {/* Min stock + Reorder */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-zinc-400 text-xs">Min Stock</label>
@@ -1199,23 +1264,25 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                     style={{ background: 'rgb(39,39,42)' }} />
                 </div>
               </div>
+
+              {/* Description */}
+              <div>
+                <label className="text-zinc-400 text-xs">Description <span className="text-zinc-600">(optional)</span></label>
+                <textarea value={fDesc} onChange={e => setFDesc(e.target.value)} rows={2}
+                  placeholder="Specifications, notes…"
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500 resize-none"
+                  style={{ background: 'rgb(39,39,42)' }} />
+              </div>
+
               {/* Opening stock — only for new materials */}
               {!editMat && (
                 <div className="pt-2 border-t border-zinc-800">
-                  <p className="text-zinc-400 text-xs mb-2">Opening Stock <span className="text-zinc-600">(optional)</span></p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-zinc-500 text-xs">Qty ({fUnit || 'unit'})</label>
-                      <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
-                        style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
-                    </div>
-                    <div>
-                      <label className="text-zinc-500 text-xs">Unit Price ₹</label>
-                      <input type="number" step="any" min="0" value={fOpenPrice} onChange={e => setFOpenPrice(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
-                        style={{ background: 'rgb(39,39,42)' }} placeholder="0.00" />
-                    </div>
+                  <p className="text-zinc-400 text-xs mb-2">Opening Stock <span className="text-zinc-600">(optional — enter if stock already exists)</span></p>
+                  <div>
+                    <label className="text-zinc-500 text-xs">Qty ({fUnit})</label>
+                    <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                      style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
                   </div>
                 </div>
               )}
