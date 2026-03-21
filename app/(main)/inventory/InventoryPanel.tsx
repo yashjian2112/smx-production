@@ -961,6 +961,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [cCode,          setCCode]          = useState('');
   const [cDesc,          setCDesc]          = useState('');
   const [cSaving,        setCSaving]        = useState(false);
+  const [cError,         setCError]         = useState('');
   const [showInlineCat,  setShowInlineCat]  = useState(false);
 
   // Inline create vendor
@@ -1047,21 +1048,23 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   }
 
   async function handleCatSubmit(e: React.FormEvent) {
-    e.preventDefault(); setCSaving(true);
-    await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName, code: cCode.toUpperCase(), description: cDesc || undefined }) });
-    setCSaving(false); setShowCatForm(false); setCName(''); setCCode(''); setCDesc(''); load();
+    e.preventDefault(); setCError(''); setCSaving(true);
+    const res = await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName, code: cCode.toUpperCase(), description: cDesc || undefined }) });
+    setCSaving(false);
+    if (!res.ok) { const err = await res.json().catch(() => ({})); setCError(err.error || 'Failed to save category'); return; }
+    setShowCatForm(false); setCName(''); setCCode(''); setCDesc(''); setCError(''); load();
   }
 
   async function saveInlineCat() {
     if (!cName.trim() || !cCode.trim()) return;
-    setCSaving(true);
+    setCError(''); setCSaving(true);
     const res = await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName.trim(), code: cCode.trim().toUpperCase() }) });
-    if (res.ok) {
-      const cat = await res.json();
-      setCategories(prev => [...prev, cat]);
-      setFCatId(cat.id);
-    }
-    setCSaving(false); setShowInlineCat(false); setCName(''); setCCode('');
+    setCSaving(false);
+    if (!res.ok) { const err = await res.json().catch(() => ({})); setCError(err.error || 'Failed to save'); return; }
+    const cat = await res.json();
+    setCategories(prev => [...prev, cat]);
+    setFCatId(cat.id);
+    setShowInlineCat(false); setCName(''); setCCode(''); setCError('');
   }
 
   async function saveInlineVendor() {
@@ -1233,12 +1236,13 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                         style={{ background: 'rgb(39,39,42)' }} />
                       <p className="text-zinc-600 text-[10px] mt-0.5">Used for barcodes: CAP → CAP001, CAP002…</p>
                     </div>
+                    {cError && <p className="text-red-400 text-[10px]">{cError}</p>}
                     <div className="flex gap-2">
                       <button type="button" onClick={saveInlineCat} disabled={cSaving || !cName.trim() || !cCode.trim()}
                         className="px-3 py-1 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40">
                         {cSaving ? 'Saving…' : 'Save'}
                       </button>
-                      <button type="button" onClick={() => { setShowInlineCat(false); setCName(''); setCCode(''); }}
+                      <button type="button" onClick={() => { setShowInlineCat(false); setCName(''); setCCode(''); setCError(''); }}
                         className="px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-white">Cancel</button>
                     </div>
                   </div>
@@ -1369,8 +1373,9 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
+              {cError && <p className="text-red-400 text-xs">{cError}</p>}
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => { setShowCatForm(false); setCName(''); setCCode(''); setCDesc(''); }}
+                <button type="button" onClick={() => { setShowCatForm(false); setCName(''); setCCode(''); setCDesc(''); setCError(''); }}
                   className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Cancel</button>
                 <button type="submit" disabled={cSaving}
                   className="flex-1 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50">
