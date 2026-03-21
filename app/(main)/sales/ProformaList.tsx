@@ -441,6 +441,173 @@ function InvoiceDOFolder({
   );
 }
 
+// ── Processing order card ─────────────────────────────────────────────────────
+function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
+  const order = p.order!;
+  const total = order.units.length;
+  const a     = analyseUnits(order.units);
+  const done  = a.ready + a.dispatched;
+  const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+  const os    = ORDER_STATUS_STYLE[order.status] ?? ORDER_STATUS_STYLE.ACTIVE;
+  const phase = getPhaseLabel(a, total);
+
+  const dueDate = p.deliveryDays
+    ? new Date(new Date(p.invoiceDate).getTime() + p.deliveryDays * 86_400_000)
+    : null;
+  const dueMsLeft = dueDate ? dueDate.getTime() - Date.now() : null;
+  const dueColor  = dueMsLeft === null ? null
+    : dueMsLeft < 0             ? '#f87171'
+    : dueMsLeft < 7 * 86400_000 ? '#fbbf24'
+    : '#4ade80';
+
+  return (
+    <div className="card overflow-hidden">
+      {/* Header */}
+      <div className="p-4 space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-xs text-zinc-500">{p.invoiceNumber}</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-zinc-600 shrink-0">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+              <Link href={`/orders/${order.id}`}
+                className="font-mono text-sm font-bold text-sky-400 hover:text-sky-300 hover:underline">
+                #{order.orderNumber}
+              </Link>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                style={{ background: os.bg, color: os.color }}>
+                {order.status}
+              </span>
+            </div>
+            <p className="text-zinc-200 text-sm mt-0.5 font-medium">{p.client.customerName}</p>
+            <div className="flex items-center gap-2 flex-wrap mt-0.5">
+              <span className="text-zinc-600 text-xs">{order.quantity} unit{order.quantity !== 1 ? 's' : ''}</span>
+              {dueDate && (
+                <span className="text-xs font-medium" style={{ color: dueColor ?? '#a1a1aa' }}>
+                  {dueMsLeft! < 0 ? '⚠ Overdue · ' : 'Due '}
+                  {fmtDate(dueDate.toISOString())}
+                  {p.deliveryDays ? ` (${p.deliveryDays}d)` : ''}
+                </span>
+              )}
+              {role !== 'SALES' && <span className="text-zinc-600 text-xs">· {p.createdBy.name}</span>}
+            </div>
+          </div>
+          {/* Progress % */}
+          <div className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <span className="text-sm font-bold leading-none" style={{ color: pct === 100 ? '#4ade80' : 'white' }}>{pct}%</span>
+            <span className="text-[9px] text-zinc-500 mt-0.5">done</span>
+          </div>
+        </div>
+
+        {/* Phase label */}
+        <p className="text-xs font-medium" style={{ color: phase.color }}>▸ {phase.text}</p>
+
+        {/* Progress bar */}
+        <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+          <div className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${pct}%`, background: 'linear-gradient(90deg,#818cf8,#38bdf8,#4ade80)' }} />
+        </div>
+      </div>
+
+      {/* Stage badges */}
+      <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+        {a.notStarted > 0 && (
+          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(113,113,122,0.12)', color: '#a1a1aa', border: '1px solid rgba(113,113,122,0.2)' }}>
+            Queue: {a.notStarted}
+          </span>
+        )}
+        {PROD_STAGES.filter(s => s.key !== 'FINAL_ASSEMBLY').map((s) => {
+          const display = order.units.filter(u =>
+            u.currentStage === s.key && u.currentStatus !== 'BLOCKED' &&
+            !u.readyForDispatch && !u.dispatchedAt && u.currentStage !== 'REWORK' &&
+            !(u.currentStage === 'POWERSTAGE_MANUFACTURING' && u.currentStatus === 'PENDING')
+          ).length;
+          if (display <= 0) return null;
+          return (
+            <span key={s.key} className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+              style={{ background: `${s.color}15`, color: s.color, border: `1px solid ${s.color}30` }}>
+              {s.label}: {display}
+            </span>
+          );
+        })}
+        {a.inQC > 0 && (
+          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}>
+            In QC: {a.inQC}
+          </span>
+        )}
+        {a.passedQC > 0 && (
+          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' }}>
+            Final Assy: {a.passedQC}
+          </span>
+        )}
+        {a.rework > 0 && (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(249,115,22,0.12)', color: '#fb923c', border: '1px solid rgba(249,115,22,0.3)' }}>
+            ⚠ Rework: {a.rework}
+          </span>
+        )}
+        {a.blocked > 0 && (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse"
+            style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}>
+            🚫 Blocked: {a.blocked}
+          </span>
+        )}
+        {a.ready > 0 && (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }}>
+            ✓ Ready: {a.ready}
+          </span>
+        )}
+      </div>
+
+      {/* Dispatch rows */}
+      {order.dispatchOrders.length > 0 && (
+        <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+          {order.dispatchOrders.map((d, idx) => {
+            const tracking = d.invoices.map((inv) => parseTracking(inv.notes)).find((t) => t) ?? '';
+            const isPartial = d.dispatchQty < order.quantity;
+            return (
+              <div key={d.id} className="flex items-center gap-2 px-4 py-2.5 flex-wrap"
+                style={idx < order.dispatchOrders.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : {}}>
+                <span className="font-mono text-xs text-sky-400 shrink-0">{d.doNumber}</span>
+                {isPartial && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                    style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>Partial</span>
+                )}
+                <span className="text-[10px] text-zinc-500 shrink-0">
+                  ✈ {d.dispatchQty} unit{d.dispatchQty !== 1 ? 's' : ''}
+                  {d.approvedAt ? ` · ${fmtDate(d.approvedAt)}` : ''}
+                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {d.invoices.map((inv) => (
+                    <a key={inv.id} href={`/print/invoice/${inv.id}`} target="_blank" rel="noopener noreferrer"
+                      className="text-[10px] font-mono text-sky-400 hover:text-sky-300 hover:underline">
+                      {inv.invoiceNumber}
+                    </a>
+                  ))}
+                </div>
+                {tracking ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full ml-auto shrink-0"
+                    style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
+                    🚚 {tracking}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-zinc-600 ml-auto shrink-0">No tracking</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProformaList({
   proformas,
   role,
@@ -459,6 +626,7 @@ export function ProformaList({
   const [tab, setTab]               = useState<TabKey>(initialTab ?? 'pi');
   const [search, setSearch]         = useState('');
   const [invSubTab, setInvSubTab]   = useState<'current' | 'history'>('current');
+  const [statusSubTab, setStatusSubTab] = useState<'processing' | 'completed'>('processing');
   const [openDOs,          setOpenDOs]          = useState<Record<string, boolean>>({});
   const [openHistoryMonths, setOpenHistoryMonths] = useState<Record<string, boolean>>({});
 
@@ -467,14 +635,22 @@ export function ProformaList({
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const currentMonthLabel = now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
-  const piList     = proformas.filter((p) => p.invoiceNumber.startsWith('TSM/PI/') && p.invoiceType === 'SALE');
-  const statusList = proformas.filter((p) => p.status === 'CONVERTED' && p.order);
+  const piList       = proformas.filter((p) => p.invoiceNumber.startsWith('TSM/PI/') && p.invoiceType === 'SALE');
+  const statusList   = proformas.filter((p) => p.status === 'CONVERTED' && p.order);
+  const processingList = statusList.filter((p) => {
+    const a = analyseUnits(p.order!.units);
+    return (a.ready + a.dispatched) < p.order!.units.length;
+  });
+  const completedList = statusList.filter((p) => {
+    const a = analyseUnits(p.order!.units);
+    return p.order!.units.length > 0 && (a.ready + a.dispatched) === p.order!.units.length;
+  });
 
-  const tabs: Array<{ key: TabKey; label: string; count: number }> = [
-    { key: 'pi',      label: 'Proforma', count: piList.length          },
-    { key: 'invoice', label: 'Invoice',  count: invoices.length        },
-    { key: 'returns', label: 'Returns',  count: returnRequests.length  },
-    { key: 'status',  label: 'Status',   count: statusList.length      },
+  // Main tabs — Status is handled separately (no count clutter)
+  const mainTabs: Array<{ key: TabKey; label: string; count: number }> = [
+    { key: 'pi',      label: 'Proforma', count: piList.length         },
+    { key: 'invoice', label: 'Invoice',  count: invoices.length       },
+    { key: 'returns', label: 'Returns',  count: returnRequests.length },
   ];
 
   const filteredPI = piList.filter((p) => {
@@ -534,32 +710,48 @@ export function ProformaList({
 
   return (
     <div>
-      {/* Tabs + contextual action button */}
-      <div className="flex items-center gap-2 mb-4">
-        <div className="flex flex-1 gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          {tabs.map((t) => (
-            <button key={t.key} type="button" onClick={() => { setTab(t.key); setSearch(''); }}
-              className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${tab === t.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
-              style={tab === t.key ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
-              {t.label} ({t.count})
-            </button>
-          ))}
+      {/* ── When on Status tab: clean header with no other tabs ── */}
+      {tab === 'status' ? (
+        <div className="flex items-center gap-3 mb-4">
+          <button type="button" onClick={() => setTab('pi')}
+            className="flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 hover:text-white transition-colors"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h3 className="text-sm font-semibold text-white flex-1">Order Status</h3>
+          <span className="text-[10px] px-2 py-1 rounded-lg font-medium"
+            style={{ background: 'rgba(14,165,233,0.1)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.2)' }}>
+            {processingList.length} processing · {completedList.length} completed
+          </span>
         </div>
-        {/* + New PI */}
-        {tab === 'pi' && canCreate && (
-          <Link href="/sales/new" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
-            style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
-            + New
-          </Link>
-        )}
-        {/* + New Return */}
-        {tab === 'returns' && canCreateReturn && (
-          <Link href="/sales/returns/new" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
-            style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
-            + New Return
-          </Link>
-        )}
-      </div>
+      ) : (
+        /* ── Normal tab bar for PI / Invoice / Returns ── */
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex flex-1 gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            {mainTabs.map((t) => (
+              <button key={t.key} type="button" onClick={() => { setTab(t.key); setSearch(''); }}
+                className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${tab === t.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                style={tab === t.key ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
+                {t.label} ({t.count})
+              </button>
+            ))}
+          </div>
+          {tab === 'pi' && canCreate && (
+            <Link href="/sales/new" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
+              style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
+              + New
+            </Link>
+          )}
+          {tab === 'returns' && canCreateReturn && (
+            <Link href="/sales/returns/new" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
+              style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
+              + New Return
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* Search bar — hidden on Invoice/Current (shows all), visible on History & other tabs */}
       {!(tab === 'invoice' && invSubTab === 'current') && (
@@ -762,219 +954,94 @@ export function ProformaList({
           </div>
         )}
 
-        {/* ── Status tab — production progress for converted orders ── */}
+        {/* ── Status tab ── */}
         {tab === 'status' && (
-          <>
-            {statusList.length === 0 ? (
-              <div className="card p-8 text-center">
-                <p className="text-zinc-500 text-sm">No orders in production yet.</p>
-                <p className="text-zinc-600 text-xs mt-1">Orders appear here once a proforma is approved and converted.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {statusList.map((p) => {
-                  const order  = p.order!;
-                  const total  = order.units.length;
-                  const a      = analyseUnits(order.units);
-                  const done   = a.ready + a.dispatched;
-                  const pct    = total > 0 ? Math.round((done / total) * 100) : 0;
-                  const os     = ORDER_STATUS_STYLE[order.status] ?? ORDER_STATUS_STYLE.ACTIVE;
-                  const phase  = getPhaseLabel(a, total);
+          <div className="space-y-3">
 
-                  // Due date = invoiceDate + deliveryDays (from proforma)
-                  const dueDate = p.deliveryDays
-                    ? new Date(new Date(p.invoiceDate).getTime() + p.deliveryDays * 86_400_000)
-                    : null;
-                  const dueMsLeft = dueDate ? dueDate.getTime() - Date.now() : null;
-                  const dueColor  = dueMsLeft === null ? null
-                    : dueMsLeft < 0             ? '#f87171'  // overdue
-                    : dueMsLeft < 7 * 86400_000 ? '#fbbf24'  // ≤7 days
-                    : '#4ade80';                               // safe
+            {/* Processing / Completed sub-tabs */}
+            <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <button type="button" onClick={() => setStatusSubTab('processing')}
+                className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${statusSubTab === 'processing' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                style={statusSubTab === 'processing' ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
+                Processing
+                <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={statusSubTab === 'processing' ? { background: 'rgba(14,165,233,0.2)', color: '#38bdf8' } : { background: 'rgba(255,255,255,0.06)', color: '#71717a' }}>
+                  {processingList.length}
+                </span>
+              </button>
+              <button type="button" onClick={() => setStatusSubTab('completed')}
+                className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${statusSubTab === 'completed' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                style={statusSubTab === 'completed' ? { background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)' } : {}}>
+                Completed
+                <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={statusSubTab === 'completed' ? { background: 'rgba(34,197,94,0.2)', color: '#4ade80' } : { background: 'rgba(255,255,255,0.06)', color: '#71717a' }}>
+                  {completedList.length}
+                </span>
+              </button>
+            </div>
 
-                  const isFullyDone = done === total && total > 0;
+            {/* ── PROCESSING ── */}
+            {statusSubTab === 'processing' && (
+              processingList.length === 0 ? (
+                <div className="card p-8 text-center">
+                  <p className="text-zinc-500 text-sm">No orders currently in production.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {processingList.map((p) => <OrderStatusCard key={p.id} p={p} role={role} />)}
+                </div>
+              )
+            )}
 
-                  return (
-                    <div key={p.id} className="card overflow-hidden">
-
-                      {/* ── Header ── */}
-                      <div className="p-4 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
+            {/* ── COMPLETED ── */}
+            {statusSubTab === 'completed' && (
+              completedList.length === 0 ? (
+                <div className="card p-8 text-center">
+                  <p className="text-zinc-500 text-sm">No completed orders yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {completedList.map((p) => {
+                    const order = p.order!;
+                    return (
+                      <div key={p.id} className="card p-4">
+                        <div className="flex items-center justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono font-semibold text-sm text-white">{p.invoiceNumber}</span>
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-zinc-600 shrink-0">
+                              <span className="font-mono text-xs text-zinc-400">{p.invoiceNumber}</span>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-zinc-600">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                               </svg>
-                              <span className="font-mono text-xs text-sky-400 font-semibold">#{order.orderNumber}</span>
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: os.bg, color: os.color }}>
-                                {order.status}
+                              <Link href={`/orders/${order.id}`}
+                                className="font-mono text-xs text-sky-400 hover:text-sky-300 hover:underline font-semibold">
+                                #{order.orderNumber}
+                              </Link>
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                                style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
+                                ✓ All dispatched
                               </span>
-                              {order.status === 'HOLD' && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded animate-pulse"
-                                  style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}>⏸ ON HOLD</span>
-                              )}
                             </div>
-                            <p className="text-zinc-300 text-sm mt-0.5 font-medium">{p.client.customerName}</p>
-                            <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                              <span className="text-zinc-600 text-xs">{order.quantity} unit{order.quantity !== 1 ? 's' : ''}</span>
-                              {dueDate && (
-                                <span className="text-xs font-medium" style={{ color: dueColor ?? '#a1a1aa' }}>
-                                  {dueMsLeft! < 0 ? '⚠ Overdue · ' : 'Due '}
-                                  {fmtDate(dueDate.toISOString())}
-                                  {p.deliveryDays ? ` (${p.deliveryDays}d)` : ''}
-                                </span>
-                              )}
-                              {role !== 'SALES' && (
-                                <span className="text-zinc-600 text-xs">· {p.createdBy.name}</span>
-                              )}
-                            </div>
+                            <p className="text-zinc-500 text-xs mt-0.5">{p.client.customerName} · {order.quantity} units</p>
                           </div>
-                          {/* Progress circle */}
-                          <div className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl"
-                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                            <span className="text-sm font-bold leading-none" style={{ color: pct === 100 ? '#4ade80' : 'white' }}>{pct}%</span>
-                            <span className="text-[9px] text-zinc-500 mt-0.5">done</span>
-                          </div>
-                        </div>
-
-                        {/* Phase label */}
-                        <p className="text-xs font-medium" style={{ color: phase.color }}>▸ {phase.text}</p>
-
-                        {/* Progress bar */}
-                        <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
-                          <div className="h-full rounded-full transition-all duration-500"
-                            style={{ width: `${pct}%`, background: pct === 100 ? '#4ade80' : 'linear-gradient(90deg,#818cf8,#38bdf8,#4ade80)' }} />
+                          {/* Dispatch summary — last DO tracking */}
+                          {order.dispatchOrders.length > 0 && (() => {
+                            const last = order.dispatchOrders[order.dispatchOrders.length - 1];
+                            const tracking = last.invoices.map((inv) => parseTracking(inv.notes)).find((t) => t) ?? '';
+                            return tracking ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0"
+                                style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
+                                🚚 {tracking}
+                              </span>
+                            ) : null;
+                          })()}
                         </div>
                       </div>
-
-                      {/* ── Production stage breakdown ── */}
-                      {!isFullyDone && (
-                        <div className="px-4 pb-3 flex flex-wrap gap-1.5">
-                          {/* Not yet started */}
-                          {a.notStarted > 0 && (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                              style={{ background: 'rgba(113,113,122,0.12)', color: '#a1a1aa', border: '1px solid rgba(113,113,122,0.2)' }}>
-                              Queue: {a.notStarted}
-                            </span>
-                          )}
-                          {/* In production stages */}
-                          {PROD_STAGES.filter(s => s.key !== 'FINAL_ASSEMBLY').map((s) => {
-                            const cnt = order.units.filter(u =>
-                              u.currentStage === s.key &&
-                              u.currentStatus !== 'BLOCKED' &&
-                              !u.readyForDispatch && !u.dispatchedAt &&
-                              u.currentStage !== 'REWORK'
-                            ).length;
-                            if (cnt === 0) return null;
-                            // Exclude notStarted from PS count
-                            const display = s.key === 'POWERSTAGE_MANUFACTURING' ? cnt - a.notStarted : cnt;
-                            if (display <= 0) return null;
-                            return (
-                              <span key={s.key} className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                                style={{ background: `${s.color}15`, color: s.color, border: `1px solid ${s.color}30` }}>
-                                {s.label}: {display}
-                              </span>
-                            );
-                          })}
-                          {/* In QC — shown separately with distinct colour */}
-                          {a.inQC > 0 && (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                              style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}>
-                              In QC: {a.inQC}
-                            </span>
-                          )}
-                          {/* Passed QC / in final assembly */}
-                          {a.passedQC > 0 && (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                              style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' }}>
-                              Final Assy: {a.passedQC}
-                            </span>
-                          )}
-                          {/* Rework */}
-                          {a.rework > 0 && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                              style={{ background: 'rgba(249,115,22,0.12)', color: '#fb923c', border: '1px solid rgba(249,115,22,0.3)' }}>
-                              ⚠ Rework: {a.rework}
-                            </span>
-                          )}
-                          {/* Blocked */}
-                          {a.blocked > 0 && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse"
-                              style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}>
-                              🚫 Blocked: {a.blocked}
-                            </span>
-                          )}
-                          {/* Ready for dispatch */}
-                          {a.ready > 0 && (
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                              style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }}>
-                              ✓ Ready: {a.ready}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* ── Dispatch history (per approved DO) ── */}
-                      {order.dispatchOrders.length > 0 && (
-                        <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                          {order.dispatchOrders.map((d, idx) => {
-                            const tracking = d.invoices
-                              .map((inv) => parseTracking(inv.notes))
-                              .find((t) => t) ?? '';
-                            const isPartial = d.dispatchQty < order.quantity;
-                            return (
-                              <div key={d.id}
-                                className="flex items-center gap-2 px-4 py-2.5 flex-wrap"
-                                style={idx < order.dispatchOrders.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : {}}
-                              >
-                                {/* DO + partial badge */}
-                                <span className="font-mono text-xs text-sky-400 shrink-0">{d.doNumber}</span>
-                                {isPartial && (
-                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                                    style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>
-                                    Partial
-                                  </span>
-                                )}
-                                <span className="text-[10px] text-zinc-500 shrink-0">
-                                  ✈ {d.dispatchQty} unit{d.dispatchQty !== 1 ? 's' : ''}
-                                  {d.approvedAt ? ` · ${fmtDate(d.approvedAt)}` : ''}
-                                </span>
-                                {/* Invoices */}
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  {d.invoices.map((inv) => (
-                                    <a key={inv.id} href={`/print/invoice/${inv.id}`} target="_blank" rel="noopener noreferrer"
-                                      className="text-[10px] font-mono text-sky-400 hover:text-sky-300 hover:underline">
-                                      {inv.invoiceNumber}
-                                    </a>
-                                  ))}
-                                </div>
-                                {/* Tracking */}
-                                {tracking ? (
-                                  <span className="text-[10px] px-2 py-0.5 rounded-full ml-auto shrink-0"
-                                    style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
-                                    🚚 {tracking}
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] text-zinc-600 ml-auto shrink-0">No tracking</span>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Fully dispatched footer */}
-                      {isFullyDone && (
-                        <div className="px-4 pb-3 flex items-center gap-2">
-                          <span className="text-xs font-semibold" style={{ color: '#4ade80' }}>✓ All {total} units dispatched</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )
             )}
-          </>
+          </div>
         )}
 
         {/* ── Returns tab ── */}
