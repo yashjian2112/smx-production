@@ -199,8 +199,8 @@ const purchaseNav: NavItem[] = [
   { href: '/dashboard',  label: 'Dashboard',  icon: 'Dashboard'  },
 ];
 
-// STORE_MANAGER: Inventory (GRN, Stock, Movements) · Purchase Requests · Dashboard
-const storeNav: NavItem[] = [
+// INVENTORY_MANAGER / STORE_MANAGER: Inventory (GRN, Stock, Movements) · Purchase Requests · Dashboard
+const inventoryNav: NavItem[] = [
   { href: '/inventory',  label: 'Inventory',  icon: 'Inventory'  },
   { href: '/purchase',   label: 'Requests',   icon: 'Purchase'   },
   { href: '/dashboard',  label: 'Dashboard',  icon: 'Dashboard'  },
@@ -218,8 +218,9 @@ export function BottomNav({ role }: { role: string }) {
     role === 'SALES'               ? salesNav     :
     role === 'ACCOUNTS'            ? accountsNav  :
     role === 'SHIPPING'            ? shippingNav  :
-    role === 'PURCHASE_MANAGER'    ? purchaseNav  :
-    role === 'STORE_MANAGER'       ? storeNav     :
+    role === 'PURCHASE_MANAGER'    ? purchaseNav   :
+    role === 'INVENTORY_MANAGER'   ? inventoryNav  :
+    role === 'STORE_MANAGER'       ? inventoryNav  :
     managerNav;
 
   return (

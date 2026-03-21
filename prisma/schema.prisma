@@ -66,10 +66,11 @@ enum Role {
   PRODUCTION_EMPLOYEE
   SALES
   ACCOUNTS
-  SHIPPING        // deprecated — use ACCOUNTS for shipping approval
-  PURCHASE_MANAGER
-  PACKING         // packing team — scans/packs/seals dispatch orders
-  STORE_MANAGER   // warehouse/store: receives goods (GRN), stock adjustments, creates PRs
+  SHIPPING           // deprecated — use ACCOUNTS for shipping approval
+  PURCHASE_MANAGER   // procurement: purchase requests, vendors, bids, POs
+  INVENTORY_MANAGER  // inventory: raw materials, BOM, stock, GRN, adjustments
+  PACKING            // packing team — scans/packs/seals dispatch orders
+  STORE_MANAGER      // legacy alias for INVENTORY_MANAGER
 }
 
 // ----- Products / Models -----

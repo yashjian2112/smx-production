@@ -5,7 +5,7 @@ import InventoryPanel from './InventoryPanel';
 export default async function InventoryPage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (!['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'].includes(session.role)) redirect('/dashboard');
+  if (!['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER', 'STORE_MANAGER'].includes(session.role)) redirect('/dashboard');
 
   return (
     <main className="min-h-screen pb-24" style={{ background: 'rgb(9,9,11)' }}>
