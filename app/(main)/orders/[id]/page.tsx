@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { OrderDetail, type StageGroup } from './OrderDetail';
+import { OrderNotes } from './OrderNotes';
 
 const STAGE_CONFIG: { key: string; label: string }[] = [
   { key: 'POWERSTAGE_MANUFACTURING', label: 'Powerstage' },
@@ -97,6 +98,16 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     },
   });
   if (!order) notFound();
+
+  // Fetch notes (available to SALES, PM, ADMIN, ACCOUNTS)
+  const canViewNotes = ['ADMIN', 'SALES', 'PRODUCTION_MANAGER', 'ACCOUNTS'].includes(session.role);
+  const notes = canViewNotes
+    ? await prisma.orderNote.findMany({
+        where: { orderId: id },
+        include: { author: { select: { name: true } } },
+        orderBy: { createdAt: 'asc' },
+      })
+    : [];
 
   /**
    * Each stage shows ALL units (not just the ones currently there).
@@ -193,8 +204,14 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
         {order.dueDate && (
           <p className="text-zinc-600 text-xs mt-1">
-            Due: {new Date(order.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            ETA: {new Date(order.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
           </p>
+        )}
+        {order.status === 'HOLD' && (order as any).holdReason && (
+          <div className="mt-2 px-3 py-2 rounded-lg text-xs"
+            style={{ background: 'rgba(251,191,36,0.08)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}>
+            ⏸ On hold: {(order as any).holdReason}
+          </div>
         )}
 
         {/* Progress summary */}
@@ -258,6 +275,18 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
       {/* Stage breakdown */}
       <OrderDetail orderId={order.id} stages={stages} isEmployee={isEmployee} totalUnits={total} />
+
+      {/* Notes thread — visible to SALES, PM, ADMIN, ACCOUNTS */}
+      {canViewNotes && (
+        <OrderNotes
+          orderId={order.id}
+          currentRole={session.role}
+          initialNotes={notes.map((n) => ({
+            ...n,
+            createdAt: n.createdAt.toISOString(),
+          }))}
+        />
+      )}
     </div>
   );
 }

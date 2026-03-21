@@ -34,7 +34,10 @@ type ProformaRow = {
     id: string;
     orderNumber: string;
     status: string;
+    holdReason: string | null;
     quantity: number;
+    dueDate: string | null;
+    _count: { notes: number };
     units: OrderUnit[];
     dispatchOrders: OrderDO[];
   } | null;
@@ -451,9 +454,13 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
   const os    = ORDER_STATUS_STYLE[order.status] ?? ORDER_STATUS_STYLE.ACTIVE;
   const phase = getPhaseLabel(a, total);
 
-  const dueDate = p.deliveryDays
+  // ETA: prefer PM's dueDate on order, fall back to PI invoiceDate + deliveryDays
+  const etaDate = order.dueDate
+    ? new Date(order.dueDate)
+    : p.deliveryDays
     ? new Date(new Date(p.invoiceDate).getTime() + p.deliveryDays * 86_400_000)
     : null;
+  const dueDate   = etaDate;
   const dueMsLeft = dueDate ? dueDate.getTime() - Date.now() : null;
   const dueColor  = dueMsLeft === null ? null
     : dueMsLeft < 0             ? '#f87171'
@@ -492,12 +499,28 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
               )}
               {role !== 'SALES' && <span className="text-zinc-600 text-xs">· {p.createdBy.name}</span>}
             </div>
+            {/* Hold reason */}
+            {order.status === 'HOLD' && order.holdReason && (
+              <p className="text-xs mt-1 px-2 py-1 rounded-lg"
+                style={{ background: 'rgba(251,191,36,0.08)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}>
+                ⏸ On hold: {order.holdReason}
+              </p>
+            )}
           </div>
-          {/* Progress % */}
-          <div className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <span className="text-sm font-bold leading-none" style={{ color: pct === 100 ? '#4ade80' : 'white' }}>{pct}%</span>
-            <span className="text-[9px] text-zinc-500 mt-0.5">done</span>
+          {/* Progress % + notes */}
+          <div className="shrink-0 flex flex-col items-center gap-1.5">
+            <div className="flex flex-col items-center justify-center w-12 h-12 rounded-xl"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <span className="text-sm font-bold leading-none" style={{ color: pct === 100 ? '#4ade80' : 'white' }}>{pct}%</span>
+              <span className="text-[9px] text-zinc-500 mt-0.5">done</span>
+            </div>
+            {order._count.notes > 0 && (
+              <Link href={`/orders/${order.id}#notes`}
+                className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
+                style={{ background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.25)' }}>
+                💬 {order._count.notes}
+              </Link>
+            )}
           </div>
         </div>
 

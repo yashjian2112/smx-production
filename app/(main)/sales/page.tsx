@@ -26,7 +26,10 @@ export default async function SalesPage({
             id: true,
             orderNumber: true,
             status: true,
+            holdReason: true,
             quantity: true,
+            dueDate: true,
+            _count: { select: { notes: true } },
             units: {
               select: {
                 currentStage:     true,
@@ -89,6 +92,7 @@ export default async function SalesPage({
     order: p.order
       ? {
           ...p.order,
+          dueDate: p.order.dueDate?.toISOString() ?? null,
           dispatchOrders: p.order.dispatchOrders.map((d) => ({
             ...d,
             approvedAt: d.approvedAt?.toISOString() ?? null,

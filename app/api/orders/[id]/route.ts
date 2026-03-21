@@ -31,17 +31,22 @@ export async function PATCH(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
     const { id } = await params;
     const body = await req.json();
-    const { status, dueDate, priority } = body as { status?: string; dueDate?: string; priority?: number };
+    const { status, dueDate, priority, holdReason } = body as {
+      status?: string; dueDate?: string; priority?: number; holdReason?: string;
+    };
 
     const order = await prisma.order.update({
       where: { id },
       data: {
-        ...(status !== undefined && { status: status as 'ACTIVE' | 'HOLD' | 'CANCELLED' | 'CLOSED' }),
-        ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
-        ...(priority !== undefined && { priority }),
+        ...(status     !== undefined && { status:     status as 'ACTIVE' | 'HOLD' | 'CANCELLED' | 'CLOSED' }),
+        ...(dueDate    !== undefined && { dueDate:    dueDate ? new Date(dueDate) : null }),
+        ...(priority   !== undefined && { priority }),
+        ...(holdReason !== undefined && { holdReason: holdReason || null }),
+        // Auto-clear holdReason when moving back to ACTIVE
+        ...(status === 'ACTIVE' && holdReason === undefined && { holdReason: null }),
       },
       include: { product: true, units: true },
     });

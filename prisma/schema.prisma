@@ -57,6 +57,7 @@ model User {
   returnRequestsEvaluated  ReturnRequest[]    @relation("ReturnEvaluatedBy")
   repairLogs           RepairLog[]
   notifications        Notification[]
+  orderNotes           OrderNote[]            @relation("OrderNoteAuthor")
 }
 
 enum Role {
@@ -164,6 +165,7 @@ model Order {
   dueDate     DateTime? @map("due_date")
   priority    Int       @default(0)  // higher = more urgent
   status      OrderStatus @default(ACTIVE)
+  holdReason  String?   @map("hold_reason")
   voltage     String?   // e.g. "48V"
   motorType   MotorType?  @map("motor_type")
   createdAt   DateTime  @default(now()) @map("created_at")
@@ -177,6 +179,21 @@ model Order {
   dispatches      Dispatch[]
   dispatchOrders  DispatchOrder[]
   returnRequests  ReturnRequest[]
+  notes           OrderNote[]
+}
+
+model OrderNote {
+  id        String   @id @default(cuid())
+  orderId   String   @map("order_id")
+  content   String
+  authorId  String   @map("author_id")
+  role      String   // SALES, PRODUCTION_MANAGER, ADMIN, etc.
+  createdAt DateTime @default(now()) @map("created_at")
+
+  order  Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  author User  @relation("OrderNoteAuthor", fields: [authorId], references: [id])
+
+  @@map("order_notes")
 }
 
 enum OrderStatus {
