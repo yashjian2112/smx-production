@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 type ProformaRow = {
   id: string;
@@ -39,17 +39,6 @@ type ReturnRequestRow = {
   reportedBy: { name: string };
 };
 
-type OrderStatusRow = {
-  id: string;
-  orderNumber: string;
-  productName: string;
-  clientName: string | null;
-  quantity: number;
-  status: string;
-  stages: { PS: number; BB: number; CA: number; QC: number; RW: number; FA: number };
-  readyForDispatch: number;
-};
-
 const STATUS_STYLE: Record<string, { bg: string; color: string; border: string }> = {
   DRAFT:            { bg: 'rgba(113,113,122,0.1)', color: '#a1a1aa', border: 'rgba(113,113,122,0.2)' },
   PENDING_APPROVAL: { bg: 'rgba(251,191,36,0.1)',  color: '#fbbf24', border: 'rgba(251,191,36,0.3)' },
@@ -83,19 +72,59 @@ const RETURN_TYPE_STYLE: Record<string, { bg: string; color: string; label: stri
   OTHER:      { bg: 'rgba(113,113,122,0.1)',color: '#a1a1aa', label: 'Other'      },
 };
 
-const STAGE_LABELS: Array<{ key: keyof OrderStatusRow['stages']; label: string; color: string }> = [
-  { key: 'PS', label: 'PS', color: '#818cf8' },
-  { key: 'BB', label: 'BB', color: '#34d399' },
-  { key: 'CA', label: 'CA', color: '#60a5fa' },
-  { key: 'QC', label: 'QC', color: '#fbbf24' },
-  { key: 'RW', label: 'RW', color: '#f87171' },
-  { key: 'FA', label: 'FA', color: '#4ade80' },
-];
-
-type TabKey = 'pi' | 'invoice' | 'returns' | 'status';
+type TabKey = 'pi' | 'invoice' | 'returns';
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// ── Month → DO grouping helper ──────────────────────────────────────────────
+type DOGroup = {
+  key: string;
+  doNumber: string | null;
+  orderNumber: string | null;
+  clientName: string;
+  invoices: InvoiceRow[];
+};
+type MonthGroup = {
+  key: string;   // e.g. "2026-03"
+  label: string; // e.g. "March 2026"
+  count: number;
+  doGroups: DOGroup[];
+};
+
+function buildMonthGroups(invoices: InvoiceRow[]): MonthGroup[] {
+  const months: MonthGroup[] = [];
+  const seenMonths = new Map<string, number>();
+  const seenDOs    = new Map<string, { mi: number; di: number }>();
+
+  for (const inv of invoices) {
+    const date      = new Date(inv.dispatchOrder?.approvedAt ?? inv.createdAt);
+    const monthKey  = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const monthLabel = date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+    if (!seenMonths.has(monthKey)) {
+      seenMonths.set(monthKey, months.length);
+      months.push({ key: monthKey, label: monthLabel, count: 0, doGroups: [] });
+    }
+    const mi = seenMonths.get(monthKey)!;
+    months[mi].count++;
+
+    const doKey = `${monthKey}||${inv.dispatchOrder?.doNumber ?? `no-do-${inv.id}`}`;
+    if (!seenDOs.has(doKey)) {
+      seenDOs.set(doKey, { mi, di: months[mi].doGroups.length });
+      months[mi].doGroups.push({
+        key: doKey,
+        doNumber:    inv.dispatchOrder?.doNumber ?? null,
+        orderNumber: inv.dispatchOrder?.order?.orderNumber ?? null,
+        clientName:  inv.client.customerName,
+        invoices:    [],
+      });
+    }
+    const { mi: mi2, di } = seenDOs.get(doKey)!;
+    months[mi2].doGroups[di].invoices.push(inv);
+  }
+  return months;
 }
 
 export function ProformaList({
@@ -113,36 +142,17 @@ export function ProformaList({
   returnRequests?: ReturnRequestRow[];
   canCreate?: boolean;
 }) {
-  const [tab, setTab] = useState<TabKey>(initialTab ?? 'pi');
-  const [search, setSearch] = useState('');
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-
-  // Status tab state
-  const [statusData,    setStatusData]    = useState<OrderStatusRow[]>([]);
-  const [statusLoading, setStatusLoading] = useState(false);
-  const [statusFetched, setStatusFetched] = useState(false);
-
-  useEffect(() => {
-    if (tab === 'status' && !statusFetched) {
-      setStatusLoading(true);
-      fetch('/api/orders/status-summary')
-        .then((r) => r.json())
-        .then((data: OrderStatusRow[]) => {
-          setStatusData(data);
-          setStatusFetched(true);
-        })
-        .catch(() => { setStatusFetched(true); })
-        .finally(() => setStatusLoading(false));
-    }
-  }, [tab, statusFetched]);
+  const [tab, setTab]           = useState<TabKey>(initialTab ?? 'pi');
+  const [search, setSearch]     = useState('');
+  const [openMonths, setOpenMonths] = useState<Record<string, boolean>>({});
+  const [openDOs,    setOpenDOs]    = useState<Record<string, boolean>>({});
 
   const piList = proformas.filter((p) => p.invoiceNumber.startsWith('TSM/PI/') && p.invoiceType === 'SALE');
 
   const tabs: Array<{ key: TabKey; label: string; count: number }> = [
-    { key: 'pi',      label: 'Proforma',  count: piList.length         },
-    { key: 'invoice', label: 'Invoice',   count: invoices.length       },
-    { key: 'returns', label: 'Returns',   count: returnRequests.length },
-    { key: 'status',  label: 'Status',    count: 0                     },
+    { key: 'pi',      label: 'Proforma', count: piList.length          },
+    { key: 'invoice', label: 'Invoice',  count: invoices.length        },
+    { key: 'returns', label: 'Returns',  count: returnRequests.length  },
   ];
 
   const filteredPI = piList.filter((p) => {
@@ -157,7 +167,8 @@ export function ProformaList({
     return (
       inv.invoiceNumber.toLowerCase().includes(q) ||
       inv.client.customerName.toLowerCase().includes(q) ||
-      (inv.dispatchOrder?.doNumber ?? '').toLowerCase().includes(q)
+      (inv.dispatchOrder?.doNumber ?? '').toLowerCase().includes(q) ||
+      (inv.dispatchOrder?.order?.orderNumber ?? '').toLowerCase().includes(q)
     );
   });
 
@@ -173,52 +184,58 @@ export function ProformaList({
 
   const canCreateReturn = ['SALES', 'ADMIN', 'ACCOUNTS', 'PRODUCTION_MANAGER'].includes(role);
 
+  // Month groups for invoice tab
+  const monthGroups = buildMonthGroups(filteredInvoices);
+
+  const toggleMonth = (key: string) =>
+    setOpenMonths((p) => ({ ...p, [key]: p[key] === false }));
+  const toggleDO = (key: string) =>
+    setOpenDOs((p) => ({ ...p, [key]: p[key] === false }));
+
   return (
     <div>
       {/* Tabs + contextual action button */}
       <div className="flex items-center gap-2 mb-4">
         <div className="flex flex-1 gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
           {tabs.map((t) => (
-            <button key={t.key} type="button" onClick={() => setTab(t.key)}
+            <button key={t.key} type="button" onClick={() => { setTab(t.key); setSearch(''); }}
               className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${tab === t.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
               style={tab === t.key ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
-              {t.key === 'status' ? 'Status' : `${t.label} (${t.count})`}
+              {t.label} ({t.count})
             </button>
           ))}
         </div>
-        {/* + New button — only on PI tab */}
+        {/* + New PI */}
         {tab === 'pi' && canCreate && (
-          <Link
-            href="/sales/new"
-            className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
-            style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}
-          >
+          <Link href="/sales/new" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
+            style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
             + New
           </Link>
         )}
-        {/* + New Return button — only on Returns tab */}
+        {/* + New Return */}
         {tab === 'returns' && canCreateReturn && (
-          <Link
-            href="/sales/returns/new"
-            className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
-            style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}
-          >
+          <Link href="/sales/returns/new" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
+            style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
             + New Return
           </Link>
         )}
       </div>
 
-      {/* Search — not shown on status tab */}
-      {tab !== 'status' && (
-        <input
-          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500 mb-3"
-          placeholder="Search…"
-          value={search} onChange={(e) => setSearch(e.target.value)}
-        />
-      )}
+      {/* Search bar */}
+      <input
+        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500 mb-3"
+        placeholder={
+          tab === 'invoice' ? 'Search by customer, invoice no., or DO…'
+          : tab === 'returns' ? 'Search by customer, return no., or issue…'
+          : 'Search by customer or invoice no…'
+        }
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
 
       {/* List */}
       <div className="space-y-2">
+
         {/* ── PI tab ── */}
         {tab === 'pi' && (
           filteredPI.length === 0 ? (
@@ -250,15 +267,10 @@ export function ProformaList({
                       </p>
                     </Link>
                     <div className="flex items-center gap-2 shrink-0 mt-0.5">
-                      <a
-                        href={`/print/proforma/${p.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Download PDF"
+                      <a href={`/print/proforma/${p.id}`} target="_blank" rel="noopener noreferrer" title="Download PDF"
                         onClick={(e) => e.stopPropagation()}
                         className="flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 hover:text-sky-400 transition-colors"
-                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-                      >
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
                         <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V8m0 8l-3-3m3 3l3-3M4 20h16" />
                         </svg>
@@ -276,115 +288,134 @@ export function ProformaList({
           )
         )}
 
-        {/* ── Invoice tab — grouped by Dispatch Order (folder view) ── */}
-        {tab === 'invoice' && (() => {
-          // Group filtered invoices by DO number
-          const groups: {
-            key: string;
-            doNumber: string | null;
-            orderNumber: string | null;
-            clientName: string;
-            date: string;
-            invoices: InvoiceRow[];
-          }[] = [];
-          const seen = new Map<string, number>();
-          for (const inv of filteredInvoices) {
-            const key = inv.dispatchOrder?.doNumber ?? `no-do-${inv.id}`;
-            if (!seen.has(key)) {
-              seen.set(key, groups.length);
-              groups.push({
-                key,
-                doNumber:    inv.dispatchOrder?.doNumber ?? null,
-                orderNumber: inv.dispatchOrder?.order?.orderNumber ?? null,
-                clientName:  inv.client.customerName,
-                date:        inv.dispatchOrder?.approvedAt ?? inv.createdAt,
-                invoices:    [],
-              });
-            }
-            groups[seen.get(key)!].invoices.push(inv);
-          }
-
-          return groups.length === 0 ? (
+        {/* ── Invoice tab — Month → DO → Invoice (Option A) ── */}
+        {tab === 'invoice' && (
+          monthGroups.length === 0 ? (
             <div className="card p-8 text-center">
               <p className="text-zinc-500 text-sm">No invoices found.</p>
             </div>
           ) : (
-            groups.map((grp) => {
-              const isOpen = openGroups[grp.key] !== false; // default open
+            monthGroups.map((month) => {
+              const monthOpen = openMonths[month.key] !== false; // default open
               return (
-                <div key={grp.key} className="card overflow-hidden">
-                  {/* Folder header */}
+                <div key={month.key} className="space-y-1.5">
+                  {/* ── Month folder ── */}
                   <button
                     type="button"
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.03] transition-colors"
-                    onClick={() => setOpenGroups((p) => ({ ...p, [grp.key]: !isOpen }))}
+                    onClick={() => toggleMonth(month.key)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-colors hover:bg-white/[0.03]"
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
                   >
                     <svg
-                      width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                      className="shrink-0 text-sky-400 transition-transform"
-                      style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                      width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
+                      className="shrink-0 text-sky-500 transition-transform"
+                      style={{ transform: monthOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
                     >
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                     </svg>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-amber-400">
-                      <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                    {/* Calendar icon */}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="shrink-0 text-sky-400">
+                      <rect x="3" y="4" width="18" height="18" rx="2" />
+                      <line x1="16" y1="2" x2="16" y2="6" />
+                      <line x1="8"  y1="2" x2="8"  y2="6" />
+                      <line x1="3"  y1="10" x2="21" y2="10" />
                     </svg>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {grp.doNumber ? (
-                          <span className="font-mono font-semibold text-sm text-white">{grp.doNumber}</span>
-                        ) : (
-                          <span className="font-semibold text-sm text-zinc-400">No Dispatch Order</span>
-                        )}
-                        {grp.orderNumber && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">#{grp.orderNumber}</span>
-                        )}
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                          {grp.invoices.length} invoice{grp.invoices.length !== 1 ? 's' : ''}
-                        </span>
-                      </div>
-                      <p className="text-zinc-500 text-xs mt-0.5">{grp.clientName} · {fmtDate(grp.date)}</p>
-                    </div>
+                    <span className="font-semibold text-sm text-white flex-1">{month.label}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">
+                      {month.count} invoice{month.count !== 1 ? 's' : ''}
+                    </span>
                   </button>
 
-                  {/* Invoices inside folder */}
-                  {isOpen && (
-                    <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                      {grp.invoices.map((inv, idx) => {
-                        const st = SUBTYPE_STYLE[inv.subType] ?? SUBTYPE_STYLE.FULL;
+                  {/* DO folders inside month */}
+                  {monthOpen && (
+                    <div className="ml-3 space-y-1.5">
+                      {month.doGroups.map((grp) => {
+                        const doOpen = openDOs[grp.key] !== false; // default open
                         return (
-                          <div
-                            key={inv.id}
-                            className="flex items-center gap-3 px-4 py-2.5"
-                            style={idx < grp.invoices.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : {}}
-                          >
-                            {/* indent line */}
-                            <div className="w-px h-5 shrink-0 ml-1" style={{ background: 'rgba(255,255,255,0.12)' }} />
-                            <a href={`/print/invoice/${inv.id}`} target="_blank" rel="noopener noreferrer" className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                              <span className="font-mono text-sm text-sky-400 hover:text-sky-300 hover:underline">{inv.invoiceNumber}</span>
-                              <span
-                                className="text-[10px] font-bold px-1.5 py-0.5 rounded border"
-                                style={{ background: st.bg, color: st.color, borderColor: st.color + '44' }}
-                              >
-                                {st.label}
-                              </span>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{inv.currency}</span>
-                              {inv.totalAmount > 0 && (
-                                <span className="text-xs text-zinc-500">{inv.currency} {inv.totalAmount.toLocaleString('en-IN')}</span>
-                              )}
-                            </a>
-                            <a
-                              href={`/print/invoice/${inv.id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="View / Download PDF"
-                              className="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg text-zinc-500 hover:text-sky-400 transition-colors"
-                              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                          <div key={grp.key} className="card overflow-hidden">
+                            {/* DO folder header */}
+                            <button
+                              type="button"
+                              onClick={() => toggleDO(grp.key)}
+                              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-white/[0.03] transition-colors"
                             >
-                              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V8m0 8l-3-3m3 3l3-3M4 20h16" />
+                              <svg
+                                width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                                className="shrink-0 text-amber-400 transition-transform"
+                                style={{ transform: doOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                               </svg>
-                            </a>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-amber-400">
+                                <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                              </svg>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {grp.doNumber ? (
+                                    <span className="font-mono font-semibold text-xs text-white">{grp.doNumber}</span>
+                                  ) : (
+                                    <span className="text-xs text-zinc-500">No DO</span>
+                                  )}
+                                  {grp.orderNumber && (
+                                    <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-500 font-mono">#{grp.orderNumber}</span>
+                                  )}
+                                  <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-500">
+                                    {grp.invoices.length} invoice{grp.invoices.length !== 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                                <p className="text-zinc-500 text-[10px] mt-0.5 truncate">{grp.clientName}</p>
+                              </div>
+                            </button>
+
+                            {/* Invoices inside DO */}
+                            {doOpen && (
+                              <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                                {grp.invoices.map((inv, idx) => {
+                                  const st = SUBTYPE_STYLE[inv.subType] ?? SUBTYPE_STYLE.FULL;
+                                  return (
+                                    <div
+                                      key={inv.id}
+                                      className="flex items-center gap-2.5 pl-8 pr-3 py-2"
+                                      style={idx < grp.invoices.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : {}}
+                                    >
+                                      <div className="w-px h-4 shrink-0" style={{ background: 'rgba(255,255,255,0.1)' }} />
+                                      <a
+                                        href={`/print/invoice/${inv.id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap"
+                                      >
+                                        <span className="font-mono text-xs text-sky-400 hover:text-sky-300 hover:underline">{inv.invoiceNumber}</span>
+                                        <span
+                                          className="text-[9px] font-bold px-1.5 py-0.5 rounded border"
+                                          style={{ background: st.bg, color: st.color, borderColor: st.color + '44' }}
+                                        >
+                                          {st.label}
+                                        </span>
+                                        <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-500">{inv.currency}</span>
+                                        {inv.totalAmount > 0 && (
+                                          <span className="text-[10px] text-zinc-500">
+                                            {inv.currency} {inv.totalAmount.toLocaleString('en-IN')}
+                                          </span>
+                                        )}
+                                      </a>
+                                      <a
+                                        href={`/print/invoice/${inv.id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="View / Download PDF"
+                                        className="shrink-0 flex items-center justify-center w-6 h-6 rounded-lg text-zinc-600 hover:text-sky-400 transition-colors"
+                                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                                      >
+                                        <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V8m0 8l-3-3m3 3l3-3M4 20h16" />
+                                        </svg>
+                                      </a>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -393,17 +424,15 @@ export function ProformaList({
                 </div>
               );
             })
-          );
-        })()}
+          )
+        )}
 
         {/* ── Returns tab ── */}
         {tab === 'returns' && (
           <>
-            {/* Count row */}
             <div className="mb-2">
               <span className="text-xs text-zinc-500">{filteredReturns.length} return{filteredReturns.length !== 1 ? 's' : ''}</span>
             </div>
-
             {filteredReturns.length === 0 ? (
               <div className="card p-8 text-center">
                 <p className="text-zinc-500 text-sm">No return requests found.</p>
@@ -416,16 +445,10 @@ export function ProformaList({
                   <div key={r.id} className="card p-4">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="font-mono font-semibold text-sm">{r.returnNumber}</span>
-                      <span
-                        className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-                        style={{ background: st.bg, color: st.color }}
-                      >
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ background: st.bg, color: st.color }}>
                         {r.status.replace(/_/g, ' ')}
                       </span>
-                      <span
-                        className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-                        style={{ background: tst.bg, color: tst.color }}
-                      >
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ background: tst.bg, color: tst.color }}>
                         {tst.label}
                       </span>
                     </div>
@@ -441,106 +464,6 @@ export function ProformaList({
               })
             )}
           </>
-        )}
-
-        {/* ── Status tab ── */}
-        {tab === 'status' && (
-          statusLoading ? (
-            <div className="card p-8 text-center">
-              <p className="text-zinc-500 text-sm">Loading…</p>
-            </div>
-          ) : statusData.length === 0 ? (
-            <div className="card p-8 text-center">
-              <p className="text-zinc-500 text-sm">No active orders found.</p>
-            </div>
-          ) : (
-            statusData.map((order) => {
-              const stages = order.stages;
-              const inProduction = stages.PS + stages.BB + stages.CA + stages.QC + stages.RW;
-              const inFinalAssembly = stages.FA;
-              const completed = order.readyForDispatch;
-              const remaining = order.quantity - completed;
-
-              // Human-readable status summary
-              let statusLine = '';
-              if (completed === order.quantity) {
-                statusLine = `All ${order.quantity} units complete — ready to dispatch`;
-              } else if (completed > 0) {
-                statusLine = `${completed} unit${completed !== 1 ? 's' : ''} complete · ${remaining} remaining`;
-              } else if (inFinalAssembly > 0) {
-                statusLine = `${inFinalAssembly} unit${inFinalAssembly !== 1 ? 's' : ''} in final assembly`;
-              } else if (inProduction > 0) {
-                statusLine = `Manufacturing in progress · ${inProduction} unit${inProduction !== 1 ? 's' : ''} being built`;
-              } else {
-                statusLine = 'Waiting to start';
-              }
-
-              const pct = order.quantity > 0 ? Math.round((completed / order.quantity) * 100) : 0;
-
-              return (
-                <div key={order.id} className="card p-4 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono font-semibold text-sm text-white">{order.orderNumber}</span>
-                        {completed === order.quantity && order.quantity > 0 ? (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80' }}>
-                            Ready ✓
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(56,189,248,0.1)', color: '#38bdf8' }}>
-                            Manufacturing
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-zinc-400 text-sm mt-0.5">
-                        {order.productName}{order.clientName ? ` · ${order.clientName}` : ''}
-                      </p>
-                    </div>
-                    <span className="text-xs font-semibold text-zinc-300 shrink-0">{pct}%</span>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${pct}%`,
-                        background: pct === 100
-                          ? 'linear-gradient(90deg,#22c55e,#16a34a)'
-                          : 'linear-gradient(90deg,#38bdf8,#0ea5e9)',
-                      }}
-                    />
-                  </div>
-
-                  {/* Status line */}
-                  <p className="text-xs text-zinc-400">{statusLine}</p>
-
-                  {/* Stage pills — only show non-zero stages */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {STAGE_LABELS.map(({ key, label, color }) => {
-                      const count = stages[key];
-                      if (count === 0) return null;
-                      return (
-                        <span
-                          key={key}
-                          className="text-[10px] font-semibold px-2 py-0.5 rounded"
-                          style={{ background: `${color}15`, border: `1px solid ${color}35`, color }}
-                        >
-                          {label} · {count}
-                        </span>
-                      );
-                    })}
-                    {completed > 0 && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#4ade80' }}>
-                        Done · {completed}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )
         )}
       </div>
     </div>
