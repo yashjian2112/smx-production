@@ -875,18 +875,6 @@ model RepairLog {
 }
 
 // ----- Inventory -----
-model PackSize {
-  id               String   @id @default(cuid())
-  name             String                          // e.g. "MOSFET Reel", "SMD Capacitor Reel"
-  purchaseUnit     String   @map("purchase_unit") // e.g. REEL
-  stockUnit        String   @map("stock_unit")    // e.g. PCS
-  conversionFactor Float    @map("conversion_factor") // qty of stockUnit per purchaseUnit
-  description      String?
-  createdAt        DateTime @default(now()) @map("created_at")
-
-  @@map("pack_sizes")
-}
-
 model MaterialCategory {
   id          String   @id @default(cuid())
   name        String
