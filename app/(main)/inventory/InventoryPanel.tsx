@@ -954,7 +954,8 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [fSaving,        setFSaving]        = useState(false);
   const [fError,         setFError]         = useState('');
 
-  const [vendors,  setVendors]  = useState<Vendor[]>([]);
+  const [vendors,    setVendors]    = useState<Vendor[]>([]);
+  const [filterCat,  setFilterCat]  = useState('');
 
   // Inline create category
   const [cName,          setCName]          = useState('');
@@ -1099,13 +1100,18 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
         )}
       </div>
 
-      {/* Categories overview */}
+      {/* Category filter */}
       {categories.length > 0 && (
         <div className="flex gap-2 flex-wrap mb-4">
+          <button onClick={() => setFilterCat('')}
+            className={`px-3 py-1 rounded-lg text-xs transition-colors ${filterCat === '' ? 'bg-sky-600 text-white' : 'text-zinc-400 border border-zinc-700 hover:text-white'}`}>
+            All
+          </button>
           {categories.map(c => (
-            <span key={c.id} className="px-2 py-1 rounded-lg text-xs" style={{ background: 'rgba(14,165,233,0.1)', color: '#38bdf8' }}>
-              <span className="font-mono text-sky-300">{c.code}</span> · {c.name} ({c._count.materials})
-            </span>
+            <button key={c.id} onClick={() => setFilterCat(filterCat === c.id ? '' : c.id)}
+              className={`px-3 py-1 rounded-lg text-xs transition-colors ${filterCat === c.id ? 'bg-sky-600 text-white' : 'text-zinc-400 border border-zinc-700 hover:text-white'}`}>
+              {c.name}
+            </button>
           ))}
         </div>
       )}
@@ -1126,7 +1132,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
       <div className="space-y-2">
-        {materials.map(m => (
+        {materials.filter(m => !filterCat || m.category?.id === filterCat).map(m => (
           <div key={m.id} className="rounded-xl p-4 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
