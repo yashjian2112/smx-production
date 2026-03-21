@@ -96,7 +96,13 @@ export default async function AccountsPage() {
     prisma.invoice.findMany({
       include: {
         client:        { select: { id: true, code: true, customerName: true, globalOrIndian: true } },
-        dispatchOrder: { select: { doNumber: true, approvedAt: true } },
+        dispatchOrder: {
+          select: {
+            doNumber:  true,
+            approvedAt: true,
+            order: { select: { orderNumber: true } },
+          },
+        },
         _count:        { select: { items: true } },
       },
       orderBy: { createdAt: 'desc' },
