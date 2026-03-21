@@ -78,7 +78,7 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-// ── Month → DO grouping helper ──────────────────────────────────────────────
+// ── Grouping helpers ─────────────────────────────────────────────────────────
 type DOGroup = {
   key: string;
   doNumber: string | null;
@@ -92,6 +92,27 @@ type MonthGroup = {
   count: number;
   doGroups: DOGroup[];
 };
+
+// Group by DO only (no month wrapper — used for Current tab)
+function buildDOGroups(invoices: InvoiceRow[]): DOGroup[] {
+  const groups: DOGroup[] = [];
+  const seen = new Map<string, number>();
+  for (const inv of invoices) {
+    const key = inv.dispatchOrder?.doNumber ?? `no-do-${inv.id}`;
+    if (!seen.has(key)) {
+      seen.set(key, groups.length);
+      groups.push({
+        key,
+        doNumber:    inv.dispatchOrder?.doNumber ?? null,
+        orderNumber: inv.dispatchOrder?.order?.orderNumber ?? null,
+        clientName:  inv.client.customerName,
+        invoices:    [],
+      });
+    }
+    groups[seen.get(key)!].invoices.push(inv);
+  }
+  return groups;
+}
 
 function buildMonthGroups(invoices: InvoiceRow[]): MonthGroup[] {
   const months: MonthGroup[] = [];
@@ -127,6 +148,102 @@ function buildMonthGroups(invoices: InvoiceRow[]): MonthGroup[] {
   return months;
 }
 
+// ── Reusable DO folder component ─────────────────────────────────────────────
+function InvoiceDOFolder({
+  grp,
+  isOpen,
+  onToggle,
+}: {
+  grp: DOGroup;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="card overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-white/[0.03] transition-colors"
+      >
+        <svg
+          width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+          className="shrink-0 text-amber-400"
+          style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-amber-400">
+          <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+        </svg>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {grp.doNumber
+              ? <span className="font-mono font-semibold text-xs text-white">{grp.doNumber}</span>
+              : <span className="text-xs text-zinc-500">No DO</span>
+            }
+            {grp.orderNumber && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-500 font-mono">#{grp.orderNumber}</span>
+            )}
+            <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-500">
+              {grp.invoices.length} invoice{grp.invoices.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <p className="text-zinc-500 text-[10px] mt-0.5 truncate">{grp.clientName}</p>
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+          {grp.invoices.map((inv, idx) => {
+            const st = SUBTYPE_STYLE[inv.subType] ?? SUBTYPE_STYLE.FULL;
+            return (
+              <div
+                key={inv.id}
+                className="flex items-center gap-2.5 pl-8 pr-3 py-2"
+                style={idx < grp.invoices.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : {}}
+              >
+                <div className="w-px h-4 shrink-0" style={{ background: 'rgba(255,255,255,0.1)' }} />
+                <a
+                  href={`/print/invoice/${inv.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap"
+                >
+                  <span className="font-mono text-xs text-sky-400 hover:text-sky-300 hover:underline">{inv.invoiceNumber}</span>
+                  <span
+                    className="text-[9px] font-bold px-1.5 py-0.5 rounded border"
+                    style={{ background: st.bg, color: st.color, borderColor: st.color + '44' }}
+                  >
+                    {st.label}
+                  </span>
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-500">{inv.currency}</span>
+                  {inv.totalAmount > 0 && (
+                    <span className="text-[10px] text-zinc-500">
+                      {inv.currency} {inv.totalAmount.toLocaleString('en-IN')}
+                    </span>
+                  )}
+                </a>
+                <a
+                  href={`/print/invoice/${inv.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="View / Download PDF"
+                  className="shrink-0 flex items-center justify-center w-6 h-6 rounded-lg text-zinc-600 hover:text-sky-400 transition-colors"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                >
+                  <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V8m0 8l-3-3m3 3l3-3M4 20h16" />
+                  </svg>
+                </a>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProformaList({
   proformas,
   role,
@@ -142,10 +259,16 @@ export function ProformaList({
   returnRequests?: ReturnRequestRow[];
   canCreate?: boolean;
 }) {
-  const [tab, setTab]           = useState<TabKey>(initialTab ?? 'pi');
-  const [search, setSearch]     = useState('');
-  const [openMonths, setOpenMonths] = useState<Record<string, boolean>>({});
-  const [openDOs,    setOpenDOs]    = useState<Record<string, boolean>>({});
+  const [tab, setTab]               = useState<TabKey>(initialTab ?? 'pi');
+  const [search, setSearch]         = useState('');
+  const [invSubTab, setInvSubTab]   = useState<'current' | 'history'>('current');
+  const [openDOs,          setOpenDOs]          = useState<Record<string, boolean>>({});
+  const [openHistoryMonths, setOpenHistoryMonths] = useState<Record<string, boolean>>({});
+
+  // Current month key e.g. "2026-03"
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const currentMonthLabel = now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
   const piList = proformas.filter((p) => p.invoiceNumber.startsWith('TSM/PI/') && p.invoiceType === 'SALE');
 
@@ -161,17 +284,6 @@ export function ProformaList({
     return p.invoiceNumber.toLowerCase().includes(q) || p.client.customerName.toLowerCase().includes(q);
   });
 
-  const filteredInvoices = invoices.filter((inv) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      inv.invoiceNumber.toLowerCase().includes(q) ||
-      inv.client.customerName.toLowerCase().includes(q) ||
-      (inv.dispatchOrder?.doNumber ?? '').toLowerCase().includes(q) ||
-      (inv.dispatchOrder?.order?.orderNumber ?? '').toLowerCase().includes(q)
-    );
-  });
-
   const filteredReturns = returnRequests.filter((r) => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -184,13 +296,42 @@ export function ProformaList({
 
   const canCreateReturn = ['SALES', 'ADMIN', 'ACCOUNTS', 'PRODUCTION_MANAGER'].includes(role);
 
-  // Month groups for invoice tab
-  const monthGroups = buildMonthGroups(filteredInvoices);
+  // Split invoices: current month vs history
+  const currentInvoices = invoices.filter((inv) => {
+    const d = new Date(inv.dispatchOrder?.approvedAt ?? inv.createdAt);
+    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return k === currentMonthKey;
+  });
+  const historyInvoices = invoices.filter((inv) => {
+    const d = new Date(inv.dispatchOrder?.approvedAt ?? inv.createdAt);
+    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return k !== currentMonthKey;
+  });
 
-  const toggleMonth = (key: string) =>
-    setOpenMonths((p) => ({ ...p, [key]: p[key] === false }));
+  // Apply search filter
+  function matchesSearch(inv: InvoiceRow, q: string) {
+    return (
+      inv.invoiceNumber.toLowerCase().includes(q) ||
+      inv.client.customerName.toLowerCase().includes(q) ||
+      (inv.dispatchOrder?.doNumber ?? '').toLowerCase().includes(q) ||
+      (inv.dispatchOrder?.order?.orderNumber ?? '').toLowerCase().includes(q)
+    );
+  }
+  const filteredCurrent = search
+    ? currentInvoices.filter((inv) => matchesSearch(inv, search.toLowerCase()))
+    : currentInvoices;
+  const filteredHistory = search
+    ? historyInvoices.filter((inv) => matchesSearch(inv, search.toLowerCase()))
+    : historyInvoices;
+
+  // DO groups for current tab; Month groups for history tab
+  const currentDOGroups  = buildDOGroups(filteredCurrent);
+  const historyMonthGroups = buildMonthGroups(filteredHistory);
+
   const toggleDO = (key: string) =>
     setOpenDOs((p) => ({ ...p, [key]: p[key] === false }));
+  const toggleHistoryMonth = (key: string) =>
+    setOpenHistoryMonths((p) => ({ ...p, [key]: !p[key] })); // default closed
 
   return (
     <div>
@@ -221,17 +362,21 @@ export function ProformaList({
         )}
       </div>
 
-      {/* Search bar */}
-      <input
-        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500 mb-3"
-        placeholder={
-          tab === 'invoice' ? 'Search by customer, invoice no., or DO…'
-          : tab === 'returns' ? 'Search by customer, return no., or issue…'
-          : 'Search by customer or invoice no…'
-        }
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
+      {/* Search bar — hidden on Invoice/Current (shows all), visible on History & other tabs */}
+      {!(tab === 'invoice' && invSubTab === 'current') && (
+        <input
+          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500 mb-3"
+          placeholder={
+            tab === 'invoice' && invSubTab === 'history'
+              ? 'Search history by customer, invoice no., or DO…'
+              : tab === 'returns'
+              ? 'Search by customer, return no., or issue…'
+              : 'Search by customer or invoice no…'
+          }
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      )}
 
       {/* List */}
       <div className="space-y-2">
@@ -288,143 +433,132 @@ export function ProformaList({
           )
         )}
 
-        {/* ── Invoice tab — Month → DO → Invoice (Option A) ── */}
+        {/* ── Invoice tab — Current / History sub-tabs ── */}
         {tab === 'invoice' && (
-          monthGroups.length === 0 ? (
-            <div className="card p-8 text-center">
-              <p className="text-zinc-500 text-sm">No invoices found.</p>
+          <div className="space-y-3">
+            {/* Sub-tab toggle */}
+            <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <button
+                type="button"
+                onClick={() => { setInvSubTab('current'); setSearch(''); }}
+                className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${invSubTab === 'current' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                style={invSubTab === 'current' ? { background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)' } : {}}
+              >
+                Current — {currentMonthLabel}
+                <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={invSubTab === 'current'
+                    ? { background: 'rgba(34,197,94,0.2)', color: '#4ade80' }
+                    : { background: 'rgba(255,255,255,0.06)', color: '#71717a' }}>
+                  {currentInvoices.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setInvSubTab('history'); setSearch(''); }}
+                className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${invSubTab === 'history' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                style={invSubTab === 'history' ? { background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)' } : {}}
+              >
+                History
+                <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={invSubTab === 'history'
+                    ? { background: 'rgba(14,165,233,0.2)', color: '#38bdf8' }
+                    : { background: 'rgba(255,255,255,0.06)', color: '#71717a' }}>
+                  {historyInvoices.length}
+                </span>
+              </button>
             </div>
-          ) : (
-            monthGroups.map((month) => {
-              const monthOpen = openMonths[month.key] !== false; // default open
-              return (
-                <div key={month.key} className="space-y-1.5">
-                  {/* ── Month folder ── */}
-                  <button
-                    type="button"
-                    onClick={() => toggleMonth(month.key)}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-colors hover:bg-white/[0.03]"
-                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
-                  >
-                    <svg
-                      width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
-                      className="shrink-0 text-sky-500 transition-transform"
-                      style={{ transform: monthOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                    {/* Calendar icon */}
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="shrink-0 text-sky-400">
-                      <rect x="3" y="4" width="18" height="18" rx="2" />
-                      <line x1="16" y1="2" x2="16" y2="6" />
-                      <line x1="8"  y1="2" x2="8"  y2="6" />
-                      <line x1="3"  y1="10" x2="21" y2="10" />
-                    </svg>
-                    <span className="font-semibold text-sm text-white flex-1">{month.label}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">
-                      {month.count} invoice{month.count !== 1 ? 's' : ''}
-                    </span>
-                  </button>
 
-                  {/* DO folders inside month */}
-                  {monthOpen && (
-                    <div className="ml-3 space-y-1.5">
-                      {month.doGroups.map((grp) => {
-                        const doOpen = openDOs[grp.key] !== false; // default open
-                        return (
-                          <div key={grp.key} className="card overflow-hidden">
-                            {/* DO folder header */}
-                            <button
-                              type="button"
-                              onClick={() => toggleDO(grp.key)}
-                              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-white/[0.03] transition-colors"
-                            >
-                              <svg
-                                width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                                className="shrink-0 text-amber-400 transition-transform"
-                                style={{ transform: doOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
-                              >
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                              </svg>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-amber-400">
-                                <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                              </svg>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  {grp.doNumber ? (
-                                    <span className="font-mono font-semibold text-xs text-white">{grp.doNumber}</span>
-                                  ) : (
-                                    <span className="text-xs text-zinc-500">No DO</span>
-                                  )}
-                                  {grp.orderNumber && (
-                                    <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-500 font-mono">#{grp.orderNumber}</span>
-                                  )}
-                                  <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-500">
-                                    {grp.invoices.length} invoice{grp.invoices.length !== 1 ? 's' : ''}
-                                  </span>
-                                </div>
-                                <p className="text-zinc-500 text-[10px] mt-0.5 truncate">{grp.clientName}</p>
-                              </div>
-                            </button>
-
-                            {/* Invoices inside DO */}
-                            {doOpen && (
-                              <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                                {grp.invoices.map((inv, idx) => {
-                                  const st = SUBTYPE_STYLE[inv.subType] ?? SUBTYPE_STYLE.FULL;
-                                  return (
-                                    <div
-                                      key={inv.id}
-                                      className="flex items-center gap-2.5 pl-8 pr-3 py-2"
-                                      style={idx < grp.invoices.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : {}}
-                                    >
-                                      <div className="w-px h-4 shrink-0" style={{ background: 'rgba(255,255,255,0.1)' }} />
-                                      <a
-                                        href={`/print/invoice/${inv.id}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap"
-                                      >
-                                        <span className="font-mono text-xs text-sky-400 hover:text-sky-300 hover:underline">{inv.invoiceNumber}</span>
-                                        <span
-                                          className="text-[9px] font-bold px-1.5 py-0.5 rounded border"
-                                          style={{ background: st.bg, color: st.color, borderColor: st.color + '44' }}
-                                        >
-                                          {st.label}
-                                        </span>
-                                        <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-500">{inv.currency}</span>
-                                        {inv.totalAmount > 0 && (
-                                          <span className="text-[10px] text-zinc-500">
-                                            {inv.currency} {inv.totalAmount.toLocaleString('en-IN')}
-                                          </span>
-                                        )}
-                                      </a>
-                                      <a
-                                        href={`/print/invoice/${inv.id}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        title="View / Download PDF"
-                                        className="shrink-0 flex items-center justify-center w-6 h-6 rounded-lg text-zinc-600 hover:text-sky-400 transition-colors"
-                                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-                                      >
-                                        <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V8m0 8l-3-3m3 3l3-3M4 20h16" />
-                                        </svg>
-                                      </a>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+            {/* ── CURRENT: DO → Invoice folders (this month only) ── */}
+            {invSubTab === 'current' && (
+              currentDOGroups.length === 0 ? (
+                <div className="card p-8 text-center">
+                  <p className="text-zinc-500 text-sm">No invoices this month.</p>
+                  {search && <p className="text-zinc-600 text-xs mt-1">Try clearing your search</p>}
                 </div>
-              );
-            })
-          )
+              ) : (
+                <div className="space-y-2">
+                  {currentDOGroups.map((grp) => {
+                    const doOpen = openDOs[grp.key] !== false; // default open
+                    return (
+                      <InvoiceDOFolder
+                        key={grp.key}
+                        grp={grp}
+                        isOpen={doOpen}
+                        onToggle={() => toggleDO(grp.key)}
+                      />
+                    );
+                  })}
+                </div>
+              )
+            )}
+
+            {/* ── HISTORY: Month (collapsed) → DO → Invoice ── */}
+            {invSubTab === 'history' && (
+              <>
+                {historyMonthGroups.length === 0 ? (
+                  <div className="card p-8 text-center">
+                    {search
+                      ? <p className="text-zinc-500 text-sm">No results for &ldquo;{search}&rdquo;</p>
+                      : <p className="text-zinc-500 text-sm">No historical invoices found.</p>
+                    }
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {historyMonthGroups.map((month) => {
+                      // History months: collapsed by default, open when search active OR user clicked
+                      const monthOpen = search ? true : !!openHistoryMonths[month.key];
+                      return (
+                        <div key={month.key} className="space-y-1.5">
+                          {/* Month folder */}
+                          <button
+                            type="button"
+                            onClick={() => toggleHistoryMonth(month.key)}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-colors hover:bg-white/[0.03]"
+                            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
+                          >
+                            <svg
+                              width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
+                              className="shrink-0 text-sky-500"
+                              style={{ transform: monthOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="shrink-0 text-sky-400">
+                              <rect x="3" y="4" width="18" height="18" rx="2" />
+                              <line x1="16" y1="2" x2="16" y2="6" />
+                              <line x1="8"  y1="2" x2="8"  y2="6" />
+                              <line x1="3"  y1="10" x2="21" y2="10" />
+                            </svg>
+                            <span className="font-semibold text-sm text-white flex-1">{month.label}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">
+                              {month.count} invoice{month.count !== 1 ? 's' : ''}
+                            </span>
+                          </button>
+
+                          {/* DO folders inside month */}
+                          {monthOpen && (
+                            <div className="ml-3 space-y-1.5">
+                              {month.doGroups.map((grp) => {
+                                const doOpen = openDOs[grp.key] !== false;
+                                return (
+                                  <InvoiceDOFolder
+                                    key={grp.key}
+                                    grp={grp}
+                                    isOpen={doOpen}
+                                    onToggle={() => toggleDO(grp.key)}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         )}
 
         {/* ── Returns tab ── */}
