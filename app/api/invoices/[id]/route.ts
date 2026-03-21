@@ -42,3 +42,25 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
+
+// PATCH — update invoice notes (used for saving tracking number)
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const session = await requireSession();
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING', 'PRODUCTION_MANAGER');
+
+    const body = await req.json() as { notes?: string };
+    const invoice = await prisma.invoice.update({
+      where: { id: params.id },
+      data:  { notes: body.notes ?? null },
+    });
+    return NextResponse.json(invoice);
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Unauthorized')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (e instanceof Error && e.message === 'Forbidden')
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    console.error(e);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}

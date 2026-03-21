@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useCallback } from 'react';
 import { useState } from 'react';
 
 type ProformaRow = {
@@ -22,6 +23,7 @@ type InvoiceRow = {
   currency: string;
   totalAmount: number;
   createdAt: string;
+  notes: string | null;
   client: { id: string; code: string; customerName: string; globalOrIndian: string | null };
   dispatchOrder: { doNumber: string; approvedAt: string | null; order: { orderNumber: string } | null } | null;
   _count: { items: number };
@@ -148,18 +150,68 @@ function buildMonthGroups(invoices: InvoiceRow[]): MonthGroup[] {
   return months;
 }
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+function parseTracking(notes: string | null): string {
+  if (!notes) return '';
+  const line = notes.split('\n').find((l) => l.startsWith('Tracking:'));
+  return line ? line.replace('Tracking:', '').trim() : '';
+}
+
+function buildUpdatedNotes(notes: string | null, tracking: string): string {
+  const lines = (notes ?? '').split('\n').filter((l) => !l.startsWith('Tracking:'));
+  if (tracking.trim()) lines.push(`Tracking: ${tracking.trim()}`);
+  return lines.join('\n').trim();
+}
+
 // ── Reusable DO folder component ─────────────────────────────────────────────
 function InvoiceDOFolder({
   grp,
   isOpen,
   onToggle,
+  showTracking = false,
+  onTrackingSaved,
 }: {
   grp: DOGroup;
   isOpen: boolean;
   onToggle: () => void;
+  showTracking?: boolean;
+  onTrackingSaved?: () => void;
 }) {
+  // Derive tracking from first invoice that has it, or empty
+  const initialTracking = grp.invoices.map((inv) => parseTracking(inv.notes)).find((t) => t) ?? '';
+
+  // localTracking mirrors DB after save without needing a page reload
+  const [localTracking, setLocalTracking] = useState(initialTracking);
+  const [trackingInput, setTrackingInput] = useState(initialTracking);
+  const [editing, setEditing]             = useState(false);
+  const [saving, setSaving]               = useState(false);
+
+  const hasTracking = !!localTracking;
+
+  const saveTracking = useCallback(async () => {
+    if (!trackingInput.trim()) return;
+    setSaving(true);
+    try {
+      await Promise.all(
+        grp.invoices.map((inv) =>
+          fetch(`/api/invoices/${inv.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: buildUpdatedNotes(inv.notes, trackingInput) }),
+          })
+        )
+      );
+      setLocalTracking(trackingInput.trim());
+      setEditing(false);
+      onTrackingSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }, [grp.invoices, trackingInput, onTrackingSaved]);
+
   return (
     <div className="card overflow-hidden">
+      {/* ── Folder header ── */}
       <button
         type="button"
         onClick={onToggle}
@@ -187,11 +239,78 @@ function InvoiceDOFolder({
             <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-500">
               {grp.invoices.length} invoice{grp.invoices.length !== 1 ? 's' : ''}
             </span>
+            {/* Tracking badge — only in Current tab */}
+            {showTracking && (
+              hasTracking
+                ? <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-1"
+                    style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80' }}>
+                    ✓ {localTracking}
+                  </span>
+                : <span className="text-[9px] font-bold px-1.5 py-0.5 rounded animate-pulse"
+                    style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}>
+                    ⚠ No tracking
+                  </span>
+            )}
           </div>
           <p className="text-zinc-500 text-[10px] mt-0.5 truncate">{grp.clientName}</p>
         </div>
       </button>
 
+      {/* ── Tracking input row (Current tab only, shown even when folder collapsed) ── */}
+      {showTracking && !hasTracking && !editing && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 border-t"
+          style={{ borderColor: 'rgba(251,191,36,0.15)', background: 'rgba(251,191,36,0.04)' }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          <span className="text-[10px] text-amber-400 flex-1">Add tracking number for this shipment</span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+            className="text-[10px] font-semibold px-2 py-1 rounded-lg transition-colors"
+            style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}
+          >
+            + Add
+          </button>
+        </div>
+      )}
+
+      {showTracking && editing && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 border-t"
+          style={{ borderColor: 'rgba(251,191,36,0.2)', background: 'rgba(251,191,36,0.04)' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            autoFocus
+            className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500"
+            placeholder="e.g. DHL1234567890"
+            value={trackingInput}
+            onChange={(e) => setTrackingInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') saveTracking(); if (e.key === 'Escape') setEditing(false); }}
+          />
+          <button
+            type="button"
+            onClick={saveTracking}
+            disabled={saving || !trackingInput.trim()}
+            className="text-[10px] font-semibold px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40"
+            style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}
+          >
+            {saving ? '…' : 'Save'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setEditing(false); setTrackingInput(localTracking); }}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300 px-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* ── Invoices inside DO ── */}
       {isOpen && (
         <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
           {grp.invoices.map((inv, idx) => {
@@ -294,7 +413,7 @@ export function ProformaList({
     );
   });
 
-  const canCreateReturn = ['SALES', 'ADMIN', 'ACCOUNTS', 'PRODUCTION_MANAGER'].includes(role);
+  const canCreateReturn = ['SALES', 'ADMIN'].includes(role);
 
   // Split invoices: current month vs history
   const currentInvoices = invoices.filter((inv) => {
@@ -485,6 +604,7 @@ export function ProformaList({
                         grp={grp}
                         isOpen={doOpen}
                         onToggle={() => toggleDO(grp.key)}
+                        showTracking={true}
                       />
                     );
                   })}
