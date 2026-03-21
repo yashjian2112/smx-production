@@ -6,7 +6,7 @@ const TABS = ['Stock', 'GRN', 'Materials', 'Job Cards', 'Reports', 'Movements'] 
 type Tab = typeof TABS[number];
 
 interface RawMaterial {
-  id: string; code: string; name: string; unit: string; active: boolean;
+  id: string; code: string; barcode?: string | null; name: string; unit: string; active: boolean;
   purchaseUnit?: string | null; conversionFactor?: number | null;
   description?: string | null; hsnCode?: string | null;
   purchasePrice?: number; leadTimeDays?: number;
@@ -1154,7 +1154,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
       )}
       <div className="space-y-2">
         {materials.filter(m => {
-          if (search && !m.name.toLowerCase().includes(search.toLowerCase()) && !m.code.toLowerCase().includes(search.toLowerCase())) return false;
+          if (search && !m.name.toLowerCase().includes(search.toLowerCase()) && !m.code.toLowerCase().includes(search.toLowerCase()) && !(m.barcode ?? '').toLowerCase().includes(search.toLowerCase())) return false;
           if (filterCat && m.category?.id !== filterCat) return false;
           if (filterStock === 'critical' && !m.isCritical) return false;
           if (filterStock === 'low' && !m.isLowStock) return false;
@@ -1164,7 +1164,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-white font-medium">{m.name}</span>
-                <span className="text-zinc-500 text-xs font-mono">{m.code}</span>
+                <span className="text-zinc-500 text-xs font-mono">{m.barcode ?? m.code}</span>
                 {m.category && <Badge color="sky">{m.category.name}</Badge>}
                 {!m.active && <Badge color="zinc">Inactive</Badge>}
               </div>
