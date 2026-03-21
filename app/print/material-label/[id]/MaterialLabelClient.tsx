@@ -13,11 +13,11 @@ export default function MaterialLabelClient({ material }: Props) {
     if (svgRef.current) {
       JsBarcode(svgRef.current, material.barcode, {
         format: 'CODE128',
-        width: 2,
-        height: 60,
+        width: 1.4,
+        height: 28,
         displayValue: true,
-        fontSize: 12,
-        margin: 8,
+        fontSize: 8,
+        margin: 4,
         background: '#ffffff',
         lineColor: '#000000',
       });
@@ -32,19 +32,19 @@ export default function MaterialLabelClient({ material }: Props) {
         <style>{`
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; background: white; }
-          @page { size: 62mm 40mm; margin: 0; }
+          @page { size: 50mm 25mm; margin: 0; }
           .label {
-            width: 62mm; height: 40mm;
-            border: 1px solid #ccc;
-            padding: 3mm;
+            width: 50mm; height: 25mm;
+            padding: 1.5mm 2mm;
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
-            gap: 2mm;
+            gap: 1mm;
+            overflow: hidden;
           }
-          .name { font-size: 9pt; font-weight: bold; text-align: center; max-width: 56mm; }
-          .meta { font-size: 7pt; color: #555; text-align: center; }
-          svg { max-width: 56mm; }
-          @media print { body { print-color-adjust: exact; } }
+          .name { font-size: 6.5pt; font-weight: bold; text-align: center; max-width: 46mm; line-height: 1.2; }
+          .meta { font-size: 5.5pt; color: #333; text-align: center; }
+          svg { max-width: 46mm; }
+          @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
         `}</style>
       </head>
       <body>
