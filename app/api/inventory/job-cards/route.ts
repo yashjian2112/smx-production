@@ -7,10 +7,17 @@ import { StageType } from '@prisma/client';
 export async function GET(req: NextRequest) {
   await requireSession();
   const { searchParams } = new URL(req.url);
-  const status = searchParams.get('status');
+  const status  = searchParams.get('status');
+  const unitId  = searchParams.get('unitId');
+  const stage   = searchParams.get('stage');
+
+  const where: Record<string, unknown> = {};
+  if (status) where.status = status;
+  if (unitId) where.unitId = unitId;
+  if (stage)  where.stage  = stage;
 
   const cards = await prisma.jobCard.findMany({
-    where: status ? { status: status as any } : {},
+    where,
     include: {
       order: { select: { orderNumber: true } },
       unit: { select: { serialNumber: true } },
@@ -18,7 +25,7 @@ export async function GET(req: NextRequest) {
       issuedBy: { select: { name: true } },
       items: {
         include: {
-          rawMaterial: { select: { id: true, name: true, code: true, unit: true, barcode: true } },
+          rawMaterial: { select: { id: true, name: true, code: true, unit: true, barcode: true, currentStock: true, purchaseUnit: true, conversionFactor: true } },
           batch: { select: { id: true, batchCode: true, remainingQty: true } },
         }
       }
@@ -48,17 +55,16 @@ export async function POST(req: NextRequest) {
   const voltage = unit.order.voltage;
   const productId = unit.order.productId;
 
-  // Get BOM items for this product+voltage+stage
+  // Get BOM items for this product+voltage+stage (null stage = applies to all stages)
   const bomItems = await prisma.bOMItem.findMany({
     where: {
       productId,
-      stage: stage as StageType,
-      OR: [
-        { voltage: voltage },
-        { voltage: null }, // applies to all voltages
-      ]
+      AND: [
+        { OR: [{ stage: stage as StageType }, { stage: null }] },
+        { OR: [{ voltage: voltage }, { voltage: null }] },
+      ],
     },
-    include: { rawMaterial: true }
+    include: { rawMaterial: { include: { category: { select: { code: true } } } } }
   });
 
   const cardNumber = await generateNextJobCardNumber();

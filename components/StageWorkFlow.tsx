@@ -161,7 +161,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
   // analyzing → AI running
   // result  → PASS / FAIL shown
   // completed → stage already done
-  const [step, setStep] = useState<'loading' | 'idle' | 'working' | 'open' | 'analyzing' | 'result' | 'completed'>('loading');
+  const [step, setStep] = useState<'loading' | 'jc_create' | 'jc_waiting' | 'idle' | 'working' | 'open' | 'analyzing' | 'result' | 'completed'>('loading');
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [capturedImage, setCapturedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -169,6 +169,11 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
   const [result, setResult] = useState<{ result: string; issues: Issue[]; summary: string } | null>(null);
   const [error, setError] = useState('');
   const [startingWork, setStartingWork] = useState(false);
+
+  // ── job card state ─────────────────────────────────────────────────────────
+  const [jobCard, setJobCard] = useState<{ id: string; cardNumber: string; status: string; items: { rawMaterial: { name: string; unit: string; barcode?: string | null }; quantityReq: number }[] } | null>(null);
+  const [jcCreating, setJcCreating] = useState(false);
+  const [jcError, setJcError] = useState('');
 
 
   // ── multi-zone photo wizard ────────────────────────────────────────────────
@@ -256,19 +261,43 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
       return;
     }
 
-    // PENDING — auto-start work
-    fetch(`/api/units/${unitId}/work`, { method: 'POST' })
+    // PENDING — check job card first
+    if (!orderId) {
+      // No order context — proceed directly (legacy units)
+      fetch(`/api/units/${unitId}/work`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          if (data?.id) { setSubmission(data); setStep('working'); }
+          else setStep('idle');
+        })
+        .catch(() => setStep('idle'));
+      return;
+    }
+
+    fetch(`/api/inventory/job-cards?unitId=${unitId}&stage=${currentStage}`)
       .then(r => r.json())
-      .then(data => {
-        if (data?.id) {
-          setSubmission(data);
-          setStep('working');
+      .then((cards: { id: string; cardNumber: string; status: string; items: { rawMaterial: { name: string; unit: string; barcode?: string | null }; quantityReq: number }[] }[]) => {
+        const existing = cards[0];
+        if (!existing) {
+          setStep('jc_create');
+        } else if (existing.status === 'ISSUED' || existing.status === 'COMPLETED') {
+          setJobCard(existing);
+          // Job card issued — proceed with work
+          fetch(`/api/units/${unitId}/work`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+              if (data?.id) { setSubmission(data); setStep('working'); }
+              else setStep('idle');
+            })
+            .catch(() => setStep('idle'));
         } else {
-          setStep('idle');
+          // PENDING — waiting for IM to issue
+          setJobCard(existing);
+          setStep('jc_waiting');
         }
       })
-      .catch(() => setStep('idle'));
-  }, [unitId, currentStatus]);
+      .catch(() => setStep('jc_create'));
+  }, [unitId, currentStatus, currentStage, orderId]);
 
   // ── manual start (fallback) ────────────────────────────────────────────────
   async function startWork() {
@@ -287,6 +316,45 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
       setError('Network error. Please try again.');
     } finally {
       setStartingWork(false);
+    }
+  }
+
+  // ── job card helpers ───────────────────────────────────────────────────────
+  async function createJobCard() {
+    if (!orderId) return;
+    setJcCreating(true); setJcError('');
+    try {
+      const res = await fetch('/api/inventory/job-cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, unitId, stage: currentStage }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setJobCard(data);
+        setStep('jc_waiting');
+      } else {
+        setJcError(data?.error ?? 'Failed to create job card');
+      }
+    } catch {
+      setJcError('Network error');
+    } finally {
+      setJcCreating(false);
+    }
+  }
+
+  async function refreshJobCard() {
+    const res = await fetch(`/api/inventory/job-cards?unitId=${unitId}&stage=${currentStage}`);
+    const cards = await res.json();
+    const card = cards[0];
+    if (!card) return;
+    setJobCard(card);
+    if (card.status === 'ISSUED' || card.status === 'COMPLETED') {
+      // Materials issued — start work
+      const wr = await fetch(`/api/units/${unitId}/work`, { method: 'POST' });
+      const wd = await wr.json();
+      if (wd?.id) { setSubmission(wd); setStep('working'); }
+      else setStep('idle');
     }
   }
 
@@ -573,6 +641,62 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
       <div className="rounded-2xl p-5 text-center" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
         <p className="text-green-400 font-semibold">Stage completed</p>
         <p className="text-zinc-500 text-xs mt-1">This unit has moved to the next stage.</p>
+      </div>
+    );
+  }
+
+  // ── job card: create ──────────────────────────────────────────────────────
+  if (step === 'jc_create') {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl p-5" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)' }}>
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-2xl">📋</span>
+            <div>
+              <p className="text-white font-semibold text-sm">Request Materials</p>
+              <p className="text-zinc-400 text-xs">Create a job card so the Inventory Manager can issue components for this stage</p>
+            </div>
+          </div>
+          {jcError && <p className="text-red-400 text-xs mb-2">{jcError}</p>}
+          <button onClick={createJobCard} disabled={jcCreating}
+            className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50"
+            style={{ background: jcCreating ? 'rgba(14,165,233,0.3)' : 'rgba(14,165,233,0.8)' }}>
+            {jcCreating ? 'Creating…' : '+ Create Job Card'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── job card: waiting for IM to issue ─────────────────────────────────────
+  if (step === 'jc_waiting') {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl p-5" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <div>
+                <p className="text-white font-semibold text-sm">Waiting for Materials</p>
+                <p className="text-zinc-400 text-xs font-mono">{jobCard?.cardNumber}</p>
+              </div>
+            </div>
+            <button onClick={refreshJobCard} className="text-xs text-sky-400 hover:text-sky-300 border border-sky-800 rounded-lg px-2 py-1">Refresh</button>
+          </div>
+          {jobCard && jobCard.items.length > 0 && (
+            <div className="space-y-1 mt-2">
+              <p className="text-zinc-500 text-xs mb-1.5">Components requested ({jobCard.items.length})</p>
+              {jobCard.items.map((item, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs py-1 px-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  <span className="text-zinc-500 font-mono">{item.rawMaterial.barcode ?? '—'}</span>
+                  <span className="text-zinc-300 flex-1 truncate">{item.rawMaterial.name}</span>
+                  <span className="text-amber-300 font-medium shrink-0">{item.quantityReq} {item.rawMaterial.unit}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-zinc-600 text-xs mt-3 text-center">Inventory Manager will issue materials · tap Refresh to check status</p>
+        </div>
       </div>
     );
   }
