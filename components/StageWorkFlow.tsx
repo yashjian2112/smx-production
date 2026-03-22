@@ -178,6 +178,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
   // scan/verify state
   const [scanInputs, setScanInputs] = useState<Record<string, string>>({}); // itemId → qty input
   const [scanSaving, setScanSaving] = useState<Record<string, boolean>>({}); // itemId → saving
+  const [jcIssuing, setJcIssuing] = useState(false);
 
 
   // ── multi-zone photo wizard ────────────────────────────────────────────────
@@ -359,6 +360,21 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
       setJcError('Network error');
     } finally {
       setJcCreating(false);
+    }
+  }
+
+  async function issueJobCard() {
+    if (!jobCard) return;
+    setJcIssuing(true);
+    try {
+      const res = await fetch(`/api/inventory/job-cards/${jobCard.id}/issue`, { method: 'POST' });
+      if (res.ok) {
+        const updated = await res.json();
+        setJobCard(updated);
+        setStep('jc_scan');
+      }
+    } finally {
+      setJcIssuing(false);
     }
   }
 
@@ -746,7 +762,11 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
               ))}
             </div>
           )}
-          <p className="text-zinc-600 text-xs mt-3 text-center">Materials requested for entire order · IM will issue · tap Refresh</p>
+          <button onClick={issueJobCard} disabled={jcIssuing}
+            className="w-full mt-3 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50"
+            style={{ background: jcIssuing ? 'rgba(34,197,94,0.3)' : 'rgba(34,197,94,0.7)' }}>
+            {jcIssuing ? 'Issuing…' : '✓ Issue Materials & Proceed'}
+          </button>
         </div>
       </div>
     );
