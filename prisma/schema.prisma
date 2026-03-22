@@ -1267,6 +1267,8 @@ model JobCardItem {
   batchId        String? @map("batch_id")
   quantityReq    Float   @map("quantity_required")
   quantityIssued Float   @default(0) @map("quantity_issued")
+  verifiedQty    Float   @default(0) @map("verified_qty")   // employee scans/confirms after receiving
+  isVerified     Boolean @default(false) @map("is_verified")
 
   jobCard     JobCard         @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
   rawMaterial RawMaterial     @relation(fields: [rawMaterialId], references: [id])

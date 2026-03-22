@@ -161,7 +161,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
   // analyzing → AI running
   // result  → PASS / FAIL shown
   // completed → stage already done
-  const [step, setStep] = useState<'loading' | 'jc_create' | 'jc_waiting' | 'idle' | 'working' | 'open' | 'analyzing' | 'result' | 'completed'>('loading');
+  const [step, setStep] = useState<'loading' | 'jc_create' | 'jc_waiting' | 'jc_scan' | 'idle' | 'working' | 'open' | 'analyzing' | 'result' | 'completed'>('loading');
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [capturedImage, setCapturedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -171,9 +171,13 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
   const [startingWork, setStartingWork] = useState(false);
 
   // ── job card state ─────────────────────────────────────────────────────────
-  const [jobCard, setJobCard] = useState<{ id: string; cardNumber: string; status: string; items: { rawMaterial: { name: string; unit: string; barcode?: string | null }; quantityReq: number }[] } | null>(null);
+  type JCItem = { id: string; rawMaterial: { name: string; unit: string; barcode?: string | null }; quantityReq: number; quantityIssued: number; verifiedQty: number; isVerified: boolean };
+  const [jobCard, setJobCard] = useState<{ id: string; cardNumber: string; status: string; items: JCItem[] } | null>(null);
   const [jcCreating, setJcCreating] = useState(false);
   const [jcError, setJcError] = useState('');
+  // scan/verify state
+  const [scanInputs, setScanInputs] = useState<Record<string, string>>({}); // itemId → qty input
+  const [scanSaving, setScanSaving] = useState<Record<string, boolean>>({}); // itemId → saving
 
 
   // ── multi-zone photo wizard ────────────────────────────────────────────────
@@ -211,6 +215,17 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
     top:    { icon: '', title: 'Top Close-up',       hint: 'Move in to ~10–15 cm — small components should fill the frame' },
     bottom: { icon: '', title: 'Bottom Close-up',    hint: 'Move in to ~10–15 cm — small components should fill the frame' },
   };
+
+  // Pre-fill scan inputs when entering jc_scan step
+  useEffect(() => {
+    if (step === 'jc_scan' && jobCard) {
+      const initial: Record<string, string> = {};
+      for (const item of jobCard.items) {
+        if (!item.isVerified) initial[item.id] = String(item.quantityIssued);
+      }
+      setScanInputs(initial);
+    }
+  }, [step, jobCard?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── fetch zones + zoom hints for this stage ───────────────────────────────
   useEffect(() => {
@@ -277,19 +292,24 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
     // Check job card by orderId+stage (order-level card)
     fetch(`/api/inventory/job-cards?orderId=${orderId}&stage=${currentStage}`)
       .then(r => r.json())
-      .then((cards: { id: string; cardNumber: string; status: string; orderQuantity: number; items: { rawMaterial: { name: string; unit: string; barcode?: string | null }; quantityReq: number }[] }[]) => {
+      .then((cards: { id: string; cardNumber: string; status: string; orderQuantity: number; items: JCItem[] }[]) => {
         const existing = cards[0];
         if (!existing) {
           setStep('jc_create');
         } else if (existing.status === 'ISSUED' || existing.status === 'COMPLETED') {
           setJobCard(existing);
-          fetch(`/api/units/${unitId}/work`, { method: 'POST' })
-            .then(r => r.json())
-            .then(data => {
-              if (data?.id) { setSubmission(data); setStep('working'); }
-              else setStep('idle');
-            })
-            .catch(() => setStep('idle'));
+          const allVerified = existing.items.length > 0 && existing.items.every((i: { isVerified: boolean }) => i.isVerified);
+          if (allVerified) {
+            fetch(`/api/units/${unitId}/work`, { method: 'POST' })
+              .then(r => r.json())
+              .then(data => {
+                if (data?.id) { setSubmission(data); setStep('working'); }
+                else setStep('idle');
+              })
+              .catch(() => setStep('idle'));
+          } else {
+            setStep('jc_scan');
+          }
         } else {
           setJobCard(existing);
           setStep('jc_waiting');
@@ -349,11 +369,43 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
     if (!card) return;
     setJobCard(card);
     if (card.status === 'ISSUED' || card.status === 'COMPLETED') {
-      // Materials issued — start work
-      const wr = await fetch(`/api/units/${unitId}/work`, { method: 'POST' });
-      const wd = await wr.json();
-      if (wd?.id) { setSubmission(wd); setStep('working'); }
-      else setStep('idle');
+      // Check if all items verified; if so skip scan step
+      const allVerified = card.items.length > 0 && card.items.every((i: JCItem) => i.isVerified);
+      if (allVerified) {
+        const wr = await fetch(`/api/units/${unitId}/work`, { method: 'POST' });
+        const wd = await wr.json();
+        if (wd?.id) { setSubmission(wd); setStep('working'); }
+        else setStep('idle');
+      } else {
+        setStep('jc_scan');
+      }
+    }
+  }
+
+  async function verifyItem(itemId: string) {
+    const qty = parseFloat(scanInputs[itemId] ?? '0');
+    if (isNaN(qty) || qty < 0) return;
+    setScanSaving(p => ({ ...p, [itemId]: true }));
+    try {
+      const res = await fetch(`/api/inventory/job-cards/${jobCard?.id}/verify-item`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId, verifiedQty: qty }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setJobCard(updated);
+        // Check if all verified now
+        const allVerified = updated.items.length > 0 && updated.items.every((i: JCItem) => i.isVerified);
+        if (allVerified) {
+          const wr = await fetch(`/api/units/${unitId}/work`, { method: 'POST' });
+          const wd = await wr.json();
+          if (wd?.id) { setSubmission(wd); setStep('working'); }
+          else setStep('idle');
+        }
+      }
+    } finally {
+      setScanSaving(p => ({ ...p, [itemId]: false }));
     }
   }
 
@@ -695,6 +747,71 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
             </div>
           )}
           <p className="text-zinc-600 text-xs mt-3 text-center">Materials requested for entire order · IM will issue · tap Refresh</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── job card: scan & verify received items ────────────────────────────────
+  if (step === 'jc_scan') {
+    const items = jobCard?.items ?? [];
+    const allVerified = items.length > 0 && items.every(i => i.isVerified);
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl p-5" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-2xl">📦</span>
+            <div>
+              <p className="text-white font-semibold text-sm">Verify Received Materials</p>
+              <p className="text-zinc-400 text-xs">Confirm qty of each component you received from store</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {items.map(item => (
+              <div key={item.id} className="rounded-xl p-3" style={{ background: item.isVerified ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${item.isVerified ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)'}` }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.isVerified ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                  <span className="text-zinc-500 font-mono text-[10px]">{item.rawMaterial.barcode ?? '—'}</span>
+                  <span className="text-zinc-300 text-xs flex-1 truncate">{item.rawMaterial.name}</span>
+                  <span className="text-zinc-500 text-xs shrink-0">Expected: <span className="text-amber-300">{item.quantityIssued} {item.rawMaterial.unit}</span></span>
+                </div>
+                {item.isVerified ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-400 text-xs">✓ Verified: {item.verifiedQty} {item.rawMaterial.unit}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={scanInputs[item.id] ?? String(item.quantityIssued)}
+                      onChange={e => setScanInputs(p => ({ ...p, [item.id]: e.target.value }))}
+                      onWheel={e => e.currentTarget.blur()}
+                      className="flex-1 bg-zinc-800 rounded-lg px-3 py-1.5 text-white text-xs border border-zinc-700 focus:border-sky-500 outline-none"
+                      placeholder={`Qty (${item.rawMaterial.unit})`}
+                      min="0"
+                    />
+                    <button
+                      onClick={() => verifyItem(item.id)}
+                      disabled={scanSaving[item.id]}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                      style={{ background: 'rgba(34,197,94,0.7)' }}>
+                      {scanSaving[item.id] ? '…' : '✓ Verify'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {allVerified && (
+            <button onClick={startWork} disabled={startingWork}
+              className="w-full mt-4 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+              style={{ background: startingWork ? 'rgba(34,197,94,0.4)' : 'rgba(34,197,94,0.8)' }}>
+              {startingWork ? 'Starting…' : '▶ Start Manufacturing'}
+            </button>
+          )}
+          {!allVerified && (
+            <p className="text-zinc-600 text-xs mt-3 text-center">{items.filter(i => !i.isVerified).length} item{items.filter(i => !i.isVerified).length !== 1 ? 's' : ''} left to verify</p>
+          )}
         </div>
       </div>
     );
