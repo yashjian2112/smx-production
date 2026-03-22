@@ -1236,25 +1236,27 @@ enum JobCardStatus {
 }
 
 model JobCard {
-  id          String        @id @default(cuid())
-  cardNumber  String        @unique @map("card_number")
-  orderId     String        @map("order_id")
-  unitId      String        @map("unit_id")
-  stage       StageType
-  status      JobCardStatus @default(PENDING)
-  notes       String?
-  createdById String        @map("created_by_id")
-  issuedById  String?       @map("issued_by_id")
-  issuedAt    DateTime?     @map("issued_at")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  id            String        @id @default(cuid())
+  cardNumber    String        @unique @map("card_number")
+  orderId       String        @map("order_id")
+  unitId        String?       @map("unit_id")   // null = order-level card
+  orderQuantity Int           @default(1) @map("order_quantity")
+  stage         StageType
+  status        JobCardStatus @default(PENDING)
+  notes         String?
+  createdById   String        @map("created_by_id")
+  issuedById    String?       @map("issued_by_id")
+  issuedAt      DateTime?     @map("issued_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
 
-  order     Order          @relation(fields: [orderId], references: [id])
-  unit      ControllerUnit @relation(fields: [unitId], references: [id])
-  createdBy User           @relation("JCCreatedBy", fields: [createdById], references: [id])
-  issuedBy  User?          @relation("JCIssuedBy", fields: [issuedById], references: [id])
+  order     Order           @relation(fields: [orderId], references: [id])
+  unit      ControllerUnit? @relation(fields: [unitId], references: [id])
+  createdBy User            @relation("JCCreatedBy", fields: [createdById], references: [id])
+  issuedBy  User?           @relation("JCIssuedBy", fields: [issuedById], references: [id])
   items     JobCardItem[]
 
+  @@unique([orderId, stage])
   @@map("job_cards")
 }
 

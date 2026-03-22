@@ -15,9 +15,9 @@ interface JobCardItem {
 
 interface JobCard {
   id: string; cardNumber: string; stage: string; status: string;
-  createdAt: string; issuedAt?: string | null;
+  orderQuantity: number; createdAt: string; issuedAt?: string | null;
   order: { orderNumber: string };
-  unit: { serialNumber: string };
+  unit?: { serialNumber: string } | null;
   createdBy: { name: string };
   issuedBy?: { name: string } | null;
   items: JobCardItem[];
@@ -163,8 +163,8 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
                         )}
                       </div>
                       <p className="text-zinc-400 text-xs mt-1.5">
-                        <span className="text-zinc-300">{card.unit.serialNumber}</span>
-                        {' · '}Order <span className="text-zinc-300">{card.order.orderNumber}</span>
+                        Order <span className="text-zinc-300">{card.order.orderNumber}</span>
+                        {' · '}<span className="text-zinc-300">{card.orderQuantity} unit{card.orderQuantity !== 1 ? 's' : ''}</span>
                         {' · '}By <span className="text-zinc-300">{card.createdBy.name}</span>
                       </p>
                       {card.issuedAt && (

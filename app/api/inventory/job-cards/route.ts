@@ -11,10 +11,12 @@ export async function GET(req: NextRequest) {
   const unitId  = searchParams.get('unitId');
   const stage   = searchParams.get('stage');
 
+  const orderId = searchParams.get('orderId');
   const where: Record<string, unknown> = {};
-  if (status) where.status = status;
-  if (unitId) where.unitId = unitId;
-  if (stage)  where.stage  = stage;
+  if (status)  where.status  = status;
+  if (orderId) where.orderId = orderId;
+  if (unitId)  where.unitId  = unitId;
+  if (stage)   where.stage   = stage;
 
   const cards = await prisma.jobCard.findMany({
     where,
@@ -43,17 +45,28 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { orderId, unitId, stage } = body;
+  const { orderId, stage } = body;
 
-  // Get unit's product and voltage for BOM lookup
-  const unit = await prisma.controllerUnit.findUnique({
-    where: { id: unitId },
-    include: { order: { include: { product: true } } }
+  if (!orderId || !stage) return NextResponse.json({ error: 'orderId and stage are required' }, { status: 400 });
+
+  // Check if job card already exists for this order+stage
+  const existing = await prisma.jobCard.findUnique({
+    where: { orderId_stage: { orderId, stage: stage as StageType } },
+    include: {
+      order: { select: { orderNumber: true } },
+      items: { include: { rawMaterial: { select: { id: true, name: true, code: true, unit: true, barcode: true, currentStock: true, purchaseUnit: true, conversionFactor: true } } } }
+    }
   });
-  if (!unit) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
+  if (existing) return NextResponse.json(existing);
 
-  const voltage = unit.order.voltage;
-  const productId = unit.order.productId;
+  // Get order for product, voltage, quantity
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { product: true },
+  });
+  if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+
+  const { voltage, quantity: orderQty, productId } = order;
 
   // Get BOM items for this product+voltage+stage (null stage = applies to all stages)
   const bomItems = await prisma.bOMItem.findMany({
@@ -64,7 +77,6 @@ export async function POST(req: NextRequest) {
         { OR: [{ voltage: voltage }, { voltage: null }] },
       ],
     },
-    include: { rawMaterial: { include: { category: { select: { code: true } } } } }
   });
 
   const cardNumber = await generateNextJobCardNumber();
@@ -73,22 +85,21 @@ export async function POST(req: NextRequest) {
     data: {
       cardNumber,
       orderId,
-      unitId,
+      orderQuantity: orderQty,
       stage: stage as StageType,
       createdById: session.id,
       items: {
         create: bomItems.map(b => ({
           rawMaterialId: b.rawMaterialId,
-          quantityReq: b.quantityRequired,
+          quantityReq: b.quantityRequired * orderQty, // total for all units
         }))
       }
     },
     include: {
       order: { select: { orderNumber: true } },
-      unit: { select: { serialNumber: true } },
       items: {
         include: {
-          rawMaterial: { select: { id: true, name: true, code: true, unit: true, barcode: true } },
+          rawMaterial: { select: { id: true, name: true, code: true, unit: true, barcode: true, currentStock: true, purchaseUnit: true, conversionFactor: true } },
         }
       }
     }

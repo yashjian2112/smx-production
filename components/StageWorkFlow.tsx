@@ -274,15 +274,15 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
       return;
     }
 
-    fetch(`/api/inventory/job-cards?unitId=${unitId}&stage=${currentStage}`)
+    // Check job card by orderId+stage (order-level card)
+    fetch(`/api/inventory/job-cards?orderId=${orderId}&stage=${currentStage}`)
       .then(r => r.json())
-      .then((cards: { id: string; cardNumber: string; status: string; items: { rawMaterial: { name: string; unit: string; barcode?: string | null }; quantityReq: number }[] }[]) => {
+      .then((cards: { id: string; cardNumber: string; status: string; orderQuantity: number; items: { rawMaterial: { name: string; unit: string; barcode?: string | null }; quantityReq: number }[] }[]) => {
         const existing = cards[0];
         if (!existing) {
           setStep('jc_create');
         } else if (existing.status === 'ISSUED' || existing.status === 'COMPLETED') {
           setJobCard(existing);
-          // Job card issued — proceed with work
           fetch(`/api/units/${unitId}/work`, { method: 'POST' })
             .then(r => r.json())
             .then(data => {
@@ -291,7 +291,6 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
             })
             .catch(() => setStep('idle'));
         } else {
-          // PENDING — waiting for IM to issue
           setJobCard(existing);
           setStep('jc_waiting');
         }
@@ -327,7 +326,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
       const res = await fetch('/api/inventory/job-cards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, unitId, stage: currentStage }),
+        body: JSON.stringify({ orderId, stage: currentStage }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -344,7 +343,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
   }
 
   async function refreshJobCard() {
-    const res = await fetch(`/api/inventory/job-cards?unitId=${unitId}&stage=${currentStage}`);
+    const res = await fetch(`/api/inventory/job-cards?orderId=${orderId}&stage=${currentStage}`);
     const cards = await res.json();
     const card = cards[0];
     if (!card) return;
@@ -695,7 +694,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
               ))}
             </div>
           )}
-          <p className="text-zinc-600 text-xs mt-3 text-center">Inventory Manager will issue materials · tap Refresh to check status</p>
+          <p className="text-zinc-600 text-xs mt-3 text-center">Materials requested for entire order · IM will issue · tap Refresh</p>
         </div>
       </div>
     );
