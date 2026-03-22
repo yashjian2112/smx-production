@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const TABS = ['Stock', 'GRN', 'Materials', 'Reports', 'Movements'] as const;
+const TABS = ['Stock', 'GRN', 'Materials', 'Job Cards', 'Reports', 'Movements'] as const;
 type Tab = typeof TABS[number];
 
 interface RawMaterial {
-  id: string; code: string; name: string; unit: string; active: boolean;
+  id: string; code: string; barcode?: string | null; name: string; unit: string; active: boolean;
+  purchaseUnit?: string | null; conversionFactor?: number | null;
   description?: string | null; hsnCode?: string | null;
   purchasePrice?: number; leadTimeDays?: number;
   currentStock: number; minimumStock: number; reorderPoint: number;
@@ -56,7 +57,7 @@ interface StockMovement {
   createdBy: { name: string };
 }
 
-interface Category { id: string; name: string; description?: string; _count: { materials: number } }
+interface Category { id: string; name: string; code: string; description?: string; _count: { materials: number } }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -946,19 +947,32 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [fMin,       setFMin]       = useState('0');
   const [fReord,     setFReord]     = useState('0');
   const [fDesc,      setFDesc]      = useState('');
-  const [fHsn,       setFHsn]       = useState('');
-  const [fPrice,     setFPrice]     = useState('0');
-  const [fLead,      setFLead]      = useState('0');
-  const [fVendorId,  setFVendorId]  = useState('');
-  const [fOpenQty,   setFOpenQty]   = useState('');
-  const [fOpenPrice, setFOpenPrice] = useState('');
-  const [fSaving,    setFSaving]    = useState(false);
-  const [fError,     setFError]     = useState('');
+  const [fVendorId,      setFVendorId]      = useState('');
+  const [fPurchaseUnit,  setFPurchaseUnit]  = useState('');
+  const [fConvFactor,    setFConvFactor]    = useState('');
+  const [fOpenQty,       setFOpenQty]       = useState('');
+  const [fSaving,        setFSaving]        = useState(false);
+  const [fError,         setFError]         = useState('');
 
-  const [vendors,  setVendors]  = useState<Vendor[]>([]);
-  const [cName,  setCName]  = useState('');
-  const [cDesc,  setCDesc]  = useState('');
-  const [cSaving,setCSaving]= useState(false);
+  const [vendors,      setVendors]      = useState<Vendor[]>([]);
+  const [filterCat,    setFilterCat]    = useState('');
+  const [filterStock,  setFilterStock]  = useState<'all' | 'low' | 'critical'>('all');
+  const [search,       setSearch]       = useState('');
+
+  // Inline create category
+  const [cName,          setCName]          = useState('');
+  const [cCode,          setCCode]          = useState('');
+  const [cDesc,          setCDesc]          = useState('');
+  const [cSaving,        setCSaving]        = useState(false);
+  const [cError,         setCError]         = useState('');
+  const [showInlineCat,  setShowInlineCat]  = useState(false);
+
+  // Inline create vendor
+  const [vName,           setVName]           = useState('');
+  const [vPhone,          setVPhone]          = useState('');
+  const [vEmail,          setVEmail]          = useState('');
+  const [vSaving,         setVSaving]         = useState(false);
+  const [showInlineVendor,setShowInlineVendor]= useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -976,18 +990,20 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => { load(); }, [load]);
 
   function openNewMat() {
-    setEditMat(null); setFName(''); setFUnit(''); setFCatId(''); setFMin('0'); setFReord('0');
-    setFDesc(''); setFHsn(''); setFPrice('0'); setFLead('0'); setFVendorId('');
-    setFOpenQty(''); setFOpenPrice(''); setFError('');
+    setEditMat(null); setFName(''); setFUnit('PCS'); setFCatId(''); setFMin('0'); setFReord('0');
+    setFDesc(''); setFVendorId(''); setFPurchaseUnit(''); setFConvFactor(''); setFOpenQty(''); setFError('');
+    setShowInlineCat(false); setShowInlineVendor(false);
     setShowMatForm(true);
   }
 
   function openEditMat(m: RawMaterial) {
     setEditMat(m); setFName(m.name); setFUnit(m.unit); setFCatId(m.category?.id ?? '');
     setFMin(String(m.minimumStock)); setFReord(String(m.reorderPoint));
-    setFDesc(m.description ?? ''); setFHsn(m.hsnCode ?? '');
-    setFPrice(String(m.purchasePrice ?? 0)); setFLead(String(m.leadTimeDays ?? 0));
-    setFVendorId(m.preferredVendor?.id ?? ''); setFError('');
+    setFDesc(m.description ?? '');
+    setFVendorId(m.preferredVendor?.id ?? '');
+    setFPurchaseUnit(m.purchaseUnit ?? ''); setFConvFactor(m.conversionFactor ? String(m.conversionFactor) : '');
+    setFError('');
+    setShowInlineCat(false); setShowInlineVendor(false);
     setShowMatForm(true);
   }
 
@@ -995,10 +1011,11 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
     e.preventDefault(); setFError(''); setFSaving(true);
     const body = {
       name: fName, unit: fUnit, categoryId: fCatId || undefined,
-      description: fDesc || undefined, hsnCode: fHsn || undefined,
-      purchasePrice: parseFloat(fPrice || '0'), leadTimeDays: parseInt(fLead || '0'),
+      description: fDesc || undefined,
       preferredVendorId: fVendorId || undefined,
       minimumStock: parseFloat(fMin), reorderPoint: parseFloat(fReord),
+      purchaseUnit: fPurchaseUnit || undefined,
+      conversionFactor: fPurchaseUnit && fConvFactor ? parseFloat(fConvFactor) : undefined,
     };
     const res = editMat
       ? await fetch(`/api/inventory/materials/${editMat.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -1018,7 +1035,6 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
             type:     'OPENING',
             quantity: openQty,
             reason:   'Opening stock entry',
-            unitPrice: parseFloat(fOpenPrice || '0'),
           }),
         });
       }
@@ -1035,16 +1051,42 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   }
 
   async function handleCatSubmit(e: React.FormEvent) {
-    e.preventDefault(); setCSaving(true);
-    await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName, description: cDesc }) });
-    setCSaving(false); setShowCatForm(false); setCName(''); setCDesc(''); load();
+    e.preventDefault(); setCError(''); setCSaving(true);
+    const res = await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName, code: cCode.toUpperCase(), description: cDesc || undefined }) });
+    setCSaving(false);
+    if (!res.ok) { const err = await res.json().catch(() => ({})); setCError(err.error || 'Failed to save category'); return; }
+    setShowCatForm(false); setCName(''); setCCode(''); setCDesc(''); setCError(''); load();
+  }
+
+  async function saveInlineCat() {
+    if (!cName.trim() || !cCode.trim()) return;
+    setCError(''); setCSaving(true);
+    const res = await fetch('/api/inventory/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cName.trim(), code: cCode.trim().toUpperCase() }) });
+    setCSaving(false);
+    if (!res.ok) { const err = await res.json().catch(() => ({})); setCError(err.error || 'Failed to save'); return; }
+    const cat = await res.json();
+    setCategories(prev => [...prev, cat]);
+    setFCatId(cat.id);
+    setShowInlineCat(false); setCName(''); setCCode(''); setCError('');
+  }
+
+  async function saveInlineVendor() {
+    if (!vName.trim()) return;
+    setVSaving(true);
+    const res = await fetch('/api/purchase/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: vName.trim(), phone: vPhone.trim() || undefined, email: vEmail.trim() || undefined }) });
+    if (res.ok) {
+      const vendor = await res.json();
+      setVendors(prev => [...prev, vendor]);
+      setFVendorId(vendor.id);
+    }
+    setVSaving(false); setShowInlineVendor(false); setVName(''); setVPhone(''); setVEmail('');
   }
 
   if (loading) return <p className="text-zinc-400 text-sm py-6">Loading…</p>;
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <h3 className="text-white font-medium">Raw Materials ({materials.length})</h3>
         {isAdmin && (
           <div className="flex gap-2">
@@ -1060,16 +1102,40 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
         )}
       </div>
 
-      {/* Categories overview */}
-      {categories.length > 0 && (
-        <div className="flex gap-2 flex-wrap mb-4">
-          {categories.map(c => (
-            <span key={c.id} className="px-2 py-1 rounded-lg text-xs" style={{ background: 'rgba(14,165,233,0.1)', color: '#38bdf8' }}>
-              {c.name} ({c._count.materials})
-            </span>
+      {/* Search + Filter bar */}
+      <div className="rounded-xl p-3 mb-4 space-y-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name or code…"
+          className="w-full px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+          style={{ background: 'rgb(39,39,42)' }}
+        />
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-zinc-500 text-xs">Stock:</span>
+          {(['all', 'low', 'critical'] as const).map(s => (
+            <button key={s} onClick={() => setFilterStock(s)}
+              className={`px-2.5 py-1 rounded-lg text-xs transition-colors capitalize ${filterStock === s ? (s === 'critical' ? 'bg-red-600 text-white' : s === 'low' ? 'bg-yellow-600 text-white' : 'bg-sky-600 text-white') : 'text-zinc-400 border border-zinc-700 hover:text-white'}`}>
+              {s === 'all' ? 'All' : s === 'low' ? 'Low Stock' : 'Critical'}
+            </button>
           ))}
+          {categories.length > 0 && (
+            <>
+              <span className="text-zinc-600 text-xs ml-1">|</span>
+              <span className="text-zinc-500 text-xs">Category:</span>
+              <button onClick={() => setFilterCat('')}
+                className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${filterCat === '' ? 'bg-sky-600 text-white' : 'text-zinc-400 border border-zinc-700 hover:text-white'}`}>
+                All
+              </button>
+              {categories.map(c => (
+                <button key={c.id} onClick={() => setFilterCat(filterCat === c.id ? '' : c.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${filterCat === c.id ? 'bg-sky-600 text-white' : 'text-zinc-400 border border-zinc-700 hover:text-white'}`}>
+                  {c.name}
+                </button>
+              ))}
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {materials.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
@@ -1087,31 +1153,46 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
       <div className="space-y-2">
-        {materials.map(m => (
+        {materials.filter(m => {
+          if (search && !m.name.toLowerCase().includes(search.toLowerCase()) && !m.code.toLowerCase().includes(search.toLowerCase()) && !(m.barcode ?? '').toLowerCase().includes(search.toLowerCase())) return false;
+          if (filterCat && m.category?.id !== filterCat) return false;
+          if (filterStock === 'critical' && !m.isCritical) return false;
+          if (filterStock === 'low' && !m.isLowStock) return false;
+          return true;
+        }).map(m => (
           <div key={m.id} className="rounded-xl p-4 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-white font-medium">{m.name}</span>
-                <span className="text-zinc-500 text-xs font-mono">{m.code}</span>
+                <span className="text-zinc-500 text-xs font-mono">{m.barcode ?? m.code}</span>
                 {m.category && <Badge color="sky">{m.category.name}</Badge>}
                 {!m.active && <Badge color="zinc">Inactive</Badge>}
               </div>
               <p className="text-zinc-400 text-xs mt-1">
-                {m.unit} · Min: {fmt(m.minimumStock)} · Reorder: {fmt(m.reorderPoint)}
-                {m.hsnCode && <> · HSN: <span className="text-zinc-300">{m.hsnCode}</span></>}
+                {m.unit}
+                {m.purchaseUnit && m.conversionFactor && (
+                  <span className="text-zinc-500"> · Purchased in <span className="text-zinc-300">{m.purchaseUnit}</span> (1 {m.purchaseUnit} = {m.conversionFactor} {m.unit})</span>
+                )}
+                {' '}· Min: {fmt(m.minimumStock)} · Reorder: {fmt(m.reorderPoint)}
                 {m.preferredVendor && <> · Vendor: <span className="text-zinc-300">{m.preferredVendor.name}</span></>}
               </p>
             </div>
-            {isAdmin && (
-              <div className="flex gap-2 shrink-0">
-                <button onClick={() => openEditMat(m)}
-                  className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Edit</button>
-                <button onClick={() => toggleActive(m)}
-                  className={`px-2 py-1 rounded-lg text-xs border transition-colors ${m.active ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'}`}>
-                  {m.active ? 'Deactivate' : 'Activate'}
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+              <a href={`/print/material-label/${m.id}`} target="_blank"
+                className="px-2 py-1 rounded-lg text-xs text-purple-400 border border-purple-800/50 hover:bg-purple-900/20 transition-colors">
+                Print Label
+              </a>
+              {isAdmin && (
+                <>
+                  <button onClick={() => openEditMat(m)}
+                    className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Edit</button>
+                  <button onClick={() => toggleActive(m)}
+                    className={`px-2 py-1 rounded-lg text-xs border transition-colors ${m.active ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'}`}>
+                    {m.active ? 'Deactivate' : 'Activate'}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -1122,63 +1203,134 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
           <div className="w-full max-w-md rounded-2xl p-6 my-4" style={{ background: 'rgb(24,24,27)' }}>
             <h3 className="text-white font-semibold mb-4">{editMat ? 'Edit Material' : 'New Material'}</h3>
             <form onSubmit={handleMatSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="col-span-2">
-                  <label className="text-zinc-400 text-xs">Name *</label>
-                  <input value={fName} onChange={e => setFName(e.target.value)} required
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
-                <div>
-                  <label className="text-zinc-400 text-xs">Unit (pcs, kg, mtrs…) *</label>
-                  <input value={fUnit} onChange={e => setFUnit(e.target.value)} required
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
-                <div>
-                  <label className="text-zinc-400 text-xs">HSN / SAC Code</label>
-                  <input value={fHsn} onChange={e => setFHsn(e.target.value)} placeholder="e.g. 7318"
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
-                <div>
-                  <label className="text-zinc-400 text-xs">Default Purchase Price ₹</label>
-                  <input type="number" step="any" min="0" value={fPrice} onChange={e => setFPrice(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
-                <div>
-                  <label className="text-zinc-400 text-xs">Lead Time (days)</label>
-                  <input type="number" min="0" value={fLead} onChange={e => setFLead(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
-              </div>
+              {/* Name */}
               <div>
-                <label className="text-zinc-400 text-xs">Description</label>
-                <textarea value={fDesc} onChange={e => setFDesc(e.target.value)} rows={2}
-                  placeholder="Optional description or specifications…"
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500 resize-none"
+                <label className="text-zinc-400 text-xs">Name *</label>
+                <input value={fName} onChange={e => setFName(e.target.value)} required autoFocus
+                  placeholder="e.g. IGBT Module IRFB4227"
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
+
+              {/* Unit */}
               <div>
-                <label className="text-zinc-400 text-xs">Category</label>
-                <select value={fCatId} onChange={e => setFCatId(e.target.value)}
+                <label className="text-zinc-400 text-xs">Unit *</label>
+                <select value={fUnit} onChange={e => setFUnit(e.target.value)} required
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
                   style={{ background: 'rgb(39,39,42)' }}>
-                  <option value="">None</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {['PCS','REEL','KG','GRAM','MTR','SET','BOX','LTR','ROLL'].map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
+
+              {/* Purchase unit + conversion */}
               <div>
-                <label className="text-zinc-400 text-xs">Preferred Vendor</label>
-                <select value={fVendorId} onChange={e => setFVendorId(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
-                  style={{ background: 'rgb(39,39,42)' }}>
-                  <option value="">None</option>
-                  {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({v.code})</option>)}
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-zinc-400 text-xs">Pack Size <span className="text-zinc-600">(optional — if purchased in a different unit)</span></label>
+                </div>
+<div className="flex gap-2">
+                  <select value={fPurchaseUnit} onChange={e => setFPurchaseUnit(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                    style={{ background: 'rgb(39,39,42)' }}>
+                    <option value="">Same as stock unit</option>
+                    {['PCS','REEL','KG','GRAM','MTR','SET','BOX','LTR','ROLL'].map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                  {fPurchaseUnit && (
+                    <input type="number" step="any" min="1" value={fConvFactor} onChange={e => setFConvFactor(e.target.value)}
+                      placeholder={`${fUnit || 'PCS'} per ${fPurchaseUnit}`}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                      style={{ background: 'rgb(39,39,42)' }} />
+                  )}
+                </div>
+                {fPurchaseUnit && fConvFactor && (
+                  <p className="text-zinc-500 text-[10px] mt-1">
+                    1 {fPurchaseUnit} = {fConvFactor} {fUnit || 'PCS'} · Stock always tracked in {fUnit || 'PCS'}
+                  </p>
+                )}
               </div>
+
+              {/* Category with inline create */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-zinc-400 text-xs">Category</label>
+                  {!showInlineCat && (
+                    <button type="button" onClick={() => setShowInlineCat(true)}
+                      className="text-[10px] text-sky-400 hover:text-sky-300">+ Create new</button>
+                  )}
+                </div>
+                {showInlineCat ? (
+                  <div className="p-2 rounded-lg space-y-2" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
+                    <input value={cName} onChange={e => setCName(e.target.value)} placeholder="Category name *" autoFocus
+                      className="w-full px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                      style={{ background: 'rgb(39,39,42)' }} />
+                    <div>
+                      <input value={cCode} onChange={e => setCCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                        placeholder="Prefix/Code * e.g. CAP, PCB, RES"
+                        className="w-full px-3 py-1.5 rounded-lg text-sm text-white font-mono border border-zinc-700 outline-none focus:border-sky-500"
+                        style={{ background: 'rgb(39,39,42)' }} />
+                      <p className="text-zinc-600 text-[10px] mt-0.5">Used for barcodes: CAP → CAP001, CAP002…</p>
+                    </div>
+                    {cError && <p className="text-red-400 text-[10px]">{cError}</p>}
+                    <div className="flex gap-2">
+                      <button type="button" onClick={saveInlineCat} disabled={cSaving || !cName.trim() || !cCode.trim()}
+                        className="px-3 py-1 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40">
+                        {cSaving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button type="button" onClick={() => { setShowInlineCat(false); setCName(''); setCCode(''); setCError(''); }}
+                        className="px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-white">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <select value={fCatId} onChange={e => setFCatId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                    style={{ background: 'rgb(39,39,42)' }}>
+                    <option value="">None</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                )}
+              </div>
+
+              {/* Preferred Vendor with inline create */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-zinc-400 text-xs">Preferred Vendor</label>
+                  {!showInlineVendor && (
+                    <button type="button" onClick={() => setShowInlineVendor(true)}
+                      className="text-[10px] text-sky-400 hover:text-sky-300">+ Create new</button>
+                  )}
+                </div>
+                {showInlineVendor ? (
+                  <div className="p-2 rounded-lg space-y-2" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
+                    <input value={vName} onChange={e => setVName(e.target.value)} placeholder="Vendor name *" autoFocus
+                      className="w-full px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                      style={{ background: 'rgb(39,39,42)' }} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={vPhone} onChange={e => setVPhone(e.target.value)} placeholder="Phone (optional)"
+                        className="px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                        style={{ background: 'rgb(39,39,42)' }} />
+                      <input value={vEmail} onChange={e => setVEmail(e.target.value)} placeholder="Email (optional)"
+                        className="px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                        style={{ background: 'rgb(39,39,42)' }} />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={saveInlineVendor} disabled={vSaving || !vName.trim()}
+                        className="px-3 py-1 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40">
+                        {vSaving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button type="button" onClick={() => { setShowInlineVendor(false); setVName(''); setVPhone(''); setVEmail(''); }}
+                        className="px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-white">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <select value={fVendorId} onChange={e => setFVendorId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
+                    style={{ background: 'rgb(39,39,42)' }}>
+                    <option value="">None</option>
+                    {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({v.code})</option>)}
+                  </select>
+                )}
+              </div>
+
+              {/* Min stock + Reorder */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-zinc-400 text-xs">Min Stock</label>
@@ -1193,23 +1345,25 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                     style={{ background: 'rgb(39,39,42)' }} />
                 </div>
               </div>
+
+              {/* Description */}
+              <div>
+                <label className="text-zinc-400 text-xs">Description <span className="text-zinc-600">(optional)</span></label>
+                <textarea value={fDesc} onChange={e => setFDesc(e.target.value)} rows={2}
+                  placeholder="Specifications, notes…"
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500 resize-none"
+                  style={{ background: 'rgb(39,39,42)' }} />
+              </div>
+
               {/* Opening stock — only for new materials */}
               {!editMat && (
                 <div className="pt-2 border-t border-zinc-800">
-                  <p className="text-zinc-400 text-xs mb-2">Opening Stock <span className="text-zinc-600">(optional)</span></p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-zinc-500 text-xs">Qty ({fUnit || 'unit'})</label>
-                      <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
-                        style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
-                    </div>
-                    <div>
-                      <label className="text-zinc-500 text-xs">Unit Price ₹</label>
-                      <input type="number" step="any" min="0" value={fOpenPrice} onChange={e => setFOpenPrice(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
-                        style={{ background: 'rgb(39,39,42)' }} placeholder="0.00" />
-                    </div>
+                  <p className="text-zinc-400 text-xs mb-2">Opening Stock <span className="text-zinc-600">(optional — enter if stock already exists)</span></p>
+                  <div>
+                    <label className="text-zinc-500 text-xs">Qty ({fUnit})</label>
+                    <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
+                      style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
                   </div>
                 </div>
               )}
@@ -1235,8 +1389,15 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
             <form onSubmit={handleCatSubmit} className="space-y-3">
               <div>
                 <label className="text-zinc-400 text-xs">Name *</label>
-                <input value={cName} onChange={e => setCName(e.target.value)} required
+                <input value={cName} onChange={e => setCName(e.target.value)} required autoFocus
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                  style={{ background: 'rgb(39,39,42)' }} />
+              </div>
+              <div>
+                <label className="text-zinc-400 text-xs">Prefix / Code * <span className="text-zinc-600">(up to 6 chars, used for barcodes)</span></label>
+                <input value={cCode} onChange={e => setCCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))} required
+                  placeholder="e.g. CAP, PCB, MOS, RES"
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white font-mono border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
               <div>
@@ -1245,8 +1406,9 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
+              {cError && <p className="text-red-400 text-xs">{cError}</p>}
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setShowCatForm(false)}
+                <button type="button" onClick={() => { setShowCatForm(false); setCName(''); setCCode(''); setCDesc(''); setCError(''); }}
                   className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Cancel</button>
                 <button type="submit" disabled={cSaving}
                   className="flex-1 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50">
@@ -1257,6 +1419,161 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Job Cards Tab ────────────────────────────────────────────────────────────
+interface JobCardItem {
+  id: string;
+  rawMaterialId: string;
+  quantityReq: number;
+  quantityIssued: number;
+  rawMaterial: { id: string; name: string; code: string; unit: string; barcode?: string | null };
+  batch?: { id: string; batchCode: string; remainingQty: number } | null;
+}
+
+interface JobCard {
+  id: string;
+  cardNumber: string;
+  stage: string;
+  status: string;
+  createdAt: string;
+  issuedAt?: string | null;
+  order: { orderNumber: string };
+  unit: { serialNumber: string };
+  createdBy: { name: string };
+  issuedBy?: { name: string } | null;
+  items: JobCardItem[];
+}
+
+function JobCardsTab({ sessionRole }: { sessionRole: string }) {
+  const [pending, setPending] = useState<JobCard[]>([]);
+  const [issued,  setIssued]  = useState<JobCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [issuingId, setIssuingId] = useState<string | null>(null);
+  const [issueError, setIssueError] = useState<string>('');
+  const [showIssued, setShowIssued] = useState(false);
+
+  const canIssue = ['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN'].includes(sessionRole);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [pRes, iRes] = await Promise.all([
+      fetch('/api/inventory/job-cards?status=PENDING'),
+      fetch('/api/inventory/job-cards?status=ISSUED'),
+    ]);
+    if (pRes.ok) setPending(await pRes.json());
+    if (iRes.ok) setIssued(await iRes.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleIssue(id: string) {
+    setIssuingId(id);
+    setIssueError('');
+    const res = await fetch(`/api/inventory/job-cards/${id}/issue`, { method: 'POST' });
+    setIssuingId(null);
+    if (res.ok) { load(); }
+    else { const e = await res.json(); setIssueError(e.error || 'Failed to issue'); }
+  }
+
+  if (loading) return <p className="text-zinc-400 text-sm py-6">Loading job cards…</p>;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-white font-medium">Pending Job Cards ({pending.length})</h3>
+      </div>
+
+      {issueError && (
+        <div className="mb-3 px-4 py-2 rounded-lg text-red-400 text-sm border border-red-900/40" style={{ background: 'rgba(239,68,68,0.08)' }}>
+          {issueError}
+        </div>
+      )}
+
+      {pending.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          <p className="text-zinc-400 text-sm">No pending job cards</p>
+          <p className="text-zinc-600 text-xs mt-1">Job cards are created by production staff when starting a new unit at a stage</p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {pending.map(card => (
+          <div key={card.id} className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <div className="p-4 flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-white font-medium font-mono">{card.cardNumber}</span>
+                  <Badge color="yellow">PENDING</Badge>
+                  <Badge color="sky">{card.stage.replace(/_/g, ' ')}</Badge>
+                </div>
+                <p className="text-zinc-400 text-xs mt-1">
+                  Order: <span className="text-zinc-300">{card.order.orderNumber}</span>
+                  {' · '}Serial: <span className="text-zinc-300">{card.unit.serialNumber}</span>
+                  {' · '}By: {card.createdBy.name}
+                </p>
+                {card.items.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {card.items.map(item => (
+                      <div key={item.id} className="flex items-center gap-2 text-xs">
+                        <span className="text-zinc-500 font-mono">{item.rawMaterial.code}</span>
+                        <span className="text-zinc-300">{item.rawMaterial.name}</span>
+                        <span className="text-amber-400 ml-auto">{item.quantityReq} {item.rawMaterial.unit}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {canIssue && (
+                <button
+                  onClick={() => handleIssue(card.id)}
+                  disabled={issuingId === card.id}
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50">
+                  {issuingId === card.id ? 'Issuing…' : 'Issue Components'}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Issued cards (collapsed) */}
+      <div className="mt-6">
+        <button
+          onClick={() => setShowIssued(s => !s)}
+          className="flex items-center gap-2 text-zinc-400 hover:text-white text-sm transition-colors mb-3">
+          <span>{showIssued ? '▾' : '▸'}</span>
+          <span>Issued Job Cards ({issued.length})</span>
+        </button>
+
+        {showIssued && (
+          <div className="space-y-2">
+            {issued.length === 0 && <p className="text-zinc-500 text-xs">No issued job cards</p>}
+            {issued.map(card => (
+              <div key={card.id} className="rounded-xl p-4 flex items-center gap-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-zinc-300 font-mono text-sm">{card.cardNumber}</span>
+                    <Badge color="green">ISSUED</Badge>
+                    <Badge color="sky">{card.stage.replace(/_/g, ' ')}</Badge>
+                  </div>
+                  <p className="text-zinc-500 text-xs mt-0.5">
+                    {card.order.orderNumber} · {card.unit.serialNumber}
+                    {card.issuedBy && <> · Issued by {card.issuedBy.name}</>}
+                    {card.issuedAt && <> · {fmtDate(card.issuedAt)}</>}
+                  </p>
+                </div>
+                <div className="text-xs text-zinc-600 shrink-0">
+                  {card.items.length} item{card.items.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1618,9 +1935,9 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
   const [activeTab, setActiveTab] = useState<Tab>('Stock');
 
   // canManageStock: can record GRN, do stock adjustments, create PRs
-  const canManageStock     = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'].includes(sessionRole);
+  const canManageStock     = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'].includes(sessionRole);
   // canManageMaterials: can create/edit/deactivate materials and categories
-  const canManageMaterials = ['ADMIN', 'PURCHASE_MANAGER'].includes(sessionRole);
+  const canManageMaterials = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'].includes(sessionRole);
 
   return (
     <div>
@@ -1636,11 +1953,12 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
         ))}
       </div>
 
-      {activeTab === 'Stock'     && <StockTab     isAdmin={canManageStock} onSwitchTab={setActiveTab} />}
-      {activeTab === 'GRN'       && <GRNTab       isAdmin={canManageStock} />}
-      {activeTab === 'Materials' && <MaterialsTab isAdmin={canManageMaterials} />}
-      {activeTab === 'Reports'   && <ReportsTab   isAdmin={canManageMaterials} />}
-      {activeTab === 'Movements' && <MovementsTab />}
+      {activeTab === 'Stock'      && <StockTab     isAdmin={canManageStock} onSwitchTab={setActiveTab} />}
+      {activeTab === 'GRN'        && <GRNTab       isAdmin={canManageStock} />}
+      {activeTab === 'Materials'  && <MaterialsTab isAdmin={canManageMaterials} />}
+      {activeTab === 'Job Cards'  && <JobCardsTab  sessionRole={sessionRole} />}
+      {activeTab === 'Reports'    && <ReportsTab   isAdmin={canManageMaterials} />}
+      {activeTab === 'Movements'  && <MovementsTab />}
     </div>
   );
 }

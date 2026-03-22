@@ -3,14 +3,17 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateNextMaterialCode } from '@/lib/invoice-number';
+import { generateMaterialBarcode } from '@/lib/inventory-utils';
 
-// STORE_MANAGER can view materials but not create them
-const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;
-const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER'] as const;
+// STORE_MANAGER and INVENTORY_MANAGER can view materials
+const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'] as const;
+const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'] as const;
 
 const createSchema = z.object({
   name:              z.string().min(1),
   unit:              z.string().min(1),
+  purchaseUnit:      z.string().optional(),
+  conversionFactor:  z.number().positive().optional(),
   description:       z.string().optional(),
   hsnCode:           z.string().optional(),
   purchasePrice:     z.number().min(0).default(0),
@@ -19,7 +22,7 @@ const createSchema = z.object({
   preferredVendorId: z.string().optional(),
   minimumStock:      z.number().min(0).default(0),
   reorderPoint:      z.number().min(0).default(0),
-  code:              z.string().optional(), // if not provided, auto-generated
+  code:              z.string().optional(),
 });
 
 export async function GET() {
@@ -57,17 +60,18 @@ export async function POST(req: Request) {
   const body = await req.json();
   const data = createSchema.parse(body);
 
-  const code = data.code || await generateNextMaterialCode();
+  const code    = data.code || await generateNextMaterialCode();
+  const barcode = await generateMaterialBarcode(data.categoryId);
 
   const material = await prisma.rawMaterial.create({
     data: {
       code,
+      barcode,
       name:              data.name,
       unit:              data.unit,
+      purchaseUnit:      data.purchaseUnit ?? null,
+      conversionFactor:  data.conversionFactor ?? null,
       description:       data.description ?? null,
-      hsnCode:           data.hsnCode ?? null,
-      purchasePrice:     data.purchasePrice,
-      leadTimeDays:      data.leadTimeDays,
       categoryId:        data.categoryId ?? null,
       preferredVendorId: data.preferredVendorId ?? null,
       minimumStock:      data.minimumStock,

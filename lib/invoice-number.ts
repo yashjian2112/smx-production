@@ -165,6 +165,30 @@ export async function generateNextBatchCode(): Promise<string> {
 }
 
 /**
+ * Generates the next Job Card number: JC/YY-YY/001
+ * Resets to 001 on 1st April each year.
+ */
+export async function generateNextJobCardNumber(): Promise<string> {
+  const fy     = getFiscalYear();
+  const prefix = `JC/${fy}/`;
+
+  const latest = await prisma.jobCard.findFirst({
+    where: { cardNumber: { startsWith: prefix } },
+    orderBy: { cardNumber: 'desc' },
+    select: { cardNumber: true },
+  });
+
+  let next = 1;
+  if (latest) {
+    const parts = latest.cardNumber.split('/');
+    const seq   = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+
+  return `${prefix}${String(next).padStart(3, '0')}`;
+}
+
+/**
  * Generates the next Material code: MAT/001
  */
 export async function generateNextMaterialCode(): Promise<string> {

@@ -3,12 +3,13 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-// STORE_MANAGER can view categories but not create them
-const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;
-const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER'] as const;
+// STORE_MANAGER and INVENTORY_MANAGER can view categories
+const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'] as const;
+const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'] as const;
 
 const createSchema = z.object({
   name:        z.string().min(1),
+  code:        z.string().min(1).max(6).transform(s => s.toUpperCase()),
   description: z.string().optional(),
 });
 
