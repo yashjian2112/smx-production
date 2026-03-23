@@ -60,6 +60,11 @@ export default async function AdminPage() {
           <p className="font-medium">Box Sizes</p>
           <p className="text-slate-400 text-xs mt-1">Predefined box dimensions for packing</p>
         </Link>
+        <Link href="/admin/bom" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center">
+          <div className="text-3xl mb-2">📋</div>
+          <p className="font-medium">BOM</p>
+          <p className="text-slate-400 text-xs mt-1">Bill of Materials per product & stage</p>
+        </Link>
         <Link href="/accounts/settings" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center col-span-2">
           <div className="text-3xl mb-2">🏦</div>
           <p className="font-medium">Invoice &amp; Company Settings</p>
