@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { ScanInput } from '@/components/ScanInput';
 
 const STAGE_LABELS: Record<string, string> = {
   POWERSTAGE_MANUFACTURING: 'Powerstage',
@@ -289,30 +290,23 @@ export default function SerialPage() {
 
       {/* Scan input */}
       <form onSubmit={handleScan} className="w-full max-w-sm space-y-3">
-        <div className="relative">
-          <input
-            ref={inputRef}
-            type="text"
+        <div className="flex items-center gap-2 px-4 py-3 rounded-2xl"
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            border: error ? '2px solid rgba(239,68,68,0.6)' : '2px solid rgba(14,165,233,0.3)',
+          }}>
+          <ScanInput
             value={query}
-            onChange={(e) => { setQuery(e.target.value.toUpperCase()); setError(''); }}
-            placeholder="SMX100026001 or stage barcode…"
+            onChange={(v) => { setQuery(v.toUpperCase()); setError(''); }}
+            onScan={(code) => { setQuery(code.toUpperCase()); setError(''); setTimeout(() => handleScan({ preventDefault: () => {} } as React.FormEvent), 50); }}
+            placeholder="Scan serial or stage barcode…"
+            autoFocus
             disabled={loading}
-            className="w-full px-4 py-4 rounded-2xl font-mono text-lg text-white placeholder-zinc-600 focus:outline-none text-center tracking-widest disabled:opacity-50"
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: error ? '2px solid rgba(239,68,68,0.6)' : '2px solid rgba(14,165,233,0.3)',
-              fontSize: '1.1rem',
-            }}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="characters"
-            spellCheck={false}
+            scannerTitle="Scan Unit Barcode"
+            scannerHint="Scan serial number or stage barcode (PS / BB / QC / FA)"
+            className="font-mono text-lg tracking-widest text-center"
           />
-          {loading && (
-            <div className="absolute right-4 top-1/2 -translate-y-1/2">
-              <div className="w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
+          {loading && <div className="w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin shrink-0" />}
         </div>
 
         {error && <p className="text-red-400 text-sm text-center">{error}</p>}

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { QRCodeCanvas } from '@/components/QRCode';
+import { ScanInput } from '@/components/ScanInput';
 
 type Component = {
   id: string;
@@ -48,7 +49,6 @@ export function ComponentChecklist({
   const [scanInput, setScanInput] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
 
   if (components.length === 0) return null;
 
@@ -109,7 +109,6 @@ export function ComponentChecklist({
 
     setScanInput('');
     setScanning(false);
-    inputRef.current?.focus();
   }
 
   const checkedCount = components.filter((c) => checks[c.id]?.checked).length;
@@ -122,19 +121,18 @@ export function ComponentChecklist({
       </div>
 
       {/* Scan input */}
-      <form onSubmit={handleScan} className="flex gap-2">
-        <input
-          ref={inputRef}
+      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
+        style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
+        <ScanInput
           value={scanInput}
-          onChange={(e) => setScanInput(e.target.value)}
+          onChange={setScanInput}
+          onScan={(code) => { setScanInput(code); handleScan({ preventDefault: () => {} } as React.FormEvent); }}
           placeholder="Scan barcode / part number…"
-          className="input-field text-sm flex-1"
-          autoComplete="off"
+          disabled={scanning}
+          scannerTitle="Scan Component"
+          scannerHint="Point at the component barcode or part number"
         />
-        <button type="submit" disabled={scanning} className="btn-primary px-4 text-sm">
-          {scanning ? '…' : 'Scan'}
-        </button>
-      </form>
+      </div>
       {scanMsg && (
         <p className={`text-xs ${scanMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>{scanMsg}</p>
       )}

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { ScanInput } from '@/components/ScanInput';
 
 interface RawMaterial {
   id: string; name: string; code: string; unit: string; barcode?: string | null;
@@ -42,83 +43,55 @@ const STATUS_COLOR: Record<string, { bg: string; text: string; dot: string }> = 
   CANCELLED:   { bg: 'rgba(113,113,122,0.08)', text: '#71717a', dot: '#71717a' },
 };
 
-// ── Dispatch Modal ────────────────────────────────────────────────────────────
+// ── Dispatch Screen (Fullscreen) ──────────────────────────────────────────────
 function DispatchModal({
   card, onClose, onDone
 }: { card: JobCard; onClose: () => void; onDone: () => void }) {
-  // scanned count per item id (increments on each barcode scan)
-  const [counts, setCounts]         = useState<Record<string, number>>(() => {
+  const [counts, setCounts]           = useState<Record<string, number>>(() => {
     const m: Record<string, number> = {};
     card.items.forEach(i => { m[i.id] = 0; });
     return m;
   });
-  const [scanInput, setScanInput]   = useState('');
-  const [lastScanned, setLastScanned] = useState<{ id: string; ok: boolean } | null>(null);
-  const [notFound, setNotFound]     = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [scanVal, setScanVal]         = useState('');
+  const [lastScanned, setLastScanned] = useState<string | null>(null);
+  const [notFound, setNotFound]       = useState(false);
+  const [submitting, setSubmitting]   = useState(false);
   const [criticalErrors, setCriticalErrors] = useState<string[]>([]);
-  const [error, setError]           = useState('');
-  const scanRef = useRef<HTMLInputElement>(null);
+  const [error, setError]             = useState('');
 
-  // Focus scan input on open
-  useEffect(() => { scanRef.current?.focus(); }, []);
-
-  // Each scan increments count by 1
-  function handleScan(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== 'Enter') return;
-    const val = scanInput.trim().toUpperCase();
-    setScanInput('');
+  function processScan(raw: string) {
+    const val = raw.trim().toUpperCase();
     if (!val) return;
-
     const found = card.items.find(i =>
       i.rawMaterial.barcode?.toUpperCase() === val ||
       i.rawMaterial.code.toUpperCase() === val
     );
-
     if (!found) {
-      setNotFound(true);
+      setNotFound(true); setLastScanned(null);
       setTimeout(() => setNotFound(false), 1500);
       return;
     }
-
-    // Increment scan count (cap at required qty)
-    setCounts(prev => {
-      const current = prev[found.id] ?? 0;
-      const newCount = Math.min(current + 1, found.quantityReq);
-      return { ...prev, [found.id]: newCount };
-    });
-
-    setLastScanned({ id: found.id, ok: true });
-    setTimeout(() => setLastScanned(null), 1200);
     setNotFound(false);
+    setCounts(prev => ({ ...prev, [found.id]: Math.min((prev[found.id] ?? 0) + 1, found.quantityReq) }));
+    setLastScanned(found.id);
+    setTimeout(() => setLastScanned(null), 1200);
   }
 
-  // Manual override — type qty directly
-  function setManual(id: string, val: string) {
-    const n = parseFloat(val) || 0;
-    const item = card.items.find(i => i.id === id);
-    const max = item ? item.quantityReq : 9999;
-    setCounts(prev => ({ ...prev, [id]: Math.min(n, max) }));
+  // decrement (undo last scan)
+  function decrement(id: string) {
+    setCounts(prev => ({ ...prev, [id]: Math.max((prev[id] ?? 0) - 1, 0) }));
   }
 
-  const criticalShort = card.items.filter(item =>
-    item.isCritical && (counts[item.id] ?? 0) < item.quantityReq
-  );
-  const allDone      = card.items.every(i => (counts[i.id] ?? 0) >= i.quantityReq);
-  const anyScanned   = card.items.some(i => (counts[i.id] ?? 0) > 0);
-  const dispatchLabel = allDone ? 'Full Dispatch' : 'Partial Dispatch';
-  const doneCount    = card.items.filter(i => (counts[i.id] ?? 0) >= i.quantityReq).length;
+  const criticalShort = card.items.filter(i => i.isCritical && (counts[i.id] ?? 0) < i.quantityReq);
+  const allDone       = card.items.every(i => (counts[i.id] ?? 0) >= i.quantityReq);
+  const anyScanned    = card.items.some(i => (counts[i.id] ?? 0) > 0);
+  const doneCount     = card.items.filter(i => (counts[i.id] ?? 0) >= i.quantityReq).length;
 
   async function handleDispatch() {
     setSubmitting(true); setError(''); setCriticalErrors([]);
-    const items = card.items.map(item => ({
-      jobCardItemId: item.id,
-      issuedQty: counts[item.id] ?? 0,
-    }));
     const res = await fetch(`/api/inventory/job-cards/${card.id}/dispatch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: card.items.map(item => ({ jobCardItemId: item.id, issuedQty: counts[item.id] ?? 0 })) }),
     });
     setSubmitting(false);
     if (res.ok) { onDone(); return; }
@@ -127,139 +100,125 @@ function DispatchModal({
     else setError(data.error || 'Dispatch failed');
   }
 
+  const lastItem = lastScanned ? card.items.find(i => i.id === lastScanned) : null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
-      <div className="w-full max-w-lg max-h-[92vh] flex flex-col rounded-t-2xl sm:rounded-2xl overflow-hidden"
-        style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.08)' }}>
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0f0f0f' }}>
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-zinc-800">
-          <div>
-            <p className="text-white font-semibold">{card.cardNumber}</p>
-            <p className="text-zinc-500 text-xs">{card.order.orderNumber} · {card.orderQuantity} units · {STAGE_LABEL[card.stage] ?? card.stage}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-400">
-              <span className="text-white font-semibold">{doneCount}</span>/{card.items.length} verified
-            </span>
-            <button onClick={onClose} className="text-zinc-500 hover:text-white text-lg px-1">✕</button>
-          </div>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 border-b border-zinc-800/60"
+        style={{ paddingTop: 'max(env(safe-area-inset-top),16px)', paddingBottom: 12 }}>
+        <div>
+          <p className="text-white font-bold text-base">{card.cardNumber}</p>
+          <p className="text-zinc-500 text-xs">{card.order.orderNumber} · {card.orderQuantity} unit{card.orderQuantity !== 1 ? 's' : ''} · {STAGE_LABEL[card.stage] ?? card.stage}</p>
         </div>
-
-        {/* Scan bar */}
-        <div className="px-4 pt-3 pb-3 border-b border-zinc-800/50">
-          <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl transition-all ${notFound ? 'border-red-500/60' : lastScanned ? 'border-emerald-500/60' : 'border-sky-500/20'}`}
-            style={{ background: notFound ? 'rgba(239,68,68,0.08)' : lastScanned ? 'rgba(34,197,94,0.08)' : 'rgba(14,165,233,0.06)', border: `1px solid ${notFound ? 'rgba(239,68,68,0.4)' : lastScanned ? 'rgba(34,197,94,0.4)' : 'rgba(14,165,233,0.2)'}` }}>
-            <span className="text-lg">{notFound ? '❌' : lastScanned ? '✅' : '📷'}</span>
-            <input
-              ref={scanRef}
-              type="text"
-              value={scanInput}
-              onChange={e => setScanInput(e.target.value)}
-              onKeyDown={handleScan}
-              placeholder="Scan barcode — each scan adds 1"
-              className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 outline-none font-mono"
-              autoFocus
-            />
+        <div className="flex items-center gap-3">
+          <div className="text-center">
+            <p className="text-white font-bold text-lg leading-none">{doneCount}</p>
+            <p className="text-zinc-600 text-[10px]">of {card.items.length}</p>
           </div>
-          {notFound && <p className="text-red-400 text-xs mt-1.5 px-1">⚠ Barcode not found in this job card</p>}
-          {lastScanned && (
-            <p className="text-emerald-400 text-xs mt-1.5 px-1">
-              ✓ {card.items.find(i => i.id === lastScanned.id)?.rawMaterial.name} — {counts[lastScanned.id]}/{card.items.find(i => i.id === lastScanned.id)?.quantityReq}
-            </p>
-          )}
+          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white" style={{ background: 'rgba(255,255,255,0.08)' }}>✕</button>
         </div>
+      </div>
 
-        {/* Items list */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-          {card.items.map(item => {
-            const need      = item.quantityReq;
-            const scanned   = counts[item.id] ?? 0;
-            const done      = scanned >= need;
-            const partial   = scanned > 0 && !done;
-            const isActive  = lastScanned?.id === item.id;
-            const stockOk   = item.rawMaterial.currentStock >= need;
+      {/* Scan bar */}
+      <div className="px-4 py-3 border-b border-zinc-800/40">
+        <div className="flex items-center gap-2 px-3 py-3 rounded-2xl transition-all"
+          style={{
+            background: notFound ? 'rgba(239,68,68,0.08)' : lastScanned ? 'rgba(34,197,94,0.08)' : 'rgba(14,165,233,0.06)',
+            border: `1.5px solid ${notFound ? 'rgba(239,68,68,0.5)' : lastScanned ? 'rgba(34,197,94,0.5)' : 'rgba(14,165,233,0.25)'}`,
+          }}>
+          <span className="text-xl shrink-0">{notFound ? '❌' : lastScanned ? '✅' : '📦'}</span>
+          <ScanInput
+            value={scanVal}
+            onChange={setScanVal}
+            onScan={processScan}
+            placeholder="Scan component barcode — each scan = +1"
+            autoFocus
+            scannerTitle="Scan Component"
+            scannerHint="Point at the component barcode"
+          />
+        </div>
+        <div className="mt-2 min-h-[16px]">
+          {notFound && <p className="text-red-400 text-xs px-1">⚠ Barcode not in this job card</p>}
+          {lastItem && <p className="text-emerald-400 text-xs px-1">✓ {lastItem.rawMaterial.name} · {counts[lastItem.id]}/{lastItem.quantityReq} {lastItem.rawMaterial.unit}</p>}
+        </div>
+      </div>
 
-            return (
-              <div key={item.id}
-                className="rounded-xl px-3 py-2.5 transition-all"
-                style={{
-                  background: done ? 'rgba(34,197,94,0.06)' : isActive ? 'rgba(14,165,233,0.1)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${done ? 'rgba(34,197,94,0.3)' : isActive ? 'rgba(14,165,233,0.4)' : item.isCritical ? 'rgba(251,113,133,0.2)' : 'rgba(255,255,255,0.05)'}`,
-                }}>
+      {/* Items */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+        {card.items.map(item => {
+          const need    = item.quantityReq;
+          const scanned = counts[item.id] ?? 0;
+          const done    = scanned >= need;
+          const partial = scanned > 0 && !done;
+          const active  = lastScanned === item.id;
+          const stockOk = item.rawMaterial.currentStock >= need;
 
-                {/* Top row: barcode + name + critical + done check */}
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-zinc-500 font-mono text-[10px] shrink-0">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
-                  <span className="text-zinc-200 text-sm flex-1 truncate font-medium">{item.rawMaterial.name}</span>
-                  {item.isCritical && <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>}
-                  {done && <span className="text-emerald-400 text-lg shrink-0">✓</span>}
+          return (
+            <div key={item.id} className="rounded-2xl px-4 py-3 transition-all"
+              style={{
+                background: done ? 'rgba(34,197,94,0.07)' : active ? 'rgba(14,165,233,0.1)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${done ? 'rgba(34,197,94,0.35)' : active ? 'rgba(14,165,233,0.5)' : item.isCritical ? 'rgba(251,113,133,0.2)' : 'rgba(255,255,255,0.06)'}`,
+              }}>
+              {/* Name row */}
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="text-zinc-600 font-mono text-[10px] shrink-0">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
+                <span className="text-zinc-100 text-sm flex-1 font-medium leading-tight">{item.rawMaterial.name}</span>
+                {item.isCritical && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(251,113,133,0.15)', color: '#fb7185' }}>★ CRITICAL</span>}
+                {done && <span className="text-emerald-400 text-xl shrink-0">✓</span>}
+              </div>
+
+              {/* Progress + count + undo */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-2.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                  <div className="h-full rounded-full transition-all duration-300"
+                    style={{ width: `${Math.min((scanned / need) * 100, 100)}%`, background: done ? '#4ade80' : partial ? '#fbbf24' : '#38bdf8' }} />
                 </div>
-
-                {/* Bottom row: progress bar + count */}
-                <div className="flex items-center gap-3">
-                  {/* Progress bar */}
-                  <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                    <div className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${Math.min((scanned / need) * 100, 100)}%`,
-                        background: done ? '#4ade80' : partial ? '#fbbf24' : '#38bdf8',
-                      }} />
-                  </div>
-
-                  {/* Count display — tap to edit manually */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <input
-                      type="number"
-                      min={0}
-                      max={need}
-                      value={scanned}
-                      onChange={e => setManual(item.id, e.target.value)}
-                      onWheel={e => (e.target as HTMLInputElement).blur()}
-                      className={`w-12 text-center text-sm font-mono font-bold rounded-lg px-1 py-0.5 outline-none border ${done ? 'text-emerald-400 bg-emerald-900/20 border-emerald-800' : 'text-white bg-zinc-800 border-zinc-700'}`}
-                    />
-                    <span className="text-zinc-500 text-xs">/ {fmt(need)} {item.rawMaterial.unit}</span>
-                  </div>
-                </div>
-
-                {/* Stock warning */}
-                {!stockOk && (
-                  <p className="text-[10px] text-amber-400 mt-1.5">
-                    ⚠ Only {fmt(item.rawMaterial.currentStock)} in stock{item.isCritical ? ' — CRITICAL' : ''}
-                  </p>
+                <span className={`text-sm font-bold font-mono shrink-0 ${done ? 'text-emerald-400' : partial ? 'text-amber-300' : 'text-zinc-400'}`}>
+                  {scanned}<span className="text-zinc-600 font-normal">/{fmt(need)}</span>
+                  <span className="text-zinc-600 text-xs font-normal ml-1">{item.rawMaterial.unit}</span>
+                </span>
+                {/* Undo button */}
+                {scanned > 0 && (
+                  <button onClick={() => decrement(item.id)}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-red-400 transition-colors shrink-0"
+                    style={{ background: 'rgba(255,255,255,0.06)' }} title="Undo last scan">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                  </button>
                 )}
               </div>
-            );
-          })}
-        </div>
 
-        {/* Errors */}
-        {(criticalErrors.length > 0 || error) && (
-          <div className="px-4 py-2 border-t border-red-900/30" style={{ background: 'rgba(239,68,68,0.06)' }}>
-            {criticalErrors.map((e, i) => <p key={i} className="text-red-400 text-xs">⛔ {e}</p>)}
-            {error && <p className="text-red-400 text-xs">⛔ {error}</p>}
-          </div>
-        )}
+              {!stockOk && <p className="text-[10px] text-amber-400 mt-1.5">⚠ Only {fmt(item.rawMaterial.currentStock)} in stock</p>}
+            </div>
+          );
+        })}
+      </div>
 
-        {/* Footer */}
-        <div className="px-4 py-3 border-t border-zinc-800 flex items-center gap-3">
-          <div className="flex-1">
-            <span className={`text-xs px-2 py-1 rounded-lg font-medium ${allDone ? 'text-emerald-400 bg-emerald-900/20' : anyScanned ? 'text-amber-400 bg-amber-900/20' : 'text-zinc-500 bg-zinc-800'}`}>
-              {allDone ? '✓ Full Dispatch' : anyScanned ? `Partial Dispatch · ${doneCount}/${card.items.length}` : 'Scan items to begin'}
-            </span>
-            {criticalShort.length > 0 && (
-              <p className="text-red-400 text-[10px] mt-0.5">⛔ {criticalShort.length} critical item{criticalShort.length > 1 ? 's' : ''} not fully scanned</p>
-            )}
-          </div>
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>
-          <button
-            onClick={handleDispatch}
-            disabled={submitting || !anyScanned || criticalShort.length > 0}
-            className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40"
-            style={{ background: criticalShort.length > 0 ? 'rgba(239,68,68,0.5)' : allDone ? 'rgba(34,197,94,0.85)' : 'rgba(251,191,36,0.8)' }}>
-            {submitting ? 'Dispatching…' : `Dispatch`}
-          </button>
+      {/* Errors */}
+      {(criticalErrors.length > 0 || error) && (
+        <div className="px-4 py-2 border-t border-red-900/30" style={{ background: 'rgba(239,68,68,0.06)' }}>
+          {criticalErrors.map((e, i) => <p key={i} className="text-red-400 text-xs">⛔ {e}</p>)}
+          {error && <p className="text-red-400 text-xs">⛔ {error}</p>}
         </div>
+      )}
+
+      {/* Footer */}
+      <div className="px-4 py-4 border-t border-zinc-800 flex items-center gap-3"
+        style={{ paddingBottom: 'max(env(safe-area-inset-bottom),16px)' }}>
+        <div className="flex-1">
+          <span className={`text-xs px-3 py-1.5 rounded-lg font-semibold ${allDone ? 'text-emerald-400 bg-emerald-900/25' : anyScanned ? 'text-amber-400 bg-amber-900/20' : 'text-zinc-600 bg-zinc-800'}`}>
+            {allDone ? '✓ Full Dispatch' : anyScanned ? `Partial · ${doneCount}/${card.items.length} done` : 'Scan to begin'}
+          </span>
+          {criticalShort.length > 0 && <p className="text-red-400 text-[10px] mt-1">⛔ {criticalShort.length} critical item{criticalShort.length > 1 ? 's' : ''} incomplete</p>}
+        </div>
+        <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>
+        <button onClick={handleDispatch}
+          disabled={submitting || !anyScanned || criticalShort.length > 0}
+          className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40"
+          style={{ background: criticalShort.length > 0 ? 'rgba(239,68,68,0.5)' : allDone ? '#16a34a' : '#d97706' }}>
+          {submitting ? 'Dispatching…' : 'Dispatch'}
+        </button>
       </div>
     </div>
   );
