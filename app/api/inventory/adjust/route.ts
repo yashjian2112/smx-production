@@ -55,9 +55,10 @@ export async function POST(req: Request) {
     });
 
     // 3. For positive adjustments (opening stock / add), create a batch
+    let batchId: string | null = null;
     if (data.quantity > 0) {
       const batchCode = await generateNextBatchCode();
-      await tx.inventoryBatch.create({
+      const batch = await tx.inventoryBatch.create({
         data: {
           batchCode,
           rawMaterialId:    data.rawMaterialId,
@@ -70,9 +71,10 @@ export async function POST(req: Request) {
           notes:            `${data.type}: ${data.reason}`,
         },
       });
+      batchId = batch.id;
     }
 
-    return updated;
+    return { ...updated, batchId };
   });
 
   return NextResponse.json(result, { status: 201 });

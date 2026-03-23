@@ -33,8 +33,8 @@ export async function GET() {
     return {
       ...m,
       stockValue,
-      isLowStock: m.currentStock <= m.reorderPoint,
-      isCritical: m.currentStock <= m.minimumStock,
+      isLowStock: m.reorderPoint > 0 && m.currentStock <= m.reorderPoint,
+      isCritical: m.minimumStock > 0 && m.currentStock <= m.minimumStock,
       batchCount: m.batches.length,
     };
   });

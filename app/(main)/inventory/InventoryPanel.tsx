@@ -115,6 +115,7 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
   const [addError, setAddError]           = useState('');
   const [reorderBusy, setReorderBusy]     = useState(false);
   const [reorderMsg, setReorderMsg]       = useState('');
+  const [printBatchId, setPrintBatchId]   = useState<string | null>(null);
 
   // Issue Stock modal
   const [issueMat, setIssueMat]       = useState<RawMaterial | null>(null);
@@ -140,7 +141,7 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
     return !q || m.name.toLowerCase().includes(q) || m.code.toLowerCase().includes(q) || m.category?.name.toLowerCase().includes(q);
   });
 
-  const lowStockItems = (data?.materials ?? []).filter(m => m.isLowStock);
+  const lowStockItems = (data?.materials ?? []).filter(m => m.isLowStock && m.reorderPoint > 0);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -175,8 +176,12 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
       }),
     });
     setAddSaving(false);
-    if (res.ok) { setAddMat(null); setAddQty(''); setAddNotes(''); setAddPrice(''); setAddExpiryDate(''); load(); }
-    else { const e = await res.json(); setAddError(e.error || 'Failed'); }
+    if (res.ok) {
+      const data = await res.json();
+      setAddMat(null); setAddQty(''); setAddNotes(''); setAddPrice(''); setAddExpiryDate('');
+      load();
+      if (addMode === 'add' && data.batchId) setPrintBatchId(data.batchId);
+    } else { const e = await res.json(); setAddError(e.error || 'Failed'); }
   }
 
   async function handleCreateAllPRs() {
@@ -210,7 +215,7 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
   return (
     <div>
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.04)' }}>
           <p className="text-zinc-400 text-xs">Total Materials</p>
           <p className="text-2xl font-bold text-white mt-1">{data?.materials.length ?? 0}</p>
@@ -218,10 +223,6 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
         <div className="rounded-xl p-4" style={{ background: data?.lowStockCount ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.04)' }}>
           <p className="text-zinc-400 text-xs">Low Stock</p>
           <p className={`text-2xl font-bold mt-1 ${data?.lowStockCount ? 'text-red-400' : 'text-white'}`}>{data?.lowStockCount ?? 0}</p>
-        </div>
-        <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.04)' }}>
-          <p className="text-zinc-400 text-xs">Stock Value</p>
-          <p className="text-lg font-bold text-emerald-400 mt-1">{fmtCur(data?.totalValue ?? 0)}</p>
         </div>
       </div>
 
@@ -313,7 +314,7 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-white font-medium">{m.name}</span>
-                    <span className="text-zinc-500 text-xs">{m.code}</span>
+                    <span className="text-zinc-500 text-xs font-mono">{m.barcode ?? m.code}</span>
                     {m.category && <Badge color="sky">{m.category.name}</Badge>}
                     {m.isCritical  && <Badge color="red">CRITICAL</Badge>}
                     {!m.isCritical && m.isLowStock && <Badge color="yellow">LOW STOCK</Badge>}
@@ -379,7 +380,7 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
                             const isExpiringSoon = expiry && !isExpired && expiry <= new Date(now.getTime() + 30*24*60*60*1000);
                             return (
                             <tr key={b.id} className="border-b border-zinc-800/50">
-                              <td className="py-1 text-sky-400 font-mono">{b.batchCode}</td>
+                              <td className="py-1 text-zinc-400 font-mono">{b.batchCode}</td>
                               <td className="py-1 text-right text-zinc-300">{fmt(b.quantity)}</td>
                               <td className="py-1 text-right text-emerald-400 font-medium">{fmt(b.remainingQty)}</td>
                               <td className="py-1 text-right text-zinc-400">{fmtCur(b.unitPrice)}</td>
@@ -519,6 +520,28 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Print Label after Add Stock */}
+      {printBatchId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6 text-center" style={{ background: 'rgb(24,24,27)' }}>
+            <div className="text-4xl mb-3">🏷️</div>
+            <h3 className="text-white font-semibold mb-1">Stock Added</h3>
+            <p className="text-zinc-400 text-sm mb-5">Do you want to print the barcode label for this batch?</p>
+            <div className="flex gap-3">
+              <button onClick={() => setPrintBatchId(null)}
+                className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                Skip
+              </button>
+              <a href={`/print/grn-label/${printBatchId}`} target="_blank"
+                onClick={() => setPrintBatchId(null)}
+                className="flex-1 py-2 rounded-lg text-sm font-medium bg-purple-700 hover:bg-purple-600 text-white transition-colors text-center">
+                Print Label
+              </a>
+            </div>
           </div>
         </div>
       )}
@@ -1059,6 +1082,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   }
 
   async function toggleActive(m: RawMaterial) {
+    if (m.active && !confirm(`Deactivate "${m.name}"? It will be hidden from stock and job cards.`)) return;
     await fetch(`/api/inventory/materials/${m.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !m.active }),
@@ -1936,8 +1960,8 @@ function ReportsTab({ isAdmin }: { isAdmin: boolean }) {
                       <div className="text-zinc-500">{m.code} · {m.unit}</div>
                     </td>
                     <td className="px-3 py-2 text-right text-zinc-400">{fmt(m.openingQty)}</td>
-                    <td className="px-3 py-2 text-right text-emerald-400">+{fmt(m.qtyIn)}</td>
-                    <td className="px-3 py-2 text-right text-red-400">−{fmt(m.qtyOut)}</td>
+                    <td className="px-3 py-2 text-right text-emerald-400">{m.qtyIn > 0 ? `+${fmt(m.qtyIn)}` : <span className="text-zinc-600">—</span>}</td>
+                    <td className="px-3 py-2 text-right text-red-400">{m.qtyOut > 0 ? `−${fmt(m.qtyOut)}` : <span className="text-zinc-600">—</span>}</td>
                     <td className={`px-3 py-2 text-right font-medium ${m.isCritical ? 'text-red-400' : m.isLowStock ? 'text-yellow-400' : 'text-white'}`}>{fmt(m.closingQty)}</td>
                     <td className="px-3 py-2 text-right text-zinc-300">{fmtCur(m.stockValue)}</td>
                   </tr>
