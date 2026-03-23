@@ -1,22 +1,15 @@
 import { prisma } from './prisma';
 
 /**
- * Generates the next barcode for a raw material.
- * Format: SMX{CATEGORY_CODE(3)}{4-digit seq}
- * Examples: SMXCAP0001, SMXRES0001, SMXHRD0001, SMX0001 (no category)
- * Min 8 chars, max 12 chars. Uses MAX+1 to avoid collision on delete/re-create.
+ * Generates the next barcode for a raw material using a user-supplied prefix.
+ * Format: {PREFIX}{4-digit seq} — e.g. CAP0001, BUSBAR0001, IGBT0001
+ * Prefix is required (min 2 chars). Sequence is MAX+1 — never collides even after deletes.
  */
-export async function generateMaterialBarcode(categoryId?: string | null): Promise<string> {
-  let categoryCode = '';
-  if (categoryId) {
-    const category = await prisma.materialCategory.findUnique({
-      where: { id: categoryId },
-      select: { code: true },
-    });
-    if (category?.code) categoryCode = category.code.toUpperCase().slice(0, 3);
+export async function generateMaterialBarcode(categoryId?: string | null, customPrefix?: string | null): Promise<string> {
+  if (!customPrefix || customPrefix.trim().length < 2) {
+    throw new Error('Barcode prefix is required (min 2 characters)');
   }
-
-  const prefix = `SMX${categoryCode}`; // SMXCAP, SMXRES, SMX (no category)
+  const prefix = customPrefix.trim().toUpperCase();
 
   // MAX+1 sequential — never collides even after deletes
   const existing = await prisma.rawMaterial.findMany({
@@ -31,7 +24,7 @@ export async function generateMaterialBarcode(categoryId?: string | null): Promi
     if (!isNaN(n) && n > maxSeq) maxSeq = n;
   }
 
-  // Ensure total barcode length is 8-12 chars
+  // Pad sequence so total barcode is at least 8 chars
   const seqLen = Math.max(4, 8 - prefix.length);
   return `${prefix}${String(maxSeq + 1).padStart(seqLen, '0')}`;
 }

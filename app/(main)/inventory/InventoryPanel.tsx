@@ -964,6 +964,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [fPurchaseUnit,  setFPurchaseUnit]  = useState('');
   const [fConvFactor,    setFConvFactor]    = useState('');
   const [fOpenQty,       setFOpenQty]       = useState('');
+  const [fBarcodePrefix, setFBarcodePrefix] = useState('');
   const [fSaving,        setFSaving]        = useState(false);
   const [fError,         setFError]         = useState('');
 
@@ -1004,7 +1005,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
 
   function openNewMat() {
     setEditMat(null); setFName(''); setFUnit('PCS'); setFCatId(''); setFMin('0'); setFReord('0'); setFMoq('1');
-    setFDesc(''); setFVendorId(''); setFPurchaseUnit(''); setFConvFactor(''); setFOpenQty(''); setFError('');
+    setFDesc(''); setFVendorId(''); setFPurchaseUnit(''); setFConvFactor(''); setFOpenQty(''); setFBarcodePrefix(''); setFError('');
     setShowInlineCat(false); setShowInlineVendor(false);
     setShowMatForm(true);
   }
@@ -1030,6 +1031,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
       minimumOrderQty: parseFloat(fMoq) || 1,
       purchaseUnit: fPurchaseUnit || undefined,
       conversionFactor: fPurchaseUnit && fConvFactor ? parseFloat(fConvFactor) : undefined,
+      ...(!editMat && fBarcodePrefix.trim() ? { barcodePrefix: fBarcodePrefix.trim().toUpperCase() } : {}),
     };
     const res = editMat
       ? await fetch(`/api/inventory/materials/${editMat.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -1303,6 +1305,28 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
+
+              {/* Barcode Prefix (new material only — required) */}
+              {!editMat && (
+                <div>
+                  <label className="text-zinc-400 text-xs">
+                    Barcode Prefix <span className="text-red-500">*</span> <span className="text-zinc-600">(2–8 chars, letters/numbers only)</span>
+                  </label>
+                  <input
+                    value={fBarcodePrefix}
+                    onChange={e => setFBarcodePrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+                    placeholder="e.g. CAP, BUSBAR, IGBT, MOS, RES"
+                    required
+                    minLength={2}
+                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white font-mono border border-zinc-700 outline-none focus:border-sky-500"
+                    style={{ background: 'rgb(39,39,42)' }} />
+                  {fBarcodePrefix.trim().length >= 2 && (
+                    <p className="text-zinc-500 text-[10px] mt-0.5">
+                      Barcodes: <span className="text-sky-400 font-mono">{fBarcodePrefix.trim()}0001</span>, <span className="text-sky-400 font-mono">{fBarcodePrefix.trim()}0002</span>…
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Unit */}
               <div>

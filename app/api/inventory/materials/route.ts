@@ -23,6 +23,7 @@ const createSchema = z.object({
   minimumStock:      z.number().min(0).default(0),
   reorderPoint:      z.number().min(0).default(0),
   code:              z.string().optional(),
+  barcodePrefix:     z.string().min(2).max(8),
 });
 
 export async function GET() {
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
   const data = createSchema.parse(body);
 
   const code    = data.code || await generateNextMaterialCode();
-  const barcode = await generateMaterialBarcode(data.categoryId);
+  const barcode = await generateMaterialBarcode(data.categoryId, data.barcodePrefix);
 
   const material = await prisma.rawMaterial.create({
     data: {
