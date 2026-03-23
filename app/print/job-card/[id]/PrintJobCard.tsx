@@ -284,14 +284,10 @@ export function PrintJobCard({
             <div style={{ fontSize: 8, color: '#555', marginTop: 1 }}>{order.product.name}</div>
           </div>
           <div className="info-cell">
-            <div className="info-label">Client</div>
-            <div className="info-value">{order.client?.customerName ?? '—'}</div>
-            <div style={{ fontSize: 8, color: '#555', marginTop: 1 }}>{order.client?.code ?? ''}</div>
+            <div className="info-label">Prepared By</div>
+            <div className="info-value">{jobCard.createdBy.name}</div>
           </div>
-          <div className="info-cell">
-            <div className="info-label">Voltage</div>
-            <div className="info-value">{order.voltage ?? '—'}</div>
-          </div>
+          <div className="info-cell" />
         </div>
 
         {/* ── DISPATCHED BY ROW (shown if dispatched) ── */}
