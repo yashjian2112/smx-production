@@ -46,76 +46,90 @@ const STATUS_COLOR: Record<string, { bg: string; text: string; dot: string }> = 
 function DispatchModal({
   card, onClose, onDone
 }: { card: JobCard; onClose: () => void; onDone: () => void }) {
-  // issuedQty per item id, default = min(stock, required)
-  const [qtys, setQtys] = useState<Record<string, string>>(() => {
-    const m: Record<string, string> = {};
-    for (const item of card.items) {
-      const available = Math.min(item.rawMaterial.currentStock, item.quantityReq);
-      m[item.id] = String(available);
-    }
+  // scanned count per item id (increments on each barcode scan)
+  const [counts, setCounts]         = useState<Record<string, number>>(() => {
+    const m: Record<string, number> = {};
+    card.items.forEach(i => { m[i.id] = 0; });
     return m;
   });
   const [scanInput, setScanInput]   = useState('');
-  const [scannedId, setScannedId]   = useState<string | null>(null);
+  const [lastScanned, setLastScanned] = useState<{ id: string; ok: boolean } | null>(null);
+  const [notFound, setNotFound]     = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [criticalErrors, setCriticalErrors] = useState<string[]>([]);
-  const [error, setError] = useState('');
+  const [error, setError]           = useState('');
   const scanRef = useRef<HTMLInputElement>(null);
 
-  // Scan barcode → highlight that item
+  // Focus scan input on open
+  useEffect(() => { scanRef.current?.focus(); }, []);
+
+  // Each scan increments count by 1
   function handleScan(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter') return;
     const val = scanInput.trim().toUpperCase();
     setScanInput('');
+    if (!val) return;
+
     const found = card.items.find(i =>
       i.rawMaterial.barcode?.toUpperCase() === val ||
       i.rawMaterial.code.toUpperCase() === val
     );
-    if (found) {
-      setScannedId(found.id);
-      setTimeout(() => setScannedId(null), 2000);
+
+    if (!found) {
+      setNotFound(true);
+      setTimeout(() => setNotFound(false), 1500);
+      return;
     }
+
+    // Increment scan count (cap at required qty)
+    setCounts(prev => {
+      const current = prev[found.id] ?? 0;
+      const newCount = Math.min(current + 1, found.quantityReq);
+      return { ...prev, [found.id]: newCount };
+    });
+
+    setLastScanned({ id: found.id, ok: true });
+    setTimeout(() => setLastScanned(null), 1200);
+    setNotFound(false);
   }
 
-  // Critical items check on the fly
-  const criticalShort = card.items.filter(item => {
-    if (!item.isCritical) return false;
-    const issued = parseFloat(qtys[item.id] || '0');
-    return issued < item.quantityReq;
-  });
+  // Manual override — type qty directly
+  function setManual(id: string, val: string) {
+    const n = parseFloat(val) || 0;
+    const item = card.items.find(i => i.id === id);
+    const max = item ? item.quantityReq : 9999;
+    setCounts(prev => ({ ...prev, [id]: Math.min(n, max) }));
+  }
 
-  const allItemsFull = card.items.every(item => {
-    const issued = parseFloat(qtys[item.id] || '0');
-    return issued >= item.quantityReq;
-  });
-  const dispatchLabel = allItemsFull ? 'Full Dispatch' : 'Partial Dispatch';
+  const criticalShort = card.items.filter(item =>
+    item.isCritical && (counts[item.id] ?? 0) < item.quantityReq
+  );
+  const allDone      = card.items.every(i => (counts[i.id] ?? 0) >= i.quantityReq);
+  const anyScanned   = card.items.some(i => (counts[i.id] ?? 0) > 0);
+  const dispatchLabel = allDone ? 'Full Dispatch' : 'Partial Dispatch';
+  const doneCount    = card.items.filter(i => (counts[i.id] ?? 0) >= i.quantityReq).length;
 
   async function handleDispatch() {
     setSubmitting(true); setError(''); setCriticalErrors([]);
     const items = card.items.map(item => ({
       jobCardItemId: item.id,
-      issuedQty: parseFloat(qtys[item.id] || '0'),
+      issuedQty: counts[item.id] ?? 0,
     }));
-
     const res = await fetch(`/api/inventory/job-cards/${card.id}/dispatch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items }),
     });
-
     setSubmitting(false);
-    if (res.ok) {
-      onDone();
-    } else {
-      const data = await res.json();
-      if (data.criticalErrors) setCriticalErrors(data.criticalErrors);
-      else setError(data.error || 'Dispatch failed');
-    }
+    if (res.ok) { onDone(); return; }
+    const data = await res.json();
+    if (data.criticalErrors) setCriticalErrors(data.criticalErrors);
+    else setError(data.error || 'Dispatch failed');
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
-      <div className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-2xl sm:rounded-2xl overflow-hidden"
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
+      <div className="w-full max-w-lg max-h-[92vh] flex flex-col rounded-t-2xl sm:rounded-2xl overflow-hidden"
         style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.08)' }}>
 
         {/* Header */}
@@ -124,82 +138,94 @@ function DispatchModal({
             <p className="text-white font-semibold">{card.cardNumber}</p>
             <p className="text-zinc-500 text-xs">{card.order.orderNumber} · {card.orderQuantity} units · {STAGE_LABEL[card.stage] ?? card.stage}</p>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white text-lg px-2">✕</button>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-zinc-400">
+              <span className="text-white font-semibold">{doneCount}</span>/{card.items.length} verified
+            </span>
+            <button onClick={onClose} className="text-zinc-500 hover:text-white text-lg px-1">✕</button>
+          </div>
         </div>
 
         {/* Scan bar */}
-        <div className="px-4 pt-3 pb-2 border-b border-zinc-800/50">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.15)' }}>
-            <span className="text-sky-400 text-sm">📷</span>
+        <div className="px-4 pt-3 pb-3 border-b border-zinc-800/50">
+          <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl transition-all ${notFound ? 'border-red-500/60' : lastScanned ? 'border-emerald-500/60' : 'border-sky-500/20'}`}
+            style={{ background: notFound ? 'rgba(239,68,68,0.08)' : lastScanned ? 'rgba(34,197,94,0.08)' : 'rgba(14,165,233,0.06)', border: `1px solid ${notFound ? 'rgba(239,68,68,0.4)' : lastScanned ? 'rgba(34,197,94,0.4)' : 'rgba(14,165,233,0.2)'}` }}>
+            <span className="text-lg">{notFound ? '❌' : lastScanned ? '✅' : '📷'}</span>
             <input
               ref={scanRef}
               type="text"
               value={scanInput}
               onChange={e => setScanInput(e.target.value)}
               onKeyDown={handleScan}
-              placeholder="Scan item barcode to highlight…"
+              placeholder="Scan barcode — each scan adds 1"
               className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 outline-none font-mono"
+              autoFocus
             />
           </div>
+          {notFound && <p className="text-red-400 text-xs mt-1.5 px-1">⚠ Barcode not found in this job card</p>}
+          {lastScanned && (
+            <p className="text-emerald-400 text-xs mt-1.5 px-1">
+              ✓ {card.items.find(i => i.id === lastScanned.id)?.rawMaterial.name} — {counts[lastScanned.id]}/{card.items.find(i => i.id === lastScanned.id)?.quantityReq}
+            </p>
+          )}
         </div>
 
         {/* Items list */}
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
           {card.items.map(item => {
-            const stock    = item.rawMaterial.currentStock;
-            const need     = item.quantityReq;
-            const issued   = parseFloat(qtys[item.id] || '0');
-            const ok       = stock >= need;
-            const stockLow = !ok && stock > 0;
-            const noStock  = stock <= 0;
-            const isScanned = scannedId === item.id;
+            const need      = item.quantityReq;
+            const scanned   = counts[item.id] ?? 0;
+            const done      = scanned >= need;
+            const partial   = scanned > 0 && !done;
+            const isActive  = lastScanned?.id === item.id;
+            const stockOk   = item.rawMaterial.currentStock >= need;
 
             return (
               <div key={item.id}
                 className="rounded-xl px-3 py-2.5 transition-all"
                 style={{
-                  background: isScanned ? 'rgba(14,165,233,0.12)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${isScanned ? 'rgba(14,165,233,0.4)' : item.isCritical ? 'rgba(251,113,133,0.2)' : 'rgba(255,255,255,0.05)'}`,
+                  background: done ? 'rgba(34,197,94,0.06)' : isActive ? 'rgba(14,165,233,0.1)' : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${done ? 'rgba(34,197,94,0.3)' : isActive ? 'rgba(14,165,233,0.4)' : item.isCritical ? 'rgba(251,113,133,0.2)' : 'rgba(255,255,255,0.05)'}`,
                 }}>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok ? 'bg-emerald-400' : stockLow ? 'bg-amber-400' : 'bg-red-400'}`} />
-                  <span className="text-zinc-500 font-mono text-[10px]">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
-                  <span className="text-zinc-200 text-sm flex-1 truncate">{item.rawMaterial.name}</span>
-                  {item.isCritical && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>
-                  )}
+
+                {/* Top row: barcode + name + critical + done check */}
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-zinc-500 font-mono text-[10px] shrink-0">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
+                  <span className="text-zinc-200 text-sm flex-1 truncate font-medium">{item.rawMaterial.name}</span>
+                  {item.isCritical && <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>}
+                  {done && <span className="text-emerald-400 text-lg shrink-0">✓</span>}
                 </div>
 
+                {/* Bottom row: progress bar + count */}
                 <div className="flex items-center gap-3">
-                  {/* Stock info */}
-                  <div className="flex-1 text-xs text-zinc-500">
-                    Need: <span className="text-zinc-300">{fmt(need)} {item.rawMaterial.unit}</span>
-                    {' · '}
-                    Stock: <span className={ok ? 'text-emerald-400' : stockLow ? 'text-amber-400' : 'text-red-400'}>
-                      {noStock ? 'None' : fmt(stock)}
-                    </span>
+                  {/* Progress bar */}
+                  <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                    <div className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.min((scanned / need) * 100, 100)}%`,
+                        background: done ? '#4ade80' : partial ? '#fbbf24' : '#38bdf8',
+                      }} />
                   </div>
-                  {/* Qty input */}
-                  <div className="flex items-center gap-1.5 shrink-0">
+
+                  {/* Count display — tap to edit manually */}
+                  <div className="flex items-center gap-1 shrink-0">
                     <input
                       type="number"
                       min={0}
-                      max={Math.min(stock, need)}
-                      step="any"
-                      value={qtys[item.id]}
-                      onChange={e => setQtys(prev => ({ ...prev, [item.id]: e.target.value }))}
+                      max={need}
+                      value={scanned}
+                      onChange={e => setManual(item.id, e.target.value)}
                       onWheel={e => (e.target as HTMLInputElement).blur()}
-                      className="w-20 text-right text-sm font-mono text-white bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 outline-none focus:border-sky-500"
+                      className={`w-12 text-center text-sm font-mono font-bold rounded-lg px-1 py-0.5 outline-none border ${done ? 'text-emerald-400 bg-emerald-900/20 border-emerald-800' : 'text-white bg-zinc-800 border-zinc-700'}`}
                     />
-                    <span className="text-zinc-500 text-xs">{item.rawMaterial.unit}</span>
+                    <span className="text-zinc-500 text-xs">/ {fmt(need)} {item.rawMaterial.unit}</span>
                   </div>
                 </div>
 
-                {/* Issued qty indicator */}
-                {issued > 0 && issued < need && (
-                  <p className="text-[10px] text-amber-400 mt-1">
-                    Issuing {fmt(issued)} of {fmt(need)} — shortfall of {fmt(need - issued)}
-                    {item.isCritical && ' ⚠ CRITICAL ITEM'}
+                {/* Stock warning */}
+                {!stockOk && (
+                  <p className="text-[10px] text-amber-400 mt-1.5">
+                    ⚠ Only {fmt(item.rawMaterial.currentStock)} in stock{item.isCritical ? ' — CRITICAL' : ''}
                   </p>
                 )}
               </div>
@@ -210,31 +236,28 @@ function DispatchModal({
         {/* Errors */}
         {(criticalErrors.length > 0 || error) && (
           <div className="px-4 py-2 border-t border-red-900/30" style={{ background: 'rgba(239,68,68,0.06)' }}>
-            {criticalErrors.map((e, i) => (
-              <p key={i} className="text-red-400 text-xs">⛔ {e}</p>
-            ))}
+            {criticalErrors.map((e, i) => <p key={i} className="text-red-400 text-xs">⛔ {e}</p>)}
             {error && <p className="text-red-400 text-xs">⛔ {error}</p>}
           </div>
         )}
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-zinc-800 flex items-center gap-3">
-          {/* Dispatch type preview */}
           <div className="flex-1">
-            <span className={`text-xs px-2 py-1 rounded-lg font-medium ${allItemsFull ? 'text-emerald-400 bg-emerald-900/20' : 'text-amber-400 bg-amber-900/20'}`}>
-              {dispatchLabel}
+            <span className={`text-xs px-2 py-1 rounded-lg font-medium ${allDone ? 'text-emerald-400 bg-emerald-900/20' : anyScanned ? 'text-amber-400 bg-amber-900/20' : 'text-zinc-500 bg-zinc-800'}`}>
+              {allDone ? '✓ Full Dispatch' : anyScanned ? `Partial Dispatch · ${doneCount}/${card.items.length}` : 'Scan items to begin'}
             </span>
             {criticalShort.length > 0 && (
-              <p className="text-red-400 text-[10px] mt-0.5">{criticalShort.length} critical item{criticalShort.length > 1 ? 's' : ''} insufficient</p>
+              <p className="text-red-400 text-[10px] mt-0.5">⛔ {criticalShort.length} critical item{criticalShort.length > 1 ? 's' : ''} not fully scanned</p>
             )}
           </div>
           <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>
           <button
             onClick={handleDispatch}
-            disabled={submitting || criticalShort.length > 0}
+            disabled={submitting || !anyScanned || criticalShort.length > 0}
             className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40"
-            style={{ background: criticalShort.length > 0 ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.8)' }}>
-            {submitting ? 'Dispatching…' : `Dispatch (${dispatchLabel})`}
+            style={{ background: criticalShort.length > 0 ? 'rgba(239,68,68,0.5)' : allDone ? 'rgba(34,197,94,0.85)' : 'rgba(251,191,36,0.8)' }}>
+            {submitting ? 'Dispatching…' : `Dispatch`}
           </button>
         </div>
       </div>
