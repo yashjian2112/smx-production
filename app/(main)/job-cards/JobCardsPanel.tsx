@@ -133,7 +133,7 @@ function DispatchModal({
             value={scanVal}
             onChange={setScanVal}
             onScan={processScan}
-            placeholder="Scan component barcode — each scan = +1"
+            placeholder="Scan barcode (+1 each scan)"
             autoFocus
             scannerTitle="Scan Component"
             scannerHint="Point at the component barcode"
@@ -170,15 +170,20 @@ function DispatchModal({
               </div>
 
               {/* Progress + count + undo */}
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-2.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                  <div className="h-full rounded-full transition-all duration-300"
-                    style={{ width: `${Math.min((scanned / need) * 100, 100)}%`, background: done ? '#4ade80' : partial ? '#fbbf24' : '#38bdf8' }} />
-                </div>
-                <span className={`text-sm font-bold font-mono shrink-0 ${done ? 'text-emerald-400' : partial ? 'text-amber-300' : 'text-zinc-400'}`}>
-                  {scanned}<span className="text-zinc-600 font-normal">/{fmt(need)}</span>
-                  <span className="text-zinc-600 text-xs font-normal ml-1">{item.rawMaterial.unit}</span>
+              <div className="flex items-center gap-2 mt-1">
+                {/* Count badge */}
+                <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded-lg shrink-0 ${done ? 'text-emerald-400 bg-emerald-900/30' : partial ? 'text-amber-300 bg-amber-900/20' : 'text-zinc-500 bg-zinc-800'}`}>
+                  {scanned}/{fmt(need)} <span className="font-normal opacity-60">{item.rawMaterial.unit}</span>
                 </span>
+                {/* Progress bar — always visible track */}
+                <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.12)' }}>
+                  <div className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: need > 0 ? `${Math.min((scanned / need) * 100, 100)}%` : '0%',
+                      background: done ? '#4ade80' : partial ? '#fbbf24' : 'rgba(56,189,248,0.4)',
+                      minWidth: scanned > 0 ? '6px' : '0px',
+                    }} />
+                </div>
                 {/* Undo button */}
                 {scanned > 0 && (
                   <button onClick={() => decrement(item.id)}
