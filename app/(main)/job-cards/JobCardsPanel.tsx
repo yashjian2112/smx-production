@@ -77,11 +77,6 @@ function DispatchModal({
     setTimeout(() => setLastScanned(null), 1200);
   }
 
-  // decrement (undo last scan)
-  function decrement(id: string) {
-    setCounts(prev => ({ ...prev, [id]: Math.max((prev[id] ?? 0) - 1, 0) }));
-  }
-
   const criticalShort = card.items.filter(i => i.isCritical && (counts[i.id] ?? 0) < i.quantityReq);
   const allDone       = card.items.every(i => (counts[i.id] ?? 0) >= i.quantityReq);
   const anyScanned    = card.items.some(i => (counts[i.id] ?? 0) > 0);
@@ -169,13 +164,11 @@ function DispatchModal({
                 {done && <span className="text-emerald-400 text-xl shrink-0">✓</span>}
               </div>
 
-              {/* Progress + count + undo */}
+              {/* Progress + count */}
               <div className="flex items-center gap-2 mt-1">
-                {/* Count badge */}
                 <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded-lg shrink-0 ${done ? 'text-emerald-400 bg-emerald-900/30' : partial ? 'text-amber-300 bg-amber-900/20' : 'text-zinc-500 bg-zinc-800'}`}>
                   {scanned}/{fmt(need)} <span className="font-normal opacity-60">{item.rawMaterial.unit}</span>
                 </span>
-                {/* Progress bar — always visible track */}
                 <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.12)' }}>
                   <div className="h-full rounded-full transition-all duration-300"
                     style={{
@@ -184,14 +177,6 @@ function DispatchModal({
                       minWidth: scanned > 0 ? '6px' : '0px',
                     }} />
                 </div>
-                {/* Undo button */}
-                {scanned > 0 && (
-                  <button onClick={() => decrement(item.id)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-red-400 transition-colors shrink-0"
-                    style={{ background: 'rgba(255,255,255,0.06)' }} title="Undo last scan">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                  </button>
-                )}
               </div>
 
               {!stockOk && <p className="text-[10px] text-amber-400 mt-1.5">⚠ Only {fmt(item.rawMaterial.currentStock)} in stock</p>}
