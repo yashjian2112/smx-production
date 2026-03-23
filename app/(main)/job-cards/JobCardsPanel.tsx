@@ -350,6 +350,12 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
                           {isOpen ? '▲ Hide' : `▼ ${card.items.length} items`}
                         </button>
                       )}
+                      <button
+                        onClick={() => window.open(`/print/job-card/${card.id}`, '_blank')}
+                        className="px-2 py-1.5 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors"
+                        title="Print Job Card">
+                        🖨
+                      </button>
                       {canDispatch && card.status === 'PENDING' && (
                         <button onClick={() => setDispatching(card)}
                           className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-all"
