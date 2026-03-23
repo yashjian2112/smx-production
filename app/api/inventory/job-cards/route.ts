@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
       productId,
       AND: [
         { OR: [{ stage: stage as StageType }, { stage: null }] },
-        { OR: [{ voltage: voltage }, { voltage: null }] },
+        { OR: [{ voltage: voltage }, { voltage: null }, { voltage: '' }] },
       ],
     },
   });
