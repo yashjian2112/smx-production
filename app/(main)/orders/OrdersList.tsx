@@ -83,7 +83,12 @@ export function OrdersList({ orders, isManager, sessionRole }: {
     if (res.ok) await loadPending();
   }
 
-  const processing = orders.filter((o) => o.status === 'ACTIVE');
+  const processing = orders.filter((o) => {
+    if (o.status !== 'ACTIVE') return false;
+    // For employees: only show in Processing if work has actually started (not all-PENDING)
+    if (isEmployee) return o.units.some(u => u.currentStatus !== 'PENDING');
+    return true;
+  });
   const completed  = orders.filter((o) => o.status !== 'ACTIVE');
 
   const tabs = isEmployee
