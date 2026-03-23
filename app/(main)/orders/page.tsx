@@ -50,7 +50,7 @@ export default async function OrdersPage() {
         <h2 className="text-xl font-semibold">Orders</h2>
         {isAdmin && <CreateOrderForm products={products} clients={clients} />}
       </div>
-      <OrdersList orders={orders} isManager={isManager} />
+      <OrdersList orders={orders} isManager={isManager} sessionRole={session.role} />
     </div>
   );
 }
