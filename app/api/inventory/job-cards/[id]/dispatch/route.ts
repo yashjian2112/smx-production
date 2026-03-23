@@ -44,33 +44,48 @@ export async function POST(
     return NextResponse.json({ error: 'Job card is not in PENDING status' }, { status: 400 });
   }
 
-  // Build a map of issued qtys
-  const issuedMap = new Map(items.map(i => [i.jobCardItemId, i.issuedQty]));
+  // Build a map — cap at quantityReq (no excess allowed)
+  const issuedMap = new Map(
+    items.map(i => {
+      const cardItem = jobCard.items.find(ci => ci.id === i.jobCardItemId);
+      const capped = cardItem ? Math.min(Math.max(0, i.issuedQty), cardItem.quantityReq) : Math.max(0, i.issuedQty);
+      return [i.jobCardItemId, capped];
+    })
+  );
 
-  // Validate critical items
+  // Validate stock availability (prevent negative stock)
+  const stockErrors: string[] = [];
+  for (const item of jobCard.items) {
+    const issued = issuedMap.get(item.id) ?? 0;
+    if (issued > 0 && issued > item.rawMaterial.currentStock) {
+      stockErrors.push(`"${item.rawMaterial.name}": need ${issued}, only ${item.rawMaterial.currentStock} in stock`);
+    }
+  }
+  if (stockErrors.length > 0) {
+    return NextResponse.json({ error: 'Insufficient stock for some items', stockErrors }, { status: 422 });
+  }
+
+  // Validate critical items — must be fully scanned
   const criticalErrors: string[] = [];
   for (const item of jobCard.items) {
     if (!item.isCritical) continue;
     const issued = issuedMap.get(item.id) ?? 0;
     if (issued < item.quantityReq) {
-      criticalErrors.push(
-        `"${item.rawMaterial.name}" is critical — need ${item.quantityReq}, only ${issued} available`
-      );
+      criticalErrors.push(`"${item.rawMaterial.name}" is CRITICAL — need ${item.quantityReq}, scanned ${issued}`);
     }
   }
-
   if (criticalErrors.length > 0) {
-    return NextResponse.json({
-      error: 'Cannot dispatch: critical items have insufficient stock',
-      criticalErrors,
-    }, { status: 422 });
+    return NextResponse.json({ error: 'Cannot dispatch: critical items not fully scanned', criticalErrors }, { status: 422 });
+  }
+
+  // Must scan at least one item
+  const totalIssued = Array.from(issuedMap.values()).reduce((a, b) => a + b, 0);
+  if (totalIssued === 0) {
+    return NextResponse.json({ error: 'Scan at least one item before dispatching' }, { status: 400 });
   }
 
   // Determine dispatch type
-  const allFull = jobCard.items.every(item => {
-    const issued = issuedMap.get(item.id) ?? 0;
-    return issued >= item.quantityReq;
-  });
+  const allFull = jobCard.items.every(item => (issuedMap.get(item.id) ?? 0) >= item.quantityReq);
   const dispatchType = allFull ? 'FULL' : 'PARTIAL';
 
   // Deduct stock (FIFO) and update job card items

@@ -20,9 +20,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Can only verify items on DISPATCHED job cards' }, { status: 400 });
   }
 
-  await prisma.jobCardItem.update({
-    where: { id: itemId },
-    data: { verifiedQty: parseFloat(verifiedQty), isVerified: true },
+  await prisma.$transaction(async (tx) => {
+    await tx.jobCardItem.update({
+      where: { id: itemId },
+      data: { verifiedQty: parseFloat(verifiedQty), isVerified: true },
+    });
+    // Auto-transition to IN_PROGRESS when all items verified
+    const allItems = await tx.jobCardItem.findMany({ where: { jobCardId: id } });
+    const allVerified = allItems.every(i => i.id === itemId ? true : i.isVerified);
+    if (allVerified) {
+      await tx.jobCard.update({ where: { id }, data: { status: 'IN_PROGRESS' } });
+    }
   });
 
   const updated = await prisma.jobCard.findUnique({

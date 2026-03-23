@@ -328,9 +328,13 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
                 <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
                   {isAdmin && (
                     <>
-                      <button onClick={() => { setAddMat(m); setAddType('OPENING'); setAddQty(''); setAddNotes(''); setAddPrice(''); }}
+                      <button onClick={() => { setAddMat(m); setAddType('OPENING'); setAddMode('add'); setAddQty(''); setAddNotes(''); setAddPrice(''); }}
                         className="px-2 py-1 rounded-lg text-xs font-medium text-emerald-400 border border-emerald-700/50 hover:bg-emerald-700/20 transition-colors">
                         + Add
+                      </button>
+                      <button onClick={() => { setAddMat(m); setAddType('ADJUSTMENT'); setAddMode('adjustment'); setAddQty(''); setAddNotes(''); setAddPrice(''); setAddAdjSign(-1); }}
+                        className="px-2 py-1 rounded-lg text-xs font-medium text-amber-400 border border-amber-700/50 hover:bg-amber-700/20 transition-colors">
+                        ± Adjust
                       </button>
                       <button onClick={() => { setIssueMat(m); setIssueQty(''); setIssueNotes(''); setIssuePurpose('PRODUCTION'); }}
                         className="px-2 py-1 rounded-lg text-xs font-medium text-orange-400 border border-orange-700/50 hover:bg-orange-700/20 transition-colors"

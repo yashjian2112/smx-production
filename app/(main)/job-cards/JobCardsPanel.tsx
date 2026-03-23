@@ -10,7 +10,7 @@ interface RawMaterial {
 
 interface JobCardItem {
   id: string; rawMaterialId: string; quantityReq: number; quantityIssued: number;
-  isCritical: boolean;
+  isCritical: boolean; verifiedQty: number; isVerified: boolean; returnedQty: number;
   rawMaterial: RawMaterial;
   batch?: { id: string; batchCode: string; remainingQty: number } | null;
 }
@@ -214,19 +214,230 @@ function DispatchModal({
   );
 }
 
+// ── Verify Modal (Employee scans received materials) ──────────────────────────
+function VerifyModal({ card, onClose, onDone }: { card: JobCard; onClose: () => void; onDone: () => void }) {
+  const [scanVal, setScanVal]         = useState('');
+  const [lastScanned, setLastScanned] = useState<string | null>(null);
+  const [notFound, setNotFound]       = useState(false);
+  const [verified, setVerified]       = useState<Record<string, boolean>>(() => {
+    const m: Record<string, boolean> = {};
+    card.items.forEach(i => { m[i.id] = i.isVerified; });
+    return m;
+  });
+  const [submitting, setSubmitting]   = useState(false);
+  const [error, setError]             = useState('');
+
+  async function processScan(raw: string) {
+    const val = raw.trim().toUpperCase();
+    const found = card.items.find(i =>
+      i.rawMaterial.barcode?.toUpperCase() === val || i.rawMaterial.code.toUpperCase() === val
+    );
+    if (!found) { setNotFound(true); setLastScanned(null); setTimeout(() => setNotFound(false), 1500); return; }
+    if (verified[found.id]) return; // already verified
+    setNotFound(false); setLastScanned(found.id);
+    setTimeout(() => setLastScanned(null), 1200);
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/inventory/job-cards/${card.id}/verify-item`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: found.id, verifiedQty: found.quantityIssued }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setVerified(prev => ({ ...prev, [found.id]: true }));
+        if (updated.status === 'IN_PROGRESS') onDone();
+      } else { setError('Verification failed'); }
+    } finally { setSubmitting(false); }
+  }
+
+  const doneCount = Object.values(verified).filter(Boolean).length;
+  const lastItem  = lastScanned ? card.items.find(i => i.id === lastScanned) : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0f0f0f' }}>
+      <div className="flex items-center justify-between px-4 border-b border-zinc-800/60"
+        style={{ paddingTop: 'max(env(safe-area-inset-top),16px)', paddingBottom: 12 }}>
+        <div>
+          <p className="text-white font-bold text-base">{card.cardNumber}</p>
+          <p className="text-zinc-500 text-xs">Verify received materials · {card.order.orderNumber}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-center"><p className="text-white font-bold text-lg leading-none">{doneCount}</p><p className="text-zinc-600 text-[10px]">of {card.items.length}</p></div>
+          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white" style={{ background: 'rgba(255,255,255,0.08)' }}>✕</button>
+        </div>
+      </div>
+      <div className="px-4 py-3 border-b border-zinc-800/40">
+        <div className="flex items-center gap-2 px-3 py-3 rounded-2xl transition-all"
+          style={{ background: notFound ? 'rgba(239,68,68,0.08)' : lastScanned ? 'rgba(34,197,94,0.08)' : 'rgba(14,165,233,0.06)', border: `1.5px solid ${notFound ? 'rgba(239,68,68,0.5)' : lastScanned ? 'rgba(34,197,94,0.5)' : 'rgba(14,165,233,0.25)'}` }}>
+          <span className="text-xl shrink-0">{notFound ? '❌' : lastScanned ? '✅' : '📦'}</span>
+          <ScanInput value={scanVal} onChange={setScanVal} onScan={processScan} placeholder="Scan component barcode to verify…" autoFocus disabled={submitting} scannerTitle="Verify Component" scannerHint="Scan each component to confirm receipt" />
+        </div>
+        <div className="mt-1.5 min-h-[16px]">
+          {notFound && <p className="text-red-400 text-xs px-1">⚠ Barcode not in this job card</p>}
+          {lastItem  && <p className="text-emerald-400 text-xs px-1">✓ {lastItem.rawMaterial.name} verified</p>}
+          {error     && <p className="text-red-400 text-xs px-1">⚠ {error}</p>}
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+        {card.items.map(item => {
+          const isVer = verified[item.id];
+          const active = lastScanned === item.id;
+          return (
+            <div key={item.id} className="rounded-2xl px-4 py-3 flex items-center gap-3 transition-all"
+              style={{ background: isVer ? 'rgba(34,197,94,0.07)' : active ? 'rgba(14,165,233,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isVer ? 'rgba(34,197,94,0.35)' : active ? 'rgba(14,165,233,0.5)' : item.isCritical ? 'rgba(251,113,133,0.2)' : 'rgba(255,255,255,0.06)'}` }}>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${isVer ? 'bg-emerald-500' : 'bg-zinc-700'}`}>
+                {isVer && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-zinc-100 text-sm font-medium truncate">{item.rawMaterial.name}</p>
+                <p className="text-zinc-600 font-mono text-[10px]">{item.rawMaterial.barcode ?? item.rawMaterial.code}</p>
+              </div>
+              {item.isCritical && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(251,113,133,0.15)', color: '#fb7185' }}>★</span>}
+              <span className="text-sm font-mono text-zinc-400 shrink-0">{fmt(item.quantityIssued)} {item.rawMaterial.unit}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="px-4 py-4 border-t border-zinc-800 text-center text-zinc-500 text-xs" style={{ paddingBottom: 'max(env(safe-area-inset-bottom),16px)' }}>
+        {doneCount < card.items.length ? `Scan all ${card.items.length} items to start work` : '✅ All items verified — job card moved to In Progress'}
+      </div>
+    </div>
+  );
+}
+
+// ── Complete Modal ────────────────────────────────────────────────────────────
+function CompleteModal({ card, onClose, onDone }: { card: JobCard; onClose: () => void; onDone: () => void }) {
+  const [notes, setNotes]         = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]         = useState('');
+
+  async function handleComplete() {
+    setSubmitting(true); setError('');
+    const res = await fetch(`/api/inventory/job-cards/${card.id}/complete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: notes || undefined }),
+    });
+    setSubmitting(false);
+    if (res.ok) { onDone(); } else { const d = await res.json(); setError(d.error || 'Failed'); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
+      <div className="w-full max-w-lg rounded-t-2xl p-6 space-y-4" style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-emerald-900/40 flex items-center justify-center text-xl">✅</div>
+          <div>
+            <p className="text-white font-semibold">Complete Job Card</p>
+            <p className="text-zinc-500 text-xs">{card.cardNumber} · {card.order.orderNumber}</p>
+          </div>
+        </div>
+        <p className="text-zinc-400 text-sm">Mark this job card as completed. This confirms manufacturing work for this stage is done.</p>
+        <div>
+          <label className="text-zinc-500 text-xs mb-1 block">Notes (optional)</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Any notes about the completion…"
+            className="w-full rounded-xl px-3 py-2 text-sm text-white resize-none outline-none"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }} />
+        </div>
+        {error && <p className="text-red-400 text-xs">⚠ {error}</p>}
+        <div className="flex gap-3 pb-safe" style={{ paddingBottom: 'max(env(safe-area-inset-bottom),0px)' }}>
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>
+          <button onClick={handleComplete} disabled={submitting} className="flex-1 py-3 rounded-xl text-sm font-bold text-white disabled:opacity-50" style={{ background: '#16a34a' }}>
+            {submitting ? 'Completing…' : 'Mark Complete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Return Modal ──────────────────────────────────────────────────────────────
+function ReturnModal({ card, onClose, onDone }: { card: JobCard; onClose: () => void; onDone: () => void }) {
+  const returnableItems = card.items.filter(i => i.quantityIssued > i.returnedQty);
+  const [qtys, setQtys]           = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    returnableItems.forEach(i => { m[i.id] = '0'; });
+    return m;
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]           = useState('');
+
+  async function handleReturn() {
+    const items = returnableItems
+      .map(i => ({ jobCardItemId: i.id, returnQty: parseFloat(qtys[i.id] ?? '0') || 0 }))
+      .filter(i => i.returnQty > 0);
+    if (items.length === 0) { setError('Enter at least one return qty'); return; }
+    setSubmitting(true); setError('');
+    const res = await fetch(`/api/inventory/job-cards/${card.id}/return`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    });
+    setSubmitting(false);
+    if (res.ok) { onDone(); } else { const d = await res.json(); setError(d.error || 'Return failed'); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0f0f0f' }}>
+      <div className="flex items-center justify-between px-4 border-b border-zinc-800" style={{ paddingTop: 'max(env(safe-area-inset-top),16px)', paddingBottom: 12 }}>
+        <div>
+          <p className="text-white font-bold">Return Materials</p>
+          <p className="text-zinc-500 text-xs">{card.cardNumber} · {card.order.orderNumber}</p>
+        </div>
+        <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white" style={{ background: 'rgba(255,255,255,0.08)' }}>✕</button>
+      </div>
+      <p className="px-4 py-3 text-zinc-500 text-xs border-b border-zinc-800/50">Enter qty to return for unused materials. Stock will be added back.</p>
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+        {returnableItems.length === 0 ? (
+          <p className="text-center text-zinc-600 py-10">No returnable materials</p>
+        ) : returnableItems.map(item => {
+          const max = item.quantityIssued - item.returnedQty;
+          return (
+            <div key={item.id} className="rounded-2xl px-4 py-3 flex items-center gap-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="flex-1 min-w-0">
+                <p className="text-zinc-100 text-sm font-medium truncate">{item.rawMaterial.name}</p>
+                <p className="text-zinc-600 text-[10px]">Issued: {fmt(item.quantityIssued)} · Returnable: {fmt(max)} {item.rawMaterial.unit}</p>
+              </div>
+              <input type="number" min="0" max={max} step="any"
+                value={qtys[item.id] ?? '0'}
+                onChange={e => setQtys(prev => ({ ...prev, [item.id]: e.target.value }))}
+                onWheel={e => (e.target as HTMLInputElement).blur()}
+                className="w-20 text-center text-sm font-mono text-white rounded-xl px-2 py-2 outline-none"
+                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
+                placeholder="0" />
+              <span className="text-zinc-500 text-xs shrink-0">{item.rawMaterial.unit}</span>
+            </div>
+          );
+        })}
+      </div>
+      {error && <div className="px-4 py-2 border-t border-red-900/30"><p className="text-red-400 text-xs">⚠ {error}</p></div>}
+      <div className="px-4 py-4 border-t border-zinc-800 flex gap-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom),16px)' }}>
+        <button onClick={onClose} className="flex-1 py-3 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>
+        <button onClick={handleReturn} disabled={submitting || returnableItems.length === 0}
+          className="flex-1 py-3 rounded-xl text-sm font-bold text-white disabled:opacity-50"
+          style={{ background: 'rgba(251,191,36,0.85)' }}>
+          {submitting ? 'Returning…' : 'Return to Store'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Panel ────────────────────────────────────────────────────────────────
 export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) {
-  const [tab,        setTab]        = useState<'pending' | 'dispatched' | 'completed'>('pending');
-  const [cards,      setCards]      = useState<JobCard[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [expanded,   setExpanded]   = useState<string | null>(null);
+  const [tab,         setTab]         = useState<'pending' | 'dispatched' | 'in_progress' | 'completed'>('pending');
+  const [cards,       setCards]       = useState<JobCard[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [expanded,    setExpanded]    = useState<string | null>(null);
   const [dispatching, setDispatching] = useState<JobCard | null>(null);
+  const [verifying,   setVerifying]   = useState<JobCard | null>(null);
+  const [completing,  setCompleting]  = useState<JobCard | null>(null);
+  const [returning,   setReturning]   = useState<JobCard | null>(null);
 
   const canDispatch = ['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN'].includes(sessionRole);
+  const isEmployee  = sessionRole === 'PRODUCTION_EMPLOYEE';
 
   const load = useCallback(async () => {
     setLoading(true);
-    const statusMap = { pending: 'PENDING', dispatched: 'DISPATCHED', completed: 'COMPLETED' };
+    const statusMap: Record<string, string> = { pending: 'PENDING', dispatched: 'DISPATCHED', in_progress: 'IN_PROGRESS', completed: 'COMPLETED' };
     const res = await fetch(`/api/inventory/job-cards?status=${statusMap[tab]}`);
     if (res.ok) setCards(await res.json());
     setLoading(false);
@@ -235,9 +446,10 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
   useEffect(() => { load(); }, [load]);
 
   const tabs: { key: typeof tab; label: string }[] = [
-    { key: 'pending',    label: 'Pending' },
-    { key: 'dispatched', label: 'Dispatched' },
-    { key: 'completed',  label: 'Completed' },
+    { key: 'pending',     label: 'Pending' },
+    { key: 'dispatched',  label: 'Dispatched' },
+    { key: 'in_progress', label: 'In Progress' },
+    { key: 'completed',   label: 'Completed' },
   ];
 
   return (
@@ -315,7 +527,7 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
                       <p className="text-zinc-700 text-[10px] mt-0.5">{fmtDate(card.createdAt)}</p>
                     </div>
 
-                    <div className="flex gap-2 shrink-0 items-center">
+                    <div className="flex gap-2 shrink-0 items-center flex-wrap justify-end">
                       {card.items.length > 0 && (
                         <button onClick={() => setExpanded(isOpen ? null : card.id)}
                           className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
@@ -328,11 +540,36 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
                         title="Print Job Card">
                         🖨
                       </button>
+                      {/* Dispatch — Inventory Manager / Store Manager / Admin */}
                       {canDispatch && card.status === 'PENDING' && (
                         <button onClick={() => setDispatching(card)}
                           className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-all"
                           style={{ background: 'rgba(34,197,94,0.8)' }}>
                           Dispatch
+                        </button>
+                      )}
+                      {/* Verify Items — shown to employee/PM/admin on DISPATCHED cards */}
+                      {card.status === 'DISPATCHED' && (
+                        <button onClick={() => setVerifying(card)}
+                          className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-all"
+                          style={{ background: 'rgba(14,165,233,0.8)' }}>
+                          Verify
+                        </button>
+                      )}
+                      {/* Return Materials — on DISPATCHED, IN_PROGRESS, COMPLETED */}
+                      {['DISPATCHED', 'IN_PROGRESS', 'COMPLETED'].includes(card.status) && (
+                        <button onClick={() => setReturning(card)}
+                          className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                          style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
+                          Return
+                        </button>
+                      )}
+                      {/* Complete — on DISPATCHED or IN_PROGRESS */}
+                      {['DISPATCHED', 'IN_PROGRESS'].includes(card.status) && (
+                        <button onClick={() => setCompleting(card)}
+                          className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-all"
+                          style={{ background: 'rgba(168,85,247,0.8)' }}>
+                          Complete
                         </button>
                       )}
                     </div>
@@ -371,6 +608,12 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
                           {item.quantityIssued > 0 && (
                             <span className="text-emerald-400 text-[10px] shrink-0">✓ {fmt(item.quantityIssued)}</span>
                           )}
+                          {item.isVerified && (
+                            <span className="text-sky-400 text-[10px] shrink-0">👁</span>
+                          )}
+                          {item.returnedQty > 0 && (
+                            <span className="text-amber-400 text-[10px] shrink-0">↩{fmt(item.returnedQty)}</span>
+                          )}
                         </div>
                       );
                     })}
@@ -388,6 +631,33 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
           card={dispatching}
           onClose={() => setDispatching(null)}
           onDone={() => { setDispatching(null); load(); }}
+        />
+      )}
+
+      {/* Verify Modal */}
+      {verifying && (
+        <VerifyModal
+          card={verifying}
+          onClose={() => setVerifying(null)}
+          onDone={() => { setVerifying(null); load(); }}
+        />
+      )}
+
+      {/* Complete Modal */}
+      {completing && (
+        <CompleteModal
+          card={completing}
+          onClose={() => setCompleting(null)}
+          onDone={() => { setCompleting(null); load(); }}
+        />
+      )}
+
+      {/* Return Modal */}
+      {returning && (
+        <ReturnModal
+          card={returning}
+          onClose={() => setReturning(null)}
+          onDone={() => { setReturning(null); load(); }}
         />
       )}
     </div>

@@ -1279,6 +1279,7 @@ model JobCardItem {
   isCritical     Boolean @default(false) @map("is_critical") // copied from BOMItem on job card creation
   verifiedQty    Float   @default(0) @map("verified_qty")   // employee scans/confirms after receiving
   isVerified     Boolean @default(false) @map("is_verified")
+  returnedQty    Float   @default(0) @map("returned_qty")  // returned to store after job
 
   jobCard     JobCard         @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
   rawMaterial RawMaterial     @relation(fields: [rawMaterialId], references: [id])
