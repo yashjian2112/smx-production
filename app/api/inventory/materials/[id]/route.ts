@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;  // can GET
-const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER'] as const;                   // can PATCH
+const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'] as const;
+const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'] as const;
 
 const updateSchema = z.object({
   name:              z.string().min(1).optional(),
@@ -19,6 +19,7 @@ const updateSchema = z.object({
   preferredVendorId: z.string().nullable().optional(),
   minimumStock:      z.number().min(0).optional(),
   reorderPoint:      z.number().min(0).optional(),
+  minimumOrderQty:   z.number().min(0).optional(),
   active:            z.boolean().optional(),
 });
 

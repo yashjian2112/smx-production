@@ -912,6 +912,7 @@ model RawMaterial {
   currentStock      Float    @default(0) @map("current_stock")
   minimumStock      Float    @default(0) @map("minimum_stock")
   reorderPoint      Float    @default(0) @map("reorder_point")
+  minimumOrderQty   Float    @default(1) @map("minimum_order_qty")
   categoryId        String?  @map("category_id")
   preferredVendorId String?  @map("preferred_vendor_id")
   active            Boolean  @default(true)

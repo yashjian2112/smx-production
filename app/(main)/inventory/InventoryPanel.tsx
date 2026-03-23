@@ -12,7 +12,7 @@ interface RawMaterial {
   purchaseUnit?: string | null; conversionFactor?: number | null;
   description?: string | null; hsnCode?: string | null;
   purchasePrice?: number; leadTimeDays?: number;
-  currentStock: number; minimumStock: number; reorderPoint: number;
+  currentStock: number; minimumStock: number; reorderPoint: number; minimumOrderQty?: number;
   committedStock?: number; availableStock?: number;
   category?: { id: string; name: string } | null;
   preferredVendor?: { id: string; name: string } | null;
@@ -954,6 +954,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [fCatId,     setFCatId]     = useState('');
   const [fMin,       setFMin]       = useState('0');
   const [fReord,     setFReord]     = useState('0');
+  const [fMoq,       setFMoq]       = useState('1');
   const [fDesc,      setFDesc]      = useState('');
   const [fVendorId,      setFVendorId]      = useState('');
   const [fPurchaseUnit,  setFPurchaseUnit]  = useState('');
@@ -998,7 +999,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => { load(); }, [load]);
 
   function openNewMat() {
-    setEditMat(null); setFName(''); setFUnit('PCS'); setFCatId(''); setFMin('0'); setFReord('0');
+    setEditMat(null); setFName(''); setFUnit('PCS'); setFCatId(''); setFMin('0'); setFReord('0'); setFMoq('1');
     setFDesc(''); setFVendorId(''); setFPurchaseUnit(''); setFConvFactor(''); setFOpenQty(''); setFError('');
     setShowInlineCat(false); setShowInlineVendor(false);
     setShowMatForm(true);
@@ -1006,7 +1007,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
 
   function openEditMat(m: RawMaterial) {
     setEditMat(m); setFName(m.name); setFUnit(m.unit); setFCatId(m.category?.id ?? '');
-    setFMin(String(m.minimumStock)); setFReord(String(m.reorderPoint));
+    setFMin(String(m.minimumStock)); setFReord(String(m.reorderPoint)); setFMoq(String(m.minimumOrderQty ?? 1));
     setFDesc(m.description ?? '');
     setFVendorId(m.preferredVendor?.id ?? '');
     setFPurchaseUnit(m.purchaseUnit ?? ''); setFConvFactor(m.conversionFactor ? String(m.conversionFactor) : '');
@@ -1021,7 +1022,8 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
       name: fName, unit: fUnit, categoryId: fCatId || undefined,
       description: fDesc || undefined,
       preferredVendorId: fVendorId || undefined,
-      minimumStock: parseFloat(fMin), reorderPoint: parseFloat(fReord),
+      minimumStock: parseFloat(fMin) || 0, reorderPoint: parseFloat(fReord) || 0,
+      minimumOrderQty: parseFloat(fMoq) || 1,
       purchaseUnit: fPurchaseUnit || undefined,
       conversionFactor: fPurchaseUnit && fConvFactor ? parseFloat(fConvFactor) : undefined,
     };
@@ -1416,17 +1418,26 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                 )}
               </div>
 
-              {/* Min stock + Reorder */}
-              <div className="grid grid-cols-2 gap-2">
+              {/* Min stock + Reorder + MOQ */}
+              <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-zinc-400 text-xs">Min Stock</label>
                   <input type="number" step="any" min="0" value={fMin} onChange={e => setFMin(e.target.value)}
+                    onWheel={e => (e.target as HTMLInputElement).blur()}
                     className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                     style={{ background: 'rgb(39,39,42)' }} />
                 </div>
                 <div>
                   <label className="text-zinc-400 text-xs">Reorder Point</label>
                   <input type="number" step="any" min="0" value={fReord} onChange={e => setFReord(e.target.value)}
+                    onWheel={e => (e.target as HTMLInputElement).blur()}
+                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                    style={{ background: 'rgb(39,39,42)' }} />
+                </div>
+                <div>
+                  <label className="text-zinc-400 text-xs">Min Order Qty</label>
+                  <input type="number" step="any" min="1" value={fMoq} onChange={e => setFMoq(e.target.value)}
+                    onWheel={e => (e.target as HTMLInputElement).blur()}
                     className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                     style={{ background: 'rgb(39,39,42)' }} />
                 </div>
