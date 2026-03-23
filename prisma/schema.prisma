@@ -59,7 +59,7 @@ model User {
   notifications        Notification[]
   orderNotes           OrderNote[]            @relation("OrderNoteAuthor")
   jobCardsCreated      JobCard[]              @relation("JCCreatedBy")
-  jobCardsIssued       JobCard[]              @relation("JCIssuedBy")
+  jobCardsDispatched   JobCard[]              @relation("JCDispatchedBy")
 }
 
 enum Role {
@@ -957,6 +957,7 @@ model BOMItem {
   stage            StageType? // which production stage consumes this
   quantityRequired Float      @map("quantity_required")
   unit             String
+  isCritical       Boolean    @default(false) @map("is_critical") // must be in stock to dispatch
   notes            String?
 
   product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1229,10 +1230,16 @@ model AuditLog {
 
 // ----- Job Cards (production material issuance) -----
 enum JobCardStatus {
-  PENDING
-  ISSUED
+  PENDING       // job card created, waiting for IM to dispatch
+  DISPATCHED    // IM has scanned and dispatched materials
+  IN_PROGRESS   // PE is working
   COMPLETED
   CANCELLED
+}
+
+enum DispatchType {
+  FULL
+  PARTIAL
 }
 
 model JobCard {
@@ -1243,18 +1250,19 @@ model JobCard {
   orderQuantity Int           @default(1) @map("order_quantity")
   stage         StageType
   status        JobCardStatus @default(PENDING)
+  dispatchType  DispatchType? @map("dispatch_type") // FULL or PARTIAL, set on dispatch
   notes         String?
   createdById   String        @map("created_by_id")
-  issuedById    String?       @map("issued_by_id")
-  issuedAt      DateTime?     @map("issued_at")
+  dispatchedById String?      @map("dispatched_by_id")
+  dispatchedAt  DateTime?     @map("dispatched_at")
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
-  order     Order           @relation(fields: [orderId], references: [id])
-  unit      ControllerUnit? @relation(fields: [unitId], references: [id])
-  createdBy User            @relation("JCCreatedBy", fields: [createdById], references: [id])
-  issuedBy  User?           @relation("JCIssuedBy", fields: [issuedById], references: [id])
-  items     JobCardItem[]
+  order        Order           @relation(fields: [orderId], references: [id])
+  unit         ControllerUnit? @relation(fields: [unitId], references: [id])
+  createdBy    User            @relation("JCCreatedBy", fields: [createdById], references: [id])
+  dispatchedBy User?           @relation("JCDispatchedBy", fields: [dispatchedById], references: [id])
+  items        JobCardItem[]
 
   @@unique([orderId, stage])
   @@map("job_cards")
@@ -1267,6 +1275,7 @@ model JobCardItem {
   batchId        String? @map("batch_id")
   quantityReq    Float   @map("quantity_required")
   quantityIssued Float   @default(0) @map("quantity_issued")
+  isCritical     Boolean @default(false) @map("is_critical") // copied from BOMItem on job card creation
   verifiedQty    Float   @default(0) @map("verified_qty")   // employee scans/confirms after receiving
   isVerified     Boolean @default(false) @map("is_verified")
 

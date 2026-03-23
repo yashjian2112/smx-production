@@ -10,8 +10,8 @@ export async function GET(req: NextRequest) {
   const status  = searchParams.get('status');
   const unitId  = searchParams.get('unitId');
   const stage   = searchParams.get('stage');
-
   const orderId = searchParams.get('orderId');
+
   const where: Record<string, unknown> = {};
   if (status)  where.status  = status;
   if (orderId) where.orderId = orderId;
@@ -21,13 +21,19 @@ export async function GET(req: NextRequest) {
   const cards = await prisma.jobCard.findMany({
     where,
     include: {
-      order: { select: { orderNumber: true } },
+      order: { select: { orderNumber: true, quantity: true } },
       unit: { select: { serialNumber: true } },
       createdBy: { select: { name: true } },
-      issuedBy: { select: { name: true } },
+      dispatchedBy: { select: { name: true } },
       items: {
         include: {
-          rawMaterial: { select: { id: true, name: true, code: true, unit: true, barcode: true, currentStock: true, purchaseUnit: true, conversionFactor: true } },
+          rawMaterial: {
+            select: {
+              id: true, name: true, code: true, unit: true,
+              barcode: true, currentStock: true,
+              purchaseUnit: true, conversionFactor: true
+            }
+          },
           batch: { select: { id: true, batchCode: true, remainingQty: true } },
         }
       }
@@ -39,7 +45,6 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
-  // Production employees and managers can create job cards
   if (!['PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER', 'ADMIN'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -47,19 +52,30 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { orderId, stage } = body;
 
-  if (!orderId || !stage) return NextResponse.json({ error: 'orderId and stage are required' }, { status: 400 });
+  if (!orderId || !stage) {
+    return NextResponse.json({ error: 'orderId and stage are required' }, { status: 400 });
+  }
 
-  // Check if job card already exists for this order+stage
+  // Return existing job card if already created for this order+stage
   const existing = await prisma.jobCard.findUnique({
     where: { orderId_stage: { orderId, stage: stage as StageType } },
     include: {
-      order: { select: { orderNumber: true } },
-      items: { include: { rawMaterial: { select: { id: true, name: true, code: true, unit: true, barcode: true, currentStock: true, purchaseUnit: true, conversionFactor: true } } } }
+      order: { select: { orderNumber: true, quantity: true } },
+      items: {
+        include: {
+          rawMaterial: {
+            select: {
+              id: true, name: true, code: true, unit: true,
+              barcode: true, currentStock: true,
+              purchaseUnit: true, conversionFactor: true
+            }
+          }
+        }
+      }
     }
   });
   if (existing) return NextResponse.json(existing);
 
-  // Get order for product, voltage, quantity
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { product: true },
@@ -91,15 +107,22 @@ export async function POST(req: NextRequest) {
       items: {
         create: bomItems.map(b => ({
           rawMaterialId: b.rawMaterialId,
-          quantityReq: b.quantityRequired * orderQty, // total for all units
+          quantityReq: b.quantityRequired * orderQty,
+          isCritical: b.isCritical, // copy from BOM
         }))
       }
     },
     include: {
-      order: { select: { orderNumber: true } },
+      order: { select: { orderNumber: true, quantity: true } },
       items: {
         include: {
-          rawMaterial: { select: { id: true, name: true, code: true, unit: true, barcode: true, currentStock: true, purchaseUnit: true, conversionFactor: true } },
+          rawMaterial: {
+            select: {
+              id: true, name: true, code: true, unit: true,
+              barcode: true, currentStock: true,
+              purchaseUnit: true, conversionFactor: true
+            }
+          },
         }
       }
     }

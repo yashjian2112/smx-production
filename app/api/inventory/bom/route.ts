@@ -40,6 +40,23 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(item);
 }
 
+export async function PATCH(req: NextRequest) {
+  const session = await requireSession();
+  if (!['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN', 'PRODUCTION_MANAGER'].includes(session.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  const body = await req.json();
+  const { id, isCritical } = body;
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+
+  const updated = await prisma.bOMItem.update({
+    where: { id },
+    data: { isCritical: Boolean(isCritical) },
+    include: { rawMaterial: { select: { id: true, name: true, code: true, unit: true } } },
+  });
+  return NextResponse.json(updated);
+}
+
 export async function DELETE(req: NextRequest) {
   const session = await requireSession();
   if (!['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN', 'PRODUCTION_MANAGER'].includes(session.role)) {

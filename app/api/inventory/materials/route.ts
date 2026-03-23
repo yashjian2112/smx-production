@@ -44,7 +44,7 @@ export async function GET() {
 
   // Compute committed stock per material from pending/issued job card items
   const committedItems = await prisma.jobCardItem.findMany({
-    where: { jobCard: { status: { in: ['PENDING', 'ISSUED'] } } },
+    where: { jobCard: { status: { in: ['PENDING', 'DISPATCHED'] } } },
     select: { rawMaterialId: true, quantityReq: true, quantityIssued: true },
   });
   const committedMap: Record<string, number> = {};

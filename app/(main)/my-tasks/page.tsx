@@ -152,8 +152,8 @@ export default function MyTasksPage() {
                           <span className="text-white font-semibold font-mono text-sm">{group.orderNumber}</span>
                           <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">{stageLabel}</span>
                           {jc && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${jc.status === 'ISSUED' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-amber-900/30 text-amber-400'}`}>
-                              {jc.status === 'ISSUED' ? '✓ Materials Ready' : '⏳ Waiting for Materials'}
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${jc.status === 'DISPATCHED' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-amber-900/30 text-amber-400'}`}>
+                              {jc.status === 'DISPATCHED' ? '✓ Materials Dispatched' : '⏳ Waiting for Materials'}
                             </span>
                           )}
                         </div>
@@ -174,11 +174,11 @@ export default function MyTasksPage() {
                             style={{ background: isAccept ? 'rgba(14,165,233,0.3)' : 'rgba(14,165,233,0.8)' }}>
                             {isAccept ? 'Accepting…' : 'Accept Order'}
                           </button>
-                        ) : jc.status === 'ISSUED' ? (
+                        ) : jc.status === 'DISPATCHED' ? (
                           <Link href={`/units/${group.units[0].unit.id}`}
                             className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white text-center block"
                             style={{ background: 'rgba(34,197,94,0.8)' }}>
-                            Verify & Start
+                            Verify & Start →
                           </Link>
                         ) : (
                           <span className="text-zinc-600 text-xs">Waiting…</span>
