@@ -27,7 +27,7 @@ interface AvailableOrder {
   pendingUnitCount: number;
   stage: string;
   alreadyAccepted: boolean;
-  myJobCard: { orderId: string; stage: string; status: string } | null;
+  myJobCard: { id: string; orderId: string; stage: string; status: string } | null;
 }
 
 const STAGE_LABEL: Record<string, string> = {
@@ -179,7 +179,14 @@ export function OrdersList({ orders, isManager, sessionRole }: {
                           Start Work →
                         </Link>
                       ) : (
-                        <span className="text-zinc-600 text-xs">Waiting…</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-zinc-600 text-xs">Waiting…</span>
+                          {jc?.id && (
+                            <a href={`/print/job-card/${jc.id}`} target="_blank" rel="noreferrer"
+                              className="text-zinc-500 hover:text-white text-sm px-2 py-1 rounded-lg border border-zinc-800 hover:border-zinc-600 transition-colors"
+                              title="Print Job Card">🖨</a>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>

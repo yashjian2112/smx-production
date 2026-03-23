@@ -71,7 +71,7 @@ export async function GET() {
   // Check if employee already has a job card for each order (meaning they accepted it)
   const myJobCards = await prisma.jobCard.findMany({
     where: { createdById: session.id },
-    select: { orderId: true, stage: true, status: true }
+    select: { id: true, orderId: true, stage: true, status: true }
   });
   const myJobCardKeys = new Set(myJobCards.map(jc => `${jc.orderId}:${jc.stage}`));
 
