@@ -95,23 +95,53 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
    REQUIREMENT ORDERS TAB
 ══════════════════════════════════════════════════════════════*/
 /* ─── Manual RO Modal ──────────────────────────────────────────────────────── */
-type ManualItem = { itemDescription: string; itemUnit: string; qtyRequired: string; notes: string };
+type MatOption = { id: string; name: string; code: string; unit: string; minimumOrderQty: number; currentStock: number };
+type ManualItem = {
+  type: 'inventory' | 'custom';
+  materialId: string; matSearch: string;
+  itemDescription: string; itemUnit: string;
+  qtyRequired: string; notes: string;
+};
+
+const BLANK_ITEM = (): ManualItem => ({ type: 'inventory', materialId: '', matSearch: '', itemDescription: '', itemUnit: 'pcs', qtyRequired: '', notes: '' });
 
 function CreateManualROModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<ManualItem[]>([{ itemDescription: '', itemUnit: 'pcs', qtyRequired: '', notes: '' }]);
+  const [items, setItems] = useState<ManualItem[]>([BLANK_ITEM()]);
   const [saving, setSaving] = useState(false);
+  const [materials, setMaterials] = useState<MatOption[]>([]);
 
-  function addItem() { setItems(p => [...p, { itemDescription: '', itemUnit: 'pcs', qtyRequired: '', notes: '' }]); }
+  useEffect(() => {
+    fetch('/api/inventory/materials').then(r => r.ok ? r.json() : []).then((list: MatOption[]) => setMaterials(list));
+  }, []);
+
+  function addItem() { setItems(p => [...p, BLANK_ITEM()]); }
   function removeItem(i: number) { setItems(p => p.filter((_, idx) => idx !== i)); }
-  function updateItem(i: number, field: keyof ManualItem, val: string) {
-    setItems(p => p.map((item, idx) => idx === i ? { ...item, [field]: val } : item));
+  function update(i: number, patch: Partial<ManualItem>) {
+    setItems(p => p.map((it, idx) => idx === i ? { ...it, ...patch } : it));
+  }
+
+  function selectedMat(item: ManualItem) {
+    return materials.find(m => m.id === item.materialId) ?? null;
+  }
+
+  function filteredMats(item: ManualItem) {
+    const q = item.matSearch.toLowerCase();
+    return materials.filter(m => m.name.toLowerCase().includes(q) || m.code.toLowerCase().includes(q)).slice(0, 8);
   }
 
   async function submit() {
     for (const it of items) {
-      if (!it.itemDescription.trim()) return alert('Fill in description for all items');
-      if (!it.qtyRequired || Number(it.qtyRequired) <= 0) return alert('Quantity must be > 0 for all items');
+      if (it.type === 'inventory') {
+        if (!it.materialId) return alert('Select a material from the list for all inventory items');
+        const mat = selectedMat(it);
+        const qty = Number(it.qtyRequired);
+        if (!qty || qty <= 0) return alert('Quantity must be > 0');
+        if (mat && qty < mat.minimumOrderQty) return alert(`Qty for "${mat.name}" cannot be less than MOQ (${mat.minimumOrderQty} ${mat.unit})`);
+      } else {
+        if (!it.itemDescription.trim()) return alert('Fill description for all custom items');
+        if (!it.qtyRequired || Number(it.qtyRequired) <= 0) return alert('Quantity must be > 0');
+      }
     }
     setSaving(true);
     const r = await fetch('/api/procurement/requirement-orders', {
@@ -119,12 +149,10 @@ function CreateManualROModal({ onClose, onCreated }: { onClose: () => void; onCr
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         notes: notes.trim() || undefined,
-        items: items.map(it => ({
-          itemDescription: it.itemDescription.trim(),
-          itemUnit: it.itemUnit.trim() || 'pcs',
-          qtyRequired: Number(it.qtyRequired),
-          notes: it.notes.trim() || undefined,
-        })),
+        items: items.map(it => it.type === 'inventory'
+          ? { materialId: it.materialId, qtyRequired: Number(it.qtyRequired), notes: it.notes.trim() || undefined }
+          : { itemDescription: it.itemDescription.trim(), itemUnit: it.itemUnit.trim() || 'pcs', qtyRequired: Number(it.qtyRequired), notes: it.notes.trim() || undefined }
+        ),
       }),
     });
     setSaving(false);
@@ -153,31 +181,94 @@ function CreateManualROModal({ onClose, onCreated }: { onClose: () => void; onCr
               <button onClick={addItem} className="text-xs text-blue-400 hover:text-blue-300">+ Add item</button>
             </div>
             <div className="space-y-3">
-              {items.map((item, i) => (
-                <div key={i} className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3 space-y-2">
-                  <div className="flex gap-2">
-                    <input value={item.itemDescription} onChange={e => updateItem(i, 'itemDescription', e.target.value)}
-                      placeholder="Item description (e.g. WD-40 spray, M6 bolts)"
-                      className="flex-1 bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
-                    {items.length > 1 && (
-                      <button onClick={() => removeItem(i)} className="text-zinc-500 hover:text-red-400 text-lg leading-none px-1">×</button>
+              {items.map((item, i) => {
+                const mat = selectedMat(item);
+                const moqWarn = item.type === 'inventory' && mat && item.qtyRequired && Number(item.qtyRequired) < mat.minimumOrderQty;
+                return (
+                  <div key={i} className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3 space-y-2">
+                    {/* Type toggle */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex rounded-lg overflow-hidden border border-zinc-600 text-xs">
+                        <button onClick={() => update(i, { type: 'inventory', materialId: '', matSearch: '' })}
+                          className={`px-3 py-1 ${item.type === 'inventory' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-400'}`}>
+                          From List
+                        </button>
+                        <button onClick={() => update(i, { type: 'custom' })}
+                          className={`px-3 py-1 ${item.type === 'custom' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-400'}`}>
+                          Custom
+                        </button>
+                      </div>
+                      {items.length > 1 && (
+                        <button onClick={() => removeItem(i)} className="text-zinc-500 hover:text-red-400 text-lg leading-none">×</button>
+                      )}
+                    </div>
+
+                    {item.type === 'inventory' ? (
+                      <>
+                        {/* Material search/select */}
+                        <div className="relative">
+                          <input
+                            value={mat ? `${mat.code} — ${mat.name}` : item.matSearch}
+                            onChange={e => update(i, { matSearch: e.target.value, materialId: '' })}
+                            onFocus={e => { if (mat) { e.target.select(); update(i, { matSearch: '', materialId: '' }); } }}
+                            placeholder="Search material by name or code..."
+                            className="w-full bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
+                          {!item.materialId && item.matSearch && (
+                            <div className="absolute z-10 w-full mt-1 bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl max-h-44 overflow-y-auto">
+                              {filteredMats(item).length === 0
+                                ? <div className="px-3 py-2 text-xs text-zinc-500">No materials found</div>
+                                : filteredMats(item).map(m => (
+                                  <button key={m.id} onClick={() => update(i, { materialId: m.id, matSearch: '', qtyRequired: String(m.minimumOrderQty) })}
+                                    className="w-full text-left px-3 py-2 hover:bg-zinc-700 text-sm">
+                                    <span className="text-white">{m.name}</span>
+                                    <span className="text-zinc-500 ml-2 text-xs">{m.code}</span>
+                                    <span className="text-zinc-500 ml-2 text-xs">MOQ: {m.minimumOrderQty} {m.unit}</span>
+                                    <span className="text-zinc-600 ml-2 text-xs">Stock: {m.currentStock}</span>
+                                  </button>
+                                ))
+                              }
+                            </div>
+                          )}
+                        </div>
+                        {mat && (
+                          <div className="flex items-center gap-2 text-xs text-zinc-500">
+                            <span>Unit: <span className="text-zinc-300">{mat.unit}</span></span>
+                            <span>·</span>
+                            <span>MOQ: <span className="text-zinc-300">{mat.minimumOrderQty}</span></span>
+                            <span>·</span>
+                            <span>Stock: <span className="text-zinc-300">{mat.currentStock}</span></span>
+                          </div>
+                        )}
+                        <input type="number" min={mat?.minimumOrderQty ?? 0.01} step="any" value={item.qtyRequired}
+                          onChange={e => update(i, { qtyRequired: e.target.value })}
+                          onWheel={e => e.currentTarget.blur()}
+                          placeholder={mat ? `Min ${mat.minimumOrderQty} ${mat.unit}` : 'Qty required'}
+                          className={`w-full bg-zinc-700 border rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none ${moqWarn ? 'border-red-500' : 'border-zinc-600 focus:border-blue-500'}`} />
+                        {moqWarn && <p className="text-xs text-red-400">Qty must be ≥ MOQ ({mat!.minimumOrderQty} {mat!.unit})</p>}
+                      </>
+                    ) : (
+                      <>
+                        <input value={item.itemDescription} onChange={e => update(i, { itemDescription: e.target.value })}
+                          placeholder="Description (e.g. WD-40 spray, M6 bolts)"
+                          className="w-full bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
+                        <div className="flex gap-2">
+                          <input type="number" min="0.01" step="any" value={item.qtyRequired}
+                            onChange={e => update(i, { qtyRequired: e.target.value })}
+                            onWheel={e => e.currentTarget.blur()}
+                            placeholder="Qty"
+                            className="w-24 bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
+                          <input value={item.itemUnit} onChange={e => update(i, { itemUnit: e.target.value })}
+                            placeholder="Unit (pcs, kg, ltr...)"
+                            className="flex-1 bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
+                        </div>
+                      </>
                     )}
+                    <input value={item.notes} onChange={e => update(i, { notes: e.target.value })}
+                      placeholder="Item notes (optional)"
+                      className="w-full bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
                   </div>
-                  <div className="flex gap-2">
-                    <input type="number" min="0.01" step="any" value={item.qtyRequired}
-                      onChange={e => updateItem(i, 'qtyRequired', e.target.value)}
-                      onWheel={e => e.currentTarget.blur()}
-                      placeholder="Qty"
-                      className="w-24 bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
-                    <input value={item.itemUnit} onChange={e => updateItem(i, 'itemUnit', e.target.value)}
-                      placeholder="Unit (pcs, kg, ltr...)"
-                      className="flex-1 bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
-                  </div>
-                  <input value={item.notes} onChange={e => updateItem(i, 'notes', e.target.value)}
-                    placeholder="Item notes (optional)"
-                    className="w-full bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

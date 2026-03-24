@@ -120,18 +120,8 @@ export function PrintRO({ ro, settings }: { ro: RO; settings: Settings }) {
               <span className="meta-value">{createdDate}</span>
             </div>
             <div className="meta-row">
-              <span className="meta-label">Status:</span>
-              <span className="meta-value">
-                <span className={`badge badge-${ro.status.toLowerCase()}`}>{ro.status}</span>
-              </span>
-            </div>
-            <div className="meta-row">
-              <span className="meta-label">Trigger:</span>
-              <span className="meta-value">
-                <span className={`badge ${ro.trigger === 'LOW_STOCK' ? 'badge-low' : ro.trigger === 'JOB_CARD' ? 'badge-job' : 'badge-manual'}`}>
-                  {triggerLabel[ro.trigger] ?? ro.trigger}
-                </span>
-              </span>
+              <span className="meta-label">Type:</span>
+              <span className="meta-value">{triggerLabel[ro.trigger] ?? ro.trigger}</span>
             </div>
             {ro.jobCard && (
               <div className="meta-row">
@@ -183,7 +173,6 @@ export function PrintRO({ ro, settings }: { ro: RO; settings: Settings }) {
                     <div className="item-name">
                       {item.material ? item.material.name : item.itemDescription}
                     </div>
-                    {!item.material && <span className="item-tag">Consumable / Maintenance</span>}
                     {item.notes && <div className="item-notes">{item.notes}</div>}
                   </td>
                   <td className="item-code">{item.material?.code ?? '—'}</td>
