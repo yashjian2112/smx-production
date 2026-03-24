@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const TABS = ['Stock', 'Materials', 'GRN', 'Reports', 'Settings'] as const;
+const TABS = ['Materials', 'GRN', 'Reports', 'Settings'] as const;
 type Tab = typeof TABS[number];
 
 interface MaterialVariant { id: string; name: string; barcode: string; currentStock: number; }
@@ -2270,7 +2270,7 @@ function SettingsTab({ isAdmin }: { isAdmin: boolean }) {
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 export default function InventoryPanel({ sessionRole }: { sessionRole: string }) {
-  const [activeTab, setActiveTab] = useState<Tab>('Stock');
+  const [activeTab, setActiveTab] = useState<Tab>('Materials');
 
   // canManageStock: can record GRN, do stock adjustments, create PRs
   const canManageStock     = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'].includes(sessionRole);
@@ -2291,7 +2291,6 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
         ))}
       </div>
 
-      {activeTab === 'Stock'     && <StockTab     isAdmin={canManageStock} onSwitchTab={setActiveTab} />}
       {activeTab === 'Materials' && <MaterialsTab isAdmin={canManageMaterials} />}
       {activeTab === 'GRN'       && <GRNTab       isAdmin={canManageStock} />}
       {activeTab === 'Reports'   && <ReportsTab   isAdmin={canManageMaterials} />}
