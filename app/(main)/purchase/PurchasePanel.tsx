@@ -56,7 +56,7 @@ type Vendor = {
   active: boolean;
 };
 
-const TABS = ['Req. Orders', 'RFQ', 'Purchase Orders', 'Vendors'] as const;
+const TABS = ['Req. Orders', 'RFQ'] as const;
 type Tab = typeof TABS[number];
 
 const STATUS_COLOR: Record<string, string> = {
@@ -87,7 +87,6 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
   const [tab, setTab] = useState<Tab>('Req. Orders');
   const isPM = ['ADMIN', 'PURCHASE_MANAGER'].includes(sessionRole);
   const isIM = ['ADMIN', 'INVENTORY_MANAGER', 'STORE_MANAGER'].includes(sessionRole);
-  const isAdmin = sessionRole === 'ADMIN';
 
   return (
     <div>
@@ -103,8 +102,6 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
 
       {tab === 'Req. Orders' && <ROTab isIM={isIM} isPM={isPM} />}
       {tab === 'RFQ'         && <RFQTab isPM={isPM} isIM={isIM} />}
-      {tab === 'Purchase Orders' && <POTab isPM={isPM} isIM={isIM} />}
-      {tab === 'Vendors'     && <VendorsTab isAdmin={isAdmin} isPM={isPM} />}
     </div>
   );
 }
@@ -138,6 +135,14 @@ function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
 
   return (
     <div>
+      {/* What is a Requirement Order? */}
+      <div className="mb-4 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
+        <p className="text-xs font-semibold text-zinc-300 mb-1">What is a Requirement Order?</p>
+        <p className="text-xs text-zinc-500 leading-relaxed">
+          A Requirement Order (RO) is raised automatically when stock falls below the reorder point or when a Job Card needs a component. It is then manually approved by the Inventory Manager before the Purchase Manager creates an RFQ.
+        </p>
+      </div>
+
       <div className="flex gap-2 mb-4 flex-wrap">
         {filters.map(f => (
           <button key={f} onClick={() => setFilter(f)}

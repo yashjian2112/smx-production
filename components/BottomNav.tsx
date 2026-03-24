@@ -210,7 +210,7 @@ const purchaseNav: NavItem[] = [
 const inventoryNav: NavItem[] = [
   { href: '/inventory',  label: 'Inventory',  icon: 'Inventory'  },
   { href: '/job-cards',  label: 'Job Cards',  icon: 'JobCards'   },
-  { href: '/purchase',   label: 'Requests',   icon: 'Purchase'   },
+  { href: '/purchase',   label: 'Req. Order',   icon: 'Purchase'   },
   { href: '/dashboard',  label: 'Dashboard',  icon: 'Dashboard'  },
 ];
 
