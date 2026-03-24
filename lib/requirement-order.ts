@@ -40,6 +40,14 @@ export async function autoCreateRO(opts: CreateROOptions): Promise<void> {
   const newItems = opts.items.filter(i => !alreadyCovered.has(i.materialId));
   if (newItems.length === 0) return;
 
+  // Fetch material names so we can snapshot them on the RO item
+  const materialIds = newItems.filter(i => i.materialId).map(i => i.materialId!);
+  const materials = await prisma.rawMaterial.findMany({
+    where: { id: { in: materialIds } },
+    select: { id: true, name: true },
+  });
+  const nameMap = new Map(materials.map(m => [m.id, m.name]));
+
   const roNumber = await generateRONumber();
   await prisma.requirementOrder.create({
     data: {
@@ -51,6 +59,7 @@ export async function autoCreateRO(opts: CreateROOptions): Promise<void> {
       items: {
         create: newItems.map(i => ({
           materialId: i.materialId,
+          materialName: i.materialId ? (nameMap.get(i.materialId) ?? null) : null,
           qtyRequired: i.qtyRequired,
           notes: i.notes ?? null,
         })),

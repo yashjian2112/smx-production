@@ -61,6 +61,20 @@ export async function POST(req: NextRequest) {
   if (!vendorIds?.length || vendorIds.length < 5) {
     return NextResponse.json({ error: `Minimum 5 vendors required per RFQ. You selected ${vendorIds?.length ?? 0}.` }, { status: 400 });
   }
+
+  // Verify all selected vendors are active
+  const selectedVendors = await prisma.vendor.findMany({
+    where: { id: { in: vendorIds }, active: true },
+    select: { id: true, name: true },
+  });
+  if (selectedVendors.length < vendorIds.length) {
+    const missing = vendorIds.filter((vid: string) => !selectedVendors.find(v => v.id === vid));
+    return NextResponse.json({ error: `Some selected vendors are inactive or not found (${missing.length} invalid)` }, { status: 400 });
+  }
+  if (selectedVendors.length < 5) {
+    return NextResponse.json({ error: `Minimum 5 active vendors required. Only ${selectedVendors.length} valid.` }, { status: 400 });
+  }
+
   if (!roItems?.length) return NextResponse.json({ error: 'Select at least one item' }, { status: 400 });
 
   // Validate all RO items belong to APPROVED ROs

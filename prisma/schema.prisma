@@ -1382,6 +1382,7 @@ model RequirementOrderItem {
   id              String  @id @default(cuid())
   roId            String  @map("ro_id")
   materialId      String? @map("material_id")        // null for free-text items
+  materialName    String? @map("material_name")       // snapshot at creation — preserved if material deleted
   itemDescription String? @map("item_description")   // for maintenance/consumables not in inventory
   itemUnit        String? @map("item_unit")           // e.g. pcs, kg, ltr
   qtyRequired     Float   @map("qty_required")

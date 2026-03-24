@@ -106,6 +106,7 @@ export async function POST(
 
       // FIFO: deduct from oldest batches first
       let remaining = issued;
+      let primaryBatchId: string | null = null;  // track first batch used
       const batches = await tx.inventoryBatch.findMany({
         where: { rawMaterialId: item.rawMaterialId, remainingQty: { gt: 0 } },
         orderBy: { createdAt: 'asc' },
@@ -118,7 +119,16 @@ export async function POST(
           where: { id: batch.id },
           data: { remainingQty: { decrement: deduct } },
         });
+        if (!primaryBatchId && deduct > 0) primaryBatchId = batch.id;
         remaining -= deduct;
+      }
+
+      // Save which batch this item came from (for component tracing)
+      if (primaryBatchId) {
+        await tx.jobCardItem.update({
+          where: { id: item.id },
+          data: { batchId: primaryBatchId },
+        });
       }
 
       // Update material currentStock
