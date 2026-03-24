@@ -261,11 +261,15 @@ function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
                   </div>
                   {ro.notes && <div className="text-xs text-zinc-400 mt-1">{ro.notes}</div>}
                 </div>
-                <div className="flex gap-2 items-center">
+                <div className="flex gap-2 items-center flex-wrap">
                   <button onClick={() => setExpanded(expanded === ro.id ? null : ro.id)}
                     className="text-xs text-blue-400 hover:text-blue-300">
                     {expanded === ro.id ? 'Hide' : `${ro.items.length} item${ro.items.length !== 1 ? 's' : ''}`}
                   </button>
+                  <a href={`/print/ro/${ro.id}`} target="_blank" rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-white">
+                    PDF
+                  </a>
                   {isIM && ro.status === 'PENDING' && (
                     <button onClick={() => approve(ro.id)}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-700 hover:bg-green-600 text-white">
