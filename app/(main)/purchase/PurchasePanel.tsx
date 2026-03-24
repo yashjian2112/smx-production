@@ -2,637 +2,858 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-/* ─── Types ──────────────────────────────────────────────── */
-type Vendor = {
-  id: string; code: string; name: string;
-  contactPerson?: string; phone?: string; email?: string;
-  rating?: number;
-  _count?: { purchaseOrders: number; bids: number };
+/* ─── Types ─────────────────────────────────────────────────────── */
+type ROItem = {
+  id: string; materialId: string; qtyRequired: number; qtyOrdered: number; notes?: string;
+  material: { id: string; name: string; code: string; unit: string; currentStock: number; minimumOrderQty: number };
+};
+type RO = {
+  id: string; roNumber: string; trigger: string; status: string; notes?: string;
+  createdAt: string; approvedAt?: string;
+  approvedBy?: { name: string };
+  jobCard?: { cardNumber: string };
+  items: ROItem[];
 };
 
-type BidInvitation = {
-  id: string; token: string; deadline: string; status: string;
-  vendor: { name: string; code: string; email?: string };
-  bid?: {
-    pricePerUnit: number; totalAmount: number; leadTimeDays: number;
-    validUntil: string; notes?: string; status: string; submittedAt: string;
-  } | null;
+type RFQItem = {
+  id: string; materialId: string; qtyRequired: number;
+  material: { id: string; name: string; code: string; unit: string };
+  roItem: { id: string; qtyRequired: number; ro: { roNumber: string } };
 };
-
-type PurchaseRequest = {
-  id: string; requestNumber: string; status: string;
-  quantityRequired: number; unit: string; urgency: string; notes?: string;
-  rawMaterial: { name: string; unit: string; currentStock: number };
-  requestedBy: { name: string };
-  bidInvitations: BidInvitation[];
-  createdAt: string;
+type VendorInvite = { id: string; vendor: { id: string; name: string; code: string }; viewedAt?: string };
+type Quote = {
+  id: string; vendorId: string; currency: string; totalAmount: number; leadTimeDays: number;
+  validUntil: string; notes?: string; status: string; submittedAt: string;
+  vendor: { id: string; name: string; code: string };
+  items: { id: string; rfqItemId: string; materialId: string; unitPrice: number; totalPrice: number; currency: string }[];
 };
-
-type PurchaseOrder = {
-  id: string; poNumber: string; status: string;
-  totalAmount: number; expectedDelivery?: string; createdAt: string;
-  vendor: { name: string; code: string };
-  purchaseRequest: { requestNumber: string; rawMaterial: { name: string } };
+type RFQ = {
+  id: string; rfqNumber: string; title: string; description?: string;
+  fileUrls: string[]; deadline?: string; status: string; createdAt: string;
   createdBy: { name: string };
-  items: Array<{
-    id: string; quantity: number; unitPrice: number; receivedQuantity: number;
-    rawMaterial: { name: string; unit: string };
-  }>;
+  items: RFQItem[];
+  vendorInvites: VendorInvite[];
+  quotes: Quote[];
+  _count: { quotes: number; vendorInvites: number };
 };
 
-/* ─── Helpers ────────────────────────────────────────────── */
-const URGENCY_COLOR: Record<string, string> = {
-  LOW:      'text-zinc-400 bg-zinc-800',
-  MEDIUM:   'text-yellow-400 bg-yellow-900/30',
-  HIGH:     'text-orange-400 bg-orange-900/30',
-  CRITICAL: 'text-red-400 bg-red-900/30',
+type POItem = { id: string; rawMaterialId: string; quantity: number; unitPrice: number; receivedQuantity: number; rawMaterial: { name: string; unit: string } };
+type GAN = { id: string; ganNumber: string; arrivalDate: string; status: string; notes?: string; items: { id: string; materialId: string; qtyArrived: number; material: { name: string; unit: string } }[]; grn?: { id: string; grnNumber: string } };
+type PO = {
+  id: string; poNumber: string; status: string; totalAmount: number; currency: string;
+  expectedDelivery?: string; notes?: string; approvedAt?: string; createdAt: string;
+  vendor: { id: string; name: string; code: string };
+  createdBy: { name: string };
+  approvedBy?: { name: string };
+  rfq?: { rfqNumber: string; title: string };
+  items: POItem[];
+  goodsArrivals: GAN[];
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  DRAFT:              'text-zinc-400 bg-zinc-800',
-  OPEN:               'text-sky-400 bg-sky-900/30',
-  BIDDING:            'text-purple-400 bg-purple-900/30',
-  AWARDED:            'text-emerald-400 bg-emerald-900/30',
-  ORDERED:            'text-blue-400 bg-blue-900/30',
-  PARTIALLY_RECEIVED: 'text-orange-400 bg-orange-900/30',
-  RECEIVED:           'text-emerald-400 bg-emerald-900/30',
-  CANCELLED:          'text-red-400 bg-red-900/30',
-  SENT:               'text-sky-400 bg-sky-900/30',
-  CONFIRMED:          'text-emerald-400 bg-emerald-900/30',
+type Vendor = {
+  id: string; code: string; name: string; email?: string; phone?: string;
+  portalEmail?: string; isPortalActive: boolean; categories: string[]; rating?: number;
+  active: boolean;
 };
 
-const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-
-/* ─── Tab: Purchase Requests ─────────────────────────────── */
-function PRTab({ isAdmin }: { isAdmin: boolean }) {
-  const [requests, setRequests]   = useState<PurchaseRequest[]>([]);
-  const [vendors, setVendors]     = useState<Vendor[]>([]);
-  const [materials, setMaterials] = useState<Array<{ id: string; name: string; unit: string; currentStock: number; reorderPoint: number; isLowStock?: boolean }>>([]);
-  const [loading, setLoading]     = useState(true);
-  const [expanded, setExpanded]   = useState<string | null>(null);
-
-  // New PR form
-  const [showNew, setShowNew]   = useState(false);
-  const [form, setForm]         = useState({ rawMaterialId: '', quantityRequired: '', unit: '', urgency: 'MEDIUM', notes: '' });
-  const [saving, setSaving]     = useState(false);
-
-  // Selected material info (for stock display)
-  const selectedMaterial = materials.find(m => m.id === form.rawMaterialId) ?? null;
-
-  // Invite vendors form
-  const [inviteFor, setInviteFor]       = useState<string | null>(null);
-  const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
-  const [deadline, setDeadline]         = useState('');
-  const [inviting, setInviting]         = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const [prRes, vRes, mRes] = await Promise.all([
-      fetch('/api/purchase/requests'),
-      fetch('/api/purchase/vendors'),
-      fetch('/api/inventory/materials'),
-    ]);
-    if (prRes.ok) setRequests(await prRes.json());
-    if (vRes.ok)  setVendors(await vRes.json());
-    if (mRes.ok)  setMaterials(await mRes.json());
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  // Handle ?preMaterial=&preQty= URL params from inventory low-stock alert
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const preMat = params.get('preMaterial');
-    const preQty = params.get('preQty');
-    if (preMat) {
-      setShowNew(true);
-      setForm(f => ({ ...f, rawMaterialId: preMat, quantityRequired: preQty ?? '' }));
-    }
-  }, []);
-
-  async function createPR() {
-    if (!form.rawMaterialId || !form.quantityRequired) return;
-    setSaving(true);
-    await fetch('/api/purchase/requests', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ ...form, quantityRequired: parseFloat(form.quantityRequired) }),
-    });
-    setSaving(false);
-    setShowNew(false);
-    setForm({ rawMaterialId: '', quantityRequired: '', unit: '', urgency: 'MEDIUM', notes: '' });
-    load();
-  }
-
-  async function openForBidding(id: string) {
-    await fetch(`/api/purchase/requests/${id}`, {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ status: 'OPEN' }),
-    });
-    load();
-  }
-
-  async function inviteVendors(prId: string) {
-    if (!selectedVendors.length || !deadline) return;
-    setInviting(true);
-    await fetch('/api/purchase/bid-invitations', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ purchaseRequestId: prId, vendorIds: selectedVendors, deadline }),
-    });
-    setInviting(false);
-    setInviteFor(null);
-    setSelectedVendors([]);
-    setDeadline('');
-    load();
-  }
-
-  async function awardBid(bidInvitationId: string) {
-    await fetch('/api/purchase/bid-invitations', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ action: 'award', bidInvitationId }),
-    });
-    load();
-  }
-
-  if (loading) return <div className="text-zinc-500 py-12 text-center">Loading…</div>;
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-zinc-400 text-sm">{requests.length} requests</span>
-        {isAdmin && (
-          <button onClick={() => setShowNew(true)}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors">
-            + New Request
-          </button>
-        )}
-      </div>
-
-      {/* New PR form */}
-      {showNew && (
-        <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-4 mb-4 space-y-3">
-          <p className="text-sm font-medium text-white">New Purchase Request</p>
-          <select value={form.rawMaterialId}
-            onChange={e => {
-              const mat = materials.find(m => m.id === e.target.value);
-              setForm(f => ({ ...f, rawMaterialId: e.target.value, unit: mat?.unit ?? f.unit }));
-            }}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white">
-            <option value="">Select material…</option>
-            {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.unit}){m.isLowStock ? ' ⚠ LOW STOCK' : ''}</option>)}
-          </select>
-
-          {/* Stock info banner */}
-          {selectedMaterial && (
-            <div className={`rounded-lg px-3 py-2 text-xs flex items-center justify-between ${selectedMaterial.isLowStock ? 'bg-red-900/20 border border-red-800' : 'bg-zinc-800 border border-zinc-700'}`}>
-              <span className="text-zinc-400">Current Stock: <span className={`font-semibold ${selectedMaterial.isLowStock ? 'text-red-400' : 'text-emerald-400'}`}>{selectedMaterial.currentStock.toLocaleString('en-IN')} {selectedMaterial.unit}</span></span>
-              <span className="text-zinc-500">Reorder Point: {selectedMaterial.reorderPoint.toLocaleString('en-IN')} {selectedMaterial.unit}</span>
-              {selectedMaterial.isLowStock && <span className="text-red-400 font-medium">LOW STOCK</span>}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <input type="number" placeholder="Quantity" value={form.quantityRequired}
-              onChange={e => setForm(f => ({ ...f, quantityRequired: e.target.value }))}
-              onWheel={e => (e.target as HTMLElement).blur()}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
-            <input type="text" placeholder="Unit (kg, pcs…)" value={form.unit}
-              onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
-          </div>
-          <select value={form.urgency} onChange={e => setForm(f => ({ ...f, urgency: e.target.value }))}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white">
-            <option value="LOW">Low</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="HIGH">High</option>
-            <option value="CRITICAL">Critical</option>
-          </select>
-          <textarea placeholder="Notes (optional)" value={form.notes}
-            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-            rows={2}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white resize-none" />
-          <div className="flex gap-2">
-            <button onClick={createPR} disabled={saving}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-50">
-              {saving ? 'Saving…' : 'Create'}
-            </button>
-            <button onClick={() => setShowNew(false)}
-              className="px-4 py-2 rounded-lg text-sm text-zinc-400 hover:text-white border border-zinc-700">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {requests.map(pr => (
-          <div key={pr.id} className="rounded-xl border border-zinc-800 bg-zinc-900/60">
-            <button className="w-full text-left p-4" onClick={() => setExpanded(expanded === pr.id ? null : pr.id)}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-white font-medium text-sm">{pr.requestNumber}</span>
-                  <span className="ml-3 text-zinc-400 text-sm">{pr.rawMaterial.name}</span>
-                  <span className="ml-2 text-zinc-500 text-xs">· {pr.quantityRequired} {pr.unit}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${URGENCY_COLOR[pr.urgency] || ''}`}>
-                    {pr.urgency}
-                  </span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[pr.status] || ''}`}>
-                    {pr.status.replace('_', ' ')}
-                  </span>
-                  <svg className={`w-4 h-4 text-zinc-500 transition-transform ${expanded === pr.id ? 'rotate-180' : ''}`}
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-              </div>
-            </button>
-
-            {expanded === pr.id && (
-              <div className="border-t border-zinc-800 p-4 space-y-4">
-                {pr.notes && <p className="text-zinc-400 text-sm">{pr.notes}</p>}
-                <div className="text-xs text-zinc-500">Requested by {pr.requestedBy.name} · {fmtDate(pr.createdAt)}</div>
-
-                {/* Actions */}
-                {isAdmin && pr.status === 'DRAFT' && (
-                  <button onClick={() => openForBidding(pr.id)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-700 hover:bg-sky-600 text-white">
-                    Open for Bidding
-                  </button>
-                )}
-
-                {isAdmin && (pr.status === 'OPEN' || pr.status === 'BIDDING') && (
-                  <div>
-                    {inviteFor !== pr.id ? (
-                      <button onClick={() => setInviteFor(pr.id)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-700 hover:bg-purple-600 text-white">
-                        + Invite Vendors
-                      </button>
-                    ) : (
-                      <div className="space-y-3 bg-zinc-800/50 rounded-lg p-3">
-                        <p className="text-xs font-medium text-white">Select vendors to invite</p>
-                        <div className="space-y-1 max-h-40 overflow-y-auto">
-                          {vendors.map(v => (
-                            <label key={v.id} className="flex items-center gap-2 cursor-pointer">
-                              <input type="checkbox" checked={selectedVendors.includes(v.id)}
-                                onChange={e => setSelectedVendors(prev =>
-                                  e.target.checked ? [...prev, v.id] : prev.filter(id => id !== v.id))}
-                                className="rounded" />
-                              <span className="text-sm text-white">{v.name}</span>
-                              <span className="text-xs text-zinc-500">{v.code}</span>
-                            </label>
-                          ))}
-                        </div>
-                        <div>
-                          <label className="text-xs text-zinc-400">Deadline</label>
-                          <input type="datetime-local" value={deadline}
-                            onChange={e => setDeadline(e.target.value)}
-                            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => inviteVendors(pr.id)} disabled={inviting}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-700 hover:bg-purple-600 text-white disabled:opacity-50">
-                            {inviting ? 'Sending…' : 'Send Invitations'}
-                          </button>
-                          <button onClick={() => { setInviteFor(null); setSelectedVendors([]); }}
-                            className="px-3 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white border border-zinc-700">
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Bids table */}
-                {pr.bidInvitations.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-zinc-400 mb-2">Vendor Bids</p>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-zinc-500 border-b border-zinc-800">
-                            <th className="text-left pb-2 pr-4">Vendor</th>
-                            <th className="text-right pb-2 pr-4">Price/Unit</th>
-                            <th className="text-right pb-2 pr-4">Total</th>
-                            <th className="text-right pb-2 pr-4">Lead Time</th>
-                            <th className="text-center pb-2 pr-4">Status</th>
-                            {isAdmin && pr.status === 'BIDDING' && <th className="pb-2"></th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pr.bidInvitations.map(inv => (
-                            <tr key={inv.id} className="border-b border-zinc-800/50">
-                              <td className="py-2 pr-4 text-white">{inv.vendor.name}</td>
-                              <td className="py-2 pr-4 text-right text-white">
-                                {inv.bid ? `₹${inv.bid.pricePerUnit.toLocaleString('en-IN')}` : '—'}
-                              </td>
-                              <td className="py-2 pr-4 text-right text-white">
-                                {inv.bid ? `₹${inv.bid.totalAmount.toLocaleString('en-IN')}` : '—'}
-                              </td>
-                              <td className="py-2 pr-4 text-right text-zinc-300">
-                                {inv.bid ? `${inv.bid.leadTimeDays}d` : '—'}
-                              </td>
-                              <td className="py-2 pr-4 text-center">
-                                {inv.bid ? (
-                                  <span className={`px-2 py-0.5 rounded-full font-medium ${
-                                    inv.bid.status === 'SELECTED' ? 'text-emerald-400 bg-emerald-900/30' :
-                                    inv.bid.status === 'REJECTED' ? 'text-red-400 bg-red-900/30' :
-                                    'text-yellow-400 bg-yellow-900/30'}`}>
-                                    {inv.bid.status}
-                                  </span>
-                                ) : (
-                                  <span className="text-zinc-500">Pending</span>
-                                )}
-                              </td>
-                              {isAdmin && pr.status === 'BIDDING' && (
-                                <td className="py-2">
-                                  {inv.bid && inv.bid.status === 'PENDING' && (
-                                    <button onClick={() => awardBid(inv.id)}
-                                      className="px-2 py-1 rounded text-xs bg-emerald-700 hover:bg-emerald-600 text-white">
-                                      Award
-                                    </button>
-                                  )}
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* Vendor portal links */}
-                {isAdmin && pr.bidInvitations.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-zinc-400 mb-2">Vendor Portal Links</p>
-                    <div className="space-y-1">
-                      {pr.bidInvitations.map(inv => (
-                        <div key={inv.id} className="flex items-center gap-2 text-xs">
-                          <span className="text-zinc-300">{inv.vendor.name}:</span>
-                          <code className="text-sky-400 bg-zinc-800 px-2 py-0.5 rounded select-all break-all">
-                            {typeof window !== 'undefined' ? `${window.location.origin}/vendor/${inv.token}` : `/vendor/${inv.token}`}
-                          </code>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-
-        {requests.length === 0 && (
-          <div className="text-zinc-500 text-sm text-center py-12">No purchase requests yet</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Tab: Purchase Orders ───────────────────────────────── */
-function POTab({ isAdmin }: { isAdmin: boolean }) {
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch('/api/purchase/orders')
-      .then(r => r.json())
-      .then(setOrders)
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <div className="text-zinc-500 py-12 text-center">Loading…</div>;
-
-  return (
-    <div className="space-y-3">
-      {orders.map(po => (
-        <div key={po.id} className="rounded-xl border border-zinc-800 bg-zinc-900/60">
-          <button className="w-full text-left p-4" onClick={() => setExpanded(expanded === po.id ? null : po.id)}>
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-white font-medium text-sm">{po.poNumber}</span>
-                <span className="ml-3 text-zinc-400 text-sm">{po.vendor.name}</span>
-                <span className="ml-2 text-zinc-500 text-xs">· {po.purchaseRequest.rawMaterial.name}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-white">₹{po.totalAmount.toLocaleString('en-IN')}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[po.status] || ''}`}>
-                  {po.status}
-                </span>
-              </div>
-            </div>
-          </button>
-
-          {expanded === po.id && (
-            <div className="border-t border-zinc-800 p-4 space-y-3">
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div>
-                  <p className="text-zinc-500">PR Reference</p>
-                  <p className="text-white">{po.purchaseRequest.requestNumber}</p>
-                </div>
-                <div>
-                  <p className="text-zinc-500">Created by</p>
-                  <p className="text-white">{po.createdBy.name}</p>
-                </div>
-                {po.expectedDelivery && (
-                  <div>
-                    <p className="text-zinc-500">Expected Delivery</p>
-                    <p className="text-white">{fmtDate(po.expectedDelivery)}</p>
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="text-xs font-medium text-zinc-400 mb-2">Items</p>
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-zinc-500 border-b border-zinc-800">
-                      <th className="text-left pb-1 pr-4">Material</th>
-                      <th className="text-right pb-1 pr-4">Qty</th>
-                      <th className="text-right pb-1 pr-4">Price/Unit</th>
-                      <th className="text-right pb-1">Received</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {po.items.map(item => (
-                      <tr key={item.id} className="border-b border-zinc-800/50">
-                        <td className="py-1.5 pr-4 text-white">{item.rawMaterial.name}</td>
-                        <td className="py-1.5 pr-4 text-right text-zinc-300">{item.quantity} {item.rawMaterial.unit}</td>
-                        <td className="py-1.5 pr-4 text-right text-zinc-300">₹{item.unitPrice.toLocaleString('en-IN')}</td>
-                        <td className={`py-1.5 text-right ${item.receivedQuantity >= item.quantity ? 'text-emerald-400' : 'text-yellow-400'}`}>
-                          {item.receivedQuantity}/{item.quantity}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      ))}
-      {orders.length === 0 && (
-        <div className="text-zinc-500 text-sm text-center py-12">No purchase orders yet</div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Tab: Vendors ───────────────────────────────────────── */
-function VendorsTab({ isAdmin }: { isAdmin: boolean }) {
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ name: '', contactPerson: '', phone: '', email: '', address: '', gstNumber: '' });
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    const res = await fetch('/api/purchase/vendors');
-    if (res.ok) setVendors(await res.json());
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  async function createVendor() {
-    setSaving(true);
-    await fetch('/api/purchase/vendors', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(form),
-    });
-    setSaving(false);
-    setShowNew(false);
-    setForm({ name: '', contactPerson: '', phone: '', email: '', address: '', gstNumber: '' });
-    load();
-  }
-
-  if (loading) return <div className="text-zinc-500 py-12 text-center">Loading…</div>;
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-zinc-400 text-sm">{vendors.length} vendors</span>
-        {isAdmin && (
-          <button onClick={() => setShowNew(true)}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white">
-            + Add Vendor
-          </button>
-        )}
-      </div>
-
-      {showNew && (
-        <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-4 mb-4 space-y-3">
-          <p className="text-sm font-medium text-white">New Vendor</p>
-          <input placeholder="Company Name *" value={form.name}
-            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
-          <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Contact Person" value={form.contactPerson}
-              onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value }))}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
-            <input placeholder="Phone" value={form.phone}
-              onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Email" value={form.email}
-              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
-            <input placeholder="GST Number" value={form.gstNumber}
-              onChange={e => setForm(f => ({ ...f, gstNumber: e.target.value }))}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
-          </div>
-          <textarea placeholder="Address" value={form.address}
-            onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
-            rows={2}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white resize-none" />
-          <div className="flex gap-2">
-            <button onClick={createVendor} disabled={saving || !form.name}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-50">
-              {saving ? 'Saving…' : 'Create'}
-            </button>
-            <button onClick={() => setShowNew(false)}
-              className="px-4 py-2 rounded-lg text-sm text-zinc-400 hover:text-white border border-zinc-700">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        {vendors.map(v => (
-          <div key={v.id} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-white font-medium text-sm">{v.name}</p>
-                <p className="text-zinc-500 text-xs mt-0.5">{v.code}</p>
-              </div>
-              {v.rating && (
-                <span className="text-yellow-400 text-xs">★ {v.rating.toFixed(1)}</span>
-              )}
-            </div>
-            {v.contactPerson && <p className="text-zinc-400 text-xs mt-2">{v.contactPerson}</p>}
-            <div className="flex gap-4 mt-2 text-xs text-zinc-500">
-              {v.phone && <span>📞 {v.phone}</span>}
-              {v.email && <span>✉ {v.email}</span>}
-            </div>
-            <div className="flex gap-4 mt-2 text-xs text-zinc-500">
-              <span>{v._count?.purchaseOrders ?? 0} orders</span>
-              <span>{v._count?.bids ?? 0} bids</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {vendors.length === 0 && (
-        <div className="text-zinc-500 text-sm text-center py-12">No vendors yet</div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Main Panel ─────────────────────────────────────────── */
-const TABS = ['Requests', 'Orders', 'Vendors'] as const;
+const TABS = ['Req. Orders', 'RFQ', 'Purchase Orders', 'Vendors'] as const;
 type Tab = typeof TABS[number];
 
-export default function PurchasePanel({ sessionRole }: { sessionRole: string }) {
-  const isStoreManager = sessionRole === 'STORE_MANAGER';
-  // STORE_MANAGER only sees Requests tab (to create/view PRs); not Orders or Vendors
-  const visibleTabs = isStoreManager
-    ? (['Requests'] as const)
-    : TABS;
+const STATUS_COLOR: Record<string, string> = {
+  PENDING: 'bg-amber-900/40 text-amber-300 border border-amber-700/50',
+  APPROVED: 'bg-blue-900/40 text-blue-300 border border-blue-700/50',
+  CONVERTED: 'bg-purple-900/40 text-purple-300 border border-purple-700/50',
+  CANCELLED: 'bg-zinc-800 text-zinc-400',
+  DRAFT: 'bg-zinc-800 text-zinc-400',
+  OPEN: 'bg-green-900/40 text-green-300 border border-green-700/50',
+  CLOSED: 'bg-zinc-800 text-zinc-400',
+  GOODS_ARRIVED: 'bg-orange-900/40 text-orange-300 border border-orange-700/50',
+  PARTIALLY_RECEIVED: 'bg-yellow-900/40 text-yellow-300 border border-yellow-700/50',
+  RECEIVED: 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/50',
+  SENT: 'bg-cyan-900/40 text-cyan-300 border border-cyan-700/50',
+  GRN_DONE: 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/50',
+  CREATED: 'bg-orange-900/40 text-orange-300 border border-orange-700/50',
+  LOW_STOCK: 'bg-red-900/40 text-red-300 border border-red-700/40',
+  JOB_CARD: 'bg-violet-900/40 text-violet-300 border border-violet-700/40',
+  MANUAL: 'bg-zinc-800 text-zinc-400',
+};
 
-  const [activeTab, setActiveTab] = useState<Tab>('Requests');
-  const isAdmin = ['ADMIN', 'PURCHASE_MANAGER'].includes(sessionRole);
+function Badge({ label }: { label: string }) {
+  const cls = STATUS_COLOR[label] ?? 'bg-zinc-800 text-zinc-400';
+  return <span className={`px-2 py-0.5 rounded text-xs font-medium ${cls}`}>{label.replace(/_/g, ' ')}</span>;
+}
+
+export default function PurchasePanel({ sessionRole }: { sessionRole: string }) {
+  const [tab, setTab] = useState<Tab>('Req. Orders');
+  const isPM = ['ADMIN', 'PURCHASE_MANAGER'].includes(sessionRole);
+  const isIM = ['ADMIN', 'INVENTORY_MANAGER', 'STORE_MANAGER'].includes(sessionRole);
+  const isAdmin = sessionRole === 'ADMIN';
 
   return (
     <div>
       {/* Tab bar */}
-      <div className="flex gap-1 p-1 rounded-xl mb-6" style={{ background: 'rgba(255,255,255,0.04)' }}>
-        {visibleTabs.map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === tab
-                ? 'bg-sky-600 text-white shadow-lg'
-                : 'text-zinc-400 hover:text-white'}`}>
-            {tab}
+      <div className="flex gap-1 mb-6 bg-zinc-900 rounded-xl p-1">
+        {TABS.map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
+            {t}
           </button>
         ))}
       </div>
 
-      {activeTab === 'Requests' && <PRTab isAdmin={isAdmin || isStoreManager} />}
-      {activeTab === 'Orders'   && <POTab isAdmin={isAdmin} />}
-      {activeTab === 'Vendors'  && <VendorsTab isAdmin={isAdmin} />}
+      {tab === 'Req. Orders' && <ROTab isIM={isIM} isPM={isPM} />}
+      {tab === 'RFQ'         && <RFQTab isPM={isPM} isIM={isIM} />}
+      {tab === 'Purchase Orders' && <POTab isPM={isPM} isIM={isIM} />}
+      {tab === 'Vendors'     && <VendorsTab isAdmin={isAdmin} isPM={isPM} />}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REQUIREMENT ORDERS TAB
+══════════════════════════════════════════════════════════════*/
+function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
+  const [ros, setROs] = useState<RO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<string>('ALL');
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const q = filter !== 'ALL' ? `?status=${filter}` : '';
+    const r = await fetch(`/api/procurement/requirement-orders${q}`);
+    if (r.ok) setROs(await r.json());
+    setLoading(false);
+  }, [filter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function approve(id: string) {
+    const r = await fetch(`/api/procurement/requirement-orders/${id}/approve`, { method: 'POST' });
+    if (r.ok) load();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  const filters = ['ALL', 'PENDING', 'APPROVED', 'CONVERTED', 'CANCELLED'];
+
+  return (
+    <div>
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {filters.map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filter === f ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+            {f}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="text-center text-zinc-500 py-12">Loading...</div>
+      ) : ros.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">No requirement orders{filter !== 'ALL' ? ` with status ${filter}` : ''}</div>
+      ) : (
+        <div className="space-y-3">
+          {ros.map(ro => (
+            <div key={ro.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-white font-semibold">{ro.roNumber}</span>
+                    <Badge label={ro.status} />
+                    <Badge label={ro.trigger} />
+                    {ro.jobCard && <span className="text-xs text-zinc-500">Job: {ro.jobCard.cardNumber}</span>}
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-1">
+                    {new Date(ro.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {ro.approvedBy && <> · Approved by {ro.approvedBy.name}</>}
+                  </div>
+                  {ro.notes && <div className="text-xs text-zinc-400 mt-1">{ro.notes}</div>}
+                </div>
+                <div className="flex gap-2 items-center">
+                  <button onClick={() => setExpanded(expanded === ro.id ? null : ro.id)}
+                    className="text-xs text-blue-400 hover:text-blue-300">
+                    {expanded === ro.id ? 'Hide' : `${ro.items.length} item${ro.items.length !== 1 ? 's' : ''}`}
+                  </button>
+                  {isIM && ro.status === 'PENDING' && (
+                    <button onClick={() => approve(ro.id)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-700 hover:bg-green-600 text-white">
+                      Approve
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {expanded === ro.id && (
+                <div className="mt-3 border-t border-zinc-800 pt-3 space-y-2">
+                  {ro.items.map(item => (
+                    <div key={item.id} className="flex items-center justify-between text-sm">
+                      <div>
+                        <span className="text-white">{item.material.name}</span>
+                        <span className="text-zinc-500 ml-2 text-xs">{item.material.code}</span>
+                      </div>
+                      <div className="text-right text-xs">
+                        <span className="text-amber-300">{item.qtyRequired} {item.material.unit} needed</span>
+                        <span className="text-zinc-500 ml-2">Stock: {item.material.currentStock}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RFQ TAB
+══════════════════════════════════════════════════════════════*/
+function RFQTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
+  const [rfqs, setRFQs] = useState<RFQ[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [selectedRFQ, setSelectedRFQ] = useState<RFQ | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch('/api/procurement/rfq');
+    if (r.ok) setRFQs(await r.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function createPO(rfqId: string, quoteId: string) {
+    const delivery = prompt('Expected delivery date (YYYY-MM-DD):');
+    if (!delivery) return;
+    const r = await fetch(`/api/procurement/rfq/${rfqId}/po`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selectedQuoteId: quoteId, expectedDelivery: delivery }),
+    });
+    if (r.ok) { load(); alert('Purchase Order created!'); }
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  return (
+    <div>
+      {isPM && (
+        <div className="mb-4 flex justify-end">
+          <button onClick={() => setCreating(true)}
+            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">
+            + Create RFQ
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-center text-zinc-500 py-12">Loading...</div>
+      ) : rfqs.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">No RFQs yet</div>
+      ) : (
+        <div className="space-y-3">
+          {rfqs.map(rfq => (
+            <div key={rfq.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-white font-semibold">{rfq.rfqNumber}</span>
+                    <Badge label={rfq.status} />
+                    <span className="text-sm text-zinc-300">{rfq.title}</span>
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-1">
+                    {new Date(rfq.createdAt).toLocaleDateString('en-IN')} · By {rfq.createdBy.name}
+                    {rfq.deadline && <> · Deadline: {new Date(rfq.deadline).toLocaleDateString('en-IN')}</>}
+                    <> · {rfq._count.vendorInvites} vendors · {rfq._count.quotes} quotes</>
+                  </div>
+                </div>
+                <div className="flex gap-2 items-center">
+                  {rfq.fileUrls.length > 0 && (
+                    <span className="text-xs text-blue-400">{rfq.fileUrls.length} file{rfq.fileUrls.length !== 1 ? 's' : ''}</span>
+                  )}
+                  <button onClick={() => setExpanded(expanded === rfq.id ? null : rfq.id)}
+                    className="text-xs text-blue-400 hover:text-blue-300">
+                    {expanded === rfq.id ? 'Hide' : 'Quotes'}
+                  </button>
+                </div>
+              </div>
+
+              {expanded === rfq.id && (
+                <div className="mt-4 border-t border-zinc-800 pt-4">
+                  {/* Items */}
+                  <div className="mb-3">
+                    <div className="text-xs text-zinc-500 font-medium mb-2 uppercase tracking-wider">Materials Required</div>
+                    {rfq.items.map(item => (
+                      <div key={item.id} className="flex justify-between text-sm py-1">
+                        <span className="text-zinc-300">{item.material.name}</span>
+                        <span className="text-zinc-500">{item.qtyRequired} {item.material.unit}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Quotes comparison */}
+                  {rfq.quotes.length === 0 ? (
+                    <div className="text-xs text-zinc-600 py-2">No quotes received yet</div>
+                  ) : (
+                    <div>
+                      <div className="text-xs text-zinc-500 font-medium mb-2 uppercase tracking-wider">Vendor Quotes</div>
+                      <div className="space-y-2">
+                        {rfq.quotes.sort((a, b) => a.totalAmount - b.totalAmount).map((q, idx) => (
+                          <div key={q.id} className={`p-3 rounded-lg border ${q.status === 'SELECTED' ? 'border-green-600 bg-green-950/40' : idx === 0 && q.status === 'SUBMITTED' ? 'border-amber-600/50 bg-amber-950/20' : 'border-zinc-700 bg-zinc-800'}`}>
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div>
+                                <span className="text-white font-medium">{q.vendor.name}</span>
+                                {idx === 0 && q.status === 'SUBMITTED' && <span className="ml-2 text-xs text-amber-300">Lowest</span>}
+                                {q.status === 'SELECTED' && <span className="ml-2 text-xs text-green-300">✓ Selected</span>}
+                                {q.status === 'REJECTED' && <span className="ml-2 text-xs text-zinc-500">Rejected</span>}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-white font-semibold">
+                                  {q.currency === 'USD' ? '$' : '₹'}{q.totalAmount.toLocaleString('en-IN')}
+                                </span>
+                                <span className="text-xs text-zinc-400">{q.leadTimeDays}d lead</span>
+                                {isPM && rfq.status === 'OPEN' && q.status === 'SUBMITTED' && (
+                                  <button onClick={() => createPO(rfq.id, q.id)}
+                                    className="px-3 py-1 rounded-lg text-xs bg-green-700 hover:bg-green-600 text-white">
+                                    Create PO
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            {/* Per-item pricing */}
+                            {q.items.length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-zinc-700 space-y-1">
+                                {q.items.map(qi => {
+                                  const rfqItem = rfq.items.find(ri => ri.id === qi.rfqItemId);
+                                  return (
+                                    <div key={qi.id} className="flex justify-between text-xs text-zinc-400">
+                                      <span>{rfqItem?.material.name ?? qi.materialId}</span>
+                                      <span>{q.currency === 'USD' ? '$' : '₹'}{qi.unitPrice} × {rfqItem?.qtyRequired} = {q.currency === 'USD' ? '$' : '₹'}{qi.totalPrice.toFixed(2)}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {creating && <CreateRFQModal onClose={() => setCreating(false)} onCreated={() => { setCreating(false); load(); }} />}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CREATE RFQ MODAL
+══════════════════════════════════════════════════════════════*/
+function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [fileUrls, setFileUrls] = useState<string[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
+  const [approvedROs, setApprovedROs] = useState<RO[]>([]);
+  const [selectedROItems, setSelectedROItems] = useState<{ roItemId: string; materialId: string; qtyRequired: number }[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/procurement/requirement-orders?status=APPROVED').then(r => r.json()).then(setApprovedROs);
+    fetch('/api/inventory/vendors').then(r => r.json()).then(v => setVendors(Array.isArray(v) ? v : []));
+  }, []);
+
+  function toggleVendor(id: string) {
+    setSelectedVendors(prev => prev.includes(id) ? prev.filter(v => v !== id) : [...prev, id]);
+  }
+
+  function toggleROItem(item: ROItem) {
+    const key = item.id;
+    setSelectedROItems(prev => {
+      const exists = prev.find(i => i.roItemId === key);
+      if (exists) return prev.filter(i => i.roItemId !== key);
+      return [...prev, { roItemId: key, materialId: item.materialId, qtyRequired: item.qtyRequired }];
+    });
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    for (const file of files) {
+      const fd = new FormData(); fd.append('file', file);
+      const r = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (r.ok) { const d = await r.json(); setFileUrls(prev => [...prev, d.url]); }
+    }
+  }
+
+  async function submit() {
+    if (!title.trim()) return alert('Title required');
+    if (!selectedVendors.length) return alert('Select at least one vendor');
+    if (!selectedROItems.length) return alert('Select at least one RO item');
+    setSaving(true);
+    const r = await fetch('/api/procurement/rfq', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, description, deadline: deadline || undefined, fileUrls, vendorIds: selectedVendors, roItems: selectedROItems }),
+    });
+    setSaving(false);
+    if (r.ok) onCreated();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <h2 className="text-white font-semibold text-lg mb-4">Create RFQ</h2>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-zinc-400 text-sm">Title *</label>
+              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. IGBTs and Capacitors Q1 2026"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label className="text-zinc-400 text-sm">Description (optional)</label>
+              <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
+            </div>
+            <div>
+              <label className="text-zinc-400 text-sm">Deadline (optional)</label>
+              <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+
+            {/* File uploads */}
+            <div>
+              <label className="text-zinc-400 text-sm">Drawings / Spec Files</label>
+              <input type="file" multiple accept=".pdf,.dwg,.dxf,.jpg,.png" onChange={handleFileUpload}
+                className="w-full mt-1 text-zinc-400 text-sm file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-zinc-700 file:text-white hover:file:bg-zinc-600" />
+              {fileUrls.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {fileUrls.map((u, i) => <div key={i} className="text-xs text-blue-400 truncate">{u}</div>)}
+                </div>
+              )}
+            </div>
+
+            {/* RO Items */}
+            <div>
+              <label className="text-zinc-400 text-sm block mb-2">Select Materials (from Approved ROs) *</label>
+              {approvedROs.length === 0 ? (
+                <p className="text-xs text-zinc-600">No approved ROs. Approve ROs first.</p>
+              ) : (
+                <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                  {approvedROs.map(ro => (
+                    <div key={ro.id}>
+                      <div className="text-xs text-zinc-500 mb-1">{ro.roNumber}</div>
+                      {ro.items.map(item => (
+                        <label key={item.id} className="flex items-center gap-2 cursor-pointer py-1">
+                          <input type="checkbox"
+                            checked={!!selectedROItems.find(i => i.roItemId === item.id)}
+                            onChange={() => toggleROItem(item)}
+                            className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 accent-blue-500" />
+                          <span className="text-sm text-zinc-300">{item.material.name}</span>
+                          <span className="text-xs text-zinc-500">{item.qtyRequired} {item.material.unit}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Vendors */}
+            <div>
+              <label className="text-zinc-400 text-sm block mb-2">Select Vendors *</label>
+              <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                {vendors.filter(v => v.active).map(v => (
+                  <label key={v.id} className="flex items-center gap-2 cursor-pointer py-1">
+                    <input type="checkbox" checked={selectedVendors.includes(v.id)} onChange={() => toggleVendor(v.id)}
+                      className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 accent-blue-500" />
+                    <span className="text-sm text-zinc-300">{v.name}</span>
+                    <span className="text-xs text-zinc-500">{v.code}</span>
+                    {v.rating && <span className="text-xs text-amber-400">★ {v.rating}</span>}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+            <button onClick={submit} disabled={saving}
+              className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
+              {saving ? 'Creating...' : 'Create RFQ'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PURCHASE ORDERS TAB
+══════════════════════════════════════════════════════════════*/
+function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
+  const [pos, setPOs] = useState<PO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [creatingGAN, setCreatingGAN] = useState<PO | null>(null);
+  const [creatingGRN, setCreatingGRN] = useState<{ po: PO; gan: GAN } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch('/api/procurement/purchase-orders');
+    if (r.ok) setPOs(await r.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      {loading ? (
+        <div className="text-center text-zinc-500 py-12">Loading...</div>
+      ) : pos.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">No purchase orders yet. Create POs from RFQ quotes.</div>
+      ) : (
+        <div className="space-y-3">
+          {pos.map(po => (
+            <div key={po.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-white font-semibold">{po.poNumber}</span>
+                    <Badge label={po.status} />
+                    <span className="text-sm text-zinc-400">{po.vendor.name}</span>
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-1">
+                    {po.currency === 'USD' ? '$' : '₹'}{po.totalAmount.toLocaleString('en-IN')} ·
+                    {po.expectedDelivery && <> ETA: {new Date(po.expectedDelivery).toLocaleDateString('en-IN')} ·</>}
+                    {po.rfq && <> RFQ: {po.rfq.rfqNumber}</>}
+                  </div>
+                </div>
+                <div className="flex gap-2 items-center">
+                  <button onClick={() => setExpanded(expanded === po.id ? null : po.id)}
+                    className="text-xs text-blue-400 hover:text-blue-300">
+                    {expanded === po.id ? 'Hide' : 'Details'}
+                  </button>
+                  {isPM && ['APPROVED', 'SENT', 'CONFIRMED'].includes(po.status) && (
+                    <button onClick={() => setCreatingGAN(po)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-700 hover:bg-orange-600 text-white">
+                      Goods Arrived
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {expanded === po.id && (
+                <div className="mt-3 border-t border-zinc-800 pt-3">
+                  {/* PO Items */}
+                  <div className="mb-3 space-y-1">
+                    {po.items.map(item => (
+                      <div key={item.id} className="flex justify-between text-sm">
+                        <span className="text-zinc-300">{item.rawMaterial.name}</span>
+                        <span className="text-zinc-400">{item.receivedQuantity}/{item.quantity} {item.rawMaterial.unit} received · ₹{item.unitPrice}/unit</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* GANs */}
+                  {po.goodsArrivals.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-zinc-800">
+                      <div className="text-xs text-zinc-500 font-medium mb-2 uppercase tracking-wider">Goods Arrivals</div>
+                      {po.goodsArrivals.map(gan => (
+                        <div key={gan.id} className="flex items-center justify-between bg-zinc-800 rounded-lg p-3 mb-2">
+                          <div>
+                            <span className="text-white font-mono text-sm">{gan.ganNumber}</span>
+                            <span className="ml-2"><Badge label={gan.status} /></span>
+                            <div className="text-xs text-zinc-500 mt-1">{new Date(gan.arrivalDate).toLocaleDateString('en-IN')}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {gan.grn ? (
+                              <span className="text-xs text-emerald-400">GRN: {gan.grn.grnNumber}</span>
+                            ) : isIM ? (
+                              <button onClick={() => setCreatingGRN({ po, gan })}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-700 hover:bg-emerald-600 text-white">
+                                Create GRN
+                              </button>
+                            ) : <span className="text-xs text-zinc-500">Awaiting GRN</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {creatingGAN && <GANModal po={creatingGAN} onClose={() => setCreatingGAN(null)} onCreated={() => { setCreatingGAN(null); load(); }} />}
+      {creatingGRN && <GRNModal po={creatingGRN.po} gan={creatingGRN.gan} onClose={() => setCreatingGRN(null)} onCreated={() => { setCreatingGRN(null); load(); }} />}
+    </div>
+  );
+}
+
+/* ─── GAN Modal ─────────────────────────────────────────── */
+function GANModal({ po, onClose, onCreated }: { po: PO; onClose: () => void; onCreated: () => void }) {
+  const [notes, setNotes] = useState('');
+  const [items, setItems] = useState(po.items.map(i => ({ poItemId: i.id, materialId: i.rawMaterialId, qtyArrived: i.quantity - i.receivedQuantity, name: i.rawMaterial.name, unit: i.rawMaterial.unit })));
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    setSaving(true);
+    const r = await fetch(`/api/procurement/purchase-orders/${po.id}/gan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, items: items.map(i => ({ poItemId: i.poItemId, materialId: i.materialId, qtyArrived: i.qtyArrived })) }),
+    });
+    setSaving(false);
+    if (r.ok) onCreated();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg">
+        <div className="p-6">
+          <h2 className="text-white font-semibold text-lg mb-4">Goods Arrival Note — {po.poNumber}</h2>
+          <div className="space-y-3 mb-4">
+            {items.map((item, i) => (
+              <div key={item.poItemId} className="flex items-center gap-3">
+                <span className="flex-1 text-sm text-zinc-300">{item.name}</span>
+                <input type="number" min={0} value={item.qtyArrived}
+                  onChange={e => { const n = [...items]; n[i].qtyArrived = parseFloat(e.target.value) || 0; setItems(n); }}
+                  onWheel={e => (e.target as HTMLInputElement).blur()}
+                  className="w-24 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm text-right focus:outline-none focus:border-blue-500" />
+                <span className="text-xs text-zinc-500 w-10">{item.unit}</span>
+              </div>
+            ))}
+          </div>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes (optional)..." rows={2}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm mb-4 focus:outline-none focus:border-blue-500 resize-none" />
+          <div className="flex gap-3">
+            <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+            <button onClick={submit} disabled={saving}
+              className="flex-1 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium disabled:opacity-50">
+              {saving ? 'Saving...' : 'Create GAN'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── GRN Modal ─────────────────────────────────────────── */
+function GRNModal({ po, gan, onClose, onCreated }: { po: PO; gan: GAN; onClose: () => void; onCreated: () => void }) {
+  const [notes, setNotes] = useState('');
+  const [items, setItems] = useState(gan.items.map(i => ({ ganItemId: i.id, poItemId: po.items.find(p => p.rawMaterialId === i.materialId)?.id ?? '', materialId: i.materialId, qtyVerified: i.qtyArrived, qtyRejected: 0, unitPrice: po.items.find(p => p.rawMaterialId === i.materialId)?.unitPrice ?? 0, name: i.material.name, unit: i.material.unit })));
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    setSaving(true);
+    const r = await fetch(`/api/procurement/purchase-orders/${po.id}/grn`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ganId: gan.id, notes, items: items.map(i => ({ ganItemId: i.ganItemId, poItemId: i.poItemId, materialId: i.materialId, qtyVerified: i.qtyVerified, qtyRejected: i.qtyRejected, unitPrice: i.unitPrice })) }),
+    });
+    setSaving(false);
+    if (r.ok) { onCreated(); alert('GRN created — stock updated!'); }
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg">
+        <div className="p-6">
+          <h2 className="text-white font-semibold text-lg mb-1">Create GRN</h2>
+          <p className="text-zinc-500 text-sm mb-4">Against GAN: {gan.ganNumber}</p>
+          <div className="space-y-3 mb-4">
+            {items.map((item, i) => (
+              <div key={item.materialId}>
+                <div className="text-sm text-zinc-300 mb-1">{item.name}</div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs text-zinc-500">Verified Qty</label>
+                    <input type="number" min={0} max={item.qtyVerified} value={item.qtyVerified}
+                      onChange={e => { const n = [...items]; n[i].qtyVerified = parseFloat(e.target.value) || 0; setItems(n); }}
+                      onWheel={e => (e.target as HTMLInputElement).blur()}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-zinc-500">Rejected Qty</label>
+                    <input type="number" min={0} value={item.qtyRejected}
+                      onChange={e => { const n = [...items]; n[i].qtyRejected = parseFloat(e.target.value) || 0; setItems(n); }}
+                      onWheel={e => (e.target as HTMLInputElement).blur()}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div className="w-16 text-center">
+                    <label className="text-xs text-zinc-500">Unit ₹</label>
+                    <input type="number" min={0} value={item.unitPrice}
+                      onChange={e => { const n = [...items]; n[i].unitPrice = parseFloat(e.target.value) || 0; setItems(n); }}
+                      onWheel={e => (e.target as HTMLInputElement).blur()}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Verification notes..." rows={2}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm mb-4 focus:outline-none focus:border-blue-500 resize-none" />
+          <div className="flex gap-3">
+            <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+            <button onClick={submit} disabled={saving}
+              className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium disabled:opacity-50">
+              {saving ? 'Saving...' : 'Create GRN + Update Stock'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VENDORS TAB
+══════════════════════════════════════════════════════════════*/
+function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editPortal, setEditPortal] = useState<Vendor | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch('/api/inventory/vendors');
+    if (r.ok) setVendors(await r.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      {loading ? (
+        <div className="text-center text-zinc-500 py-12">Loading...</div>
+      ) : (
+        <div className="space-y-3">
+          {vendors.map(v => (
+            <div key={v.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-semibold">{v.name}</span>
+                    <span className="text-zinc-500 text-xs">{v.code}</span>
+                    {v.rating && <span className="text-xs text-amber-400">★ {v.rating}</span>}
+                    {!v.active && <Badge label="INACTIVE" />}
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-1">
+                    {v.email && <span>{v.email} · </span>}
+                    {v.phone && <span>{v.phone}</span>}
+                  </div>
+                  {v.categories.length > 0 && (
+                    <div className="flex gap-1 mt-1 flex-wrap">
+                      {v.categories.map(c => <span key={c} className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded">{c}</span>)}
+                    </div>
+                  )}
+                  <div className="text-xs mt-1">
+                    {v.portalEmail ? (
+                      <span className={v.isPortalActive ? 'text-green-400' : 'text-zinc-500'}>
+                        Portal: {v.portalEmail} {v.isPortalActive ? '(Active)' : '(Inactive)'}
+                      </span>
+                    ) : <span className="text-zinc-600">No portal access</span>}
+                  </div>
+                </div>
+                {isPM && (
+                  <button onClick={() => setEditPortal(v)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700">
+                    Portal Access
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editPortal && <PortalAccessModal vendor={editPortal} onClose={() => setEditPortal(null)} onSaved={() => { setEditPortal(null); load(); }} />}
+    </div>
+  );
+}
+
+function PortalAccessModal({ vendor, onClose, onSaved }: { vendor: Vendor; onClose: () => void; onSaved: () => void }) {
+  const [email, setEmail] = useState(vendor.portalEmail ?? '');
+  const [password, setPassword] = useState('');
+  const [active, setActive] = useState(vendor.isPortalActive);
+  const [categories, setCategories] = useState(vendor.categories.join(', '));
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (!email) return alert('Email required');
+    setSaving(true);
+    const r = await fetch(`/api/procurement/vendors/${vendor.id}/portal-access`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        portalEmail: email,
+        password: password || undefined,
+        isPortalActive: active,
+        categories: categories.split(',').map(s => s.trim()).filter(Boolean),
+      }),
+    });
+    setSaving(false);
+    if (r.ok) onSaved();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm">
+        <div className="p-6">
+          <h2 className="text-white font-semibold text-lg mb-4">Portal Access — {vendor.name}</h2>
+          <div className="space-y-3">
+            <div>
+              <label className="text-zinc-400 text-sm">Portal Email *</label>
+              <input value={email} onChange={e => setEmail(e.target.value)} type="email"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label className="text-zinc-400 text-sm">New Password {vendor.portalEmail ? '(leave blank to keep)' : '*'}</label>
+              <input value={password} onChange={e => setPassword(e.target.value)} type="password"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label className="text-zinc-400 text-sm">Supply Categories (comma-separated)</label>
+              <input value={categories} onChange={e => setCategories(e.target.value)} placeholder="IGBTs, Capacitors, Resistors"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)}
+                className="w-4 h-4 rounded accent-blue-500" />
+              <span className="text-sm text-zinc-300">Portal Active</span>
+            </label>
+          </div>
+          <div className="flex gap-3 mt-6">
+            <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+            <button onClick={submit} disabled={saving}
+              className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

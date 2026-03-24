@@ -161,5 +161,29 @@ export async function POST(
     }
   });
 
+  // Auto-create RO for any items where stock dropped below reorder point
+  try {
+    const { autoCreateRO } = await import('@/lib/requirement-order');
+    const lowItems: { materialId: string; qtyRequired: number; notes: string }[] = [];
+    for (const item of jobCard.items) {
+      const issued = issuedMap.get(item.id) ?? 0;
+      if (issued <= 0) continue;
+      const mat = await prisma.rawMaterial.findUnique({
+        where: { id: item.rawMaterialId },
+        select: { currentStock: true, reorderPoint: true, minimumOrderQty: true },
+      });
+      if (mat && mat.currentStock <= mat.reorderPoint && mat.minimumOrderQty > 0) {
+        lowItems.push({
+          materialId: item.rawMaterialId,
+          qtyRequired: mat.minimumOrderQty,
+          notes: `Auto: dispatched for job card ${jobCard.cardNumber}, stock now ${mat.currentStock}`,
+        });
+      }
+    }
+    if (lowItems.length > 0) {
+      await autoCreateRO({ trigger: 'JOB_CARD', items: lowItems, jobCardId: id });
+    }
+  } catch {}
+
   return NextResponse.json(updated);
 }

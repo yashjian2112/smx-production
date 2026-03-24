@@ -60,6 +60,12 @@ model User {
   orderNotes           OrderNote[]            @relation("OrderNoteAuthor")
   jobCardsCreated      JobCard[]              @relation("JCCreatedBy")
   jobCardsDispatched   JobCard[]              @relation("JCDispatchedBy")
+  // Procurement (new flow)
+  requirementOrdersApproved RequirementOrder[] @relation("ROApprovedBy")
+  rfqsCreated          RFQ[]                  @relation("RFQCreatedBy")
+  posApproved          PurchaseOrder[]        @relation("POApprovedBy")
+  goodsArrivals        GoodsArrivalNote[]     @relation("GANCreatedBy")
+  vendorPerformance    VendorPerformance[]
 }
 
 enum Role {
@@ -931,6 +937,10 @@ model RawMaterial {
   batches          InventoryBatch[]
   jobCardItems     JobCardItem[]
   variants         MaterialVariant[]
+  roItems          RequirementOrderItem[]
+  rfqItems         RFQItem[]
+  quoteItems       VendorQuoteItem[]
+  ganItems         GANItem[]
 
   @@map("raw_materials")
 }
@@ -999,31 +1009,42 @@ enum PurchaseRequestStatus {
 
 enum PurchaseOrderStatus {
   DRAFT
-  SENT
-  CONFIRMED
+  APPROVED          // PM approved the PO
+  SENT              // sent to vendor
+  CONFIRMED         // vendor confirmed
+  GOODS_ARRIVED     // PM created GAN
   PARTIALLY_RECEIVED
-  RECEIVED
+  RECEIVED          // all GRN done
   CANCELLED
 }
 
 model Vendor {
-  id            String   @id @default(cuid())
-  code          String   @unique  // V001, V002...
-  name          String
-  contactPerson String?  @map("contact_person")
-  phone         String?
-  email         String?
-  address       String?
-  gstNumber     String?  @map("gst_number")
-  active        Boolean  @default(true)
-  rating        Float?   // 1-5 rating
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(cuid())
+  code            String   @unique  // V001, V002...
+  name            String
+  contactPerson   String?  @map("contact_person")
+  phone           String?
+  email           String?
+  address         String?
+  gstNumber       String?  @map("gst_number")
+  active          Boolean  @default(true)
+  rating          Float?   // 1-5 rating (legacy, use VendorPerformance)
+  // Vendor portal
+  portalEmail     String?  @unique @map("portal_email")
+  portalPassword  String?  @map("portal_password")  // bcrypt hashed
+  isPortalActive  Boolean  @default(false) @map("is_portal_active")
+  // Categories they supply (array of category names)
+  categories      String[] @default([])
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   purchaseOrders   PurchaseOrder[]
   bidInvitations   BidInvitation[]
   bids             VendorBid[]
   preferredFor     RawMaterial[]   @relation("PreferredVendor")
+  rfqInvites       RFQVendorInvite[]
+  quotes           VendorQuote[]
+  performance      VendorPerformance[]
 
   @@map("vendors")
 }
@@ -1092,19 +1113,29 @@ model PurchaseOrder {
   id                String              @id @default(cuid())
   poNumber          String              @unique @map("po_number")  // PO/26-27/001
   vendorId          String              @map("vendor_id")
-  purchaseRequestId String              @map("purchase_request_id")
+  purchaseRequestId String?             @map("purchase_request_id")  // legacy, optional
+  rfqId             String?             @map("rfq_id")               // new flow: from RFQ
+  selectedQuoteId   String?             @map("selected_quote_id")    // winning VendorQuote id
   status            PurchaseOrderStatus @default(DRAFT)
   expectedDelivery  DateTime?           @map("expected_delivery")
   totalAmount       Float               @map("total_amount")
+  currency          String              @default("INR")
+  notes             String?
+  approvedById      String?             @map("approved_by_id")
+  approvedAt        DateTime?           @map("approved_at")
   createdById       String              @map("created_by_id")
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
 
-  vendor          Vendor          @relation(fields: [vendorId], references: [id])
-  purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id])
-  createdBy       User            @relation(fields: [createdById], references: [id])
+  vendor          Vendor             @relation(fields: [vendorId], references: [id])
+  purchaseRequest PurchaseRequest?   @relation(fields: [purchaseRequestId], references: [id])
+  rfq             RFQ?               @relation(fields: [rfqId], references: [id])
+  createdBy       User               @relation(fields: [createdById], references: [id])
+  approvedBy      User?              @relation("POApprovedBy", fields: [approvedById], references: [id])
   items           POItem[]
   receipts        GoodsReceipt[]
+  goodsArrivals   GoodsArrivalNote[]
+  performance     VendorPerformance[]
 
   @@map("purchase_orders")
 }
@@ -1121,6 +1152,7 @@ model POItem {
   rawMaterial   RawMaterial        @relation(fields: [rawMaterialId], references: [id])
   receiptItems  GoodsReceiptItem[]
   batches       InventoryBatch[]
+  ganItems      GANItem[]
 
   @@map("po_items")
 }
@@ -1129,11 +1161,13 @@ model GoodsReceipt {
   id              String   @id @default(cuid())
   grnNumber       String   @unique @map("grn_number")  // GRN/26-27/001
   purchaseOrderId String   @map("purchase_order_id")
+  ganId           String?  @unique @map("gan_id")       // linked GAN (new flow)
   receivedById    String   @map("received_by_id")
   receivedAt      DateTime @default(now()) @map("received_at")
   notes           String?
 
-  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrder PurchaseOrder     @relation(fields: [purchaseOrderId], references: [id])
+  gan           GoodsArrivalNote? @relation(fields: [ganId], references: [id])
   receivedBy    User               @relation(fields: [receivedById], references: [id])
   items         GoodsReceiptItem[]
   batches       InventoryBatch[]
@@ -1259,11 +1293,12 @@ model JobCard {
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
-  order        Order           @relation(fields: [orderId], references: [id])
-  unit         ControllerUnit? @relation(fields: [unitId], references: [id])
-  createdBy    User            @relation("JCCreatedBy", fields: [createdById], references: [id])
-  dispatchedBy User?           @relation("JCDispatchedBy", fields: [dispatchedById], references: [id])
-  items        JobCardItem[]
+  order            Order             @relation(fields: [orderId], references: [id])
+  unit             ControllerUnit?   @relation(fields: [unitId], references: [id])
+  createdBy        User              @relation("JCCreatedBy", fields: [createdById], references: [id])
+  dispatchedBy     User?             @relation("JCDispatchedBy", fields: [dispatchedById], references: [id])
+  items            JobCardItem[]
+  requirementOrders RequirementOrder[] @relation("JobCardRO")
 
   @@unique([orderId, stage])
   @@map("job_cards")
@@ -1286,4 +1321,217 @@ model JobCardItem {
   batch       InventoryBatch? @relation(fields: [batchId], references: [id])
 
   @@map("job_card_items")
+}
+
+// ============================================================
+// PROCUREMENT — NEW FLOW
+// RO → RFQ → Vendor Quotes → PO → GAN → GRN
+// ============================================================
+
+enum ROStatus {
+  PENDING    // auto-created, waiting IM approval
+  APPROVED   // IM approved → visible to PM
+  CONVERTED  // PM included in RFQ
+  CANCELLED
+}
+
+enum ROTrigger {
+  LOW_STOCK  // currentStock fell below minimumOrderQty
+  JOB_CARD   // job card needed a component
+  MANUAL     // created manually by IM
+}
+
+model RequirementOrder {
+  id           String    @id @default(cuid())
+  roNumber     String    @unique @map("ro_number")  // RO/26-27/001
+  trigger      ROTrigger @default(MANUAL)
+  jobCardId    String?   @map("job_card_id")
+  status       ROStatus  @default(PENDING)
+  notes        String?
+  approvedById String?   @map("approved_by_id")
+  approvedAt   DateTime? @map("approved_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  jobCard    JobCard?               @relation("JobCardRO", fields: [jobCardId], references: [id])
+  approvedBy User?                  @relation("ROApprovedBy", fields: [approvedById], references: [id])
+  items      RequirementOrderItem[]
+
+  @@map("requirement_orders")
+}
+
+model RequirementOrderItem {
+  id          String  @id @default(cuid())
+  roId        String  @map("ro_id")
+  materialId  String  @map("material_id")
+  qtyRequired Float   @map("qty_required")
+  qtyOrdered  Float   @default(0) @map("qty_ordered")  // filled when PO created
+  notes       String?
+
+  ro       RequirementOrder @relation(fields: [roId], references: [id], onDelete: Cascade)
+  material RawMaterial      @relation(fields: [materialId], references: [id])
+  rfqItems RFQItem[]
+
+  @@map("requirement_order_items")
+}
+
+enum RFQStatus {
+  DRAFT      // PM preparing, not sent yet
+  OPEN       // sent to vendors, accepting quotes
+  CLOSED     // deadline passed
+  CONVERTED  // PO created
+  CANCELLED
+}
+
+model RFQ {
+  id          String    @id @default(cuid())
+  rfqNumber   String    @unique @map("rfq_number")  // RFQ/26-27/001
+  title       String
+  description String?
+  fileUrls    String[]  @default([]) @map("file_urls")  // drawings, specs, PDFs
+  deadline    DateTime?
+  status      RFQStatus @default(DRAFT)
+  createdById String    @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  createdBy      User              @relation("RFQCreatedBy", fields: [createdById], references: [id])
+  items          RFQItem[]
+  vendorInvites  RFQVendorInvite[]
+  quotes         VendorQuote[]
+  purchaseOrders PurchaseOrder[]
+
+  @@map("rfqs")
+}
+
+model RFQItem {
+  id          String  @id @default(cuid())
+  rfqId       String  @map("rfq_id")
+  roItemId    String  @map("ro_item_id")
+  materialId  String  @map("material_id")
+  qtyRequired Float   @map("qty_required")
+
+  rfq        RFQ                  @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  roItem     RequirementOrderItem @relation(fields: [roItemId], references: [id])
+  material   RawMaterial          @relation(fields: [materialId], references: [id])
+  quoteItems VendorQuoteItem[]
+
+  @@map("rfq_items")
+}
+
+model RFQVendorInvite {
+  id        String    @id @default(cuid())
+  rfqId     String    @map("rfq_id")
+  vendorId  String    @map("vendor_id")
+  token     String    @unique @default(cuid())  // secure token for vendor portal link
+  invitedAt DateTime  @default(now()) @map("invited_at")
+  viewedAt  DateTime? @map("viewed_at")
+
+  rfq    RFQ    @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+
+  @@unique([rfqId, vendorId])
+  @@map("rfq_vendor_invites")
+}
+
+enum QuoteStatus {
+  SUBMITTED
+  SELECTED
+  REJECTED
+}
+
+model VendorQuote {
+  id           String      @id @default(cuid())
+  rfqId        String      @map("rfq_id")
+  vendorId     String      @map("vendor_id")
+  currency     String      @default("INR")
+  totalAmount  Float       @map("total_amount")
+  leadTimeDays Int         @map("lead_time_days")
+  validUntil   DateTime    @map("valid_until")
+  notes        String?
+  fileUrls     String[]    @default([]) @map("file_urls")  // vendor's quotation doc
+  status       QuoteStatus @default(SUBMITTED)
+  submittedAt  DateTime    @default(now()) @map("submitted_at")
+
+  rfq    RFQ              @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  vendor Vendor           @relation(fields: [vendorId], references: [id])
+  items  VendorQuoteItem[]
+
+  @@unique([rfqId, vendorId])
+  @@map("vendor_quotes")
+}
+
+model VendorQuoteItem {
+  id         String  @id @default(cuid())
+  quoteId    String  @map("quote_id")
+  rfqItemId  String  @map("rfq_item_id")
+  materialId String  @map("material_id")
+  unitPrice  Float   @map("unit_price")
+  currency   String  @default("INR")
+  totalPrice Float   @map("total_price")
+  notes      String?
+
+  quote      VendorQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  rfqItem    RFQItem     @relation(fields: [rfqItemId], references: [id])
+  material   RawMaterial @relation(fields: [materialId], references: [id])
+
+  @@map("vendor_quote_items")
+}
+
+// Goods Arrival Note — PM creates when goods physically arrive
+enum GANStatus {
+  CREATED   // PM created, waiting IM
+  GRN_DONE  // IM verified and created GRN
+}
+
+model GoodsArrivalNote {
+  id          String    @id @default(cuid())
+  ganNumber   String    @unique @map("gan_number")  // GAN/26-27/001
+  poId        String    @map("po_id")
+  arrivalDate DateTime  @default(now()) @map("arrival_date")
+  status      GANStatus @default(CREATED)
+  notes       String?
+  photoUrls   String[]  @default([]) @map("photo_urls")
+  createdById String    @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  po        PurchaseOrder @relation(fields: [poId], references: [id])
+  createdBy User          @relation("GANCreatedBy", fields: [createdById], references: [id])
+  items     GANItem[]
+  grn       GoodsReceipt?
+
+  @@map("goods_arrival_notes")
+}
+
+model GANItem {
+  id         String @id @default(cuid())
+  ganId      String @map("gan_id")
+  poItemId   String @map("po_item_id")
+  materialId String @map("material_id")
+  qtyArrived Float  @map("qty_arrived")
+
+  gan      GoodsArrivalNote @relation(fields: [ganId], references: [id], onDelete: Cascade)
+  poItem   POItem           @relation(fields: [poItemId], references: [id])
+  material RawMaterial      @relation(fields: [materialId], references: [id])
+
+  @@map("gan_items")
+}
+
+// Vendor Performance — recorded per PO after GRN
+model VendorPerformance {
+  id              String   @id @default(cuid())
+  vendorId        String   @map("vendor_id")
+  poId            String   @unique @map("po_id")
+  deliveredOnTime Boolean  @map("delivered_on_time")
+  qualityRating   Int      @map("quality_rating")   // 1-5
+  pricingScore    Int      @map("pricing_score")    // 1-5 (was bid competitive vs others)
+  notes           String?
+  recordedById    String   @map("recorded_by_id")
+  recordedAt      DateTime @default(now()) @map("recorded_at")
+
+  vendor     Vendor        @relation(fields: [vendorId], references: [id])
+  po         PurchaseOrder @relation(fields: [poId], references: [id])
+  recordedBy User          @relation(fields: [recordedById], references: [id])
+
+  @@map("vendor_performance")
 }

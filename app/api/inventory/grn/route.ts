@@ -161,7 +161,7 @@ export async function POST(req: Request) {
 
     if (newPRStatus) {
       await tx.purchaseRequest.update({
-        where: { id: po.purchaseRequestId },
+        where: { id: po.purchaseRequestId! },
         data:  { status: newPRStatus as any },
       });
     }

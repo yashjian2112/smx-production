@@ -77,5 +77,24 @@ export async function POST(req: Request) {
     return { ...updated, batchId };
   });
 
+  // After deduction: check if stock dropped below reorder point → auto-create RO
+  if (data.quantity < 0) {
+    const updated = await prisma.rawMaterial.findUnique({
+      where: { id: data.rawMaterialId },
+      select: { id: true, currentStock: true, reorderPoint: true, minimumOrderQty: true },
+    });
+    if (updated && updated.currentStock <= updated.reorderPoint && updated.minimumOrderQty > 0) {
+      const { autoCreateRO } = await import('@/lib/requirement-order');
+      await autoCreateRO({
+        trigger: 'LOW_STOCK',
+        items: [{
+          materialId: updated.id,
+          qtyRequired: updated.minimumOrderQty,
+          notes: `Auto: stock ${updated.currentStock} ≤ reorder point ${updated.reorderPoint}`,
+        }],
+      });
+    }
+  }
+
   return NextResponse.json(result, { status: 201 });
 }
