@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 type ROItem = {
-  id: string; materialId: string; qtyRequired: number; qtyOrdered: number; notes?: string;
-  material: { id: string; name: string; code: string; unit: string; currentStock: number; minimumOrderQty: number };
+  id: string; materialId?: string | null; itemDescription?: string | null; itemUnit?: string | null;
+  qtyRequired: number; qtyOrdered: number; notes?: string;
+  material?: { id: string; name: string; code: string; unit: string; currentStock: number; minimumOrderQty: number } | null;
 };
 type RO = {
   id: string; roNumber: string; trigger: string; status: string; notes?: string;
@@ -93,11 +94,111 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
 /* ═══════════════════════════════════════════════════════════
    REQUIREMENT ORDERS TAB
 ══════════════════════════════════════════════════════════════*/
+/* ─── Manual RO Modal ──────────────────────────────────────────────────────── */
+type ManualItem = { itemDescription: string; itemUnit: string; qtyRequired: string; notes: string };
+
+function CreateManualROModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [notes, setNotes] = useState('');
+  const [items, setItems] = useState<ManualItem[]>([{ itemDescription: '', itemUnit: 'pcs', qtyRequired: '', notes: '' }]);
+  const [saving, setSaving] = useState(false);
+
+  function addItem() { setItems(p => [...p, { itemDescription: '', itemUnit: 'pcs', qtyRequired: '', notes: '' }]); }
+  function removeItem(i: number) { setItems(p => p.filter((_, idx) => idx !== i)); }
+  function updateItem(i: number, field: keyof ManualItem, val: string) {
+    setItems(p => p.map((item, idx) => idx === i ? { ...item, [field]: val } : item));
+  }
+
+  async function submit() {
+    for (const it of items) {
+      if (!it.itemDescription.trim()) return alert('Fill in description for all items');
+      if (!it.qtyRequired || Number(it.qtyRequired) <= 0) return alert('Quantity must be > 0 for all items');
+    }
+    setSaving(true);
+    const r = await fetch('/api/procurement/requirement-orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        notes: notes.trim() || undefined,
+        items: items.map(it => ({
+          itemDescription: it.itemDescription.trim(),
+          itemUnit: it.itemUnit.trim() || 'pcs',
+          qtyRequired: Number(it.qtyRequired),
+          notes: it.notes.trim() || undefined,
+        })),
+      }),
+    });
+    setSaving(false);
+    if (r.ok) { onCreated(); onClose(); }
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-zinc-800">
+          <h3 className="font-semibold text-white">New Requirement Order</h3>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white text-xl leading-none">×</button>
+        </div>
+        <div className="overflow-y-auto px-5 py-4 space-y-4 flex-1">
+          <div>
+            <label className="text-xs text-zinc-400 uppercase tracking-wide mb-1 block">Purpose / Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+              placeholder="e.g. Monthly maintenance supplies, office consumables..."
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 resize-none focus:outline-none focus:border-blue-500" />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs text-zinc-400 uppercase tracking-wide">Items</label>
+              <button onClick={addItem} className="text-xs text-blue-400 hover:text-blue-300">+ Add item</button>
+            </div>
+            <div className="space-y-3">
+              {items.map((item, i) => (
+                <div key={i} className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3 space-y-2">
+                  <div className="flex gap-2">
+                    <input value={item.itemDescription} onChange={e => updateItem(i, 'itemDescription', e.target.value)}
+                      placeholder="Item description (e.g. WD-40 spray, M6 bolts)"
+                      className="flex-1 bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
+                    {items.length > 1 && (
+                      <button onClick={() => removeItem(i)} className="text-zinc-500 hover:text-red-400 text-lg leading-none px-1">×</button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="number" min="0.01" step="any" value={item.qtyRequired}
+                      onChange={e => updateItem(i, 'qtyRequired', e.target.value)}
+                      onWheel={e => e.currentTarget.blur()}
+                      placeholder="Qty"
+                      className="w-24 bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
+                    <input value={item.itemUnit} onChange={e => updateItem(i, 'itemUnit', e.target.value)}
+                      placeholder="Unit (pcs, kg, ltr...)"
+                      className="flex-1 bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <input value={item.notes} onChange={e => updateItem(i, 'notes', e.target.value)}
+                    placeholder="Item notes (optional)"
+                    className="w-full bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="px-5 pb-5 pt-3 border-t border-zinc-800 flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-zinc-400 hover:text-white">Cancel</button>
+          <button onClick={submit} disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50">
+            {saving ? 'Creating...' : 'Create RO'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
   const [ros, setROs] = useState<RO[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('ALL');
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -119,13 +220,23 @@ function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
 
   return (
     <div>
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {filters.map(f => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filter === f ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
-            {f}
+      {showCreate && <CreateManualROModal onClose={() => setShowCreate(false)} onCreated={load} />}
+
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap">
+          {filters.map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filter === f ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+              {f}
+            </button>
+          ))}
+        </div>
+        {(isIM || isPM) && (
+          <button onClick={() => setShowCreate(true)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white">
+            + Manual RO
           </button>
-        ))}
+        )}
       </div>
 
       {loading ? (
@@ -169,12 +280,17 @@ function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
                   {ro.items.map(item => (
                     <div key={item.id} className="flex items-center justify-between text-sm">
                       <div>
-                        <span className="text-white">{item.material.name}</span>
-                        <span className="text-zinc-500 ml-2 text-xs">{item.material.code}</span>
+                        <span className="text-white">
+                          {item.material ? item.material.name : item.itemDescription}
+                        </span>
+                        {item.material && <span className="text-zinc-500 ml-2 text-xs">{item.material.code}</span>}
+                        {!item.material && <span className="ml-2 text-xs bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">Consumable</span>}
                       </div>
                       <div className="text-right text-xs">
-                        <span className="text-amber-300">{item.qtyRequired} {item.material.unit} needed</span>
-                        <span className="text-zinc-500 ml-2">Stock: {item.material.currentStock}</span>
+                        <span className="text-amber-300">
+                          {item.qtyRequired} {item.material ? item.material.unit : item.itemUnit} needed
+                        </span>
+                        {item.material && <span className="text-zinc-500 ml-2">Stock: {item.material.currentStock}</span>}
                       </div>
                     </div>
                   ))}
@@ -363,7 +479,7 @@ function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated
     setSelectedROItems(prev => {
       const exists = prev.find(i => i.roItemId === key);
       if (exists) return prev.filter(i => i.roItemId !== key);
-      return [...prev, { roItemId: key, materialId: item.materialId, qtyRequired: item.qtyRequired }];
+      return [...prev, { roItemId: key, materialId: item.materialId ?? '', qtyRequired: item.qtyRequired }];
     });
   }
 
@@ -442,8 +558,8 @@ function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated
                             checked={!!selectedROItems.find(i => i.roItemId === item.id)}
                             onChange={() => toggleROItem(item)}
                             className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 accent-blue-500" />
-                          <span className="text-sm text-zinc-300">{item.material.name}</span>
-                          <span className="text-xs text-zinc-500">{item.qtyRequired} {item.material.unit}</span>
+                          <span className="text-sm text-zinc-300">{item.material?.name ?? item.itemDescription}</span>
+                          <span className="text-xs text-zinc-500">{item.qtyRequired} {item.material?.unit ?? item.itemUnit}</span>
                         </label>
                       ))}
                     </div>

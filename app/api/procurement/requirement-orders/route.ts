@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
         include: {
           material: { select: { id: true, name: true, code: true, unit: true, currentStock: true, minimumOrderQty: true } },
         },
+        orderBy: { id: 'asc' },
       },
       approvedBy: { select: { id: true, name: true } },
       jobCard: { select: { id: true, cardNumber: true } },
@@ -39,11 +40,16 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const { items, notes } = body as {
-    items: { materialId: string; qtyRequired: number; notes?: string }[];
+    items: { materialId?: string; itemDescription?: string; itemUnit?: string; qtyRequired: number; notes?: string }[];
     notes?: string;
   };
 
   if (!items?.length) return NextResponse.json({ error: 'At least one item required' }, { status: 400 });
+  for (const i of items) {
+    if (!i.materialId && !i.itemDescription) {
+      return NextResponse.json({ error: 'Each item needs a material or description' }, { status: 400 });
+    }
+  }
 
   const roNumber = await generateRONumber();
   const ro = await prisma.requirementOrder.create({
@@ -54,7 +60,9 @@ export async function POST(req: NextRequest) {
       notes: notes ?? null,
       items: {
         create: items.map(i => ({
-          materialId: i.materialId,
+          materialId: i.materialId ?? null,
+          itemDescription: i.itemDescription ?? null,
+          itemUnit: i.itemUnit ?? null,
           qtyRequired: i.qtyRequired,
           notes: i.notes ?? null,
         })),
