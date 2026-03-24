@@ -58,7 +58,9 @@ export async function POST(req: NextRequest) {
   };
 
   if (!title) return NextResponse.json({ error: 'Title required' }, { status: 400 });
-  if (!vendorIds?.length) return NextResponse.json({ error: 'Select at least one vendor' }, { status: 400 });
+  if (!vendorIds?.length || vendorIds.length < 5) {
+    return NextResponse.json({ error: `Minimum 5 vendors required per RFQ. You selected ${vendorIds?.length ?? 0}.` }, { status: 400 });
+  }
   if (!roItems?.length) return NextResponse.json({ error: 'Select at least one item' }, { status: 400 });
 
   const rfqNumber = await generateRFQNumber();

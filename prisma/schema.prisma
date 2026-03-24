@@ -66,6 +66,7 @@ model User {
   posApproved          PurchaseOrder[]        @relation("POApprovedBy")
   goodsArrivals        GoodsArrivalNote[]     @relation("GANCreatedBy")
   vendorPerformance    VendorPerformance[]
+  poOverrideRequests   POOverrideRequest[]
 }
 
 enum Role {
@@ -914,6 +915,10 @@ model RawMaterial {
   conversionFactor  Float?   @map("conversion_factor")  // how many stock units per purchase unit e.g. 2000 PCS per REEL
   hsnCode           String?  @map("hsn_code")
   purchasePrice     Float    @default(0) @map("purchase_price")
+  lastPurchasePrice Float?   @map("last_purchase_price")        // actual last PO unit price (updated on GRN)
+  lastPurchasedAt   DateTime? @map("last_purchased_at")
+  lastPurchasedFrom String?  @map("last_purchased_from")        // vendor name for display
+  aiPriceBenchmark  Float?   @map("ai_price_benchmark")         // AI estimated fair price for first purchase
   leadTimeDays      Int      @default(0) @map("lead_time_days")
   currentStock      Float    @default(0) @map("current_stock")
   minimumStock      Float    @default(0) @map("minimum_stock")
@@ -1545,4 +1550,34 @@ model VendorPerformance {
   recordedBy User          @relation(fields: [recordedById], references: [id])
 
   @@map("vendor_performance")
+}
+
+// ─── Admin Notifications ────────────────────────────────────────────────────
+model AdminNotification {
+  id        String   @id @default(cuid())
+  type      String   // PO_AUTO_ASSIGNED | PRICE_DEVIATION | OVERRIDE_REQUEST | LOW_STOCK
+  title     String
+  body      String
+  data      Json?    // extra payload (e.g. poId, rfqId, materialId)
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("admin_notifications")
+}
+
+// ─── PO Override Request ────────────────────────────────────────────────────
+model POOverrideRequest {
+  id           String   @id @default(cuid())
+  rfqId        String   @map("rfq_id")
+  requestedById String  @map("requested_by_id")
+  reason       String
+  aiWinnerId   String   @map("ai_winner_id")    // quote AI selected
+  desiredId    String   @map("desired_id")       // quote PM wants
+  status       String   @default("PENDING")      // PENDING | APPROVED | REJECTED
+  resolvedAt   DateTime? @map("resolved_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  requestedBy  User @relation(fields: [requestedById], references: [id])
+
+  @@map("po_override_requests")
 }

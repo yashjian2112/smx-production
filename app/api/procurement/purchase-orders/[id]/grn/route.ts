@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const gan = await prisma.goodsArrivalNote.findUnique({
     where: { id: ganId },
-    include: { po: { include: { items: true } }, grn: true },
+    include: { po: { include: { items: true, vendor: { select: { name: true } } } }, grn: true },
   });
   if (!gan) return NextResponse.json({ error: 'GAN not found' }, { status: 404 });
   if (gan.grn) return NextResponse.json({ error: 'GRN already created for this GAN' }, { status: 400 });
@@ -81,10 +81,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
       });
 
-      // Increment currentStock
+      // Increment currentStock + update price history
+      const unitPrice = item.unitPrice ?? 0;
       await tx.rawMaterial.update({
         where: { id: item.materialId },
-        data: { currentStock: { increment: item.qtyVerified } },
+        data: {
+          currentStock: { increment: item.qtyVerified },
+          ...(unitPrice > 0 && {
+            lastPurchasePrice: unitPrice,
+            lastPurchasedAt: new Date(),
+            lastPurchasedFrom: gan.po.vendor?.name ?? null,
+          }),
+        },
       });
 
       // Stock movement log
