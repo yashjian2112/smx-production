@@ -56,7 +56,7 @@ type Vendor = {
   active: boolean;
 };
 
-const TABS = ['Req. Orders', 'RFQ'] as const;
+const TABS = ['Req. Orders'] as const;
 type Tab = typeof TABS[number];
 
 const STATUS_COLOR: Record<string, string> = {
@@ -84,26 +84,10 @@ function Badge({ label }: { label: string }) {
 }
 
 export default function PurchasePanel({ sessionRole }: { sessionRole: string }) {
-  const [tab, setTab] = useState<Tab>('Req. Orders');
   const isPM = ['ADMIN', 'PURCHASE_MANAGER'].includes(sessionRole);
   const isIM = ['ADMIN', 'INVENTORY_MANAGER', 'STORE_MANAGER'].includes(sessionRole);
 
-  return (
-    <div>
-      {/* Tab bar */}
-      <div className="flex gap-1 mb-6 bg-zinc-900 rounded-xl p-1">
-        {TABS.map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'Req. Orders' && <ROTab isIM={isIM} isPM={isPM} />}
-      {tab === 'RFQ'         && <RFQTab isPM={isPM} isIM={isIM} />}
-    </div>
-  );
+  return <ROTab isIM={isIM} isPM={isPM} />;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -135,14 +119,6 @@ function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
 
   return (
     <div>
-      {/* What is a Requirement Order? */}
-      <div className="mb-4 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-        <p className="text-xs font-semibold text-zinc-300 mb-1">What is a Requirement Order?</p>
-        <p className="text-xs text-zinc-500 leading-relaxed">
-          A Requirement Order (RO) is raised automatically when stock falls below the reorder point or when a Job Card needs a component. It is then manually approved by the Inventory Manager before the Purchase Manager creates an RFQ.
-        </p>
-      </div>
-
       <div className="flex gap-2 mb-4 flex-wrap">
         {filters.map(f => (
           <button key={f} onClick={() => setFilter(f)}
