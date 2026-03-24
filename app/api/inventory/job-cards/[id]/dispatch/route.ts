@@ -89,10 +89,20 @@ export async function POST(
   const dispatchType = allFull ? 'FULL' : 'PARTIAL';
 
   // Deduct stock (FIFO) and update job card items
+  try {
   await prisma.$transaction(async (tx) => {
     for (const item of jobCard.items) {
       const issued = issuedMap.get(item.id) ?? 0;
       if (issued <= 0) continue;
+
+      // Re-check stock inside transaction to prevent race condition
+      const freshMaterial = await tx.rawMaterial.findUnique({
+        where: { id: item.rawMaterialId },
+        select: { currentStock: true, name: true },
+      });
+      if (!freshMaterial || issued > freshMaterial.currentStock) {
+        throw new Error(`Insufficient stock for "${freshMaterial?.name ?? item.rawMaterialId}": need ${issued}, only ${freshMaterial?.currentStock ?? 0} available`);
+      }
 
       // FIFO: deduct from oldest batches first
       let remaining = issued;
@@ -147,6 +157,10 @@ export async function POST(
       },
     });
   });
+  } catch (txError) {
+    const message = txError instanceof Error ? txError.message : 'Transaction failed';
+    return NextResponse.json({ error: message }, { status: 422 });
+  }
 
   const updated = await prisma.jobCard.findUnique({
     where: { id },
@@ -183,7 +197,9 @@ export async function POST(
     if (lowItems.length > 0) {
       await autoCreateRO({ trigger: 'JOB_CARD', items: lowItems, jobCardId: id });
     }
-  } catch {}
+  } catch (roError) {
+    console.error('[Auto-RO] Failed to create requirement order after dispatch:', roError);
+  }
 
   return NextResponse.json(updated);
 }

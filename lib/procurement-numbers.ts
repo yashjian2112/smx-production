@@ -16,54 +16,79 @@ function pad(n: number, width = 3): string {
 export async function generateRONumber(): Promise<string> {
   const fy = getFiscalYear();
   const prefix = `RO/${fy}/`;
-  const last = await prisma.requirementOrder.findFirst({
-    where: { roNumber: { startsWith: prefix } },
-    orderBy: { roNumber: 'desc' },
-  });
-  const next = last ? parseInt(last.roNumber.split('/').pop()!) + 1 : 1;
-  return `${prefix}${pad(next)}`;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const last = await prisma.requirementOrder.findFirst({
+      where: { roNumber: { startsWith: prefix } },
+      orderBy: { roNumber: 'desc' },
+    });
+    const base = last ? parseInt(last.roNumber.split('/').pop()!) + 1 : 1;
+    const candidate = `${prefix}${pad(base + attempt)}`;
+    const exists = await prisma.requirementOrder.findUnique({ where: { roNumber: candidate } });
+    if (!exists) return candidate;
+  }
+  throw new Error('Could not generate unique RO number');
 }
 
 export async function generateRFQNumber(): Promise<string> {
   const fy = getFiscalYear();
   const prefix = `RFQ/${fy}/`;
-  const last = await prisma.rFQ.findFirst({
-    where: { rfqNumber: { startsWith: prefix } },
-    orderBy: { rfqNumber: 'desc' },
-  });
-  const next = last ? parseInt(last.rfqNumber.split('/').pop()!) + 1 : 1;
-  return `${prefix}${pad(next)}`;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const last = await prisma.rFQ.findFirst({
+      where: { rfqNumber: { startsWith: prefix } },
+      orderBy: { rfqNumber: 'desc' },
+    });
+    const base = last ? parseInt(last.rfqNumber.split('/').pop()!) + 1 : 1;
+    const candidate = `${prefix}${pad(base + attempt)}`;
+    const exists = await prisma.rFQ.findUnique({ where: { rfqNumber: candidate } });
+    if (!exists) return candidate;
+  }
+  throw new Error('Could not generate unique RFQ number');
 }
 
 export async function generatePONumber(): Promise<string> {
   const fy = getFiscalYear();
   const prefix = `PO/${fy}/`;
-  const last = await prisma.purchaseOrder.findFirst({
-    where: { poNumber: { startsWith: prefix } },
-    orderBy: { poNumber: 'desc' },
-  });
-  const next = last ? parseInt(last.poNumber.split('/').pop()!) + 1 : 1;
-  return `${prefix}${pad(next)}`;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const last = await prisma.purchaseOrder.findFirst({
+      where: { poNumber: { startsWith: prefix } },
+      orderBy: { poNumber: 'desc' },
+    });
+    const base = last ? parseInt(last.poNumber.split('/').pop()!) + 1 : 1;
+    const candidate = `${prefix}${pad(base + attempt)}`;
+    const exists = await prisma.purchaseOrder.findUnique({ where: { poNumber: candidate } });
+    if (!exists) return candidate;
+  }
+  throw new Error('Could not generate unique PO number');
 }
 
 export async function generateGANNumber(): Promise<string> {
   const fy = getFiscalYear();
   const prefix = `GAN/${fy}/`;
-  const last = await prisma.goodsArrivalNote.findFirst({
-    where: { ganNumber: { startsWith: prefix } },
-    orderBy: { ganNumber: 'desc' },
-  });
-  const next = last ? parseInt(last.ganNumber.split('/').pop()!) + 1 : 1;
-  return `${prefix}${pad(next)}`;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const last = await prisma.goodsArrivalNote.findFirst({
+      where: { ganNumber: { startsWith: prefix } },
+      orderBy: { ganNumber: 'desc' },
+    });
+    const base = last ? parseInt(last.ganNumber.split('/').pop()!) + 1 : 1;
+    const candidate = `${prefix}${pad(base + attempt)}`;
+    const exists = await prisma.goodsArrivalNote.findUnique({ where: { ganNumber: candidate } });
+    if (!exists) return candidate;
+  }
+  throw new Error('Could not generate unique GAN number');
 }
 
 export async function generateGRNNumber(): Promise<string> {
   const fy = getFiscalYear();
   const prefix = `GRN/${fy}/`;
-  const last = await prisma.goodsReceipt.findFirst({
-    where: { grnNumber: { startsWith: prefix } },
-    orderBy: { grnNumber: 'desc' },
-  });
-  const next = last ? parseInt(last.grnNumber.split('/').pop()!) + 1 : 1;
-  return `${prefix}${pad(next)}`;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const last = await prisma.goodsReceipt.findFirst({
+      where: { grnNumber: { startsWith: prefix } },
+      orderBy: { grnNumber: 'desc' },
+    });
+    const base = last ? parseInt(last.grnNumber.split('/').pop()!) + 1 : 1;
+    const candidate = `${prefix}${pad(base + attempt)}`;
+    const exists = await prisma.goodsReceipt.findUnique({ where: { grnNumber: candidate } });
+    if (!exists) return candidate;
+  }
+  throw new Error('Could not generate unique GRN number');
 }

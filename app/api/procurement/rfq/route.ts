@@ -63,6 +63,21 @@ export async function POST(req: NextRequest) {
   }
   if (!roItems?.length) return NextResponse.json({ error: 'Select at least one item' }, { status: 400 });
 
+  // Validate all RO items belong to APPROVED ROs
+  const roItemRecords = await prisma.requirementOrderItem.findMany({
+    where: { id: { in: roItems.map(i => i.roItemId) } },
+    include: { ro: { select: { status: true, roNumber: true } } },
+  });
+  if (roItemRecords.length !== roItems.length) {
+    return NextResponse.json({ error: 'One or more RO items not found' }, { status: 400 });
+  }
+  const unapproved = roItemRecords.filter(r => r.ro.status !== 'APPROVED');
+  if (unapproved.length > 0) {
+    return NextResponse.json({
+      error: `Cannot create RFQ: RO items must be from APPROVED orders. Found items from: ${unapproved.map(u => u.ro.roNumber).join(', ')}`
+    }, { status: 400 });
+  }
+
   const rfqNumber = await generateRFQNumber();
 
   const rfq = await prisma.rFQ.create({

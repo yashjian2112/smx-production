@@ -5,7 +5,10 @@ import { generateNextJobCardNumber } from '@/lib/invoice-number';
 import { StageType } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
-  await requireSession();
+  const session = await requireSession();
+  if (!['ADMIN', 'INVENTORY_MANAGER', 'STORE_MANAGER', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE'].includes(session.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const { searchParams } = new URL(req.url);
   const status  = searchParams.get('status');
   const unitId  = searchParams.get('unitId');
@@ -94,6 +97,12 @@ export async function POST(req: NextRequest) {
       ],
     },
   });
+
+  if (bomItems.length === 0) {
+    return NextResponse.json({
+      error: 'No BOM items found for this product/stage/voltage combination. Please contact Admin to configure the Bill of Materials before creating a job card.'
+    }, { status: 422 });
+  }
 
   const cardNumber = await generateNextJobCardNumber();
 

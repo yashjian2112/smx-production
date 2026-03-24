@@ -71,6 +71,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `PO is already ${po.status}` }, { status: 400 });
   }
 
+  // Require GAN to be created before GRN
+  if (po.status !== 'GOODS_ARRIVED' && po.status !== 'PARTIALLY_RECEIVED') {
+    return NextResponse.json({
+      error: 'Cannot create GRN: Goods Arrival Note must be created first by Purchase Manager before goods can be received.'
+    }, { status: 400 });
+  }
+
   // Generate GRN number (outside transaction to avoid long lock)
   const grnNumber = await generateNextGRNNumber();
 
@@ -140,6 +147,36 @@ export async function POST(req: Request) {
             quantity:      item.quantity,
             reference:     grnNumber,
             notes:         `GRN from PO ${po.poNumber} — ${item.condition}`,
+            createdById:   session.id,
+          },
+        });
+      }
+
+      // 4b. For DAMAGED/REJECTED items: create batch for audit (no stock increment)
+      if (item.condition === 'DAMAGED' || item.condition === 'REJECTED') {
+        const batchCode = await generateNextBatchCode();
+        await tx.inventoryBatch.create({
+          data: {
+            batchCode,
+            rawMaterialId:    item.rawMaterialId,
+            goodsReceiptId:   grn.id,
+            poItemId:         item.poItemId,
+            quantity:         item.quantity,
+            remainingQty:     0,
+            unitPrice:        item.unitPrice,
+            condition:        item.condition as 'DAMAGED' | 'REJECTED',
+            manufacturingDate: item.manufacturingDate ? new Date(item.manufacturingDate) : null,
+            expiryDate:        item.expiryDate ? new Date(item.expiryDate) : null,
+          },
+        });
+        await tx.stockMovement.create({
+          data: {
+            rawMaterialId: item.rawMaterialId,
+            type:          'ADJUSTMENT',
+            quantity:      item.quantity,
+            reference:     grnNumber,
+            adjustmentType: 'DAMAGE',
+            notes:         `GRN damaged receipt from PO ${po.poNumber} — condition: ${item.condition}`,
             createdById:   session.id,
           },
         });
