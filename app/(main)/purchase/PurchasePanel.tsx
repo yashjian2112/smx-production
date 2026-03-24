@@ -322,7 +322,7 @@ function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
             </button>
           ))}
         </div>
-        {(isIM || isPM) && (
+        {isIM && (
           <button onClick={() => setShowCreate(true)}
             className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white">
             + Manual RO
@@ -342,7 +342,7 @@ function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-white font-semibold">{ro.roNumber}</span>
-                    <Badge label={ro.status} />
+                    {ro.status !== 'APPROVED' && <Badge label={ro.status} />}
                     <Badge label={ro.trigger} />
                     {ro.jobCard && <span className="text-xs text-zinc-500">Job: {ro.jobCard.cardNumber}</span>}
                   </div>
@@ -379,7 +379,6 @@ function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
                           {item.material ? item.material.name : item.itemDescription}
                         </span>
                         {item.material && <span className="text-zinc-500 ml-2 text-xs">{item.material.code}</span>}
-                        {!item.material && <span className="ml-2 text-xs bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">Consumable</span>}
                       </div>
                       <div className="text-right text-xs">
                         <span className="text-amber-300">

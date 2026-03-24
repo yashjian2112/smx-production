@@ -1018,6 +1018,15 @@ enum PurchaseOrderStatus {
   CANCELLED
 }
 
+model VendorCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("vendor_categories")
+}
+
 model Vendor {
   id              String   @id @default(cuid())
   code            String   @unique  // V001, V002...
