@@ -194,10 +194,6 @@ export function PrintRO({ ro, settings }: { ro: RO; settings: Settings }) {
               <div className="sig-line" />
               <div className="sig-label">Inventory Manager</div>
             </div>
-            <div className="sig-block">
-              <div className="sig-line" />
-              <div className="sig-label">Purchase Manager</div>
-            </div>
             <div className="print-note">
               Printed on {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
             </div>
