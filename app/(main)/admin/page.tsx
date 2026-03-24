@@ -65,6 +65,11 @@ export default async function AdminPage() {
           <p className="font-medium">BOM</p>
           <p className="text-slate-400 text-xs mt-1">Bill of Materials per product & stage</p>
         </Link>
+        <Link href="/admin/analytics" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center">
+          <div className="text-3xl mb-2">📊</div>
+          <p className="font-medium">Analytics</p>
+          <p className="text-slate-400 text-xs mt-1">Procurement spend, vendors, AI insights</p>
+        </Link>
         <Link href="/admin/vendors" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center">
           <div className="text-3xl mb-2">🏭</div>
           <p className="font-medium">Vendors</p>
