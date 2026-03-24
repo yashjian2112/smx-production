@@ -225,6 +225,7 @@ function VerifyModal({ card, onClose, onDone }: { card: JobCard; onClose: () => 
     return m;
   });
   const [submitting, setSubmitting]   = useState(false);
+  const [damagingItem, setDamagingItem] = useState<JobCardItem | null>(null);
   const [error, setError]             = useState('');
 
   async function processScan(raw: string) {
@@ -294,12 +295,99 @@ function VerifyModal({ card, onClose, onDone }: { card: JobCard; onClose: () => 
               </div>
               {item.isCritical && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(251,113,133,0.15)', color: '#fb7185' }}>★</span>}
               <span className="text-sm font-mono text-zinc-400 shrink-0">{fmt(item.quantityIssued)} {item.rawMaterial.unit}</span>
+              <button onClick={() => setDamagingItem(item)}
+                className="shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-red-800/50 text-red-400 hover:bg-red-900/30">
+                ⚠
+              </button>
             </div>
           );
         })}
       </div>
+      {damagingItem && (
+        <DamageReportModal item={damagingItem} jobCard={card} onClose={() => setDamagingItem(null)} />
+      )}
       <div className="px-4 py-4 border-t border-zinc-800 text-center text-zinc-500 text-xs" style={{ paddingBottom: 'max(env(safe-area-inset-bottom),16px)' }}>
         {doneCount < card.items.length ? `Scan all ${card.items.length} items to start work` : '✅ All items verified — job card moved to In Progress'}
+      </div>
+    </div>
+  );
+}
+
+// ── Damage Report Modal ────────────────────────────────────────────────────────
+const DAMAGE_REASONS = [
+  { value: 'broken_on_arrival', label: 'Broken on arrival' },
+  { value: 'assembly_damage', label: 'Damaged during assembly' },
+  { value: 'wrong_spec', label: 'Wrong specification' },
+  { value: 'other', label: 'Other' },
+];
+
+function DamageReportModal({ item, jobCard, onClose }: {
+  item: JobCardItem; jobCard: JobCard; onClose: () => void;
+}) {
+  const [qty, setQty] = useState('1');
+  const [reason, setReason] = useState('broken_on_arrival');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    const qtyNum = parseFloat(qty);
+    if (!qtyNum || qtyNum <= 0) return alert('Enter a valid quantity');
+    setSaving(true);
+    const r = await fetch('/api/inventory/damage-reports', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobCardId: jobCard.id,
+        rawMaterialId: item.rawMaterialId,
+        batchId: item.batch?.id ?? undefined,
+        stage: jobCard.stage,
+        qtyDamaged: qtyNum,
+        reason, notes: notes.trim() || undefined,
+      }),
+    });
+    setSaving(false);
+    if (r.ok) { onClose(); }
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
+      <div className="w-full max-w-lg rounded-t-2xl p-5 space-y-4" style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-red-900/40 flex items-center justify-center text-lg">⚠️</div>
+          <div>
+            <p className="text-white font-semibold text-sm">Report Damage</p>
+            <p className="text-zinc-500 text-xs">{item.rawMaterial.name}{item.batch ? ` · ${item.batch.batchCode}` : ''}</p>
+          </div>
+          <button onClick={onClose} className="ml-auto text-zinc-500 hover:text-white text-xl leading-none">×</button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-zinc-400 block mb-1">Reason</label>
+            <select value={reason} onChange={e => setReason(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500">
+              {DAMAGE_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-zinc-400 block mb-1">Qty Damaged ({item.rawMaterial.unit})</label>
+            <input type="number" value={qty} onChange={e => setQty(e.target.value)} min="0.01" step="any"
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500" />
+          </div>
+          <div>
+            <label className="text-xs text-zinc-400 block mb-1">Notes (optional)</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. capacitor cracked on leg"
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-red-500" />
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={submit} disabled={saving}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-red-700 hover:bg-red-600 text-white disabled:opacity-50">
+            {saving ? 'Submitting...' : 'Submit Damage Report'}
+          </button>
+          <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm bg-zinc-700 hover:bg-zinc-600 text-white">Cancel</button>
+        </div>
       </div>
     </div>
   );

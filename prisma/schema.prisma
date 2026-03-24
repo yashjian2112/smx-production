@@ -67,6 +67,7 @@ model User {
   goodsArrivals        GoodsArrivalNote[]     @relation("GANCreatedBy")
   vendorPerformance    VendorPerformance[]
   poOverrideRequests   POOverrideRequest[]
+  damageReports        DamageReport[]
 }
 
 enum Role {
@@ -946,6 +947,7 @@ model RawMaterial {
   rfqItems         RFQItem[]
   quoteItems       VendorQuoteItem[]
   ganItems         GANItem[]
+  damageReports    DamageReport[]
 
   @@map("raw_materials")
 }
@@ -1223,7 +1225,8 @@ model InventoryBatch {
   rawMaterial  RawMaterial   @relation(fields: [rawMaterialId], references: [id])
   goodsReceipt GoodsReceipt? @relation(fields: [goodsReceiptId], references: [id])
   poItem       POItem?       @relation(fields: [poItemId], references: [id])
-  jobCardItems JobCardItem[]
+  jobCardItems  JobCardItem[]
+  damageReports DamageReport[] @relation("BatchDamages")
 
   @@map("inventory_batches")
 }
@@ -1313,6 +1316,7 @@ model JobCard {
   dispatchedBy     User?             @relation("JCDispatchedBy", fields: [dispatchedById], references: [id])
   items            JobCardItem[]
   requirementOrders RequirementOrder[] @relation("JobCardRO")
+  damageReports     DamageReport[]
 
   @@unique([orderId, stage])
   @@map("job_cards")
@@ -1580,4 +1584,25 @@ model POOverrideRequest {
   requestedBy  User @relation(fields: [requestedById], references: [id])
 
   @@map("po_override_requests")
+}
+
+// ─── Damage Report ───────────────────────────────────────────────────────────
+model DamageReport {
+  id            String   @id @default(cuid())
+  jobCardId     String?  @map("job_card_id")
+  rawMaterialId String   @map("raw_material_id")
+  batchId       String?  @map("batch_id")        // which GRN batch the damaged item came from
+  stage         String?                           // e.g. CONTROLLER_ASSEMBLY
+  qtyDamaged    Float    @map("qty_damaged")
+  reason        String                            // broken_on_arrival | assembly_damage | wrong_spec | other
+  notes         String?
+  reportedById  String   @map("reported_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  jobCard     JobCard?       @relation(fields: [jobCardId], references: [id])
+  rawMaterial RawMaterial    @relation(fields: [rawMaterialId], references: [id])
+  batch       InventoryBatch? @relation("BatchDamages", fields: [batchId], references: [id])
+  reportedBy  User           @relation(fields: [reportedById], references: [id])
+
+  @@map("damage_reports")
 }
