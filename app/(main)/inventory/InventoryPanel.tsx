@@ -369,7 +369,6 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
                             <th className="text-left pb-1">GRN</th>
                             <th className="text-left pb-1">Received</th>
                             <th className="text-left pb-1">Expiry</th>
-                            <th className="text-left pb-1">Label</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -391,10 +390,6 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
                                   : isExpiringSoon ? <Badge color="yellow">{fmtDate(b.expiryDate!)}</Badge>
                                   : expiry ? <span className="text-zinc-400">{fmtDate(b.expiryDate!)}</span>
                                   : <span className="text-zinc-600">—</span>}
-                              </td>
-                              <td className="py-1">
-                                <a href={`/print/grn-label/${b.id}`} target="_blank"
-                                  className="text-purple-400 hover:text-purple-300 transition-colors">Print</a>
                               </td>
                             </tr>
                             );
@@ -746,10 +741,6 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
                 </p>
               </div>
               <div className="flex gap-2 shrink-0">
-                <a href={`/print/grn-label/${grn.batches[0]?.id}`} target="_blank"
-                  className="px-2 py-1 rounded-lg text-xs text-purple-400 border border-purple-800 hover:border-purple-600 transition-colors">
-                  Labels
-                </a>
                 <button onClick={() => setExpanded(expanded === grn.id ? null : grn.id)}
                   className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
                   {expanded === grn.id ? 'Hide' : 'Details'}
@@ -990,6 +981,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [fBarcodePrefix, setFBarcodePrefix] = useState('');
   const [fSaving,        setFSaving]        = useState(false);
   const [fError,         setFError]         = useState('');
+  const [printMatId,     setPrintMatId]     = useState<string | null>(null);
 
   const [vendors,      setVendors]      = useState<Vendor[]>([]);
   const [filterCat,    setFilterCat]    = useState('');
@@ -1061,7 +1053,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
       : await fetch('/api/inventory/materials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     setFSaving(false);
     if (!res.ok) { const e = await res.json(); setFError(e.error || 'Failed'); return; }
-    // For new material: if opening stock was entered, add it
+    // For new material: if opening stock was entered, add it; then prompt to print label
     if (!editMat) {
       const mat = await res.json();
       const openQty = parseFloat(fOpenQty);
@@ -1077,6 +1069,9 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
           }),
         });
       }
+      setShowMatForm(false); load();
+      setPrintMatId(mat.id);
+      return;
     }
     setShowMatForm(false); load();
   }
@@ -1252,10 +1247,6 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                     {expandedMat === m.id ? '▲ Less' : '▼ Variants'}
                   </button>
                 )}
-                <a href={`/print/material-label/${m.id}`} target="_blank"
-                  className="px-2 py-1 rounded-lg text-xs text-purple-400 border border-purple-800/50 hover:bg-purple-900/20 transition-colors">
-                  Label
-                </a>
                 {isAdmin && (
                   <>
                     <button onClick={() => openEditMat(m)}
@@ -1531,6 +1522,28 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {/* Category Form Modal */}
+      {/* Print Label after new material creation */}
+      {printMatId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6 text-center" style={{ background: 'rgb(24,24,27)' }}>
+            <div className="text-4xl mb-3">🏷️</div>
+            <h3 className="text-white font-semibold mb-1">Material Created</h3>
+            <p className="text-zinc-400 text-sm mb-5">Print the barcode label for this material?</p>
+            <div className="flex gap-3">
+              <button onClick={() => setPrintMatId(null)}
+                className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                Skip
+              </button>
+              <a href={`/print/material-label/${printMatId}`} target="_blank"
+                onClick={() => setPrintMatId(null)}
+                className="flex-1 py-2 rounded-lg text-sm font-medium bg-purple-700 hover:bg-purple-600 text-white transition-colors text-center">
+                Print Label
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCatForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
           <div className="w-full max-w-xs rounded-2xl p-6" style={{ background: 'rgb(24,24,27)' }}>
