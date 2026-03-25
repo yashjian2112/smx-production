@@ -72,6 +72,8 @@ model User {
   paymentRequestsAccounts  PaymentRequest[] @relation("PaymentAccountsBy")
   paymentRequestsAdmin     PaymentRequest[] @relation("PaymentAdminApproved")
   paymentsProcessed        PaymentRequest[] @relation("PaymentProcessedBy")
+  vendorPaymentsProcessed  VendorPayment[]  @relation("VendorPaymentProcessedBy")
+  priceBreakdownFactors    PriceBreakdownFactor[]
 }
 
 enum Role {
@@ -1508,8 +1510,60 @@ model VendorQuoteItem {
   quote      VendorQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   rfqItem    RFQItem     @relation(fields: [rfqItemId], references: [id])
   material   RawMaterial @relation(fields: [materialId], references: [id])
+  breakdowns VendorQuoteItemBreakdown[]
 
   @@map("vendor_quote_items")
+}
+
+// Admin defines price breakdown factors per vendor category
+model PriceBreakdownFactor {
+  id          String   @id @default(cuid())
+  name        String                           // "Material Cost", "Labor", "Overhead", etc.
+  description String?
+  category    String?                          // vendor category this applies to; null = all categories
+  isRequired  Boolean  @default(true)  @map("is_required")
+  order       Int      @default(0)             // display order
+  active      Boolean  @default(true)
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  createdBy  User                       @relation(fields: [createdById], references: [id])
+  breakdowns VendorQuoteItemBreakdown[]
+
+  @@map("price_breakdown_factors")
+}
+
+// Vendor fills breakdown per item when submitting quote
+model VendorQuoteItemBreakdown {
+  id          String @id @default(cuid())
+  quoteItemId String @map("quote_item_id")
+  factorId    String @map("factor_id")
+  amount      Float
+
+  quoteItem VendorQuoteItem      @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
+  factor    PriceBreakdownFactor @relation(fields: [factorId], references: [id])
+
+  @@unique([quoteItemId, factorId])
+  @@map("vendor_quote_item_breakdowns")
+}
+
+// Individual payment records (supports advance + final + partial)
+model VendorPayment {
+  id               String   @id @default(cuid())
+  paymentRequestId String   @map("payment_request_id")
+  type             String                             // ADVANCE, FINAL, PARTIAL
+  amount           Float
+  paymentMode      String?  @map("payment_mode")      // NEFT, RTGS, CHEQUE, UPI
+  paymentRef       String?  @map("payment_ref")
+  paymentDate      DateTime @map("payment_date")
+  notes            String?
+  processedById    String   @map("processed_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  paymentRequest PaymentRequest @relation(fields: [paymentRequestId], references: [id])
+  processedBy    User           @relation("VendorPaymentProcessedBy", fields: [processedById], references: [id])
+
+  @@map("vendor_payments")
 }
 
 // Goods Arrival Note — PM creates when goods physically arrive
@@ -1684,12 +1738,13 @@ model PaymentRequest {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  po              PurchaseOrder @relation(fields: [poId], references: [id])
-  vendorInvoice   VendorInvoice @relation(fields: [vendorInvoiceId], references: [id])
-  requestedBy     User          @relation("PaymentRequestedBy", fields: [requestedById], references: [id])
-  accountsBy      User?         @relation("PaymentAccountsBy", fields: [accountsById], references: [id])
-  adminApprovedBy User?         @relation("PaymentAdminApproved", fields: [adminApprovedById], references: [id])
-  paymentBy       User?         @relation("PaymentProcessedBy", fields: [paymentById], references: [id])
+  po              PurchaseOrder  @relation(fields: [poId], references: [id])
+  vendorInvoice   VendorInvoice  @relation(fields: [vendorInvoiceId], references: [id])
+  requestedBy     User           @relation("PaymentRequestedBy", fields: [requestedById], references: [id])
+  accountsBy      User?          @relation("PaymentAccountsBy", fields: [accountsById], references: [id])
+  adminApprovedBy User?          @relation("PaymentAdminApproved", fields: [adminApprovedById], references: [id])
+  paymentBy       User?          @relation("PaymentProcessedBy", fields: [paymentById], references: [id])
+  vendorPayments  VendorPayment[]
 
   @@map("payment_requests")
 }
