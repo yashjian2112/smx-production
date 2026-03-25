@@ -12,7 +12,19 @@ type RFQ = {
   items: RFQItem[];
 };
 
+type POItem = { id: string; quantity: number; unitPrice: number; rawMaterial: { name: string; unit: string } };
+type VendorInvoiceItem = { id: string; invoiceNumber: string; amount: number; gstAmount: number; tdsAmount: number; netAmount: number; status: string; submittedAt: string };
+type VendorPO = {
+  id: string; poNumber: string; status: string; totalAmount: number; currency: string;
+  paymentStatus: string; paidAmount: number; expectedDelivery?: string; createdAt: string;
+  rfq?: { rfqNumber: string; title: string; paymentTerms?: string } | null;
+  items: POItem[];
+  vendorInvoices: VendorInvoiceItem[];
+  paymentRequest?: { id: string; requestNumber: string; status: string } | null;
+};
+
 export default function VendorPortal({ token }: { token: string }) {
+  const [activeTab, setActiveTab] = useState<'rfq' | 'pos'>('rfq');
   const [rfq, setRFQ] = useState<RFQ | null>(null);
   const [vendorName, setVendorName] = useState('');
   const [vendorId, setVendorId] = useState('');
@@ -20,6 +32,9 @@ export default function VendorPortal({ token }: { token: string }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
+  const [myPOs, setMyPOs] = useState<VendorPO[]>([]);
+  const [posLoading, setPosLoading] = useState(false);
+  const [invoiceModal, setInvoiceModal] = useState<VendorPO | null>(null);
 
   // Quote form state
   const [currency, setCurrency] = useState('INR');
@@ -52,6 +67,23 @@ export default function VendorPortal({ token }: { token: string }) {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [token]);
+
+  function loadPOs() {
+    setPosLoading(true);
+    fetch(`/api/vendor-portal/my-pos?token=${token}`)
+      .then(r => r.ok ? r.json() : Promise.reject('Failed to load POs'))
+      .then((data: { vendorName: string; pos: VendorPO[] }) => {
+        setMyPOs(data.pos);
+        if (data.vendorName && !vendorName) setVendorName(data.vendorName);
+      })
+      .catch(() => {})
+      .finally(() => setPosLoading(false));
+  }
+
+  useEffect(() => {
+    if (activeTab === 'pos') loadPOs();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -129,7 +161,91 @@ export default function VendorPortal({ token }: { token: string }) {
         </div>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 pt-6 space-y-5">
+      <div className="max-w-lg mx-auto px-4 pt-4">
+        {/* Tabs */}
+        <div className="flex gap-1 bg-zinc-900 rounded-xl p-1 mb-5">
+          <button onClick={() => setActiveTab('rfq')}
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'rfq' ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
+            RFQ / Quote
+          </button>
+          <button onClick={() => setActiveTab('pos')}
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'pos' ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
+            My POs
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'pos' && (
+        <div className="max-w-lg mx-auto px-4 pb-8 space-y-3">
+          {posLoading ? (
+            <div className="text-center text-zinc-500 py-8 text-sm">Loading...</div>
+          ) : myPOs.length === 0 ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 text-center">
+              <p className="text-zinc-500 text-sm">No purchase orders assigned to you yet.</p>
+            </div>
+          ) : myPOs.map(po => (
+            <div key={po.id} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-white font-semibold text-sm">{po.poNumber}</span>
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${po.status === 'RECEIVED' ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/40' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>
+                      {po.status.replace(/_/g, ' ')}
+                    </span>
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${po.paymentStatus === 'PAID' ? 'bg-emerald-900/40 text-emerald-300' : po.paymentStatus === 'PARTIAL' ? 'bg-yellow-900/40 text-yellow-300' : 'bg-zinc-800 text-zinc-500'}`}>
+                      {po.paymentStatus}
+                    </span>
+                  </div>
+                  <p className="text-zinc-500 text-xs mt-0.5">
+                    {po.currency === 'USD' ? '$' : '₹'}{po.totalAmount.toLocaleString('en-IN')}
+                    {po.rfq?.paymentTerms && <> · {po.rfq.paymentTerms}</>}
+                    {po.expectedDelivery && <> · ETA: {new Date(po.expectedDelivery).toLocaleDateString('en-IN')}</>}
+                  </p>
+                </div>
+                {['RECEIVED', 'PARTIALLY_RECEIVED'].includes(po.status) && po.vendorInvoices.length === 0 && (
+                  <button onClick={() => setInvoiceModal(po)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-700 hover:bg-sky-600 text-white shrink-0">
+                    Submit Invoice
+                  </button>
+                )}
+              </div>
+              {po.items.length > 0 && (
+                <div className="space-y-1 pt-2 border-t border-zinc-800">
+                  {po.items.map(item => (
+                    <div key={item.id} className="flex justify-between text-xs">
+                      <span className="text-zinc-400">{item.rawMaterial.name}</span>
+                      <span className="text-zinc-500">{item.quantity} {item.rawMaterial.unit} · ₹{item.unitPrice}/unit</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {po.vendorInvoices.length > 0 && (
+                <div className="pt-2 border-t border-zinc-800">
+                  {po.vendorInvoices.map(inv => (
+                    <div key={inv.id} className="flex items-center justify-between text-xs">
+                      <span className="text-zinc-400">Invoice: {inv.invoiceNumber}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-zinc-300">₹{inv.netAmount.toLocaleString('en-IN')} net</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${inv.status === 'PAID' ? 'bg-emerald-900/40 text-emerald-300' : 'bg-zinc-800 text-zinc-400'}`}>{inv.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {po.paymentRequest && (
+                <p className="text-xs text-violet-400 pt-1 border-t border-zinc-800">
+                  Payment: {po.paymentRequest.requestNumber} — {po.paymentRequest.status.replace(/_/g, ' ')}
+                </p>
+              )}
+            </div>
+          ))}
+          {invoiceModal && (
+            <SubmitInvoiceModal po={invoiceModal} token={token} onClose={() => setInvoiceModal(null)} onSubmitted={() => { setInvoiceModal(null); loadPOs(); }} />
+          )}
+        </div>
+      )}
+
+      {activeTab === 'rfq' && <div className="max-w-lg mx-auto px-4 pt-0 space-y-5">
         {/* RFQ Details */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
           <p className="text-white font-semibold text-base mb-1">{rfq.title}</p>
@@ -277,6 +393,115 @@ export default function VendorPortal({ token }: { token: string }) {
             <p className="text-zinc-400 text-sm">{isExpired ? 'This RFQ deadline has passed.' : 'This RFQ is closed.'}</p>
           </div>
         )}
+      </div>}
+    </div>
+  );
+}
+
+function SubmitInvoiceModal({ po, token, onClose, onSubmitted }: {
+  po: VendorPO;
+  token: string;
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [amount, setAmount] = useState('');
+  const [gstAmount, setGstAmount] = useState('0');
+  const [tdsAmount, setTdsAmount] = useState('0');
+  const [notes, setNotes] = useState('');
+  const [fileUrl, setFileUrl] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const net = (parseFloat(amount) || 0) + (parseFloat(gstAmount) || 0) - (parseFloat(tdsAmount) || 0);
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData(); fd.append('file', file);
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    if (r.ok) { const d = await r.json(); setFileUrl(d.url); }
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!invoiceNumber || !amount) return alert('Invoice number and amount are required');
+    setSubmitting(true);
+    const r = await fetch(`/api/vendor-portal/invoices?token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        poId: po.id,
+        invoiceNumber,
+        amount: parseFloat(amount),
+        gstAmount: parseFloat(gstAmount) || 0,
+        tdsAmount: parseFloat(tdsAmount) || 0,
+        fileUrl: fileUrl || undefined,
+        notes: notes || undefined,
+      }),
+    });
+    setSubmitting(false);
+    if (r.ok) { onSubmitted(); }
+    else { const e = await r.json(); alert(e.error ?? 'Submission failed'); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm">
+        <form onSubmit={submit} className="p-6 space-y-4">
+          <div>
+            <h2 className="text-white font-semibold text-base">Submit Invoice</h2>
+            <p className="text-zinc-500 text-xs mt-0.5">{po.poNumber} · ₹{po.totalAmount.toLocaleString('en-IN')}</p>
+          </div>
+          <div>
+            <label className="text-xs text-zinc-400">Invoice Number *</label>
+            <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} required
+              placeholder="e.g. INV/2026/001"
+              className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500" />
+          </div>
+          <div>
+            <label className="text-xs text-zinc-400">Invoice Amount (₹) *</label>
+            <input type="number" value={amount} onChange={e => setAmount(e.target.value)} min={0} step="0.01" required
+              className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-zinc-400">GST Amount (₹)</label>
+              <input type="number" value={gstAmount} onChange={e => setGstAmount(e.target.value)} min={0} step="0.01"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500" />
+            </div>
+            <div>
+              <label className="text-xs text-zinc-400">TDS Amount (₹)</label>
+              <input type="number" value={tdsAmount} onChange={e => setTdsAmount(e.target.value)} min={0} step="0.01"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500" />
+            </div>
+          </div>
+          {amount && (
+            <div className="bg-zinc-800/50 rounded-lg px-3 py-2 text-sm">
+              <div className="flex justify-between text-zinc-400">
+                <span>Net Payable</span>
+                <span className="text-white font-semibold">₹{net.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="text-xs text-zinc-400">Attach Invoice PDF (optional)</label>
+            <input type="file" accept=".pdf,.jpg,.png" onChange={handleFileUpload}
+              className="w-full mt-1 text-zinc-400 text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-zinc-700 file:text-white" />
+            {fileUrl && <p className="text-xs text-sky-400 mt-1">Uploaded</p>}
+          </div>
+          <div>
+            <label className="text-xs text-zinc-400">Notes (optional)</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+              className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500 resize-none" />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+            <button type="submit" disabled={submitting}
+              className="flex-1 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium disabled:opacity-50">
+              {submitting ? 'Submitting...' : 'Submit Invoice'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

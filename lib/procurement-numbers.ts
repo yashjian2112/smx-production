@@ -92,3 +92,18 @@ export async function generateGRNNumber(): Promise<string> {
   }
   throw new Error('Could not generate unique GRN number');
 }
+
+export async function generatePaymentRequestNumber(): Promise<string> {
+  const fy = getFiscalYear();
+  const prefix = `PAYR/${fy}/`;
+  const latest = await prisma.paymentRequest.findFirst({
+    where: { requestNumber: { startsWith: prefix } },
+    orderBy: { requestNumber: 'desc' },
+  });
+  let next = 1;
+  if (latest) {
+    const seq = parseInt(latest.requestNumber.split('/').pop()!, 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+  return `${prefix}${String(next).padStart(3, '0')}`;
+}

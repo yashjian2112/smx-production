@@ -42,13 +42,16 @@ type POItem = { id: string; rawMaterialId: string; quantity: number; unitPrice: 
 type GAN = { id: string; ganNumber: string; arrivalDate: string; status: string; notes?: string; items: { id: string; materialId: string; qtyArrived: number; material: { name: string; unit: string } }[]; grn?: { id: string; grnNumber: string } };
 type PO = {
   id: string; poNumber: string; status: string; totalAmount: number; currency: string;
+  paidAmount: number; paymentStatus: string;
   expectedDelivery?: string; notes?: string; approvedAt?: string; createdAt: string;
   vendor: { id: string; name: string; code: string };
   createdBy: { name: string };
   approvedBy?: { name: string };
-  rfq?: { rfqNumber: string; title: string };
+  rfq?: { rfqNumber: string; title: string; paymentTerms?: string } | null;
   items: POItem[];
   goodsArrivals: GAN[];
+  vendorInvoices: VendorInvoiceForPR[];
+  paymentRequest?: { id: string; requestNumber: string; status: string } | null;
 };
 
 type Vendor = {
@@ -57,11 +60,20 @@ type Vendor = {
   active: boolean;
 };
 
+type VendorInvoiceForPR = { id: string; invoiceNumber: string; amount: number; gstAmount: number; tdsAmount: number; netAmount: number; status: string };
+type PaymentRequestRow = {
+  id: string; requestNumber: string; status: string; aiVerified: boolean; aiVerificationNote?: string;
+  requestedAt: string; notes?: string;
+  po: { poNumber: string; totalAmount: number; currency: string; paidAmount: number; paymentStatus: string; vendor: { name: string }; rfq?: { rfqNumber: string; paymentTerms?: string } | null };
+  vendorInvoice: { invoiceNumber: string; amount: number; netAmount: number };
+  requestedBy: { name: string };
+};
+
 // Tabs are role-driven — PM sees procurement flow, IM sees approval queue
-const PM_TABS   = ['RFQ', 'Purchase Orders'] as const;
+const PM_TABS   = ['RFQ', 'Purchase Orders', 'Vendors', 'Payments'] as const;
 const IM_TABS   = ['Req. Orders'] as const;
-const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Purchase Orders'] as const;
-type Tab = 'Req. Orders' | 'RFQ' | 'Purchase Orders';
+const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Purchase Orders', 'Vendors', 'Payments'] as const;
+type Tab = 'Req. Orders' | 'RFQ' | 'Purchase Orders' | 'Vendors' | 'Payments';
 
 const STATUS_COLOR: Record<string, string> = {
   PENDING: 'bg-amber-900/40 text-amber-300 border border-amber-700/50',
@@ -110,6 +122,8 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
       {tab === 'Req. Orders'    && <ROTab isIM={isIM} isPM={isPM} />}
       {tab === 'RFQ'            && <RFQTab isPM={isPM} isIM={isIM} />}
       {tab === 'Purchase Orders' && <POTab isPM={isPM} isIM={isIM} />}
+      {tab === 'Vendors'        && <VendorsTab isAdmin={isAdmin} isPM={isPM} />}
+      {tab === 'Payments'       && <PaymentsTab isPM={isPM} />}
     </div>
   );
 }
@@ -575,6 +589,7 @@ function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState('');
+  const [paymentTerms, setPaymentTerms] = useState('');
   const [fileUrls, setFileUrls] = useState<string[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
@@ -617,7 +632,7 @@ function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated
     const r = await fetch('/api/procurement/rfq', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, description, deadline: deadline || undefined, fileUrls, vendorIds: selectedVendors, roItems: selectedROItems }),
+      body: JSON.stringify({ title, description, deadline: deadline || undefined, paymentTerms: paymentTerms || undefined, fileUrls, vendorIds: selectedVendors, roItems: selectedROItems }),
     });
     setSaving(false);
     if (r.ok) onCreated();
@@ -645,6 +660,19 @@ function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated
               <label className="text-zinc-400 text-sm">Deadline (optional)</label>
               <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label className="text-zinc-400 text-sm">Payment Terms</label>
+              <select value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)}
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                <option value="">Select terms</option>
+                <option value="Net 30">Net 30</option>
+                <option value="Net 45">Net 45</option>
+                <option value="Net 60">Net 60</option>
+                <option value="50% Advance + 50% on Delivery">50% Advance + 50% on Delivery</option>
+                <option value="100% Advance">100% Advance</option>
+                <option value="30% Advance + 70% on Delivery">30% Advance + 70% on Delivery</option>
+              </select>
             </div>
 
             {/* File uploads */}
@@ -724,6 +752,7 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [creatingGAN, setCreatingGAN] = useState<PO | null>(null);
   const [creatingGRN, setCreatingGRN] = useState<{ po: PO; gan: GAN } | null>(null);
+  const [creatingPR, setCreatingPR] = useState<PO | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -757,7 +786,7 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
                     {po.rfq && <> RFQ: {po.rfq.rfqNumber}</>}
                   </div>
                 </div>
-                <div className="flex gap-2 items-center">
+                <div className="flex gap-2 items-center flex-wrap">
                   <button onClick={() => setExpanded(expanded === po.id ? null : po.id)}
                     className="text-xs text-blue-400 hover:text-blue-300">
                     {expanded === po.id ? 'Hide' : 'Details'}
@@ -767,6 +796,17 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
                       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-700 hover:bg-orange-600 text-white">
                       Goods Arrived
                     </button>
+                  )}
+                  {isPM && ['RECEIVED', 'PARTIALLY_RECEIVED'].includes(po.status) && !po.paymentRequest && po.vendorInvoices.length > 0 && (
+                    <button onClick={() => setCreatingPR(po)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-700 hover:bg-violet-600 text-white">
+                      Payment Request
+                    </button>
+                  )}
+                  {po.paymentRequest && (
+                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${po.paymentRequest.status === 'PAID' ? 'bg-emerald-900/40 text-emerald-300' : 'bg-violet-900/40 text-violet-300'}`}>
+                      {po.paymentRequest.requestNumber}: {po.paymentRequest.status.replace(/_/g, ' ')}
+                    </span>
                   )}
                 </div>
               </div>
@@ -817,6 +857,7 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
 
       {creatingGAN && <GANModal po={creatingGAN} onClose={() => setCreatingGAN(null)} onCreated={() => { setCreatingGAN(null); load(); }} />}
       {creatingGRN && <GRNModal po={creatingGRN.po} gan={creatingGRN.gan} onClose={() => setCreatingGRN(null)} onCreated={() => { setCreatingGRN(null); load(); }} />}
+      {creatingPR && <CreatePaymentRequestModal po={creatingPR} onClose={() => setCreatingPR(null)} onCreated={() => { setCreatingPR(null); load(); }} />}
     </div>
   );
 }
@@ -1003,6 +1044,147 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
       )}
 
       {editPortal && <PortalAccessModal vendor={editPortal} onClose={() => setEditPortal(null)} onSaved={() => { setEditPortal(null); load(); }} />}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CREATE PAYMENT REQUEST MODAL
+══════════════════════════════════════════════════════════════*/
+function CreatePaymentRequestModal({ po, onClose, onCreated }: { po: PO; onClose: () => void; onCreated: () => void }) {
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState(po.vendorInvoices[0]?.id ?? '');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (!selectedInvoiceId) return alert('Select a vendor invoice');
+    setSaving(true);
+    const r = await fetch('/api/procurement/payment-requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ poId: po.id, vendorInvoiceId: selectedInvoiceId, notes: notes || undefined }),
+    });
+    setSaving(false);
+    if (r.ok) { onCreated(); alert('Payment request created!'); }
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-md">
+        <div className="p-6">
+          <h2 className="text-white font-semibold text-lg mb-1">Create Payment Request</h2>
+          <p className="text-zinc-500 text-sm mb-4">PO: {po.poNumber} · {po.vendor.name}</p>
+          <div className="space-y-3">
+            <div>
+              <label className="text-zinc-400 text-sm">Vendor Invoice *</label>
+              <select value={selectedInvoiceId} onChange={e => setSelectedInvoiceId(e.target.value)}
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                {po.vendorInvoices.map(inv => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.invoiceNumber} — ₹{inv.netAmount.toLocaleString('en-IN')} (net)
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-zinc-400 text-sm">Notes (optional)</label>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
+            </div>
+          </div>
+          <div className="flex gap-3 mt-6">
+            <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+            <button onClick={submit} disabled={saving}
+              className="flex-1 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium disabled:opacity-50">
+              {saving ? 'Creating...' : 'Create Request'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PAYMENTS TAB
+══════════════════════════════════════════════════════════════*/
+function PaymentsTab({ isPM }: { isPM: boolean }) {
+  const [requests, setRequests] = useState<PaymentRequestRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const PAYMENT_STATUS_COLOR: Record<string, string> = {
+    SUBMITTED: 'bg-zinc-800 text-zinc-400',
+    UNDER_REVIEW: 'bg-yellow-900/40 text-yellow-300 border border-yellow-700/50',
+    PENDING_APPROVAL: 'bg-amber-900/40 text-amber-300 border border-amber-700/50',
+    APPROVED: 'bg-blue-900/40 text-blue-300 border border-blue-700/50',
+    PROCESSING: 'bg-cyan-900/40 text-cyan-300 border border-cyan-700/50',
+    PAID: 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/50',
+    REJECTED: 'bg-red-900/40 text-red-300 border border-red-700/50',
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch('/api/procurement/payment-requests');
+    if (r.ok) setRequests(await r.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function submitToAccounts(id: string) {
+    const r = await fetch(`/api/procurement/payment-requests/${id}/submit-to-accounts`, { method: 'POST' });
+    if (r.ok) load();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  if (loading) return <div className="text-center text-zinc-500 py-12">Loading...</div>;
+
+  return (
+    <div>
+      {requests.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">No payment requests yet</div>
+      ) : (
+        <div className="space-y-3">
+          {requests.map(pr => (
+            <div key={pr.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-white font-semibold">{pr.requestNumber}</span>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${PAYMENT_STATUS_COLOR[pr.status] ?? 'bg-zinc-800 text-zinc-400'}`}>
+                      {pr.status.replace(/_/g, ' ')}
+                    </span>
+                    {pr.aiVerified ? (
+                      <span className="text-xs text-emerald-400 bg-emerald-900/30 px-2 py-0.5 rounded border border-emerald-700/40">AI Verified</span>
+                    ) : (
+                      <span className="text-xs text-amber-400 bg-amber-900/30 px-2 py-0.5 rounded border border-amber-700/40">Review Needed</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-1">
+                    {pr.po.poNumber} · {pr.po.vendor.name} · Invoice: {pr.vendorInvoice.invoiceNumber}
+                    {pr.po.rfq?.paymentTerms && <> · Terms: <span className="text-zinc-300">{pr.po.rfq.paymentTerms}</span></>}
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-0.5">
+                    Net: ₹{pr.vendorInvoice.netAmount.toLocaleString('en-IN')} · Requested by {pr.requestedBy.name}
+                  </div>
+                  {pr.aiVerificationNote && (
+                    <div className="text-xs text-zinc-600 mt-1 italic">{pr.aiVerificationNote}</div>
+                  )}
+                </div>
+                <div className="flex gap-2 items-center">
+                  {isPM && pr.status === 'SUBMITTED' && (
+                    <button onClick={() => submitToAccounts(pr.id)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 hover:bg-blue-600 text-white">
+                      Submit to Accounts
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

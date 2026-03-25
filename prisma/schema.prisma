@@ -68,6 +68,10 @@ model User {
   vendorPerformance    VendorPerformance[]
   poOverrideRequests   POOverrideRequest[]
   damageReports        DamageReport[]
+  paymentRequestsRaised    PaymentRequest[] @relation("PaymentRequestedBy")
+  paymentRequestsAccounts  PaymentRequest[] @relation("PaymentAccountsBy")
+  paymentRequestsAdmin     PaymentRequest[] @relation("PaymentAdminApproved")
+  paymentsProcessed        PaymentRequest[] @relation("PaymentProcessedBy")
 }
 
 enum Role {
@@ -1051,6 +1055,9 @@ model Vendor {
   isPortalActive  Boolean  @default(false) @map("is_portal_active")
   // Categories they supply (array of category names)
   categories      String[] @default([])
+  bankName        String?  @map("bank_name")
+  bankAccount     String?  @map("bank_account")
+  ifscCode        String?  @map("ifsc_code")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -1061,6 +1068,7 @@ model Vendor {
   rfqInvites       RFQVendorInvite[]
   quotes           VendorQuote[]
   performance      VendorPerformance[]
+  vendorInvoices   VendorInvoice[]
 
   @@map("vendors")
 }
@@ -1142,6 +1150,8 @@ model PurchaseOrder {
   createdById       String              @map("created_by_id")
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
+  paidAmount        Float               @default(0) @map("paid_amount")
+  paymentStatus     String              @default("UNPAID") @map("payment_status")
 
   vendor          Vendor             @relation(fields: [vendorId], references: [id])
   purchaseRequest PurchaseRequest?   @relation(fields: [purchaseRequestId], references: [id])
@@ -1152,6 +1162,8 @@ model PurchaseOrder {
   receipts        GoodsReceipt[]
   goodsArrivals   GoodsArrivalNote[]
   performance     VendorPerformance[]
+  vendorInvoices  VendorInvoice[]
+  paymentRequest  PaymentRequest?
 
   @@map("purchase_orders")
 }
@@ -1411,6 +1423,7 @@ model RFQ {
   description String?
   fileUrls    String[]  @default([]) @map("file_urls")  // drawings, specs, PDFs
   deadline    DateTime?
+  paymentTerms String?   @map("payment_terms")
   status      RFQStatus @default(DRAFT)
   createdById String    @map("created_by_id")
   createdAt   DateTime  @default(now()) @map("created_at")
@@ -1606,4 +1619,77 @@ model DamageReport {
   reportedBy  User           @relation(fields: [reportedById], references: [id])
 
   @@map("damage_reports")
+}
+
+// ─── Vendor Invoice & Payment Flow ──────────────────────────────────────────
+
+model VendorInvoice {
+  id            String   @id @default(cuid())
+  invoiceNumber String   @unique @map("invoice_number")
+  poId          String   @map("po_id")
+  vendorId      String   @map("vendor_id")
+  amount        Float
+  gstAmount     Float    @default(0) @map("gst_amount")
+  tdsAmount     Float    @default(0) @map("tds_amount")
+  netAmount     Float    @map("net_amount")
+  fileUrl       String?  @map("file_url")
+  notes         String?
+  submittedAt   DateTime @default(now()) @map("submitted_at")
+  status        String   @default("PENDING")
+
+  po             PurchaseOrder   @relation(fields: [poId], references: [id])
+  vendor         Vendor          @relation(fields: [vendorId], references: [id])
+  paymentRequest PaymentRequest?
+
+  @@map("vendor_invoices")
+}
+
+enum PaymentRequestStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  PENDING_APPROVAL
+  APPROVED
+  PROCESSING
+  PAID
+  REJECTED
+}
+
+model PaymentRequest {
+  id              String               @id @default(cuid())
+  requestNumber   String               @unique @map("request_number")
+  poId            String               @unique @map("po_id")
+  vendorInvoiceId String               @unique @map("vendor_invoice_id")
+  requestedById   String               @map("requested_by_id")
+  requestedAt     DateTime             @default(now()) @map("requested_at")
+  status          PaymentRequestStatus @default(SUBMITTED)
+
+  aiVerified         Boolean  @default(false) @map("ai_verified")
+  aiVerificationNote String?  @map("ai_verification_note")
+
+  accountsNote  String?   @map("accounts_note")
+  accountsById  String?   @map("accounts_by_id")
+  accountsAt    DateTime? @map("accounts_at")
+
+  adminApprovedById String?   @map("admin_approved_by_id")
+  adminApprovedAt   DateTime? @map("admin_approved_at")
+  adminNote         String?   @map("admin_note")
+
+  paymentAmount Float?    @map("payment_amount")
+  paymentMode   String?   @map("payment_mode")
+  paymentRef    String?   @map("payment_ref")
+  paymentDate   DateTime? @map("payment_date")
+  paymentById   String?   @map("payment_by_id")
+
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  po              PurchaseOrder @relation(fields: [poId], references: [id])
+  vendorInvoice   VendorInvoice @relation(fields: [vendorInvoiceId], references: [id])
+  requestedBy     User          @relation("PaymentRequestedBy", fields: [requestedById], references: [id])
+  accountsBy      User?         @relation("PaymentAccountsBy", fields: [accountsById], references: [id])
+  adminApprovedBy User?         @relation("PaymentAdminApproved", fields: [adminApprovedById], references: [id])
+  paymentBy       User?         @relation("PaymentProcessedBy", fields: [paymentById], references: [id])
+
+  @@map("payment_requests")
 }

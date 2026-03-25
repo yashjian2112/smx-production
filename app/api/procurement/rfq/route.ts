@@ -53,11 +53,12 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { title, description, fileUrls, deadline, vendorIds, roItems } = body as {
+  const { title, description, fileUrls, deadline, paymentTerms, vendorIds, roItems } = body as {
     title: string;
     description?: string;
     fileUrls?: string[];
     deadline?: string;
+    paymentTerms?: string;
     vendorIds: string[];
     roItems: { roItemId: string; materialId: string; qtyRequired: number }[];
   };
@@ -116,6 +117,7 @@ export async function POST(req: NextRequest) {
       description: description ?? null,
       fileUrls: fileUrls ?? [],
       deadline: deadline ? new Date(deadline) : null,
+      paymentTerms: paymentTerms ?? null,
       status: 'OPEN',
       createdById: session.id,
       items: {

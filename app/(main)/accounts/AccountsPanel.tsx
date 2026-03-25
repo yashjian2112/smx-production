@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { DOApprovals } from './DOApprovals';
 import { DispatchApprovals } from './DispatchApprovals';
@@ -109,6 +109,38 @@ function fmtDate(iso: string | null) {
 
 // ---- Main component ----
 
+type PaymentRequestRow = {
+  id: string;
+  requestNumber: string;
+  status: string;
+  aiVerified: boolean;
+  aiVerificationNote?: string | null;
+  accountsNote?: string | null;
+  adminNote?: string | null;
+  requestedAt: string;
+  notes?: string | null;
+  po: {
+    poNumber: string;
+    totalAmount: number;
+    currency: string;
+    paidAmount: number;
+    paymentStatus: string;
+    vendor: { name: string };
+    rfq?: { rfqNumber: string; paymentTerms?: string | null } | null;
+  };
+  vendorInvoice: {
+    invoiceNumber: string;
+    amount: number;
+    gstAmount: number;
+    tdsAmount: number;
+    netAmount: number;
+    fileUrl?: string | null;
+  };
+  requestedBy: { name: string };
+  accountsBy?: { name: string } | null;
+  adminApprovedBy?: { name: string } | null;
+};
+
 export function AccountsPanel({
   proformas,
   dispatches,
@@ -121,6 +153,7 @@ export function AccountsPanel({
   doDispatches: DORow[];
 }) {
   const [showHistory, setShowHistory] = useState(false);
+  const [activeTab, setActiveTab] = useState<'approvals' | 'payables'>('approvals');
 
   // ── Pending ──────────────────────────────────────────────────────────────
   const pendingProformas  = proformas.filter((p) => p.status === 'PENDING_APPROVAL');
@@ -138,6 +171,21 @@ export function AccountsPanel({
   return (
     <div className="space-y-4">
 
+      {/* ── TABS ─────────────────────────────────────────────────────────── */}
+      <div className="flex gap-1 bg-zinc-900 rounded-xl p-1">
+        <button onClick={() => setActiveTab('approvals')}
+          className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'approvals' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
+          Approvals
+        </button>
+        <button onClick={() => setActiveTab('payables')}
+          className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'payables' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
+          AP / Payables
+        </button>
+      </div>
+
+      {activeTab === 'payables' && <APPayablesTab />}
+
+      {activeTab === 'approvals' && <>
       {/* ── PENDING section ─────────────────────────────────────────────── */}
       <div>
         <div className="flex items-center gap-2 mb-3">
@@ -353,6 +401,235 @@ export function AccountsPanel({
             )}
           </div>
         )}
+      </div>
+      </>}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
+   AP / PAYABLES TAB
+════════════════════════════════════════════════════════*/
+function APPayablesTab() {
+  const [requests, setRequests] = useState<PaymentRequestRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [noteModal, setNoteModal] = useState<{ id: string; action: 'request-approval' | 'process-payment' } | null>(null);
+
+  const PAYMENT_STATUS_COLOR: Record<string, string> = {
+    SUBMITTED: 'bg-zinc-800 text-zinc-400',
+    UNDER_REVIEW: 'bg-yellow-900/40 text-yellow-300 border border-yellow-700/50',
+    PENDING_APPROVAL: 'bg-amber-900/40 text-amber-300 border border-amber-700/50',
+    APPROVED: 'bg-blue-900/40 text-blue-300 border border-blue-700/50',
+    PROCESSING: 'bg-cyan-900/40 text-cyan-300 border border-cyan-700/50',
+    PAID: 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/50',
+    REJECTED: 'bg-red-900/40 text-red-300 border border-red-700/50',
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch('/api/procurement/payment-requests');
+    if (r.ok) setRequests(await r.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <div className="text-center text-zinc-500 py-12 text-sm">Loading...</div>;
+
+  const underReview = requests.filter(r => r.status === 'UNDER_REVIEW');
+  const approved = requests.filter(r => r.status === 'APPROVED');
+  const others = requests.filter(r => !['UNDER_REVIEW', 'APPROVED'].includes(r.status));
+
+  function renderPR(pr: PaymentRequestRow) {
+    return (
+      <div key={pr.id} className="card p-4 space-y-2">
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono font-semibold text-sm text-white">{pr.requestNumber}</span>
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${PAYMENT_STATUS_COLOR[pr.status] ?? 'bg-zinc-800 text-zinc-400'}`}>
+                {pr.status.replace(/_/g, ' ')}
+              </span>
+              {pr.aiVerified ? (
+                <span className="text-[10px] text-emerald-400 bg-emerald-900/30 px-1.5 py-0.5 rounded border border-emerald-700/40">AI OK</span>
+              ) : (
+                <span className="text-[10px] text-amber-400 bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-700/40">Review</span>
+              )}
+            </div>
+            <p className="text-zinc-400 text-sm mt-0.5">
+              {pr.po.vendor.name} · {pr.po.poNumber}
+            </p>
+            <p className="text-zinc-500 text-xs mt-0.5">
+              Invoice: {pr.vendorInvoice.invoiceNumber} · Net: ₹{pr.vendorInvoice.netAmount.toLocaleString('en-IN')}
+              {pr.po.rfq?.paymentTerms && <> · <span className="text-zinc-300">{pr.po.rfq.paymentTerms}</span></>}
+            </p>
+            {pr.aiVerificationNote && (
+              <p className="text-zinc-600 text-xs mt-0.5 italic">{pr.aiVerificationNote}</p>
+            )}
+          </div>
+          <div className="flex gap-2 items-center flex-wrap">
+            {pr.vendorInvoice.fileUrl && (
+              <a href={pr.vendorInvoice.fileUrl} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-blue-400 hover:text-blue-300">Invoice PDF</a>
+            )}
+            {pr.status === 'UNDER_REVIEW' && (
+              <button onClick={() => setNoteModal({ id: pr.id, action: 'request-approval' })}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-700 hover:bg-amber-600 text-white">
+                Request Admin Approval
+              </button>
+            )}
+            {pr.status === 'APPROVED' && (
+              <button onClick={() => setNoteModal({ id: pr.id, action: 'process-payment' })}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-700 hover:bg-emerald-600 text-white">
+                Process Payment
+              </button>
+            )}
+          </div>
+        </div>
+        {pr.accountsNote && (
+          <p className="text-xs text-zinc-500 border-t border-zinc-800 pt-2">Accounts: {pr.accountsNote}</p>
+        )}
+        {pr.adminNote && (
+          <p className="text-xs text-emerald-400 border-t border-zinc-800 pt-2">Admin: {pr.adminNote}</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {requests.length === 0 && (
+        <div className="card p-6 text-center">
+          <p className="text-zinc-500 text-sm">No payment requests assigned to Accounts yet.</p>
+        </div>
+      )}
+
+      {underReview.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-yellow-400 uppercase tracking-wide mb-2">
+            Under Review ({underReview.length})
+          </p>
+          <div className="space-y-2">{underReview.map(renderPR)}</div>
+        </div>
+      )}
+
+      {approved.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-blue-400 uppercase tracking-wide mb-2">
+            Approved — Ready to Pay ({approved.length})
+          </p>
+          <div className="space-y-2">{approved.map(renderPR)}</div>
+        </div>
+      )}
+
+      {others.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide mb-2">
+            All Other ({others.length})
+          </p>
+          <div className="space-y-2">{others.map(renderPR)}</div>
+        </div>
+      )}
+
+      {noteModal && (
+        <APActionModal
+          id={noteModal.id}
+          action={noteModal.action}
+          onClose={() => setNoteModal(null)}
+          onDone={() => { setNoteModal(null); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function APActionModal({ id, action, onClose, onDone }: {
+  id: string;
+  action: 'request-approval' | 'process-payment';
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [note, setNote] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMode, setPaymentMode] = useState('NEFT');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    setSaving(true);
+    let r: Response;
+    if (action === 'request-approval') {
+      r = await fetch(`/api/procurement/payment-requests/${id}/request-approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountsNote: note }),
+      });
+    } else {
+      if (!paymentAmount || !paymentDate) { setSaving(false); return alert('Fill payment amount and date'); }
+      r = await fetch(`/api/procurement/payment-requests/${id}/process-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentAmount: parseFloat(paymentAmount), paymentMode, paymentRef: paymentRef || undefined, paymentDate }),
+      });
+    }
+    setSaving(false);
+    if (r.ok) onDone();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm">
+        <div className="p-6">
+          <h2 className="text-white font-semibold text-lg mb-4">
+            {action === 'request-approval' ? 'Request Admin Approval' : 'Process Payment'}
+          </h2>
+          <div className="space-y-3">
+            {action === 'request-approval' ? (
+              <div>
+                <label className="text-zinc-400 text-sm">Note to Admin (optional)</label>
+                <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="text-zinc-400 text-sm">Payment Amount (₹) *</label>
+                  <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} min={0}
+                    className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="text-zinc-400 text-sm">Payment Mode *</label>
+                  <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)}
+                    className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="NEFT">NEFT</option>
+                    <option value="RTGS">RTGS</option>
+                    <option value="CHEQUE">Cheque</option>
+                    <option value="UPI">UPI</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-zinc-400 text-sm">Payment Reference</label>
+                  <input value={paymentRef} onChange={e => setPaymentRef(e.target.value)} placeholder="UTR / Cheque no."
+                    className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="text-zinc-400 text-sm">Payment Date *</label>
+                  <input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)}
+                    className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+              </>
+            )}
+          </div>
+          <div className="flex gap-3 mt-6">
+            <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+            <button onClick={submit} disabled={saving}
+              className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
+              {saving ? 'Saving...' : 'Confirm'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

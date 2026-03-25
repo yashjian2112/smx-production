@@ -28,7 +28,9 @@ export async function GET(req: NextRequest) {
       goodsArrivals: {
         include: { items: true, grn: { select: { id: true, grnNumber: true } } },
       },
-      rfq: { select: { rfqNumber: true, title: true } },
+      rfq: { select: { rfqNumber: true, title: true, paymentTerms: true } },
+      vendorInvoices: { select: { id: true, invoiceNumber: true, amount: true, gstAmount: true, tdsAmount: true, netAmount: true, status: true } },
+      paymentRequest: { select: { id: true, requestNumber: true, status: true } },
     },
     orderBy: { createdAt: 'desc' },
   });
