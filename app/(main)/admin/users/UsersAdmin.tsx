@@ -14,11 +14,13 @@ type Modal =
 
 const ROLE_OPTIONS = [
   { value: 'PRODUCTION_EMPLOYEE', label: 'Production Employee' },
-  { value: 'PACKING',             label: 'Packing' },
   { value: 'PRODUCTION_MANAGER',  label: 'Production Manager' },
+  { value: 'PACKING',             label: 'Packing' },
   { value: 'SALES',               label: 'Sales' },
   { value: 'ACCOUNTS',            label: 'Accounts' },
+  { value: 'SHIPPING',            label: 'Shipping' },
   { value: 'PURCHASE_MANAGER',    label: 'Purchase Manager' },
+  { value: 'INVENTORY_MANAGER',   label: 'Inventory Manager' },
   { value: 'STORE_MANAGER',       label: 'Store Manager' },
   { value: 'ADMIN',               label: 'Admin' },
 ];
@@ -30,17 +32,21 @@ const ROLE_BADGE: Record<string, string> = {
   PACKING:             'bg-orange-500/20 text-orange-400 border-orange-500/30',
   SALES:               'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   ACCOUNTS:            'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  SHIPPING:            'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
   PURCHASE_MANAGER:    'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  INVENTORY_MANAGER:   'bg-green-500/20 text-green-400 border-green-500/30',
   STORE_MANAGER:       'bg-teal-500/20 text-teal-400 border-teal-500/30',
 };
 const ROLE_LABEL: Record<string, string> = {
   ADMIN:               'Admin',
-  PRODUCTION_MANAGER:  'Manager',
+  PRODUCTION_MANAGER:  'Prod. Mgr',
   PRODUCTION_EMPLOYEE: 'Employee',
   PACKING:             'Packing',
   SALES:               'Sales',
   ACCOUNTS:            'Accounts',
+  SHIPPING:            'Shipping',
   PURCHASE_MANAGER:    'Purchase Mgr',
+  INVENTORY_MANAGER:   'Inventory Mgr',
   STORE_MANAGER:       'Store Mgr',
 };
 
