@@ -11,9 +11,13 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status');
+  const validPOStatuses = ['DRAFT', 'APPROVED', 'SENT', 'CONFIRMED', 'GOODS_ARRIVED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'];
+  if (status && !validPOStatuses.includes(status)) {
+    return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+  }
 
   const pos = await prisma.purchaseOrder.findMany({
-    where: status ? { status: status as any } : undefined,
+    where: status ? { status: status as 'DRAFT' | 'APPROVED' | 'SENT' | 'CONFIRMED' | 'GOODS_ARRIVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED' } : undefined,
     include: {
       vendor: { select: { id: true, name: true, code: true } },
       createdBy: { select: { name: true } },

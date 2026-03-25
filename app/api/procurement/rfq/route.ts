@@ -13,8 +13,13 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status');
 
+  const validRFQStatuses = ['OPEN', 'CLOSED', 'DRAFT', 'CONVERTED'];
+  if (status && !validRFQStatuses.includes(status)) {
+    return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+  }
+
   const rfqs = await prisma.rFQ.findMany({
-    where: status ? { status: status as any } : undefined,
+    where: status ? { status: status as 'OPEN' | 'CLOSED' | 'DRAFT' | 'CONVERTED' } : undefined,
     include: {
       createdBy: { select: { name: true } },
       items: {
@@ -90,6 +95,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       error: `Cannot create RFQ: RO items must be from APPROVED orders. Found items from: ${unapproved.map(u => u.ro.roNumber).join(', ')}`
     }, { status: 400 });
+  }
+
+  // Prevent duplicate: check none of these RO items are already in an active RFQ
+  const roItemIdsToCheck = roItems.map(i => i.roItemId).filter(Boolean);
+  const alreadyInRFQ = await prisma.rFQItem.findMany({
+    where: { roItemId: { in: roItemIdsToCheck }, rfq: { status: { in: ['OPEN', 'CLOSED'] } } },
+    select: { roItemId: true },
+  });
+  if (alreadyInRFQ.length > 0) {
+    return NextResponse.json({ error: 'One or more RO items are already part of an active RFQ' }, { status: 400 });
   }
 
   const rfqNumber = await generateRFQNumber();

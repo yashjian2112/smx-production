@@ -35,6 +35,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!gan) return NextResponse.json({ error: 'GAN not found' }, { status: 404 });
   if (gan.grn) return NextResponse.json({ error: 'GRN already created for this GAN' }, { status: 400 });
 
+  // C4: Prevent received qty exceeding ordered qty
+  const qtyErrors: string[] = [];
+  for (const item of items) {
+    const poItem = gan.po.items.find((pi: { id: string }) => pi.id === item.poItemId) as { id: string; quantity: number; receivedQuantity: number; rawMaterialId: string } | undefined;
+    if (!poItem) continue;
+    const remaining = poItem.quantity - poItem.receivedQuantity;
+    if (item.qtyVerified > remaining) {
+      qtyErrors.push(`Item ${item.poItemId}: trying to receive ${item.qtyVerified}, only ${remaining} remaining on PO`);
+    }
+  }
+  if (qtyErrors.length > 0) {
+    return NextResponse.json({ error: 'Received quantity exceeds PO quantity', details: qtyErrors }, { status: 400 });
+  }
+
   // Check for existing GRN on this PO (partial GRN allowed — just create another)
   const grnNumber = await generateGRNNumber();
 

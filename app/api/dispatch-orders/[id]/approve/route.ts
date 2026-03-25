@@ -102,17 +102,27 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     // CRITICAL: generateNextFinalInvoiceNumber uses the global prisma client.
     // Calling it inside prisma.$transaction can cause connection-pool deadlocks.
     // Generate all needed numbers before opening the transaction.
+    // C1: Retry on duplicate (P2002) — if concurrent approval generates same number, regenerate.
     let preGenNumbers: string[] = [];
     if (proforma) {
-      if (proforma.splitInvoice && proforma.splitServicePercent != null) {
-        // Need 2 numbers: goods + service — derive n2 from n1 to avoid duplicate sequence
-        const n1  = await generateNextFinalInvoiceNumber(isExport ?? false);
-        const pfx = n1.split('/').slice(0, -1).join('/') + '/';
-        const n2  = pfx + String(parseInt(n1.split('/').pop()!, 10) + 1).padStart(4, '0');
-        preGenNumbers = [n1, n2];
-      } else {
-        const n1 = await generateNextFinalInvoiceNumber(isExport ?? false);
-        preGenNumbers = [n1];
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (proforma.splitInvoice && proforma.splitServicePercent != null) {
+          const n1  = await generateNextFinalInvoiceNumber(isExport ?? false);
+          const pfx = n1.split('/').slice(0, -1).join('/') + '/';
+          const n2  = pfx + String(parseInt(n1.split('/').pop()!, 10) + 1).padStart(4, '0');
+          preGenNumbers = [n1, n2];
+        } else {
+          const n1 = await generateNextFinalInvoiceNumber(isExport ?? false);
+          preGenNumbers = [n1];
+        }
+        // Check numbers aren't already used
+        const taken = await prisma.invoice.count({ where: { invoiceNumber: { in: preGenNumbers } } });
+        if (taken === 0) break;
+        // Numbers taken by concurrent request — retry
+        preGenNumbers = [];
+      }
+      if (preGenNumbers.length === 0) {
+        return NextResponse.json({ error: 'Could not generate unique invoice number — try again' }, { status: 409 });
       }
     }
 

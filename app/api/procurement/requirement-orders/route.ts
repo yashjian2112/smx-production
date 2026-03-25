@@ -11,10 +11,14 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const status = searchParams.get('status'); // PENDING | APPROVED | CONVERTED | CANCELLED
+  const status = searchParams.get('status');
+  const validROStatuses = ['PENDING', 'APPROVED', 'CONVERTED', 'CANCELLED'];
+  if (status && !validROStatuses.includes(status)) {
+    return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+  }
 
   const ros = await prisma.requirementOrder.findMany({
-    where: status ? { status: status as any } : undefined,
+    where: status ? { status: status as 'PENDING' | 'APPROVED' | 'CONVERTED' | 'CANCELLED' } : undefined,
     include: {
       items: {
         include: {

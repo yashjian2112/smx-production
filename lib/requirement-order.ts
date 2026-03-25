@@ -31,7 +31,7 @@ export async function autoCreateRO(opts: CreateROOptions): Promise<void> {
   const existing = await prisma.requirementOrderItem.findMany({
     where: {
       materialId: { in: opts.items.map(i => i.materialId) },
-      ro: { status: { in: ['PENDING', 'APPROVED'] } },
+      ro: { status: { in: ['PENDING', 'APPROVED', 'CONVERTED'] } },
     },
     select: { materialId: true },
   });
