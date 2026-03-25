@@ -199,11 +199,10 @@ const shippingNav: NavItem[] = [
   { href: '/dashboard',   label: 'Dashboard', icon: 'Dashboard' },
 ];
 
-// PURCHASE_MANAGER: Purchase Requests · Purchase Orders · Inventory · Vendors
+// PURCHASE_MANAGER: full procurement flow
 const purchaseNav: NavItem[] = [
-  { href: '/purchase',   label: 'Purchase',   icon: 'Purchase'   },
-  { href: '/inventory',  label: 'Inventory',  icon: 'Inventory'  },
-  { href: '/dashboard',  label: 'Dashboard',  icon: 'Dashboard'  },
+  { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
+  { href: '/purchase',  label: 'Procurement', icon: 'Purchase' },
 ];
 
 // INVENTORY_MANAGER / STORE_MANAGER

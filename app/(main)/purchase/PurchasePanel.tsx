@@ -57,8 +57,11 @@ type Vendor = {
   active: boolean;
 };
 
-const TABS = ['Req. Orders'] as const;
-type Tab = typeof TABS[number];
+// Tabs are role-driven — PM sees procurement flow, IM sees approval queue
+const PM_TABS   = ['RFQ', 'Purchase Orders'] as const;
+const IM_TABS   = ['Req. Orders'] as const;
+const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Purchase Orders'] as const;
+type Tab = 'Req. Orders' | 'RFQ' | 'Purchase Orders';
 
 const STATUS_COLOR: Record<string, string> = {
   PENDING: 'bg-amber-900/40 text-amber-300 border border-amber-700/50',
@@ -85,10 +88,30 @@ function Badge({ label }: { label: string }) {
 }
 
 export default function PurchasePanel({ sessionRole }: { sessionRole: string }) {
-  const isPM = ['ADMIN', 'PURCHASE_MANAGER'].includes(sessionRole);
-  const isIM = ['ADMIN', 'INVENTORY_MANAGER', 'STORE_MANAGER'].includes(sessionRole);
+  const isPM   = ['ADMIN', 'PURCHASE_MANAGER'].includes(sessionRole);
+  const isIM   = ['ADMIN', 'INVENTORY_MANAGER', 'STORE_MANAGER'].includes(sessionRole);
+  const isAdmin = sessionRole === 'ADMIN';
 
-  return <ROTab isIM={isIM} isPM={isPM} />;
+  const tabs: readonly Tab[] = isAdmin ? ADMIN_TABS : isPM ? PM_TABS : IM_TABS;
+  const [tab, setTab] = useState<Tab>(tabs[0]);
+
+  return (
+    <div>
+      {tabs.length > 1 && (
+        <div className="flex gap-1 mb-6 bg-zinc-900 rounded-xl p-1">
+          {tabs.map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === 'Req. Orders'    && <ROTab isIM={isIM} isPM={isPM} />}
+      {tab === 'RFQ'            && <RFQTab isPM={isPM} isIM={isIM} />}
+      {tab === 'Purchase Orders' && <POTab isPM={isPM} isIM={isIM} />}
+    </div>
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════
