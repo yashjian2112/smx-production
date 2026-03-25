@@ -177,6 +177,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         const exchangeRate = proforma.exchangeRate ?? null;
         const notes       = proforma.notes ?? null;
 
+        // Scale qty to dispatched units (not full order qty)
+        // Shipping lines (HSN 9965) keep their original qty (lump sum)
+        const totalOrderUnits = allOrderUnits.length;
+        const dispatchedUnits = packedUnitIds.length;
+        const scaleQty = (item: { quantity: number; hsnCode: string }) =>
+          item.hsnCode === '9965' || totalOrderUnits === 0
+            ? item.quantity
+            : Math.round((item.quantity / totalOrderUnits) * dispatchedUnits);
+
         // Product items only (exclude HSN 9965 shipping line)
         const productItems = proforma.items.filter((item) => item.hsnCode !== '9965');
 
@@ -186,7 +195,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           const goodsPct   = 100 - servicePct;
 
           const subtotal = productItems.reduce((sum, item) => {
-            return sum + item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
+            return sum + item.unitPrice * scaleQty(item) * (1 - item.discountPercent / 100);
           }, 0);
 
           const serviceLineUnitPrice =
@@ -201,7 +210,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           const goodsItems = productItems.map((item, idx) => ({
             description:     item.description,
             hsnCode:         item.hsnCode,
-            quantity:        item.quantity,
+            quantity:        scaleQty(item),
             unitPrice:       item.unitPrice * (goodsPct / 100),
             discountPercent: item.discountPercent,
             sortOrder:       item.sortOrder ?? idx,
@@ -260,7 +269,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           const allItems = proforma.items.map((item, idx) => ({
             description:     item.description,
             hsnCode:         item.hsnCode,
-            quantity:        item.quantity,
+            quantity:        scaleQty(item),
             unitPrice:       item.unitPrice,
             discountPercent: item.discountPercent,
             sortOrder:       item.sortOrder ?? idx,
