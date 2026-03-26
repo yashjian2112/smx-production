@@ -191,69 +191,220 @@ export default function VendorPortal({ token }: { token: string }) {
       </div>
 
       {activeTab === 'pos' && (
-        <div className="px-6 pb-8 space-y-3 max-w-3xl">
+        <div className="px-4 pb-10 space-y-4 max-w-2xl mx-auto">
           {posLoading ? (
-            <div className="text-center text-zinc-500 py-8 text-sm">Loading...</div>
-          ) : myPOs.length === 0 ? (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 text-center">
-              <p className="text-zinc-500 text-sm">No purchase orders assigned to you yet.</p>
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div className="w-8 h-8 rounded-full border-2 border-sky-500 border-t-transparent animate-spin" />
+              <p className="text-zinc-500 text-sm">Loading purchase orders…</p>
             </div>
-          ) : myPOs.map(po => (
-            <div key={po.id} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-2">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-white font-semibold text-sm">{po.poNumber}</span>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${po.status === 'RECEIVED' ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/40' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>
-                      {po.status.replace(/_/g, ' ')}
-                    </span>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${po.paymentStatus === 'PAID' ? 'bg-emerald-900/40 text-emerald-300' : po.paymentStatus === 'PARTIAL' ? 'bg-yellow-900/40 text-yellow-300' : 'bg-zinc-800 text-zinc-500'}`}>
-                      {po.paymentStatus}
-                    </span>
-                  </div>
-                  <p className="text-zinc-500 text-xs mt-0.5">
-                    {po.currency === 'USD' ? '$' : '₹'}{po.totalAmount.toLocaleString('en-IN')}
-                    {po.rfq?.paymentTerms && <> · {po.rfq.paymentTerms}</>}
-                    {po.expectedDelivery && <> · ETA: {new Date(po.expectedDelivery).toLocaleDateString('en-IN')}</>}
-                  </p>
-                </div>
-                {['RECEIVED', 'PARTIALLY_RECEIVED'].includes(po.status) && po.vendorInvoices.length === 0 && (
-                  <button onClick={() => setInvoiceModal(po)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-700 hover:bg-sky-600 text-white shrink-0">
-                    Submit Invoice
-                  </button>
-                )}
-              </div>
-              {po.items.length > 0 && (
-                <div className="space-y-1 pt-2 border-t border-zinc-800">
-                  {po.items.map(item => (
-                    <div key={item.id} className="flex justify-between text-xs">
-                      <span className="text-zinc-400">{item.rawMaterial?.name ?? item.itemDescription ?? 'Item'}</span>
-                      <span className="text-zinc-500">{item.quantity} {item.rawMaterial?.unit ?? item.itemUnit ?? 'pcs'} · ₹{item.unitPrice}/unit</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {po.vendorInvoices.length > 0 && (
-                <div className="pt-2 border-t border-zinc-800">
-                  {po.vendorInvoices.map(inv => (
-                    <div key={inv.id} className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-400">Invoice: {inv.invoiceNumber}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-zinc-300">₹{inv.netAmount.toLocaleString('en-IN')} net</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${inv.status === 'PAID' ? 'bg-emerald-900/40 text-emerald-300' : 'bg-zinc-800 text-zinc-400'}`}>{inv.status}</span>
+          ) : myPOs.length === 0 ? (
+            <div className="rounded-2xl border border-zinc-800 p-10 text-center mt-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
+              <div className="text-4xl mb-3">📦</div>
+              <p className="text-white font-medium">No Purchase Orders Yet</p>
+              <p className="text-zinc-500 text-sm mt-1">When SMX issues a PO to you, it will appear here.</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-zinc-500 text-xs pt-1">{myPOs.length} purchase order{myPOs.length !== 1 ? 's' : ''}</p>
+              {myPOs.map(po => {
+                const sym = po.currency === 'USD' ? '$' : '₹';
+                const goodsReceived = ['GOODS_ARRIVED','PARTIALLY_RECEIVED','RECEIVED'].includes(po.status);
+                const invoiceSubmitted = po.vendorInvoices.length > 0;
+                const paymentRaised = !!po.paymentRequest;
+                const isPaid = po.paymentStatus === 'PAID';
+                const isPartialPaid = po.paymentStatus === 'PARTIAL';
+                const canSubmitInvoice = goodsReceived && !invoiceSubmitted;
+
+                // 5-step timeline
+                type Step = { label: string; sub: string; done: boolean; active: boolean };
+                const steps: Step[] = [
+                  {
+                    label: 'PO Issued',
+                    sub: new Date(po.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+                    done: true,
+                    active: false,
+                  },
+                  {
+                    label: 'Goods Received',
+                    sub: goodsReceived ? (po.status === 'PARTIALLY_RECEIVED' ? 'Partial' : 'Complete') : 'Pending',
+                    done: goodsReceived,
+                    active: !goodsReceived,
+                  },
+                  {
+                    label: 'Invoice',
+                    sub: invoiceSubmitted ? 'Submitted' : 'Pending',
+                    done: invoiceSubmitted,
+                    active: goodsReceived && !invoiceSubmitted,
+                  },
+                  {
+                    label: 'Payment',
+                    sub: isPaid ? 'Paid' : isPartialPaid ? 'Partial' : paymentRaised ? po.paymentRequest!.status.replace(/_/g,' ') : 'Pending',
+                    done: isPaid,
+                    active: invoiceSubmitted && !isPaid,
+                  },
+                  {
+                    label: 'Complete',
+                    sub: isPaid ? '✓ Done' : '—',
+                    done: isPaid,
+                    active: false,
+                  },
+                ];
+
+                return (
+                  <div key={po.id} className="rounded-2xl border border-zinc-800 overflow-hidden" style={{ background: 'rgb(18,18,20)' }}>
+                    {/* Header */}
+                    <div className="px-5 pt-5 pb-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-white font-bold text-base">{po.poNumber}</span>
+                            {po.status === 'PARTIALLY_RECEIVED' && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-900/40 text-amber-300 border border-amber-700/30">Partial Delivery</span>
+                            )}
+                            {isPaid && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-900/40 text-emerald-300 border border-emerald-700/30">Paid</span>
+                            )}
+                          </div>
+                          {po.rfq && <p className="text-zinc-500 text-xs mt-0.5">{po.rfq.title} · {po.rfq.rfqNumber}</p>}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-white font-bold text-lg">{sym}{po.totalAmount.toLocaleString('en-IN')}</p>
+                          <p className="text-zinc-500 text-xs">{po.currency}</p>
+                        </div>
+                      </div>
+
+                      {/* Meta row */}
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
+                        {po.rfq?.paymentTerms && (
+                          <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                            <span className="text-zinc-600">💳</span>
+                            <span>{po.rfq.paymentTerms}</span>
+                          </div>
+                        )}
+                        {po.expectedDelivery && (
+                          <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                            <span className="text-zinc-600">📅</span>
+                            <span>ETA {new Date(po.expectedDelivery).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                          </div>
+                        )}
+                        {(isPartialPaid || isPaid) && (
+                          <div className="flex items-center gap-1.5 text-xs text-emerald-400">
+                            <span>✓</span>
+                            <span>{sym}{po.paidAmount.toLocaleString('en-IN')} received</span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-              {po.paymentRequest && (
-                <p className="text-xs text-violet-400 pt-1 border-t border-zinc-800">
-                  Payment: {po.paymentRequest.requestNumber} — {po.paymentRequest.status.replace(/_/g, ' ')}
-                </p>
-              )}
-            </div>
-          ))}
+
+                    {/* Status Timeline */}
+                    <div className="px-5 py-4 border-t border-zinc-800/80" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                      <div className="flex items-start">
+                        {steps.map((step, idx) => (
+                          <div key={idx} className="flex-1 flex flex-col items-center relative">
+                            {/* Connector line */}
+                            {idx < steps.length - 1 && (
+                              <div className="absolute top-3 left-1/2 w-full h-0.5 z-0"
+                                style={{ background: steps[idx + 1].done || steps[idx + 1].active ? (steps[idx + 1].done ? '#10b981' : '#3b82f6') : '#27272a' }} />
+                            )}
+                            {/* Circle */}
+                            <div className={`relative z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${
+                              step.done
+                                ? 'bg-emerald-500 border-emerald-500 text-white'
+                                : step.active
+                                  ? 'bg-sky-900 border-sky-400 text-sky-300'
+                                  : 'bg-zinc-900 border-zinc-700 text-zinc-600'
+                            }`}>
+                              {step.done ? '✓' : idx + 1}
+                            </div>
+                            {/* Label */}
+                            <p className={`text-[10px] font-medium mt-1.5 text-center leading-tight ${step.done ? 'text-emerald-400' : step.active ? 'text-sky-400' : 'text-zinc-600'}`}>
+                              {step.label}
+                            </p>
+                            <p className={`text-[9px] mt-0.5 text-center ${step.done ? 'text-zinc-400' : step.active ? 'text-sky-600' : 'text-zinc-700'}`}>
+                              {step.sub}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Items */}
+                    {po.items.length > 0 && (
+                      <div className="border-t border-zinc-800/80">
+                        <div className="px-5 py-3">
+                          <p className="text-zinc-500 text-[11px] font-medium uppercase tracking-wider mb-2">Order Items</p>
+                          <div className="space-y-1.5">
+                            {po.items.map((item, idx) => (
+                              <div key={item.id} className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-zinc-700 text-xs w-4 shrink-0">{idx + 1}.</span>
+                                  <span className="text-zinc-300 text-xs truncate">{item.rawMaterial?.name ?? item.itemDescription ?? 'Item'}</span>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className="text-zinc-400 text-xs">{item.quantity} {item.rawMaterial?.unit ?? item.itemUnit ?? 'pcs'}</span>
+                                  <span className="text-zinc-600 text-xs ml-2">@ {sym}{item.unitPrice.toLocaleString('en-IN')}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Invoices */}
+                    {po.vendorInvoices.length > 0 && (
+                      <div className="border-t border-zinc-800/80 px-5 py-3">
+                        <p className="text-zinc-500 text-[11px] font-medium uppercase tracking-wider mb-2">Your Invoice</p>
+                        {po.vendorInvoices.map(inv => (
+                          <div key={inv.id} className="flex items-center justify-between">
+                            <div>
+                              <p className="text-zinc-300 text-xs font-mono">{inv.invoiceNumber}</p>
+                              <p className="text-zinc-600 text-[10px] mt-0.5">{new Date(inv.submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-white text-xs font-medium">{sym}{inv.netAmount.toLocaleString('en-IN')} <span className="text-zinc-500 font-normal">net</span></p>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                inv.status === 'PAID' ? 'bg-emerald-900/40 text-emerald-300' :
+                                inv.status === 'PENDING' ? 'bg-amber-900/40 text-amber-300' :
+                                'bg-zinc-800 text-zinc-400'
+                              }`}>{inv.status}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Payment Request Status */}
+                    {po.paymentRequest && !isPaid && (
+                      <div className="border-t border-zinc-800/80 px-5 py-3 flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse shrink-0" />
+                        <p className="text-violet-400 text-xs">
+                          Payment request {po.paymentRequest.requestNumber} — {po.paymentRequest.status.replace(/_/g, ' ')}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Action Footer */}
+                    {canSubmitInvoice && (
+                      <div className="border-t border-zinc-800 px-5 py-3">
+                        <button onClick={() => setInvoiceModal(po)}
+                          className="w-full py-2.5 rounded-xl text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white transition-colors flex items-center justify-center gap-2">
+                          <span>📄</span> Submit Your Invoice
+                        </button>
+                        <p className="text-zinc-600 text-[10px] text-center mt-1.5">Goods have been received — you can now submit your invoice</p>
+                      </div>
+                    )}
+                    {isPaid && (
+                      <div className="border-t border-emerald-900/30 px-5 py-3 flex items-center justify-center gap-2">
+                        <span className="text-emerald-400 text-sm">✓</span>
+                        <p className="text-emerald-400 text-sm font-medium">Payment complete</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
           {invoiceModal && (
             <SubmitInvoiceModal po={invoiceModal} token={token} onClose={() => setInvoiceModal(null)} onSubmitted={() => { setInvoiceModal(null); loadPOs(); }} />
           )}
