@@ -57,14 +57,16 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'SALES');
+    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS');
 
     const existing = await prisma.proformaInvoice.findUnique({ where: { id: params.id } });
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    // Only DRAFT can be edited by SALES; ADMIN can always edit
+    // Only DRAFT can be edited by SALES; ACCOUNTS can only edit PENDING_APPROVAL; ADMIN can always edit
     if (session.role === 'SALES' && existing.status !== 'DRAFT')
       return NextResponse.json({ error: 'Only draft invoices can be edited' }, { status: 400 });
+    if (session.role === 'ACCOUNTS' && existing.status !== 'PENDING_APPROVAL')
+      return NextResponse.json({ error: 'Accounts can only edit invoices pending approval' }, { status: 400 });
 
     const body = await req.json();
     const parsed = patchSchema.safeParse(body);

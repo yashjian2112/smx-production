@@ -11,7 +11,7 @@ export default async function SalesPage({
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const canAccess = ['ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_MANAGER'].includes(session.role);
+  const canAccess = ['ADMIN', 'SALES', 'ACCOUNTS'].includes(session.role);
   if (!canAccess) redirect('/dashboard');
 
   const [proformas, invoices, returns] = await Promise.all([

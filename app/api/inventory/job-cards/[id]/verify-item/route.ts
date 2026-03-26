@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
-  if (!['PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER', 'ADMIN'].includes(session.role)) {
+  if (!['PRODUCTION_EMPLOYEE', 'ADMIN'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

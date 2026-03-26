@@ -8,7 +8,7 @@ export default async function ApprovalsPage() {
   const session = await getSession();
   if (!session) redirect('/login');
   try {
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN');
   } catch {
     redirect('/dashboard');
   }

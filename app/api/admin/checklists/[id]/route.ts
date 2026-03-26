@@ -7,7 +7,7 @@ import { put } from '@vercel/blob';
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN');
     const { id } = await params;
 
     const contentType = req.headers.get('content-type') ?? '';
@@ -66,7 +66,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN');
     const { id } = await params;
     await prisma.stageChecklistItem.delete({ where: { id } });
     return NextResponse.json({ ok: true });

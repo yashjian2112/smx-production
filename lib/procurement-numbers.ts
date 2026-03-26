@@ -4,8 +4,8 @@ import { prisma } from '@/lib/prisma';
 function getFiscalYear(): string {
   const now = new Date();
   const year = now.getFullYear();
-  const month = now.getMonth() + 1; // 1-indexed
-  const startYear = month >= 4 ? year : year - 1;
+  const month = now.getMonth(); // 0-indexed: January=0, April=3
+  const startYear = month >= 3 ? year : year - 1; // April (3) starts new FY
   return `${String(startYear).slice(-2)}-${String(startYear + 1).slice(-2)}`;
 }
 

@@ -130,7 +130,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           quantity: item.qtyVerified,
           remainingQty: item.qtyVerified,
           unitPrice: item.unitPrice ?? 0,
-          condition: 'GOOD',
+          condition: (item.qtyRejected ?? 0) > 0 ? 'DAMAGED' : 'GOOD',
           notes: `GRN ${grnNumber}`,
         },
       });

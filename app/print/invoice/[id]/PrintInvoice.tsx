@@ -110,9 +110,23 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
 
   const subtotal  = productItems.reduce((acc, item) => acc + calcItem(item), 0);
   const shipping  = shippingItem ? calcItem(shippingItem) : 0;
-  const gstAmount = isExport ? 0 : subtotal * 0.18;
-  const total     = subtotal + gstAmount + shipping;
-  const totalINR  = currency === 'INR' ? total : total * (invoice.exchangeRate ?? 1);
+
+  // For non-export USD invoices (Indian client billed in USD), GST must be calculated
+  // in INR on the INR-equivalent subtotal, then shown separately — never double-converted.
+  const exchRate      = invoice.exchangeRate ?? 1;
+  const isUsdIndian   = !isExport && currency === 'USD';
+  const subtotalINR   = isUsdIndian ? subtotal * exchRate : subtotal;
+  const gstAmountINR  = isExport ? 0 : subtotalINR * 0.18;
+
+  // Total in the invoice currency (USD or INR)
+  // For USD-Indian invoices: product subtotal in USD + shipping in USD; GST shown in INR separately
+  const total     = isUsdIndian
+    ? subtotal + shipping                          // USD portion only; GST is INR add-on
+    : subtotal + gstAmountINR + shipping;          // INR invoice: everything in INR
+  // INR grand total (what the customer actually pays in INR)
+  const totalINR  = isUsdIndian
+    ? subtotal * exchRate + shipping * exchRate + gstAmountINR
+    : currency === 'INR' ? total : total * exchRate;
   const totalQty  = productItems.reduce((acc, i) => acc + i.quantity, 0);
 
   const fy = getFiscalYear(new Date(invoice.createdAt));
@@ -365,22 +379,34 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
             <div className="t-row"><span className="t-lbl">Sub Total</span><span>{fmt(subtotal, currency)}</span></div>
             {!isExport && isIntraState && (
               <>
-                <div className="t-row"><span className="t-lbl">CGST @ 9%</span><span>{fmt(subtotal * 0.09, currency)}</span></div>
-                <div className="t-row"><span className="t-lbl">SGST @ 9%</span><span>{fmt(subtotal * 0.09, currency)}</span></div>
+                <div className="t-row"><span className="t-lbl">CGST @ 9%</span><span>{fmt(gstAmountINR * 0.5, 'INR')}</span></div>
+                <div className="t-row"><span className="t-lbl">SGST @ 9%</span><span>{fmt(gstAmountINR * 0.5, 'INR')}</span></div>
               </>
             )}
             {!isExport && !isIntraState && (
-              <div className="t-row"><span className="t-lbl">IGST @ 18%</span><span>{fmt(gstAmount, currency)}</span></div>
+              <div className="t-row"><span className="t-lbl">IGST @ 18%</span><span>{fmt(gstAmountINR, 'INR')}</span></div>
             )}
             {shipping > 0 && (
               <div className="t-row"><span className="t-lbl">Freight &amp; Forwarding</span><span>{fmt(shipping, currency)}</span></div>
             )}
             <div className="t-sep" />
-            <div className="t-total"><span>TOTAL</span><span>{fmt(total, currency)}</span></div>
-            {currency === 'USD' && invoice.exchangeRate && (
+            <div className="t-total">
+              <span>TOTAL</span>
+              {isUsdIndian
+                ? <span>\u20b9{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                : <span>{fmt(total, currency)}</span>
+              }
+            </div>
+            {currency === 'USD' && invoice.exchangeRate && !isUsdIndian && (
               <div className="t-row" style={{ fontSize: 7.5, color: '#888', marginTop: 2 }}>
                 <span>≈ INR @ \u20b9{invoice.exchangeRate}/$</span>
                 <span>\u20b9{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+            )}
+            {isUsdIndian && invoice.exchangeRate && (
+              <div className="t-row" style={{ fontSize: 7.5, color: '#888', marginTop: 2 }}>
+                <span>USD {fmt(subtotal + shipping, 'USD')} @ \u20b9{invoice.exchangeRate}/$ + GST</span>
+                <span>{fmt(subtotal + shipping, 'USD')}</span>
               </div>
             )}
             <div className="t-qty">
@@ -394,7 +420,7 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         <div className="words-bar">
           <span>
             <strong style={{ color: '#1a3a6b' }}>Amount Chargeable (in words):</strong>&nbsp;
-            {currency === 'USD' ? amountToWords(total, 'USD') : amountToWords(total, 'INR')}
+            {isUsdIndian ? amountToWords(totalINR, 'INR') : currency === 'USD' ? amountToWords(total, 'USD') : amountToWords(total, 'INR')}
           </span>
           <span style={{ color: '#999', fontStyle: 'italic', fontSize: 7.5 }}>E. &amp; O.E.</span>
         </div>

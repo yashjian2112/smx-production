@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export default async function ProductionFloorPage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (!['ADMIN', 'PRODUCTION_MANAGER'].includes(session.role)) redirect('/dashboard');
+  if (!['ADMIN'].includes(session.role)) redirect('/dashboard');
 
   return <FloorView />;
 }

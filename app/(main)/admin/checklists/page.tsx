@@ -6,7 +6,7 @@ import { ChecklistAdmin } from './ChecklistAdmin';
 export default async function ChecklistsPage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  try { requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER'); } catch { redirect('/dashboard'); }
+  try { requireRole(session, 'ADMIN'); } catch { redirect('/dashboard'); }
 
   const [items, products] = await Promise.all([
     prisma.stageChecklistItem.findMany({

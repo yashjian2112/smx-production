@@ -9,7 +9,7 @@ export default async function OrdersPage() {
   if (!session) redirect('/login');
   if (session.role === 'ACCOUNTS') redirect('/accounts');
 
-  const isManager = session.role === 'ADMIN' || session.role === 'PRODUCTION_MANAGER';
+  const isManager = session.role === 'ADMIN';
   const isAdmin   = session.role === 'ADMIN';
 
   const [rawOrders, products, clients] = await Promise.all([

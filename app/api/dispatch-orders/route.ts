@@ -13,7 +13,7 @@ const createSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING', 'PACKING');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING', 'PACKING');
 
     const { searchParams } = new URL(req.url);
     const statusParam = searchParams.get('status');
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'PRODUCTION_EMPLOYEE', 'SHIPPING');
 
     const body = await req.json();
     const parsed = createSchema.safeParse(body);

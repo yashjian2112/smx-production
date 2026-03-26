@@ -251,7 +251,12 @@ export function ShippingPanel({
       if (!res.ok) return; // silently fail — may already have invoice or no proforma
       setGenInvDone((p) => ({ ...p, [d.id]: true }));
       loadDOs('completed'); // reload to show new invoice numbers
-    } catch { /* silent */ }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('already') && !msg.includes('proforma')) {
+        console.error('Invoice auto-generate failed:', msg);
+      }
+    }
     finally { setGenInvBusy((p) => ({ ...p, [d.id]: false })); }
   }
 
@@ -276,10 +281,11 @@ export function ShippingPanel({
               x.id === d.id
                 ? {
                     ...x,
-                    invoices: (x.invoices ?? []).map((inv) => ({
-                      ...inv,
-                      notes: `Tracking: ${tn}\n${(inv.notes ?? '').replace(/^Tracking:.*\n?/m, '').trim()}`.trim(),
-                    })),
+                    invoices: (x.invoices ?? []).map((inv) => {
+                      const existingNotes = (inv.notes ?? '').replace(/Tracking:.*(\n|$)/gm, '').trim();
+                      const newNotes = `Tracking: ${tn}${existingNotes ? '\n' + existingNotes : ''}`.trim();
+                      return { ...inv, notes: newNotes };
+                    }),
                   }
                 : x
             )

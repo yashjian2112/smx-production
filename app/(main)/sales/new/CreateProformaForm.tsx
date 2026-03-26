@@ -132,8 +132,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       setError('Fill in all line items (HSN code, price)');
       return;
     }
-    if (items.some((i) => !i.voltageFrom || !i.voltageTo)) {
-      setError('Please enter voltage range (From and To) for all line items');
+    if (items.some((i) => i.hsnCode !== '9965' && (!i.voltageFrom || !i.voltageTo))) {
+      setError('Please enter voltage range (From and To) for all product line items');
       return;
     }
     if (invoiceType === 'REPLACEMENT' && (!unitSerial.trim() || !problemDesc.trim())) {

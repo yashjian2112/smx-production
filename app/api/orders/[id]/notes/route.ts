@@ -9,7 +9,7 @@ export async function GET(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS');
     const { id } = await params;
 
     const notes = await prisma.orderNote.findMany({
@@ -35,7 +35,7 @@ export async function POST(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS');
     const { id } = await params;
 
     const { content } = await req.json() as { content?: string };

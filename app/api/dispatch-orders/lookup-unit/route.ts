@@ -11,7 +11,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'PACKING');
+    requireRole(session, 'ADMIN', 'SHIPPING', 'PACKING');
 
     const { searchParams } = new URL(req.url);
     const barcode = searchParams.get('barcode')?.trim().toUpperCase();

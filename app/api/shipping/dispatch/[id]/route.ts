@@ -37,7 +37,7 @@ const dispatchInclude = {
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING');
 
     const dispatch = await prisma.dispatch.findUnique({
       where:   { id: params.id },
@@ -60,7 +60,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING');
 
     const dispatch = await prisma.dispatch.findUnique({
       where:  { id: params.id },

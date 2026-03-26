@@ -44,9 +44,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invoice can only be submitted after goods have been received (GRN done)' }, { status: 400 });
   }
 
-  // Only one invoice per PO
-  const existing = await prisma.vendorInvoice.findFirst({ where: { poId } });
-  if (existing) return NextResponse.json({ error: 'An invoice has already been submitted for this PO' }, { status: 409 });
+  // Prevent duplicate invoice numbers across all POs for this vendor
+  const existing = await prisma.vendorInvoice.findFirst({
+    where: { invoiceNumber, vendorId: vendor.id },
+  });
+  if (existing) return NextResponse.json({ error: 'An invoice with this number has already been submitted' }, { status: 409 });
 
   const netAmount = amount + gstAmount - tdsAmount;
 

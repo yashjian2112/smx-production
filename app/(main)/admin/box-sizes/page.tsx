@@ -6,7 +6,7 @@ import { BoxSizesAdmin } from './BoxSizesAdmin';
 export default async function BoxSizesPage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  try { requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER'); } catch { redirect('/dashboard'); }
+  try { requireRole(session, 'ADMIN'); } catch { redirect('/dashboard'); }
 
   const boxSizes = await prisma.boxSize.findMany({
     orderBy: [{ active: 'desc' }, { name: 'asc' }],

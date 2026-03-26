@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 export async function GET() {
   const session = await requireSession();
-  if (!['ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_MANAGER'].includes(session.role)) {
+  if (!['ADMIN', 'SALES', 'ACCOUNTS'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -42,7 +42,7 @@ const postSchema = z.object({
 
 export async function POST(req: Request) {
   const session = await requireSession();
-  if (!['ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_MANAGER'].includes(session.role)) {
+  if (!['ADMIN', 'SALES', 'ACCOUNTS'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

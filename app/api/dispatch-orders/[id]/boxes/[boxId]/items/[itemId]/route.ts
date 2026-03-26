@@ -8,7 +8,7 @@ export async function DELETE(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'PACKING');
+    requireRole(session, 'ADMIN', 'SHIPPING', 'PACKING');
 
     // Fetch the dispatch order
     const dispatchOrder = await prisma.dispatchOrder.findUnique({

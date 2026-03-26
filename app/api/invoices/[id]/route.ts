@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SALES', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SALES');
 
     const invoice = await prisma.invoice.findUnique({
       where: { id: params.id },
@@ -47,7 +47,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING');
 
     const body = await req.json() as { notes?: string };
     const invoice = await prisma.invoice.update({

@@ -89,7 +89,13 @@ export async function POST(req: NextRequest) {
           finalExchangeRate = rateData.rates.INR ?? null;
         }
       } catch {
-        // If fetch fails, leave rate as null — user can set manually
+        // fetch failed — will return 400 below
+      }
+      if (finalExchangeRate === null) {
+        return NextResponse.json(
+          { error: 'Could not fetch USD-INR exchange rate. Please try again or provide the exchange rate manually.' },
+          { status: 400 },
+        );
       }
     }
 

@@ -19,7 +19,7 @@ const patchSchema  = z.object({ dispatchItemId: z.string().min(1), controllerPho
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING');
 
     const body = scanSchema.parse(await req.json());
     const barcode = body.barcode.trim().toUpperCase();
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING');
 
     const body = removeSchema.parse(await req.json());
 
@@ -176,7 +176,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING');
 
     const body = patchSchema.parse(await req.json());
 

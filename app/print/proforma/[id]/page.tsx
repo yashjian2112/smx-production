@@ -19,6 +19,10 @@ export default async function PrintProformaPage({ params }: { params: { id: stri
   });
   if (!proforma) return <div>Invoice not found</div>;
 
+  if (session.role === 'SALES' && proforma.createdBy.id !== session.id) {
+    return <div style={{ padding: 40, fontFamily: 'Arial' }}>Access denied.</div>;
+  }
+
   const settings = await getAllSettings();
 
   return <PrintProforma proforma={proforma as any} settings={settings} />;

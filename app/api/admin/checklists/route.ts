@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN');
 
     const contentType = req.headers.get('content-type') ?? '';
     let body: Record<string, string | null> = {};

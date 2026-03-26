@@ -52,11 +52,11 @@ function integerToIndianWords(n: number): string {
  */
 export function amountToWords(amount: number, currency: 'INR' | 'USD' = 'INR'): string {
   const rupees = Math.floor(amount);
-  const paise  = Math.round((amount - rupees) * 100);
+  const paise  = Math.round(Math.round(amount * 100) % 100);
 
   if (currency === 'USD') {
     const dollars = Math.floor(amount);
-    const cents   = Math.round((amount - dollars) * 100);
+    const cents   = Math.round(Math.round(amount * 100) % 100);
     let result    = 'USD ' + integerToIndianWords(dollars) + (dollars === 1 ? ' Dollar' : ' Dollars');
     if (cents) result += ' and ' + twoDigits(cents) + ' Cents';
     return result + ' Only';

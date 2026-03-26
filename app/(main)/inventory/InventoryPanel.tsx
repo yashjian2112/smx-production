@@ -157,6 +157,12 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
     setAddSaving(true);
     const inputQty = parseFloat(addQty);
     if (!addMat || isNaN(inputQty) || inputQty < 0) { setAddError('Enter a valid quantity'); setAddSaving(false); return; }
+    const discreteUnits = ['pcs', 'pieces', 'units', 'nos', 'pc'];
+    if (discreteUnits.includes(addMat.unit?.toLowerCase()) && !Number.isInteger(inputQty)) {
+      setAddError('Quantity must be a whole number for this unit type');
+      setAddSaving(false);
+      return;
+    }
     let qty: number;
     let adjustmentType: string | undefined;
     if (addMode === 'physical') {

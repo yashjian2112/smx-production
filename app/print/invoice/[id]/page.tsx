@@ -1,8 +1,13 @@
 import { prisma } from '@/lib/prisma';
+import { getSession } from '@/lib/auth';
+import { redirect } from 'next/navigation';
 import { getAllSettings } from '@/lib/app-settings';
 import { PrintInvoice } from './PrintInvoice';
 
 export default async function PrintInvoicePage({ params }: { params: { id: string } }) {
+  const session = await getSession();
+  if (!session) redirect('/login');
+
   const invoice = await prisma.invoice.findUnique({
     where: { id: params.id },
     include: {

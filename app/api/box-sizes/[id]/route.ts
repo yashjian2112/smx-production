@@ -17,7 +17,7 @@ export async function PATCH(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN');
 
     const body = await req.json();
     const parsed = updateSchema.safeParse(body);
@@ -48,7 +48,7 @@ export async function DELETE(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN');
 
     const existing = await prisma.boxSize.findUnique({ where: { id: params.id } });
     if (!existing) return NextResponse.json({ error: 'Box size not found' }, { status: 404 });

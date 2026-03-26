@@ -23,49 +23,59 @@ export async function POST(req: Request) {
 
   const material = await prisma.rawMaterial.findUnique({ where: { id: data.rawMaterialId } });
   if (!material) return NextResponse.json({ error: 'Material not found' }, { status: 404 });
-  if (material.currentStock < data.quantity) {
-    return NextResponse.json({ error: `Insufficient stock. Available: ${material.currentStock} ${material.unit}` }, { status: 400 });
-  }
 
-  const result = await prisma.$transaction(async (tx) => {
-    // FIFO deduction: consume from oldest batch first
-    let remaining = data.quantity;
-    const batches = await tx.inventoryBatch.findMany({
-      where:   { rawMaterialId: data.rawMaterialId, remainingQty: { gt: 0 } },
-      orderBy: { createdAt: 'asc' }, // oldest first = FIFO
-    });
-
-    for (const batch of batches) {
-      if (remaining <= 0) break;
-      const consume = Math.min(batch.remainingQty, remaining);
-      await tx.inventoryBatch.update({
-        where: { id: batch.id },
-        data:  { remainingQty: batch.remainingQty - consume },
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      // Atomic stock check + decrement — prevents negative stock under concurrent requests
+      const updated = await tx.rawMaterial.updateMany({
+        where: { id: data.rawMaterialId, currentStock: { gte: data.quantity } },
+        data:  { currentStock: { decrement: data.quantity } },
       });
-      remaining -= consume;
+      if (updated.count === 0) {
+        throw new Error('Insufficient stock');
+      }
+
+      // FIFO deduction: consume from oldest batch first
+      let remaining = data.quantity;
+      const batches = await tx.inventoryBatch.findMany({
+        where:   { rawMaterialId: data.rawMaterialId, remainingQty: { gt: 0 } },
+        orderBy: { createdAt: 'asc' }, // oldest first = FIFO
+      });
+
+      for (const batch of batches) {
+        if (remaining <= 0) break;
+        const consume = Math.min(batch.remainingQty, remaining);
+        await tx.inventoryBatch.update({
+          where: { id: batch.id },
+          data:  { remainingQty: batch.remainingQty - consume },
+        });
+        remaining -= consume;
+      }
+
+      // Audit record
+      await tx.stockMovement.create({
+        data: {
+          rawMaterialId:  data.rawMaterialId,
+          type:           'OUT',
+          quantity:       -data.quantity,
+          reference:      data.purpose,
+          adjustmentType: data.purpose,
+          notes:          data.notes,
+          createdById:    session.id,
+        },
+      });
+
+      // Re-fetch updated material to return current state
+      return tx.rawMaterial.findUnique({ where: { id: data.rawMaterialId } });
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    if (message === 'Insufficient stock') {
+      return NextResponse.json({ error: 'Insufficient stock' }, { status: 400 });
     }
-
-    // Update material stock
-    const updated = await tx.rawMaterial.update({
-      where: { id: data.rawMaterialId },
-      data:  { currentStock: material.currentStock - data.quantity },
-    });
-
-    // Audit record
-    await tx.stockMovement.create({
-      data: {
-        rawMaterialId:  data.rawMaterialId,
-        type:           'OUT',
-        quantity:       -data.quantity,
-        reference:      data.purpose,
-        adjustmentType: data.purpose,
-        notes:          data.notes,
-        createdById:    session.id,
-      },
-    });
-
-    return updated;
-  });
+    throw err;
+  }
 
   return NextResponse.json(result, { status: 201 });
 }

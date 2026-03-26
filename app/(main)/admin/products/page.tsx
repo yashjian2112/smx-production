@@ -7,7 +7,7 @@ export default async function AdminProductsPage() {
   const session = await getSession();
   if (!session) redirect('/login');
   try {
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN');
   } catch {
     redirect('/dashboard');
   }

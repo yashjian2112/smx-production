@@ -6,7 +6,7 @@ import ReturnForm from './ReturnForm';
 export default async function NewReturnPage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (!['ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_MANAGER'].includes(session.role)) redirect('/dashboard');
+  if (!['ADMIN', 'SALES', 'ACCOUNTS'].includes(session.role)) redirect('/dashboard');
 
   const clients = await prisma.client.findMany({
     where: { active: true },

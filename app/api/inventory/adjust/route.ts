@@ -85,14 +85,18 @@ export async function POST(req: Request) {
     });
     if (updated && updated.currentStock <= updated.reorderPoint && updated.minimumOrderQty > 0) {
       const { autoCreateRO } = await import('@/lib/requirement-order');
-      await autoCreateRO({
-        trigger: 'LOW_STOCK',
-        items: [{
-          materialId: updated.id,
-          qtyRequired: updated.minimumOrderQty,
-          notes: `Auto: stock ${updated.currentStock} ≤ reorder point ${updated.reorderPoint}`,
-        }],
-      });
+      try {
+        await autoCreateRO({
+          trigger: 'LOW_STOCK',
+          items: [{
+            materialId: updated.id,
+            qtyRequired: updated.minimumOrderQty,
+            notes: `Auto: stock ${updated.currentStock} ≤ reorder point ${updated.reorderPoint}`,
+          }],
+        });
+      } catch (roErr) {
+        console.error('Auto-RO creation failed:', roErr);
+      }
     }
   }
 

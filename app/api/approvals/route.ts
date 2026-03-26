@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET() {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN');
 
     const units = await prisma.controllerUnit.findMany({
       where: { currentStatus: 'WAITING_APPROVAL' },

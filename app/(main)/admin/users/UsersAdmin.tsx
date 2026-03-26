@@ -15,7 +15,6 @@ type Modal =
 
 const ROLE_OPTIONS = [
   { value: 'PRODUCTION_EMPLOYEE', label: 'Production Employee' },
-  { value: 'PRODUCTION_MANAGER',  label: 'Production Manager' },
   { value: 'PACKING',             label: 'Packing' },
   { value: 'SALES',               label: 'Sales' },
   { value: 'ACCOUNTS',            label: 'Accounts' },
@@ -28,7 +27,6 @@ const ROLE_OPTIONS = [
 
 const ROLE_BADGE: Record<string, string> = {
   ADMIN:               'bg-violet-500/20 text-violet-400 border-violet-500/30',
-  PRODUCTION_MANAGER:  'bg-sky-500/20 text-sky-400 border-sky-500/30',
   PRODUCTION_EMPLOYEE: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
   PACKING:             'bg-orange-500/20 text-orange-400 border-orange-500/30',
   SALES:               'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
@@ -40,7 +38,6 @@ const ROLE_BADGE: Record<string, string> = {
 };
 const ROLE_LABEL: Record<string, string> = {
   ADMIN:               'Admin',
-  PRODUCTION_MANAGER:  'Prod. Mgr',
   PRODUCTION_EMPLOYEE: 'Employee',
   PACKING:             'Packing',
   SALES:               'Sales',

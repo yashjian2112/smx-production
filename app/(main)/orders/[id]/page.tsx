@@ -125,7 +125,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   if (!order) notFound();
 
   // Fetch notes (available to SALES, PM, ADMIN, ACCOUNTS)
-  const canViewNotes = ['ADMIN', 'SALES', 'PRODUCTION_MANAGER', 'ACCOUNTS'].includes(session.role);
+  const canViewNotes = ['ADMIN', 'SALES', 'ACCOUNTS'].includes(session.role);
   const notes = canViewNotes
     ? await prisma.orderNote.findMany({
         where: { orderId: id },

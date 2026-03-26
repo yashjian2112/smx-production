@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'SHIPPING', 'PACKING');
+    requireRole(session, 'ADMIN', 'SHIPPING', 'PACKING');
 
     // Fetch DO with boxes+items
     const dispatchOrder = await prisma.dispatchOrder.findUnique({

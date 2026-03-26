@@ -14,7 +14,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
  */
 export async function POST(req: NextRequest) {
   const session = await requireSession();
-  requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
+  requireRole(session, 'ADMIN');
 
   const { imageUrl, x, y } = await req.json();
   if (!imageUrl || x == null || y == null) {

@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET(_req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SALES', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SALES');
 
     const invoices = await prisma.invoice.findMany({
       include: {

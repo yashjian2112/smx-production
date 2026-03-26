@@ -54,7 +54,7 @@ async function main() {
       email: 'manager@smx.com',
       passwordHash: await hash('manager123'),
       name: 'Production Manager',
-      role: 'PRODUCTION_MANAGER',
+      role: 'ADMIN',
     },
     update: {},
   });

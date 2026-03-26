@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
-  if (!['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN', 'PRODUCTION_MANAGER'].includes(session.role)) {
+  if (!['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const session = await requireSession();
-  if (!['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN', 'PRODUCTION_MANAGER'].includes(session.role)) {
+  if (!['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const body = await req.json();
@@ -59,7 +59,7 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const session = await requireSession();
-  if (!['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN', 'PRODUCTION_MANAGER'].includes(session.role)) {
+  if (!['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const { searchParams } = new URL(req.url);

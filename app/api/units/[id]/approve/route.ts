@@ -24,7 +24,7 @@ export async function POST(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER');
+    requireRole(session, 'ADMIN');
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const { action } = body as { action: 'approve' | 'reject' };

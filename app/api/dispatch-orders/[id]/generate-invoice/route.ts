@@ -13,12 +13,13 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     const session = await requireSession();
     requireRole(session, 'ADMIN', 'ACCOUNTS');
 
-    // Fetch DO with order's proforma and packed items
+    // Fetch DO with order's proforma, all order units (for scaling), and packed items
     const dispatchOrder = await prisma.dispatchOrder.findUnique({
       where: { id: params.id },
       include: {
         order: {
           include: {
+            units: { select: { id: true } },
             proformaInvoice: {
               include: {
                 client: { select: { id: true, globalOrIndian: true } },
@@ -78,6 +79,15 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       const exchangeRate = proforma.exchangeRate ?? null;
       const notes        = proforma.notes ?? null;
 
+      // Scale quantities proportionally to dispatched units (same logic as approve route)
+      // Shipping lines (HSN 9965) keep their original qty (lump sum)
+      const totalOrderUnits = dispatchOrder.order.units.length;
+      const dispatchedUnits = packedUnitIds.length;
+      const scaleQty = (item: { quantity: number; hsnCode: string }) =>
+        item.hsnCode === '9965' || totalOrderUnits === 0
+          ? item.quantity
+          : Math.round((item.quantity / totalOrderUnits) * dispatchedUnits);
+
       const productItems = proforma.items.filter((item) => item.hsnCode !== '9965');
 
       if (proforma.splitInvoice && proforma.splitServicePercent != null) {
@@ -85,7 +95,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
         const goodsPct   = 100 - servicePct;
 
         const subtotal = productItems.reduce((sum, item) => {
-          return sum + item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
+          return sum + item.unitPrice * scaleQty(item) * (1 - item.discountPercent / 100);
         }, 0);
 
         const serviceLineUnitPrice =
@@ -100,7 +110,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
         const goodsItems = productItems.map((item, idx) => ({
           description:     item.description,
           hsnCode:         item.hsnCode,
-          quantity:        item.quantity,
+          quantity:        scaleQty(item),
           unitPrice:       item.unitPrice * (goodsPct / 100),
           discountPercent: item.discountPercent,
           sortOrder:       item.sortOrder ?? idx,
@@ -156,7 +166,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
         const allItems = proforma.items.map((item, idx) => ({
           description:     item.description,
           hsnCode:         item.hsnCode,
-          quantity:        item.quantity,
+          quantity:        scaleQty(item),
           unitPrice:       item.unitPrice,
           discountPercent: item.discountPercent,
           sortOrder:       item.sortOrder ?? idx,

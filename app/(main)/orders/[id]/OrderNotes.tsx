@@ -12,7 +12,6 @@ type Note = {
 
 const ROLE_STYLE: Record<string, { bg: string; color: string; label: string }> = {
   SALES:              { bg: 'rgba(56,189,248,0.1)',   color: '#38bdf8', label: 'Sales'      },
-  PRODUCTION_MANAGER: { bg: 'rgba(139,92,246,0.1)',   color: '#a78bfa', label: 'Production' },
   ADMIN:              { bg: 'rgba(251,191,36,0.1)',   color: '#fbbf24', label: 'Admin'      },
   ACCOUNTS:           { bg: 'rgba(52,211,153,0.1)',   color: '#34d399', label: 'Accounts'   },
 };
@@ -43,7 +42,7 @@ export function OrderNotes({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [notes]);
 
-  const canPost = ['ADMIN', 'SALES', 'PRODUCTION_MANAGER', 'ACCOUNTS'].includes(currentRole);
+  const canPost = ['ADMIN', 'SALES', 'ACCOUNTS'].includes(currentRole);
 
   async function postNote() {
     if (!input.trim() || posting) return;

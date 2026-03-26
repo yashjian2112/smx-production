@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma';
 // Uses StageLog entries: stage start = first IN_PROGRESS log, stage end = APPROVED log.
 export async function GET(req: NextRequest) {
   const session = await requireSession();
-  if (!['ADMIN', 'PRODUCTION_MANAGER', 'SALES'].includes(session.role)) {
+  if (!['ADMIN', 'SALES'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

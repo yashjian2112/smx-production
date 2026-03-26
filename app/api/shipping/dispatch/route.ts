@@ -54,7 +54,7 @@ const DISPATCH_INCLUDE = {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING');
 
     const { searchParams } = new URL(req.url);
     const take = Math.min(parseInt(searchParams.get('take') ?? '50', 10), 200);
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'ACCOUNTS', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING');
 
     const body = createSchema.parse(await req.json());
 

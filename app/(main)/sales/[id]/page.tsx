@@ -7,7 +7,7 @@ export default async function ProformaDetailPage({ params }: { params: { id: str
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const canAccess = ['ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_MANAGER'].includes(session.role);
+  const canAccess = ['ADMIN', 'SALES', 'ACCOUNTS'].includes(session.role);
   if (!canAccess) redirect('/dashboard');
 
   const proforma = await prisma.proformaInvoice.findUnique({

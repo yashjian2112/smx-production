@@ -219,7 +219,7 @@ export function OrdersList({ orders, isManager, sessionRole }: {
 
 function OrderCard({ order }: { order: OrderItem }) {
   const total      = order._count.units;
-  const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED').length;
+  const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED').length;
   const inProgress = order.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
   const blocked    = order.units.filter((u) => u.currentStatus === 'BLOCKED').length;
   const pct        = total > 0 ? Math.round((completed / total) * 100) : 0;

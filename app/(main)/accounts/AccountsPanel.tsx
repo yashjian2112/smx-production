@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { DOApprovals } from './DOApprovals';
 import { DispatchApprovals } from './DispatchApprovals';
@@ -152,6 +153,7 @@ export function AccountsPanel({
   dispatches: DispatchRow[];
   doDispatches: DORow[];
 }) {
+  const router = useRouter();
   const [showHistory, setShowHistory] = useState(false);
   const [activeTab, setActiveTab] = useState<'approvals' | 'payables'>('approvals');
 
@@ -183,7 +185,7 @@ export function AccountsPanel({
         </button>
       </div>
 
-      {activeTab === 'payables' && <APPayablesTab />}
+      {activeTab === 'payables' && <APPayablesTab onRouterRefresh={() => router.refresh()} />}
 
       {activeTab === 'approvals' && <>
       {/* ── PENDING section ─────────────────────────────────────────────── */}
@@ -410,7 +412,7 @@ export function AccountsPanel({
 /* ═══════════════════════════════════════════════════════
    AP / PAYABLES TAB
 ════════════════════════════════════════════════════════*/
-function APPayablesTab() {
+function APPayablesTab({ onRouterRefresh }: { onRouterRefresh: () => void }) {
   const [requests, setRequests] = useState<PaymentRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [noteModal, setNoteModal] = useState<{ id: string; action: 'request-approval' | 'process-payment' } | null>(null);
@@ -536,7 +538,7 @@ function APPayablesTab() {
           id={noteModal.id}
           action={noteModal.action}
           onClose={() => setNoteModal(null)}
-          onDone={() => { setNoteModal(null); load(); }}
+          onDone={() => { setNoteModal(null); load(); onRouterRefresh(); }}
         />
       )}
     </div>
