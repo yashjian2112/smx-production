@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     if (orderId) where.orderId = orderId;
     if (stage) where.currentStage = stage;
     if (status) where.currentStatus = status;
-    if (assignedToMe && session.role === 'PRODUCTION_MANAGER') {
+    if (assignedToMe && session.role === 'PRODUCTION_EMPLOYEE') {
       where.assignments = { some: { userId: session.id } };
     }
 

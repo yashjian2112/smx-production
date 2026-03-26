@@ -219,7 +219,7 @@ export function BottomNav({ role }: { role: string }) {
   const currentTab   = searchParams.get('tab') ?? '';
 
   const items =
-    role === 'PRODUCTION_MANAGER' ? employeeNav  :
+    role === 'PRODUCTION_EMPLOYEE' ? employeeNav  :
     role === 'PACKING'             ? packingNav   :
     role === 'ADMIN'               ? adminNav     :
     role === 'SALES'               ? salesNav     :

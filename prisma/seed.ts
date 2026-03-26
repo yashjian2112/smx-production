@@ -63,8 +63,8 @@ async function main() {
     create: {
       email: 'emp@smx.com',
       passwordHash: await hash('emp123'),
-      name: 'Production Manager',
-      role: 'PRODUCTION_MANAGER',
+      name: 'Production Employee',
+      role: 'PRODUCTION_EMPLOYEE',
     },
     update: {},
   });

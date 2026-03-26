@@ -17,7 +17,7 @@ model User {
   email         String   @unique
   passwordHash String   @map("password_hash")
   name          String
-  role          Role     @default(PRODUCTION_MANAGER)
+  role          Role     @default(PRODUCTION_EMPLOYEE)
   active        Boolean  @default(true)
   faceDescriptor String?  @map("face_descriptor") // JSON float32 array [128 numbers]
   faceEnrolled  Boolean  @default(false) @map("face_enrolled")
@@ -79,6 +79,7 @@ model User {
 enum Role {
   ADMIN
   PRODUCTION_MANAGER
+  PRODUCTION_EMPLOYEE
   SALES
   ACCOUNTS
   SHIPPING           // deprecated — use ACCOUNTS for shipping approval

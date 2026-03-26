@@ -9,7 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await requireSession();
-  if (session.role === 'PRODUCTION_MANAGER') {
+  if (session.role === 'PRODUCTION_EMPLOYEE') {
     return NextResponse.json({ error: 'Not authorised' }, { status: 403 });
   }
 

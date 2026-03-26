@@ -375,7 +375,7 @@ export function PrintJobCard({
             <div className="sign-line">Signature</div>
           </div>
           <div className="footer-col">
-            <div className="f-label">Received By (Production Manager)</div>
+            <div className="f-label">Received By (Production Employee)</div>
             <div style={{ fontSize: 8, color: '#aaa', fontStyle: 'italic', marginBottom: 4 }}>Verify all items on receipt</div>
             <div className="sign-line">Signature</div>
           </div>

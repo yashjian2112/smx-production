@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 export default async function MyPerformancePage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (session.role !== 'PRODUCTION_MANAGER') redirect('/dashboard');
+  if (session.role !== 'PRODUCTION_EMPLOYEE') redirect('/dashboard');
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);

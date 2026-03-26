@@ -293,7 +293,7 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
           <div className="flex justify-center mb-3"><ClipboardList className="w-8 h-8 text-zinc-600" /></div>
           <p className="text-zinc-400 text-sm">No {tab} job cards</p>
-          {tab === 'pending' && <p className="text-zinc-600 text-xs mt-1">Created when production managers accept an order</p>}
+          {tab === 'pending' && <p className="text-zinc-600 text-xs mt-1">Created when production employees accept an order</p>}
         </div>
       ) : (
         <div className="space-y-3">

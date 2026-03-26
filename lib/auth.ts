@@ -63,7 +63,7 @@ export function isManager(session: SessionUser) {
   return session.role === 'ADMIN' || session.role === 'PRODUCTION_MANAGER';
 }
 export function isEmployee(session: SessionUser) {
-  return session.role === 'PRODUCTION_MANAGER';
+  return session.role === 'PRODUCTION_EMPLOYEE';
 }
 export function isSales(session: SessionUser) {
   return session.role === 'SALES';

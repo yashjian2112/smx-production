@@ -9,7 +9,7 @@ export async function GET() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    if (session.role === 'PRODUCTION_MANAGER') {
+    if (session.role === 'PRODUCTION_EMPLOYEE') {
       const assigned = await prisma.stageAssignment.findMany({
         where: { userId: session.id },
         include: {
