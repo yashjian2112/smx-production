@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(req: Request) {
   const session = await requireSession();
-  if (!['ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE'].includes(session.role)) {
+  if (!['ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_MANAGER'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

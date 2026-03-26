@@ -17,7 +17,7 @@ export function UnitActions({ unit, sessionRole }: { unit: Unit; sessionRole: st
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  const isEmployee = sessionRole === 'PRODUCTION_EMPLOYEE';
+  const isEmployee = sessionRole === 'PRODUCTION_MANAGER';
 
   // Employees cannot manually override status — the work flow handles it automatically
   if (isEmployee) return null;

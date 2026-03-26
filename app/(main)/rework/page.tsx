@@ -49,7 +49,7 @@ function StatusBadge({ status }: { status: string }) {
 export default async function ReworkPage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (!['ADMIN', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE'].includes(session.role)) redirect('/dashboard');
+  if (!['ADMIN', 'PRODUCTION_MANAGER'].includes(session.role)) redirect('/dashboard');
 
   const raw = await prisma.proformaInvoice.findMany({
     where: { invoiceType: 'REPLACEMENT' },

@@ -15,7 +15,7 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   const session = await requireSession();
-  if (!['ADMIN', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE'].includes(session.role)) {
+  if (!['ADMIN', 'PRODUCTION_MANAGER'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

@@ -18,7 +18,7 @@ async function getDashboardData(role: string, userId: string) {
       return { role: 'packing', openDOs, packingDOs, submittedDOs, sealedBoxesToday };
     }
 
-    if (role === 'PRODUCTION_EMPLOYEE') {
+    if (role === 'PRODUCTION_MANAGER') {
       const [myActive, completedToday] = await Promise.all([
         // Units the employee is actively working on (has an IN_PROGRESS submission)
         prisma.stageWorkSubmission.findMany({
@@ -71,7 +71,7 @@ async function getDashboardData(role: string, userId: string) {
   } catch (err) {
     console.error('[dashboard] DB error:', err);
     // Return safe defaults on DB error so the page renders instead of crashing
-    if (role === 'PRODUCTION_EMPLOYEE') {
+    if (role === 'PRODUCTION_MANAGER') {
       return { role: 'employee', myActive: [], completedToday: 0 };
     }
     return {
@@ -153,7 +153,7 @@ export default async function DashboardPage() {
     );
   }
 
-  if (session.role === 'PRODUCTION_EMPLOYEE') {
+  if (session.role === 'PRODUCTION_MANAGER') {
     type ActiveSub = {
       id: string;
       startedAt: string;

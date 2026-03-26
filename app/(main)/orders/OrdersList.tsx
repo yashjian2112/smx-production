@@ -52,7 +52,7 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   isManager: boolean;
   sessionRole: string;
 }) {
-  const isEmployee = sessionRole === 'PRODUCTION_EMPLOYEE';
+  const isEmployee = sessionRole === 'PRODUCTION_MANAGER';
   const [tab, setTab] = useState<'pending' | 'processing' | 'completed'>(
     isEmployee ? 'pending' : 'processing'
   );

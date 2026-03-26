@@ -4,14 +4,14 @@ import { prisma } from '@/lib/prisma';
 
 // POST /api/inventory/job-cards/[id]/complete
 // Marks a job card as COMPLETED — called when manufacturing work is done.
-// Allowed by: PRODUCTION_EMPLOYEE, PRODUCTION_MANAGER, ADMIN
+// Allowed by: PRODUCTION_MANAGER, PRODUCTION_MANAGER, ADMIN
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await requireSession();
-  if (!['PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER', 'ADMIN'].includes(session.role)) {
+  if (!['PRODUCTION_MANAGER', 'ADMIN'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

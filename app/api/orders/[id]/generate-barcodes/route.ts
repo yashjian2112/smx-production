@@ -18,7 +18,7 @@ export async function POST(
 ) {
   try {
     const session = await requireSession();
-    if (session.role === 'PRODUCTION_EMPLOYEE') {
+    if (session.role === 'PRODUCTION_MANAGER') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

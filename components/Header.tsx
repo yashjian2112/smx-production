@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 const ROLE_LABEL: Record<string, string> = {
   ADMIN:               'Admin',
   PRODUCTION_MANAGER:  'Manager',
-  PRODUCTION_EMPLOYEE: 'Employee',
   PACKING:             'Packing',
   SALES:               'Sales',
   ACCOUNTS:            'Accounts',

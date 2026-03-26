@@ -35,7 +35,7 @@ export function DispatchSection({
   const [pendingDispatch, setPendingDispatch] = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
-  const isManager = sessionRole !== 'PRODUCTION_EMPLOYEE';
+  const isManager = sessionRole !== 'PRODUCTION_MANAGER';
 
   async function confirmDispatch() {
     setPendingDispatch(false);
