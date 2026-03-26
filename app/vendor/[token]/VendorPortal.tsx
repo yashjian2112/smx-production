@@ -112,9 +112,12 @@ export default function VendorPortal({ token }: { token: string }) {
     }));
     if (items.some(i => i.unitPrice <= 0)) return alert('Enter price for all items');
     const subtotal = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
-    const gstAmount = currency === 'INR' && gstType === 'with' ? subtotal * (parseFloat(gstPercent) || 0) / 100 : 0;
+    // Without GST → add GST on top; With GST → price is already final inclusive
+    const gstAmount = currency === 'INR' && gstType === 'without' ? subtotal * (parseFloat(gstPercent) || 0) / 100 : 0;
     const totalAmount = subtotal + gstAmount;
-    const gstNote = currency === 'INR' ? (gstType === 'with' ? `[GST ${gstPercent}% included: ₹${gstAmount.toFixed(2)}]` : '[Prices exclusive of GST]') : '';
+    const gstNote = currency === 'INR'
+      ? (gstType === 'with' ? '[Prices quoted inclusive of GST]' : `[Prices excl. GST — GST @ ${gstPercent}% added: ₹${gstAmount.toFixed(2)} | Total incl. GST: ₹${totalAmount.toFixed(2)}]`)
+      : '';
     const finalNotes = [gstNote, notes].filter(Boolean).join('\n');
 
     setSubmitting(true);
@@ -159,34 +162,30 @@ export default function VendorPortal({ token }: { token: string }) {
   return (
     <div className="min-h-screen pb-16" style={{ background: 'rgb(9,9,11)' }}>
       {/* Header */}
-      <div className="border-b border-zinc-800 px-4 py-4">
-        <div className="max-w-lg mx-auto flex items-center justify-between">
-          <div>
-            <p className="text-white font-bold text-lg">SMX Drives</p>
-            <p className="text-zinc-500 text-xs">Vendor RFQ Portal</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-zinc-500">{rfq.rfqNumber}</p>
-          </div>
+      <div className="border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
+        <div>
+          <p className="text-white font-bold text-lg">SMX Drives</p>
+          <p className="text-zinc-500 text-xs">Vendor RFQ Portal</p>
         </div>
+        <p className="text-sm text-zinc-400 font-mono">{rfq.rfqNumber}</p>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 pt-4">
+      <div className="px-6 pt-4">
         {/* Tabs */}
-        <div className="flex gap-1 bg-zinc-900 rounded-xl p-1 mb-5">
+        <div className="flex gap-1 bg-zinc-900 rounded-xl p-1 mb-5 max-w-xs">
           <button onClick={() => setActiveTab('rfq')}
-            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'rfq' ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${activeTab === 'rfq' ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
             RFQ / Quote
           </button>
           <button onClick={() => setActiveTab('pos')}
-            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'pos' ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${activeTab === 'pos' ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
             My POs
           </button>
         </div>
       </div>
 
       {activeTab === 'pos' && (
-        <div className="max-w-lg mx-auto px-4 pb-8 space-y-3">
+        <div className="px-6 pb-8 space-y-3 max-w-3xl">
           {posLoading ? (
             <div className="text-center text-zinc-500 py-8 text-sm">Loading...</div>
           ) : myPOs.length === 0 ? (
@@ -255,7 +254,7 @@ export default function VendorPortal({ token }: { token: string }) {
         </div>
       )}
 
-      {activeTab === 'rfq' && <div className="max-w-lg mx-auto px-4 pt-0 space-y-5">
+      {activeTab === 'rfq' && <div className="px-6 pt-0 space-y-5">
         {/* RFQ Details */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
           <p className="text-white font-semibold text-base mb-1">{rfq.title}</p>
@@ -358,99 +357,142 @@ export default function VendorPortal({ token }: { token: string }) {
 
         {/* Quote Form */}
         {!submitted && !alreadySubmitted && !isClosed && !isExpired && (
-          <form onSubmit={submit} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-4">
-            <p className="text-white font-medium">Submit Your Quote</p>
+          <form onSubmit={submit} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-6">
+            <p className="text-white font-semibold text-lg">Submit Your Quote</p>
 
-            {/* Currency */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Currency + GST toggle side by side */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="text-xs text-zinc-400">Currency *</label>
+                <label className="text-xs text-zinc-400 font-medium uppercase tracking-wider">Currency *</label>
                 <select value={currency} onChange={e => { setCurrency(e.target.value); if (e.target.value !== 'INR') setGstType('without'); }}
-                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none">
+                  className="w-full mt-2 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-3 text-white text-sm focus:outline-none focus:border-sky-500">
                   <option value="INR">INR (₹)</option>
                   <option value="USD">USD ($)</option>
                 </select>
               </div>
               {currency === 'INR' && (
-                <div>
-                  <label className="text-xs text-zinc-400">GST *</label>
-                  <div className="flex mt-1 rounded-lg overflow-hidden border border-zinc-700">
-                    <button type="button" onClick={() => setGstType('without')}
-                      className={`flex-1 py-2.5 text-sm font-medium transition-colors ${gstType === 'without' ? 'bg-sky-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
-                      Without GST
-                    </button>
+                <div className="sm:col-span-2">
+                  <label className="text-xs text-zinc-400 font-medium uppercase tracking-wider">Prices are *</label>
+                  <div className="flex mt-2 rounded-lg overflow-hidden border border-zinc-700">
                     <button type="button" onClick={() => setGstType('with')}
-                      className={`flex-1 py-2.5 text-sm font-medium transition-colors ${gstType === 'with' ? 'bg-sky-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
-                      With GST
+                      className={`flex-1 py-3 text-sm font-medium transition-colors ${gstType === 'with' ? 'bg-sky-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+                      With GST (final price)
+                    </button>
+                    <button type="button" onClick={() => setGstType('without')}
+                      className={`flex-1 py-3 text-sm font-medium transition-colors ${gstType === 'without' ? 'bg-sky-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+                      Without GST (add GST)
                     </button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* GST % input when With GST selected */}
-            {currency === 'INR' && gstType === 'with' && (
+            {/* GST rate — only when WITHOUT GST (we need to add it on top) */}
+            {currency === 'INR' && gstType === 'without' && (
               <div>
-                <label className="text-xs text-zinc-400">GST Rate (%)</label>
-                <div className="flex gap-2 mt-1">
+                <label className="text-xs text-zinc-400 font-medium uppercase tracking-wider">GST Rate to Add *</label>
+                <div className="flex gap-2 mt-2 flex-wrap">
                   {['5', '12', '18', '28'].map(p => (
                     <button key={p} type="button" onClick={() => setGstPercent(p)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${gstPercent === p ? 'bg-sky-600 border-sky-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'}`}>
+                      className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${gstPercent === p ? 'bg-sky-600 border-sky-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'}`}>
                       {p}%
                     </button>
                   ))}
-                  <input type="number" min={0} max={100} step="0.1"
-                    value={gstPercent} onChange={e => setGstPercent(e.target.value)}
-                    onWheel={e => (e.target as HTMLInputElement).blur()}
-                    className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm text-center focus:outline-none focus:border-blue-500"
-                    placeholder="%" />
+                  <div className="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3">
+                    <input type="number" min={0} max={100} step="0.1"
+                      value={gstPercent} onChange={e => setGstPercent(e.target.value)}
+                      onWheel={e => (e.target as HTMLInputElement).blur()}
+                      className="w-14 bg-transparent text-white text-sm text-center focus:outline-none py-2"
+                      placeholder="0" />
+                    <span className="text-zinc-500 text-sm">%</span>
+                  </div>
                 </div>
+                <p className="text-xs text-zinc-500 mt-1">GST will be added on top of the prices you enter below</p>
               </div>
             )}
+            {currency === 'INR' && gstType === 'with' && (
+              <p className="text-xs text-zinc-500 -mt-2">Enter your final inclusive prices below — GST is already included in what you quote</p>
+            )}
 
-            {/* Per-item pricing */}
+            {/* Per-piece pricing table */}
             <div>
-              <label className="text-xs text-zinc-400 font-medium">Price per Item * <span className="text-zinc-600 font-normal">(excl. GST)</span></label>
-              <div className="space-y-2 mt-2">
-                {rfq.items.map(item => (
-                  <div key={item.id} className="flex items-center gap-3">
-                    <span className="flex-1 text-sm text-zinc-300 min-w-0 truncate">{item.material?.name ?? item.itemDescription ?? 'Item'} <span className="text-zinc-500">× {item.qtyRequired} {item.material?.unit ?? item.itemUnit ?? 'unit'}</span></span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-zinc-500 text-sm">{currency === 'USD' ? '$' : '₹'}</span>
-                      <input type="number" min={0} step="0.01" placeholder="0.00"
-                        value={itemPrices[item.id] ?? ''}
-                        onChange={e => setItemPrices(p => ({ ...p, [item.id]: e.target.value }))}
-                        onWheel={e => (e.target as HTMLInputElement).blur()}
-                        className="w-28 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm text-right focus:outline-none focus:border-blue-500" />
-                    </div>
-                  </div>
-                ))}
-                {/* Totals breakdown */}
-                {(() => {
+              <label className="text-xs text-zinc-400 font-medium uppercase tracking-wider">
+                Price per Piece *{currency === 'INR' && gstType === 'without' && <span className="text-zinc-600 font-normal normal-case ml-1">(excl. GST)</span>}
+                {currency === 'INR' && gstType === 'with' && <span className="text-zinc-600 font-normal normal-case ml-1">(incl. GST — final price)</span>}
+              </label>
+
+              {/* Table header */}
+              <div className="mt-3 grid grid-cols-12 gap-2 text-xs text-zinc-500 px-1 mb-1">
+                <span className="col-span-5">Item</span>
+                <span className="col-span-2 text-center">Qty</span>
+                <span className="col-span-2 text-right">Price/pc</span>
+                <span className="col-span-3 text-right">Amount</span>
+              </div>
+
+              <div className="space-y-2">
+                {rfq.items.map(item => {
+                  const priceVal = parseFloat(itemPrices[item.id] ?? '0') || 0;
+                  const lineBase = priceVal * (item.qtyRequired || 0);
                   const sym = currency === 'USD' ? '$' : '₹';
-                  const subtotal = rfq.items.reduce((s, i) => s + (parseFloat(itemPrices[i.id] ?? '0') || 0) * (i.qtyRequired || 0), 0);
-                  const gst = currency === 'INR' && gstType === 'with' ? subtotal * (parseFloat(gstPercent) || 0) / 100 : 0;
-                  const total = subtotal + gst;
                   return (
-                    <div className="pt-2 border-t border-zinc-700 space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-zinc-400">Subtotal</span>
-                        <span className="text-zinc-300">{sym}{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    <div key={item.id} className="grid grid-cols-12 gap-2 items-center bg-zinc-800/50 rounded-lg px-3 py-2.5">
+                      <div className="col-span-5">
+                        <p className="text-sm text-zinc-200 font-medium">{item.material?.name ?? item.itemDescription ?? 'Item'}</p>
+                        {item.material?.code && <p className="text-xs text-zinc-500">{item.material.code}</p>}
                       </div>
-                      {gst > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-zinc-400">GST ({gstPercent}%)</span>
-                          <span className="text-zinc-300">+ {sym}{gst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between text-sm font-semibold pt-1 border-t border-zinc-700/50">
-                        <span className="text-white">Total Quote</span>
-                        <span className="text-white">{sym}{total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                      <div className="col-span-2 text-center">
+                        <span className="text-sm text-zinc-300">{item.qtyRequired}</span>
+                        <span className="text-xs text-zinc-500 ml-1">{item.material?.unit ?? item.itemUnit ?? 'pc'}</span>
+                      </div>
+                      <div className="col-span-2 flex items-center justify-end gap-1">
+                        <span className="text-zinc-500 text-xs">{sym}</span>
+                        <input type="number" min={0} step="0.01" placeholder="0.00"
+                          value={itemPrices[item.id] ?? ''}
+                          onChange={e => setItemPrices(p => ({ ...p, [item.id]: e.target.value }))}
+                          onWheel={e => (e.target as HTMLInputElement).blur()}
+                          className="w-24 bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-white text-sm text-right focus:outline-none focus:border-sky-500" />
+                      </div>
+                      <div className="col-span-3 text-right">
+                        <p className="text-sm text-white font-medium">{sym}{lineBase.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                        {priceVal > 0 && <p className="text-xs text-zinc-500">{sym}{priceVal.toFixed(2)} × {item.qtyRequired}</p>}
                       </div>
                     </div>
                   );
-                })()}
+                })}
               </div>
+
+              {/* Summary */}
+              {(() => {
+                const sym = currency === 'USD' ? '$' : '₹';
+                const subtotal = rfq.items.reduce((s, i) => s + (parseFloat(itemPrices[i.id] ?? '0') || 0) * (i.qtyRequired || 0), 0);
+                // Without GST: add GST on top; With GST: price is already final
+                const gstAmt = currency === 'INR' && gstType === 'without' ? subtotal * (parseFloat(gstPercent) || 0) / 100 : 0;
+                const total = subtotal + gstAmt;
+                return (
+                  <div className="mt-3 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-3 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-zinc-400">Subtotal ({rfq.items.length} item{rfq.items.length !== 1 ? 's' : ''})</span>
+                      <span className="text-zinc-200">{sym}{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    {currency === 'INR' && gstType === 'without' && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-400">GST @ {gstPercent}%</span>
+                        <span className="text-amber-400">+ {sym}{gstAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                    {currency === 'INR' && gstType === 'with' && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-zinc-500">GST included in above prices</span>
+                        <span className="text-zinc-500">—</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-base font-bold pt-2 border-t border-zinc-600">
+                      <span className="text-white">Total Quote Value</span>
+                      <span className="text-sky-400">{sym}{total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
