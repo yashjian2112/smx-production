@@ -10,6 +10,7 @@ const createSchema = z.object({
   email:         z.string().email().optional().or(z.literal('')),
   address:       z.string().optional(),
   gstNumber:     z.string().optional(),
+  categories:    z.array(z.string()).optional(),
 });
 
 export async function GET() {
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
       email:         data.email || null,
       address:       data.address,
       gstNumber:     data.gstNumber,
+      categories:    data.categories ?? [],
     },
   });
 

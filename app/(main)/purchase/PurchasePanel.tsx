@@ -1000,6 +1000,7 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [editPortal, setEditPortal] = useState<Vendor | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1012,8 +1013,21 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
 
   return (
     <div>
+      {(isPM || isAdmin) && (
+        <div className="flex justify-end mb-4">
+          <button onClick={() => setShowCreate(true)}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white">
+            + Add Vendor
+          </button>
+        </div>
+      )}
       {loading ? (
         <div className="text-center text-zinc-500 py-12">Loading...</div>
+      ) : vendors.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">
+          <p className="text-sm">No vendors yet.</p>
+          <p className="text-xs mt-1 text-zinc-600">Add at least 5 vendors before creating an RFQ.</p>
+        </div>
       ) : (
         <div className="space-y-3">
           {vendors.map(v => (
@@ -1056,6 +1070,99 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
       )}
 
       {editPortal && <PortalAccessModal vendor={editPortal} onClose={() => setEditPortal(null)} onSaved={() => { setEditPortal(null); load(); }} />}
+      {showCreate && <CreateVendorModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(); }} />}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CREATE VENDOR MODAL
+══════════════════════════════════════════════════════════════*/
+function CreateVendorModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState('');
+  const [contactPerson, setContactPerson] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [gstNumber, setGstNumber] = useState('');
+  const [categories, setCategories] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (!name.trim()) return alert('Vendor name is required');
+    setSaving(true);
+    const r = await fetch('/api/purchase/vendors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name.trim(),
+        contactPerson: contactPerson.trim() || undefined,
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        address: address.trim() || undefined,
+        gstNumber: gstNumber.trim() || undefined,
+        categories: categories.split(',').map(c => c.trim()).filter(Boolean),
+      }),
+    });
+    setSaving(false);
+    if (r.ok) onCreated();
+    else { const e = await r.json(); alert(e.error ?? 'Failed to create vendor'); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg">
+        <div className="p-6">
+          <h2 className="text-white font-semibold text-lg mb-4">Add New Vendor</h2>
+          <div className="space-y-3">
+            <div>
+              <label className="text-zinc-400 text-xs uppercase tracking-wider">Vendor Name *</label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. ABC Electronics Pvt Ltd"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-zinc-400 text-xs uppercase tracking-wider">Contact Person</label>
+                <input value={contactPerson} onChange={e => setContactPerson(e.target.value)} placeholder="Name"
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="text-zinc-400 text-xs uppercase tracking-wider">Phone</label>
+                <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+91 9876543210"
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-zinc-400 text-xs uppercase tracking-wider">Email</label>
+                <input value={email} onChange={e => setEmail(e.target.value)} placeholder="vendor@email.com" type="email"
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="text-zinc-400 text-xs uppercase tracking-wider">GST Number</label>
+                <input value={gstNumber} onChange={e => setGstNumber(e.target.value)} placeholder="27AABCU9603R1ZX"
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+            </div>
+            <div>
+              <label className="text-zinc-400 text-xs uppercase tracking-wider">Address</label>
+              <input value={address} onChange={e => setAddress(e.target.value)} placeholder="Full address"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label className="text-zinc-400 text-xs uppercase tracking-wider">Categories (comma separated)</label>
+              <input value={categories} onChange={e => setCategories(e.target.value)} placeholder="e.g. Electrical, Mechanical, Consumable"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          </div>
+          <div className="flex gap-3 mt-6">
+            <button onClick={onClose} className="flex-1 py-2 rounded-lg text-sm bg-zinc-800 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+            <button onClick={submit} disabled={saving} className="flex-1 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 text-white font-medium disabled:opacity-50">
+              {saving ? 'Creating...' : 'Create Vendor'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
