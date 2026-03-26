@@ -39,12 +39,15 @@ export default function VendorPortal({ token }: { token: string }) {
 
   // Quote form state
   const [currency, setCurrency] = useState('INR');
+  const [gstType, setGstType] = useState<'without' | 'with'>('without');
+  const [gstPercent, setGstPercent] = useState('18');
   const [leadTimeDays, setLeadTimeDays] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [notes, setNotes] = useState('');
   const [itemPrices, setItemPrices] = useState<Record<string, string>>({});
   const [fileUrls, setFileUrls] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [previewFile, setPreviewFile] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/vendor-portal/rfq?token=${token}`)
@@ -106,14 +109,18 @@ export default function VendorPortal({ token }: { token: string }) {
       qty: i.qtyRequired,
     }));
     if (items.some(i => i.unitPrice <= 0)) return alert('Enter price for all items');
-    const totalAmount = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+    const subtotal = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+    const gstAmount = currency === 'INR' && gstType === 'with' ? subtotal * (parseFloat(gstPercent) || 0) / 100 : 0;
+    const totalAmount = subtotal + gstAmount;
+    const gstNote = currency === 'INR' ? (gstType === 'with' ? `[GST ${gstPercent}% included: ₹${gstAmount.toFixed(2)}]` : '[Prices exclusive of GST]') : '';
+    const finalNotes = [gstNote, notes].filter(Boolean).join('\n');
 
     setSubmitting(true);
     try {
       const r = await fetch(`/api/procurement/rfq/${rfq.id}/quotes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, currency, leadTimeDays: parseInt(leadTimeDays), validUntil, notes, fileUrls, items }),
+        body: JSON.stringify({ token, currency, leadTimeDays: parseInt(leadTimeDays), validUntil, notes: finalNotes, fileUrls, items }),
       });
       if (!r.ok) throw new Error((await r.json()).error ?? 'Submission failed');
       setSubmitted(true);
@@ -257,16 +264,60 @@ export default function VendorPortal({ token }: { token: string }) {
               {new Date(rfq.deadline).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </p>
           )}
-          {/* Files */}
+          {/* Files — preview + download */}
           {rfq.fileUrls.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider mb-1">Drawings & Specs</p>
-              {rfq.fileUrls.map((u, i) => (
-                <a key={i} href={u} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-blue-400 text-sm hover:underline">
-                  📎 {u.split('/').pop() ?? `File ${i + 1}`}
-                </a>
-              ))}
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Drawings & Specs ({rfq.fileUrls.length})</p>
+                {rfq.fileUrls.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => rfq.fileUrls.forEach((u, i) => {
+                      setTimeout(() => {
+                        const a = document.createElement('a');
+                        a.href = u; a.download = u.split('/').pop() ?? `file-${i + 1}`;
+                        a.target = '_blank'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                      }, i * 400);
+                    })}
+                    className="text-xs text-blue-400 hover:text-blue-300 underline">
+                    ⬇ Download All
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2">
+                {rfq.fileUrls.map((u, i) => {
+                  const name = u.split('/').pop()?.split('?')[0] ?? `File ${i + 1}`;
+                  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(name);
+                  const isPDF = /\.pdf$/i.test(name);
+                  return (
+                    <div key={i} className="rounded-lg border border-zinc-700 bg-zinc-800/60 overflow-hidden">
+                      {/* Image preview */}
+                      {isImage && (
+                        <img src={u} alt={name} className="w-full max-h-48 object-contain bg-zinc-900 cursor-pointer"
+                          onClick={() => setPreviewFile(u)} />
+                      )}
+                      {/* PDF preview strip */}
+                      {isPDF && (
+                        <div className="bg-zinc-900 h-10 flex items-center justify-center cursor-pointer"
+                          onClick={() => setPreviewFile(u)}>
+                          <span className="text-xs text-zinc-400">📄 Click to preview PDF</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between px-3 py-2 gap-2">
+                        <span className="text-xs text-zinc-300 truncate flex-1">{name}</span>
+                        <div className="flex gap-2 shrink-0">
+                          {(isPDF || isImage) && (
+                            <button type="button" onClick={() => setPreviewFile(u)}
+                              className="text-xs text-sky-400 hover:text-sky-300">Preview</button>
+                          )}
+                          <a href={u} download={name} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-blue-400 hover:text-blue-300">⬇ Download</a>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -309,23 +360,60 @@ export default function VendorPortal({ token }: { token: string }) {
             <p className="text-white font-medium">Submit Your Quote</p>
 
             {/* Currency */}
-            <div>
-              <label className="text-xs text-zinc-400">Currency *</label>
-              <select value={currency} onChange={e => setCurrency(e.target.value)}
-                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none">
-                <option value="INR">INR (₹)</option>
-                <option value="USD">USD ($)</option>
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-zinc-400">Currency *</label>
+                <select value={currency} onChange={e => { setCurrency(e.target.value); if (e.target.value !== 'INR') setGstType('without'); }}
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none">
+                  <option value="INR">INR (₹)</option>
+                  <option value="USD">USD ($)</option>
+                </select>
+              </div>
+              {currency === 'INR' && (
+                <div>
+                  <label className="text-xs text-zinc-400">GST *</label>
+                  <div className="flex mt-1 rounded-lg overflow-hidden border border-zinc-700">
+                    <button type="button" onClick={() => setGstType('without')}
+                      className={`flex-1 py-2.5 text-sm font-medium transition-colors ${gstType === 'without' ? 'bg-sky-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+                      Without GST
+                    </button>
+                    <button type="button" onClick={() => setGstType('with')}
+                      className={`flex-1 py-2.5 text-sm font-medium transition-colors ${gstType === 'with' ? 'bg-sky-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+                      With GST
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* GST % input when With GST selected */}
+            {currency === 'INR' && gstType === 'with' && (
+              <div>
+                <label className="text-xs text-zinc-400">GST Rate (%)</label>
+                <div className="flex gap-2 mt-1">
+                  {['5', '12', '18', '28'].map(p => (
+                    <button key={p} type="button" onClick={() => setGstPercent(p)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${gstPercent === p ? 'bg-sky-600 border-sky-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'}`}>
+                      {p}%
+                    </button>
+                  ))}
+                  <input type="number" min={0} max={100} step="0.1"
+                    value={gstPercent} onChange={e => setGstPercent(e.target.value)}
+                    onWheel={e => (e.target as HTMLInputElement).blur()}
+                    className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm text-center focus:outline-none focus:border-blue-500"
+                    placeholder="%" />
+                </div>
+              </div>
+            )}
 
             {/* Per-item pricing */}
             <div>
-              <label className="text-xs text-zinc-400 font-medium">Price per Item *</label>
+              <label className="text-xs text-zinc-400 font-medium">Price per Item * <span className="text-zinc-600 font-normal">(excl. GST)</span></label>
               <div className="space-y-2 mt-2">
                 {rfq.items.map(item => (
                   <div key={item.id} className="flex items-center gap-3">
-                    <span className="flex-1 text-sm text-zinc-300">{item.material?.name ?? item.itemDescription ?? 'Item'} <span className="text-zinc-500">× {item.qtyRequired} {item.material?.unit ?? item.itemUnit ?? 'unit'}</span></span>
-                    <div className="flex items-center gap-1">
+                    <span className="flex-1 text-sm text-zinc-300 min-w-0 truncate">{item.material?.name ?? item.itemDescription ?? 'Item'} <span className="text-zinc-500">× {item.qtyRequired} {item.material?.unit ?? item.itemUnit ?? 'unit'}</span></span>
+                    <div className="flex items-center gap-1 shrink-0">
                       <span className="text-zinc-500 text-sm">{currency === 'USD' ? '$' : '₹'}</span>
                       <input type="number" min={0} step="0.01" placeholder="0.00"
                         value={itemPrices[item.id] ?? ''}
@@ -335,13 +423,31 @@ export default function VendorPortal({ token }: { token: string }) {
                     </div>
                   </div>
                 ))}
-                {/* Total */}
-                <div className="flex justify-between pt-2 border-t border-zinc-700 text-sm font-medium">
-                  <span className="text-zinc-400">Total Quote</span>
-                  <span className="text-white">
-                    {currency === 'USD' ? '$' : '₹'}{rfq.items.reduce((s, i) => s + (parseFloat(itemPrices[i.id] ?? '0') || 0) * (i.qtyRequired || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
+                {/* Totals breakdown */}
+                {(() => {
+                  const sym = currency === 'USD' ? '$' : '₹';
+                  const subtotal = rfq.items.reduce((s, i) => s + (parseFloat(itemPrices[i.id] ?? '0') || 0) * (i.qtyRequired || 0), 0);
+                  const gst = currency === 'INR' && gstType === 'with' ? subtotal * (parseFloat(gstPercent) || 0) / 100 : 0;
+                  const total = subtotal + gst;
+                  return (
+                    <div className="pt-2 border-t border-zinc-700 space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-400">Subtotal</span>
+                        <span className="text-zinc-300">{sym}{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      {gst > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-zinc-400">GST ({gstPercent}%)</span>
+                          <span className="text-zinc-300">+ {sym}{gst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm font-semibold pt-1 border-t border-zinc-700/50">
+                        <span className="text-white">Total Quote</span>
+                        <span className="text-white">{sym}{total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -395,6 +501,28 @@ export default function VendorPortal({ token }: { token: string }) {
           </div>
         )}
       </div>}
+
+      {/* File Preview Modal */}
+      {previewFile && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+            <p className="text-white text-sm font-medium truncate flex-1">{previewFile.split('/').pop()?.split('?')[0]}</p>
+            <div className="flex items-center gap-3 shrink-0">
+              <a href={previewFile} download target="_blank" rel="noopener noreferrer"
+                className="text-xs text-blue-400 hover:text-blue-300">⬇ Download</a>
+              <button onClick={() => setPreviewFile(null)}
+                className="text-zinc-400 hover:text-white text-xl leading-none">✕</button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            {/\.(jpg|jpeg|png|gif|webp)$/i.test(previewFile.split('?')[0]) ? (
+              <img src={previewFile} alt="Preview" className="w-full h-full object-contain p-4" />
+            ) : (
+              <iframe src={previewFile} className="w-full h-full border-0" title="File Preview" />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
