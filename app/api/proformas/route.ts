@@ -20,7 +20,7 @@ const createSchema = z.object({
   clientId:         z.string().min(1),
   documentType:     z.enum(['PROFORMA', 'INVOICE']).default('PROFORMA'),
   invoiceType:      z.enum(['SALE', 'RETURN', 'REPLACEMENT']).default('SALE'),
-  currency:         z.enum(['INR', 'USD']).default('INR'),
+  currency:         z.enum(['INR', 'USD', 'USD-INR']).default('INR'),
   exchangeRate:     z.number().positive().optional(),
   termsOfPayment:   z.string().optional(),
   deliveryDays:     z.number().int().min(1).optional(),
@@ -79,6 +79,20 @@ export async function POST(req: NextRequest) {
     const client = await prisma.client.findUnique({ where: { id: clientId } });
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 400 });
 
+    // For USD-INR: auto-fetch live exchange rate and lock it
+    let finalExchangeRate = exchangeRate ?? null;
+    if (currency === 'USD-INR' && !exchangeRate) {
+      try {
+        const rateRes = await fetch('https://api.frankfurter.app/latest?from=USD&to=INR');
+        if (rateRes.ok) {
+          const rateData = await rateRes.json() as { rates: { INR: number } };
+          finalExchangeRate = rateData.rates.INR ?? null;
+        }
+      } catch {
+        // If fetch fails, leave rate as null — user can set manually
+      }
+    }
+
     let invoiceNumber: string;
     if (documentType === 'INVOICE' && invoiceType === 'SALE') {
       invoiceNumber = client.globalOrIndian === 'Global'
@@ -94,7 +108,7 @@ export async function POST(req: NextRequest) {
         clientId,
         invoiceType,
         currency,
-        exchangeRate:    exchangeRate    ?? null,
+        exchangeRate:    finalExchangeRate ?? null,
         termsOfPayment:  termsOfPayment  ?? null,
         deliveryDays:    deliveryDays    ?? null,
         termsOfDelivery: termsOfDelivery ?? null,

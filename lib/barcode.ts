@@ -185,6 +185,32 @@ export async function findUnitByComponentBarcode(barcode: string) {
   });
 }
 
+/**
+ * Generate barcode for a material serial (individual component received at GRN).
+ * Format: {categoryCode}{stageType}{YY}{seq4} — e.g. PCBPS260001
+ * Uses 4-digit sequence to distinguish from 3-digit production barcodes.
+ * Queries MaterialSerial table so it's independent of production barcode sequences.
+ */
+export async function generateNextMaterialSerialBarcode(
+  categoryCode: string,
+  stageType: 'PS' | 'BB'
+): Promise<string> {
+  const year = String(new Date().getFullYear() % 100).padStart(2, '0');
+  const prefix = `${categoryCode.trim().toUpperCase()}${stageType}${year}`;
+  const last = await prisma.materialSerial.findFirst({
+    where: { barcode: { startsWith: prefix } },
+    orderBy: { barcode: 'desc' },
+    select: { barcode: true },
+  });
+  let seq = 1;
+  if (last?.barcode) {
+    const seqPart = last.barcode.slice(prefix.length);
+    seq = (parseInt(seqPart, 10) || 0) + 1;
+  }
+  if (seq > 9999) throw new Error(`Material serial barcode sequence full for ${prefix}`);
+  return `${prefix}${String(seq).padStart(4, '0')}`;
+}
+
 /** Map stage keys to their barcode DB field */
 export const STAGE_BARCODE_FIELD: Record<string, 'powerstageBarcode' | 'brainboardBarcode' | 'assemblyBarcode' | 'qcBarcode' | 'finalAssemblyBarcode' | null> = {
   POWERSTAGE_MANUFACTURING:  'powerstageBarcode',

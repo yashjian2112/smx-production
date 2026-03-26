@@ -66,12 +66,32 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       remarks: `Converted from Proforma Invoice ${proforma.invoiceNumber}`,
     });
 
+    // Try to allocate PS and BB barcodes from MaterialSerial inventory (Option A).
+    const qty = targetItem.quantity;
+    const availablePS = await prisma.materialSerial.findMany({
+      where: { stageType: 'PS', status: 'CONFIRMED' },
+      orderBy: { createdAt: 'asc' },
+      take: qty,
+    });
+    const availableBB = await prisma.materialSerial.findMany({
+      where: { stageType: 'BB', status: 'CONFIRMED' },
+      orderBy: { createdAt: 'asc' },
+      take: qty,
+    });
+    const useInventoryPS = availablePS.length >= qty;
+    const useInventoryBB = availableBB.length >= qty;
+
     // Generate units
-    for (let i = 0; i < targetItem.quantity; i++) {
-      const serial              = await generateNextSerial(product.code);
-      const powerstageBarcode   = await generateNextPowerstageBarcode(product.code);
-      const brainboardBarcode   = await generateNextBrainboardBarcode(product.code);
-      const qcBarcode           = await generateNextQCBarcode(product.code);
+    for (let i = 0; i < qty; i++) {
+      const serial    = await generateNextSerial(product.code);
+      const qcBarcode = await generateNextQCBarcode(product.code);
+      const powerstageBarcode = useInventoryPS
+        ? availablePS[i].barcode
+        : await generateNextPowerstageBarcode(product.code);
+      const brainboardBarcode = useInventoryBB
+        ? availableBB[i].barcode
+        : await generateNextBrainboardBarcode(product.code);
+
       await prisma.controllerUnit.create({
         data: {
           serialNumber: serial,
@@ -83,6 +103,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           brainboardBarcode,
           qcBarcode,
         },
+      });
+    }
+
+    // Mark allocated MaterialSerials
+    if (useInventoryPS) {
+      await prisma.materialSerial.updateMany({
+        where: { id: { in: availablePS.slice(0, qty).map(s => s.id) } },
+        data: { status: 'ALLOCATED', allocatedToOrderId: order.id },
+      });
+    }
+    if (useInventoryBB) {
+      await prisma.materialSerial.updateMany({
+        where: { id: { in: availableBB.slice(0, qty).map(s => s.id) } },
+        data: { status: 'ALLOCATED', allocatedToOrderId: order.id },
       });
     }
 

@@ -40,6 +40,13 @@ interface GRN {
   };
   items: GRNItem[];
   batches: Batch[];
+  materialSerials?: {
+    id: string;
+    barcode: string;
+    stageType: string;
+    status: string; // PRINTED | CONFIRMED | ALLOCATED | CONSUMED
+    material: { name: string; code: string };
+  }[];
 }
 
 interface GRNItem {
@@ -614,6 +621,13 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
   const [drSaving, setDrSaving]       = useState(false);
   const [drError, setDrError]         = useState('');
 
+  // Serial scan state
+  const [scanningGRN, setScanningGRN] = useState<GRN | null>(null);
+  const [scanBarcode, setScanBarcode] = useState('');
+  const [scanResult, setScanResult]   = useState<{ ok: boolean; message: string } | null>(null);
+  const [scanSaving, setScanSaving]   = useState(false);
+  const [grnSerials, setGrnSerials]   = useState<Record<string, { id: string; barcode: string; stageType: string; status: string; material: { name: string; code: string } }[]>>({});
+
   const load = useCallback(async () => {
     setLoading(true);
     const [grnRes, poRes, matRes] = await Promise.all([
@@ -631,6 +645,35 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  async function loadSerials(grnId: string) {
+    const r = await fetch(`/api/procurement/material-serials?grnId=${grnId}`);
+    if (r.ok) {
+      const data = await r.json();
+      setGrnSerials(prev => ({ ...prev, [grnId]: data }));
+    }
+  }
+
+  async function handleScan(e: React.FormEvent) {
+    e.preventDefault();
+    if (!scanBarcode.trim()) return;
+    setScanSaving(true);
+    setScanResult(null);
+    const r = await fetch('/api/procurement/material-serials/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ barcode: scanBarcode.trim().toUpperCase() }),
+    });
+    const data = await r.json();
+    if (r.ok) {
+      setScanResult({ ok: true, message: data.alreadyConfirmed ? `Already confirmed: ${scanBarcode}` : `✓ Confirmed: ${scanBarcode} (${data.material?.name ?? ''})` });
+      setScanBarcode('');
+      if (scanningGRN) loadSerials(scanningGRN.id);
+    } else {
+      setScanResult({ ok: false, message: data.error || 'Scan failed' });
+    }
+    setScanSaving(false);
+  }
 
   async function handleDirectSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -778,6 +821,60 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
                   </table>
                   {grn.notes && <p className="text-zinc-500 text-xs mt-2">Note: {grn.notes}</p>}
                 </div>
+                {/* MaterialSerial section */}
+                {(() => {
+                  const serials = grnSerials[grn.id];
+                  if (serials === undefined) {
+                    // Not loaded yet — show load button
+                    return (
+                      <div className="mt-3 pt-3 border-t border-zinc-800 flex items-center gap-2">
+                        <button onClick={() => loadSerials(grn.id)}
+                          className="px-3 py-1.5 rounded-lg text-xs text-sky-400 border border-sky-900 hover:border-sky-600 transition-colors">
+                          Check Unit Barcodes
+                        </button>
+                      </div>
+                    );
+                  }
+                  if (serials.length === 0) return null;
+                  const confirmed = serials.filter(s => s.status !== 'PRINTED').length;
+                  const total = serials.length;
+                  return (
+                    <div className="mt-3 pt-3 border-t border-zinc-800">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-zinc-300 text-xs font-medium">Unit Barcodes</span>
+                          <span className={`ml-2 text-xs font-medium ${confirmed === total ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {confirmed}/{total} confirmed
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <a href={`/print/grn-serials/${grn.id}`} target="_blank" rel="noreferrer"
+                            className="px-3 py-1 rounded-lg text-xs text-zinc-300 border border-zinc-700 hover:text-white transition-colors">
+                            Print Labels
+                          </a>
+                          {confirmed < total && (
+                            <button onClick={() => { setScanningGRN(grn); setScanBarcode(''); setScanResult(null); }}
+                              className="px-3 py-1 rounded-lg text-xs font-medium bg-sky-700 hover:bg-sky-600 text-white transition-colors">
+                              Scan & Confirm
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {serials.map(s => (
+                          <span key={s.id} className={`px-2 py-0.5 rounded text-xs font-mono ${
+                            s.status === 'PRINTED' ? 'bg-zinc-800 text-zinc-400' :
+                            s.status === 'CONFIRMED' ? 'bg-emerald-900/40 text-emerald-400' :
+                            s.status === 'ALLOCATED' ? 'bg-sky-900/40 text-sky-400' :
+                            'bg-purple-900/40 text-purple-400'
+                          }`} title={s.status}>
+                            {s.barcode}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -946,6 +1043,68 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Scan Confirmation Modal */}
+      {scanningGRN && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }}>
+          <div className="w-full max-w-md rounded-2xl p-6" style={{ background: 'rgb(24,24,27)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-white font-semibold">Scan Unit Barcodes</h3>
+                <p className="text-zinc-400 text-xs mt-0.5">{scanningGRN.grnNumber} — stick label on board, then scan</p>
+              </div>
+              <button onClick={() => { setScanningGRN(null); setScanBarcode(''); setScanResult(null); }}
+                className="text-zinc-400 hover:text-white text-xl leading-none">✕</button>
+            </div>
+            <form onSubmit={handleScan} className="space-y-3">
+              <div>
+                <label className="text-zinc-400 text-xs">Scan or type barcode</label>
+                <input
+                  autoFocus
+                  value={scanBarcode}
+                  onChange={e => setScanBarcode(e.target.value.toUpperCase())}
+                  placeholder="e.g. PCBPS260001"
+                  className="w-full mt-1 px-4 py-3 rounded-xl text-sm text-white border border-zinc-700 outline-none focus:border-sky-500 font-mono tracking-widest"
+                  style={{ background: 'rgb(39,39,42)' }}
+                />
+              </div>
+              {scanResult && (
+                <div className={`px-3 py-2 rounded-lg text-sm ${scanResult.ok ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'}`}>
+                  {scanResult.message}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { setScanningGRN(null); setScanBarcode(''); setScanResult(null); }}
+                  className="flex-1 py-2.5 rounded-xl text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                  Done
+                </button>
+                <button type="submit" disabled={scanSaving || !scanBarcode.trim()}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50">
+                  {scanSaving ? 'Confirming…' : 'Confirm Scan'}
+                </button>
+              </div>
+            </form>
+            {/* Progress */}
+            {(() => {
+              const serials = grnSerials[scanningGRN.id] ?? [];
+              if (!serials.length) return null;
+              const confirmed = serials.filter(s => s.status !== 'PRINTED').length;
+              return (
+                <div className="mt-4 pt-4 border-t border-zinc-800">
+                  <div className="flex justify-between text-xs text-zinc-400 mb-1">
+                    <span>Progress</span>
+                    <span>{confirmed} / {serials.length} confirmed</span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-zinc-800">
+                    <div className="h-2 rounded-full bg-sky-500 transition-all"
+                      style={{ width: `${serials.length ? (confirmed / serials.length) * 100 : 0}%` }} />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

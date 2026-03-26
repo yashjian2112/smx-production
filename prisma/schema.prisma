@@ -935,6 +935,7 @@ model RawMaterial {
   preferredVendorId String?  @map("preferred_vendor_id")
   active            Boolean  @default(true)
   barcode           String?  @unique
+  productionStage   String?  @map("production_stage")  // "PS" | "BB" | null — for individual serial tracking at GRN
   batchTracking     Boolean  @default(false) @map("batch_tracking")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -953,6 +954,7 @@ model RawMaterial {
   rfqItems         RFQItem[]
   quoteItems       VendorQuoteItem[]
   ganItems         GANItem[]
+  materialSerials  MaterialSerial[]
   damageReports    DamageReport[]
 
   @@map("raw_materials")
@@ -1203,6 +1205,7 @@ model GoodsReceipt {
   receivedBy    User               @relation(fields: [receivedById], references: [id])
   items         GoodsReceiptItem[]
   batches       InventoryBatch[]
+  materialSerials MaterialSerial[]
 
   @@map("goods_receipts")
 }
@@ -1611,6 +1614,25 @@ model GANItem {
   material RawMaterial      @relation(fields: [materialId], references: [id])
 
   @@map("gan_items")
+}
+
+// Material Serials — individual barcodes generated at GRN for traceable components
+model MaterialSerial {
+  id          String    @id @default(cuid())
+  materialId  String    @map("material_id")
+  grnId       String    @map("grn_id")
+  stageType   String    @map("stage_type")            // "PS" | "BB"
+  barcode     String    @unique
+  status      String    @default("PRINTED")            // PRINTED | CONFIRMED | ALLOCATED | CONSUMED
+  confirmedAt DateTime? @map("confirmed_at")
+  allocatedToOrderId String? @map("allocated_to_order_id")
+  allocatedToUnitId  String? @map("allocated_to_unit_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  material RawMaterial    @relation(fields: [materialId], references: [id])
+  grn      GoodsReceipt   @relation(fields: [grnId], references: [id])
+
+  @@map("material_serials")
 }
 
 // Vendor Performance — recorded per PO after GRN
