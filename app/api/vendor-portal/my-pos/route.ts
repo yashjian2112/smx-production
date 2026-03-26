@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       expectedDelivery: true,
       createdAt: true,
       rfq: { select: { rfqNumber: true, title: true, paymentTerms: true } },
-      items: { select: { id: true, quantity: true, unitPrice: true, rawMaterial: { select: { name: true, unit: true } } } },
+      items: { select: { id: true, quantity: true, unitPrice: true, itemDescription: true, itemUnit: true, rawMaterial: { select: { name: true, unit: true } } } },
       vendorInvoices: {
         select: {
           id: true,

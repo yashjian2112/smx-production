@@ -13,7 +13,7 @@ type RFQ = {
   items: RFQItem[];
 };
 
-type POItem = { id: string; quantity: number; unitPrice: number; rawMaterial: { name: string; unit: string } };
+type POItem = { id: string; quantity: number; unitPrice: number; itemDescription?: string | null; itemUnit?: string | null; rawMaterial: { name: string; unit: string } | null };
 type VendorInvoiceItem = { id: string; invoiceNumber: string; amount: number; gstAmount: number; tdsAmount: number; netAmount: number; status: string; submittedAt: string };
 type VendorPO = {
   id: string; poNumber: string; status: string; totalAmount: number; currency: string;
@@ -228,8 +228,8 @@ export default function VendorPortal({ token }: { token: string }) {
                 <div className="space-y-1 pt-2 border-t border-zinc-800">
                   {po.items.map(item => (
                     <div key={item.id} className="flex justify-between text-xs">
-                      <span className="text-zinc-400">{item.rawMaterial.name}</span>
-                      <span className="text-zinc-500">{item.quantity} {item.rawMaterial.unit} · ₹{item.unitPrice}/unit</span>
+                      <span className="text-zinc-400">{item.rawMaterial?.name ?? item.itemDescription ?? 'Item'}</span>
+                      <span className="text-zinc-500">{item.quantity} {item.rawMaterial?.unit ?? item.itemUnit ?? 'pcs'} · ₹{item.unitPrice}/unit</span>
                     </div>
                   ))}
                 </div>
