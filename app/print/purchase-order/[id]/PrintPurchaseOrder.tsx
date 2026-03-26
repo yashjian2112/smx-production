@@ -44,9 +44,11 @@ function fmt(amount: number, currency: string) {
   return `\u20b9${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const dt = new Date(d);
+  return `${String(dt.getUTCDate()).padStart(2,'0')} ${MONTHS[dt.getUTCMonth()]} ${dt.getUTCFullYear()}`;
 }
 
 export function PrintPurchaseOrder({ po, settings }: { po: PO; settings: Settings }) {
