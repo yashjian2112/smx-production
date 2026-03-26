@@ -32,36 +32,35 @@ export default function VendorLoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 text-white text-2xl font-bold mb-3">S</div>
-          <h1 className="text-white text-xl font-bold">SMX Drives</h1>
-          <p className="text-zinc-500 text-sm mt-1">Vendor Portal</p>
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 text-white text-3xl font-bold mb-4">S</div>
+          <h1 className="text-white text-2xl font-bold">SMX Drives</h1>
+          <p className="text-zinc-400 text-base mt-1">Vendor Portal</p>
         </div>
 
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-          <h2 className="text-white font-semibold text-lg mb-1">Sign in</h2>
-          <p className="text-zinc-500 text-sm mb-6">Access your RFQs and purchase orders</p>
+          <h2 className="text-white font-bold text-2xl mb-5">Sign in</h2>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="text-zinc-400 text-xs uppercase tracking-wider">Email</label>
+              <label className="text-zinc-400 text-sm font-medium">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="you@vendor.com"
                 required
-                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                className="w-full mt-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-white text-base focus:outline-none focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="text-zinc-400 text-xs uppercase tracking-wider">Password</label>
+              <label className="text-zinc-400 text-sm font-medium">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                className="w-full mt-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-white text-base focus:outline-none focus:border-blue-500"
               />
             </div>
 
@@ -74,7 +73,7 @@ export default function VendorLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm transition-colors disabled:opacity-50"
+              className="w-full py-3.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-base transition-colors disabled:opacity-50"
             >
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
