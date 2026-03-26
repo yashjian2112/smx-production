@@ -215,7 +215,9 @@ export default function VendorPortal({ token }: { token: string }) {
                 const isPartialPaid = po.paymentStatus === 'PARTIAL';
                 const canSubmitInvoice = goodsReceived && !invoiceSubmitted;
 
-                // 5-step timeline
+                // 6-step timeline
+                const advancePaid = isPartialPaid || isPaid;
+                const goodsChecked = po.status === 'RECEIVED';
                 type Step = { label: string; sub: string; done: boolean; active: boolean };
                 const steps: Step[] = [
                   {
@@ -225,25 +227,31 @@ export default function VendorPortal({ token }: { token: string }) {
                     active: false,
                   },
                   {
-                    label: 'Goods Received',
-                    sub: goodsReceived ? (po.status === 'PARTIALLY_RECEIVED' ? 'Partial' : 'Complete') : 'Pending',
-                    done: goodsReceived,
-                    active: !goodsReceived,
+                    label: 'Adv. Payment',
+                    sub: advancePaid ? `${sym}${po.paidAmount.toLocaleString('en-IN')}` : paymentRaised ? 'Processing' : 'Pending',
+                    done: advancePaid,
+                    active: !advancePaid && paymentRaised,
                   },
                   {
-                    label: 'Invoice',
-                    sub: invoiceSubmitted ? 'Submitted' : 'Pending',
-                    done: invoiceSubmitted,
-                    active: goodsReceived && !invoiceSubmitted,
+                    label: 'Goods Received',
+                    sub: goodsReceived ? (po.status === 'PARTIALLY_RECEIVED' ? 'Partial' : 'Arrived') : 'Pending',
+                    done: goodsReceived,
+                    active: !goodsReceived && advancePaid,
+                  },
+                  {
+                    label: 'Goods Check',
+                    sub: goodsChecked ? 'Verified' : goodsReceived ? 'In Progress' : 'Pending',
+                    done: goodsChecked,
+                    active: goodsReceived && !goodsChecked,
                   },
                   {
                     label: 'Payment',
-                    sub: isPaid ? 'Paid' : isPartialPaid ? 'Partial' : paymentRaised ? po.paymentRequest!.status.replace(/_/g,' ') : 'Pending',
+                    sub: isPaid ? 'Paid' : invoiceSubmitted ? 'Processing' : 'Pending',
                     done: isPaid,
-                    active: invoiceSubmitted && !isPaid,
+                    active: goodsChecked && invoiceSubmitted && !isPaid,
                   },
                   {
-                    label: 'Complete',
+                    label: 'Completed',
                     sub: isPaid ? '✓ Done' : '—',
                     done: isPaid,
                     active: false,
@@ -297,30 +305,35 @@ export default function VendorPortal({ token }: { token: string }) {
                     </div>
 
                     {/* Status Timeline */}
-                    <div className="px-5 py-4 border-t border-zinc-800/80" style={{ background: 'rgba(255,255,255,0.02)' }}>
-                      <div className="flex items-start">
+                    <div className="px-4 py-4 border-t border-zinc-800/80 overflow-x-auto" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                      <div className="flex items-start min-w-[420px]">
                         {steps.map((step, idx) => (
                           <div key={idx} className="flex-1 flex flex-col items-center relative">
-                            {/* Connector line */}
+                            {/* Connector line left-half (from prev dot to this dot) */}
+                            {idx > 0 && (
+                              <div className="absolute top-[11px] right-1/2 w-full h-0.5 z-0"
+                                style={{ background: step.done ? '#10b981' : step.active ? '#3b82f6' : '#27272a' }} />
+                            )}
+                            {/* Connector line right-half (from this dot to next dot) */}
                             {idx < steps.length - 1 && (
-                              <div className="absolute top-3 left-1/2 w-full h-0.5 z-0"
-                                style={{ background: steps[idx + 1].done || steps[idx + 1].active ? (steps[idx + 1].done ? '#10b981' : '#3b82f6') : '#27272a' }} />
+                              <div className="absolute top-[11px] left-1/2 w-full h-0.5 z-0"
+                                style={{ background: steps[idx + 1].done ? '#10b981' : steps[idx + 1].active ? '#3b82f6' : '#27272a' }} />
                             )}
                             {/* Circle */}
-                            <div className={`relative z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${
+                            <div className={`relative z-10 w-[22px] h-[22px] rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all shrink-0 ${
                               step.done
                                 ? 'bg-emerald-500 border-emerald-500 text-white'
                                 : step.active
-                                  ? 'bg-sky-900 border-sky-400 text-sky-300'
+                                  ? 'bg-sky-950 border-sky-400 text-sky-300'
                                   : 'bg-zinc-900 border-zinc-700 text-zinc-600'
                             }`}>
                               {step.done ? '✓' : idx + 1}
                             </div>
                             {/* Label */}
-                            <p className={`text-[10px] font-medium mt-1.5 text-center leading-tight ${step.done ? 'text-emerald-400' : step.active ? 'text-sky-400' : 'text-zinc-600'}`}>
+                            <p className={`text-[10px] font-semibold mt-1.5 text-center leading-tight px-0.5 ${step.done ? 'text-emerald-400' : step.active ? 'text-sky-400' : 'text-zinc-600'}`}>
                               {step.label}
                             </p>
-                            <p className={`text-[9px] mt-0.5 text-center ${step.done ? 'text-zinc-400' : step.active ? 'text-sky-600' : 'text-zinc-700'}`}>
+                            <p className={`text-[9px] mt-0.5 text-center leading-tight px-0.5 ${step.done ? 'text-zinc-400' : step.active ? 'text-sky-600' : 'text-zinc-700'}`}>
                               {step.sub}
                             </p>
                           </div>
