@@ -605,7 +605,7 @@ function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
   useEffect(() => {
     fetch('/api/procurement/requirement-orders?status=APPROVED').then(r => r.json()).then(setApprovedROs);
-    fetch('/api/inventory/vendors').then(r => r.json()).then(v => setVendors(Array.isArray(v) ? v : []));
+    fetch('/api/purchase/vendors').then(r => r.json()).then(v => setVendors(Array.isArray(v) ? v : []));
   }, []);
 
   function toggleVendor(id: string) {
@@ -631,7 +631,7 @@ function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated
     const files = Array.from(e.target.files ?? []);
     for (const file of files) {
       const fd = new FormData(); fd.append('file', file);
-      const r = await fetch('/api/upload', { method: 'POST', body: fd });
+      const r = await fetch('/api/procurement/upload', { method: 'POST', body: fd });
       if (r.ok) { const d = await r.json(); setFileUrls(prev => [...prev, d.url]); }
     }
   }
@@ -1003,7 +1003,7 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await fetch('/api/inventory/vendors');
+    const r = await fetch('/api/purchase/vendors');
     if (r.ok) setVendors(await r.json());
     setLoading(false);
   }, []);
