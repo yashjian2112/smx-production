@@ -37,6 +37,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }, { status: 400 });
   }
 
+  // Enforce lowest bid — only the quote with the lowest totalAmount can be awarded
+  const lowestQuote = submittedQuotes.slice().sort((a: { totalAmount: number }, b: { totalAmount: number }) => a.totalAmount - b.totalAmount)[0] as { id: string; totalAmount: number };
+  if (lowestQuote.id !== selectedQuoteId) {
+    return NextResponse.json({
+      error: `Only the lowest bid can be awarded. The lowest quote is ₹${lowestQuote.totalAmount.toLocaleString('en-IN')}.`
+    }, { status: 400 });
+  }
+
+  // Enforce sample approval before PO
+  const quoteWithSample = rfq.quotes.find((q: { id: string }) => q.id === selectedQuoteId) as { sampleStatus: string };
+  if (!quoteWithSample || quoteWithSample.sampleStatus !== 'APPROVED') {
+    return NextResponse.json({
+      error: 'Sample from the lowest bidder must be approved before creating a PO.'
+    }, { status: 400 });
+  }
+
   const poNumber = await generatePONumber();
 
   const po = await prisma.$transaction(async (tx) => {

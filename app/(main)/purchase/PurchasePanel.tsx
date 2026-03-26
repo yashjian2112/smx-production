@@ -26,6 +26,7 @@ type VendorInvite = { id: string; vendor: { id: string; name: string; code: stri
 type Quote = {
   id: string; vendorId: string; currency: string; totalAmount: number; leadTimeDays: number;
   validUntil: string; notes?: string; status: string; submittedAt: string;
+  sampleStatus: string;  // NONE, REQUESTED, APPROVED, REJECTED
   vendor: { id: string; name: string; code: string };
   items: { id: string; rfqItemId: string; materialId: string; unitPrice: number; totalPrice: number; currency: string }[];
 };
@@ -485,6 +486,16 @@ function RFQTab({ isPM, isIM, preselectedRO, onClearPreselected }: { isPM: boole
     else { const e = await r.json(); alert(e.error); }
   }
 
+  async function sampleAction(rfqId: string, quoteId: string, action: 'request' | 'approve' | 'reject') {
+    const r = await fetch(`/api/procurement/rfq/${rfqId}/sample`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quoteId, action }),
+    });
+    if (r.ok) load();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
   return (
     <div>
       {isPM && (
@@ -548,39 +559,72 @@ function RFQTab({ isPM, isIM, preselectedRO, onClearPreselected }: { isPM: boole
                     <div>
                       <div className="text-xs text-zinc-500 font-medium mb-2 uppercase tracking-wider">Vendor Quotes</div>
                       <div className="space-y-2">
-                        {rfq.quotes.sort((a, b) => a.totalAmount - b.totalAmount).map((q, idx) => (
-                          <div key={q.id} className={`p-3 rounded-lg border ${q.status === 'SELECTED' ? 'border-green-600 bg-green-950/40' : idx === 0 && q.status === 'SUBMITTED' ? 'border-amber-600/50 bg-amber-950/20' : 'border-zinc-700 bg-zinc-800'}`}>
+                        {rfq.quotes.sort((a, b) => a.totalAmount - b.totalAmount).map((q, idx) => {
+                          const isLowest = idx === 0 && q.status === 'SUBMITTED';
+                          const hasEnoughQuotes = rfq.quotes.length >= 5;
+                          const sym = q.currency === 'USD' ? '$' : '₹';
+                          return (
+                          <div key={q.id} className={`p-3 rounded-lg border ${q.status === 'SELECTED' ? 'border-green-600 bg-green-950/40' : isLowest ? 'border-amber-600/50 bg-amber-950/20' : 'border-zinc-700 bg-zinc-800'}`}>
                             <div className="flex items-center justify-between flex-wrap gap-2">
-                              <div>
+                              <div className="flex items-center flex-wrap gap-1.5">
                                 <span className="text-white font-medium">{q.vendor.name}</span>
-                                {idx === 0 && q.status === 'SUBMITTED' && <span className="ml-2 text-xs text-amber-300">Lowest</span>}
-                                {q.status === 'SELECTED' && <span className="ml-2 text-xs text-green-300">✓ Selected</span>}
-                                {q.status === 'REJECTED' && <span className="ml-2 text-xs text-zinc-500">Rejected</span>}
+                                {isLowest && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-300 font-medium">Lowest</span>}
+                                {q.status === 'SELECTED' && <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/50 text-green-300 font-medium">✓ Selected</span>}
+                                {q.status === 'REJECTED' && <span className="text-xs text-zinc-500">Rejected</span>}
+                                {/* Sample status badge */}
+                                {isLowest && q.sampleStatus === 'REQUESTED' && <span className="text-xs px-1.5 py-0.5 rounded bg-sky-900/50 text-sky-300">Sample Requested</span>}
+                                {isLowest && q.sampleStatus === 'APPROVED'  && <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-900/50 text-emerald-300 font-medium">✓ Sample Approved</span>}
+                                {isLowest && q.sampleStatus === 'REJECTED'  && <span className="text-xs px-1.5 py-0.5 rounded bg-red-900/50 text-red-300">Sample Rejected</span>}
                               </div>
-                              <div className="flex items-center gap-3">
-                                <span className="text-white font-semibold">
-                                  {q.currency === 'USD' ? '$' : '₹'}{q.totalAmount.toLocaleString('en-IN')}
-                                </span>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-white font-semibold">{sym}{q.totalAmount.toLocaleString('en-IN')}</span>
                                 <span className="text-xs text-zinc-400">{q.leadTimeDays}d lead</span>
-                                {isPM && rfq.status === 'OPEN' && q.status === 'SUBMITTED' && (
-                                  rfq.quotes.length >= 5 ? (
-                                    <button onClick={() => createPO(rfq.id, q.id)}
-                                      className="px-3 py-1 rounded-lg text-xs bg-green-700 hover:bg-green-600 text-white">
-                                      Create PO
-                                    </button>
-                                  ) : (
-                                    <div className="relative group">
-                                      <button disabled
-                                        className="px-3 py-1 rounded-lg text-xs bg-zinc-700 text-zinc-500 cursor-not-allowed">
+
+                                {isPM && rfq.status === 'OPEN' && isLowest && (() => {
+                                  if (!hasEnoughQuotes) {
+                                    return (
+                                      <div className="relative group">
+                                        <button disabled className="px-3 py-1 rounded-lg text-xs bg-zinc-700 text-zinc-500 cursor-not-allowed">
+                                          Request Sample
+                                        </button>
+                                        <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block z-10 w-52 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-xs text-zinc-300 shadow-lg">
+                                          Minimum 5 quotes required.<br />{rfq.quotes.length} of 5 received.
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  if (q.sampleStatus === 'NONE' || q.sampleStatus === 'REJECTED') {
+                                    return (
+                                      <button onClick={() => sampleAction(rfq.id, q.id, 'request')}
+                                        className="px-3 py-1 rounded-lg text-xs bg-sky-700 hover:bg-sky-600 text-white">
+                                        Request Sample
+                                      </button>
+                                    );
+                                  }
+                                  if (q.sampleStatus === 'REQUESTED') {
+                                    return (
+                                      <div className="flex gap-1.5">
+                                        <button onClick={() => sampleAction(rfq.id, q.id, 'approve')}
+                                          className="px-3 py-1 rounded-lg text-xs bg-emerald-700 hover:bg-emerald-600 text-white">
+                                          Approve Sample
+                                        </button>
+                                        <button onClick={() => sampleAction(rfq.id, q.id, 'reject')}
+                                          className="px-3 py-1 rounded-lg text-xs bg-red-800 hover:bg-red-700 text-white">
+                                          Reject
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+                                  if (q.sampleStatus === 'APPROVED') {
+                                    return (
+                                      <button onClick={() => createPO(rfq.id, q.id)}
+                                        className="px-3 py-1 rounded-lg text-xs bg-green-700 hover:bg-green-600 text-white font-medium">
                                         Create PO
                                       </button>
-                                      <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block z-10 w-52 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-xs text-zinc-300 shadow-lg">
-                                        Minimum 5 quotes required.<br />
-                                        {rfq.quotes.length} of 5 received.
-                                      </div>
-                                    </div>
-                                  )
-                                )}
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                             </div>
                             {/* Per-item pricing */}
@@ -598,7 +642,8 @@ function RFQTab({ isPM, isIM, preselectedRO, onClearPreselected }: { isPM: boole
                               </div>
                             )}
                           </div>
-                        ))}
+                        );
+                        })}
                       </div>
                     </div>
                   )}
