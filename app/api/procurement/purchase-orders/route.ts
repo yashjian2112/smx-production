@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
       approvedBy: { select: { name: true } },
       items: {
         include: { rawMaterial: { select: { name: true, unit: true } } },
+        // includes itemDescription + itemUnit for custom items
       },
       goodsArrivals: {
         include: { items: true, grn: { select: { id: true, grnNumber: true } } },

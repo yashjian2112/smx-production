@@ -42,7 +42,7 @@ type RFQ = {
   _count: { quotes: number; vendorInvites: number };
 };
 
-type POItem = { id: string; rawMaterialId: string; quantity: number; unitPrice: number; receivedQuantity: number; rawMaterial: { name: string; unit: string } };
+type POItem = { id: string; rawMaterialId: string | null; itemDescription: string | null; itemUnit: string | null; quantity: number; unitPrice: number; receivedQuantity: number; rawMaterial: { name: string; unit: string } | null };
 type GAN = { id: string; ganNumber: string; arrivalDate: string; status: string; notes?: string; items: { id: string; materialId: string; qtyArrived: number; material: { name: string; unit: string } }[]; grn?: { id: string; grnNumber: string } };
 type PO = {
   id: string; poNumber: string; status: string; totalAmount: number; currency: string;
@@ -1230,6 +1230,7 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
   const [creatingGAN, setCreatingGAN] = useState<PO | null>(null);
   const [creatingGRN, setCreatingGRN] = useState<{ po: PO; gan: GAN } | null>(null);
   const [creatingPR, setCreatingPR] = useState<PO | null>(null);
+  const [uploadingInvoiceFor, setUploadingInvoiceFor] = useState<PO | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1265,6 +1266,10 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
                   </div>
                 </div>
                 <div className="flex gap-2 items-center flex-wrap">
+                  <button onClick={() => window.open(`/print/purchase-order/${po.id}`, '_blank')}
+                    className="text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-2 py-1 rounded">
+                    PDF
+                  </button>
                   <button onClick={() => setExpanded(expanded === po.id ? null : po.id)}
                     className="text-xs text-blue-400 hover:text-blue-300">
                     {expanded === po.id ? 'Hide' : 'Details'}
@@ -1273,6 +1278,12 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
                     <button onClick={() => setCreatingGAN(po)}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-700 hover:bg-orange-600 text-white">
                       Goods Arrived
+                    </button>
+                  )}
+                  {isPM && ['GOODS_ARRIVED', 'PARTIALLY_RECEIVED', 'RECEIVED'].includes(po.status) && po.vendorInvoices.length === 0 && (
+                    <button onClick={() => setUploadingInvoiceFor(po)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-700 hover:bg-amber-600 text-white">
+                      Upload Invoice
                     </button>
                   )}
                   {isPM && ['RECEIVED', 'PARTIALLY_RECEIVED'].includes(po.status) && !po.paymentRequest && po.vendorInvoices.length > 0 && (
@@ -1293,12 +1304,29 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
                 <div className="mt-3 border-t border-zinc-800 pt-3">
                   {/* PO Items */}
                   <div className="mb-3 space-y-1">
-                    {po.items.map(item => (
-                      <div key={item.id} className="flex justify-between text-sm">
-                        <span className="text-zinc-300">{item.rawMaterial.name}</span>
-                        <span className="text-zinc-400">{item.receivedQuantity}/{item.quantity} {item.rawMaterial.unit} received · ₹{item.unitPrice}/unit</span>
+                    {po.items.length === 0 ? (
+                      <div className="text-xs text-zinc-500 italic">No line items stored</div>
+                    ) : po.items.map(item => {
+                      const name = item.rawMaterial?.name ?? item.itemDescription ?? 'Custom Item';
+                      const unit = item.rawMaterial?.unit ?? item.itemUnit ?? '';
+                      return (
+                        <div key={item.id} className="flex justify-between text-sm">
+                          <span className="text-zinc-300">{name}</span>
+                          <span className="text-zinc-400">{item.receivedQuantity}/{item.quantity} {unit} received · ₹{item.unitPrice}/unit</span>
+                        </div>
+                      );
+                    })}
+                    {po.vendorInvoices.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-zinc-800">
+                        <div className="text-xs text-zinc-500 font-medium mb-1 uppercase tracking-wider">Vendor Invoices</div>
+                        {po.vendorInvoices.map(inv => (
+                          <div key={inv.id} className="flex justify-between text-xs text-zinc-400">
+                            <span className="font-mono">{inv.invoiceNumber}</span>
+                            <span>₹{inv.netAmount.toLocaleString('en-IN')} net · <span className={inv.status === 'APPROVED' ? 'text-emerald-400' : 'text-amber-400'}>{inv.status}</span></span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
 
                   {/* GANs */}
@@ -1336,6 +1364,7 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
       {creatingGAN && <GANModal po={creatingGAN} onClose={() => setCreatingGAN(null)} onCreated={() => { setCreatingGAN(null); load(); }} />}
       {creatingGRN && <GRNModal po={creatingGRN.po} gan={creatingGRN.gan} onClose={() => setCreatingGRN(null)} onCreated={() => { setCreatingGRN(null); load(); }} />}
       {creatingPR && <CreatePaymentRequestModal po={creatingPR} onClose={() => setCreatingPR(null)} onCreated={() => { setCreatingPR(null); load(); }} />}
+      {uploadingInvoiceFor && <UploadVendorInvoiceModal po={uploadingInvoiceFor} onClose={() => setUploadingInvoiceFor(null)} onCreated={() => { setUploadingInvoiceFor(null); load(); }} />}
     </div>
   );
 }
@@ -1343,7 +1372,7 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
 /* ─── GAN Modal ─────────────────────────────────────────── */
 function GANModal({ po, onClose, onCreated }: { po: PO; onClose: () => void; onCreated: () => void }) {
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState(po.items.map(i => ({ poItemId: i.id, materialId: i.rawMaterialId, qtyArrived: i.quantity - i.receivedQuantity, name: i.rawMaterial.name, unit: i.rawMaterial.unit })));
+  const [items, setItems] = useState(po.items.filter(i => i.rawMaterialId).map(i => ({ poItemId: i.id, materialId: i.rawMaterialId!, qtyArrived: i.quantity - i.receivedQuantity, name: i.rawMaterial?.name ?? i.itemDescription ?? 'Item', unit: i.rawMaterial?.unit ?? i.itemUnit ?? '' })));
   const [saving, setSaving] = useState(false);
 
   async function submit() {
@@ -1748,6 +1777,103 @@ function CreateVendorModal({ vendorCategories, onClose, onCreated }: { vendorCat
             <button onClick={onClose} className="flex-1 py-2 rounded-lg text-sm bg-zinc-800 text-zinc-300 hover:bg-zinc-700">Cancel</button>
             <button onClick={submit} disabled={saving} className="flex-1 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 text-white font-medium disabled:opacity-50">
               {saving ? 'Creating...' : 'Create Vendor'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UPLOAD VENDOR INVOICE MODAL
+══════════════════════════════════════════════════════════════*/
+function UploadVendorInvoiceModal({ po, onClose, onCreated }: { po: PO; onClose: () => void; onCreated: () => void }) {
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [amount, setAmount] = useState('');
+  const [gstAmount, setGstAmount] = useState('0');
+  const [tdsAmount, setTdsAmount] = useState('0');
+  const [fileUrl, setFileUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function uploadFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await fetch('/api/procurement/upload', { method: 'POST', body: fd });
+    setUploading(false);
+    if (r.ok) { const d = await r.json(); setFileUrl(d.url); }
+    else alert('Upload failed');
+  }
+
+  async function submit() {
+    if (!invoiceNumber.trim()) return alert('Invoice number required');
+    if (!amount || isNaN(Number(amount))) return alert('Valid amount required');
+    setSaving(true);
+    const r = await fetch(`/api/procurement/purchase-orders/${po.id}/vendor-invoice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        invoiceNumber: invoiceNumber.trim(),
+        amount: Number(amount),
+        gstAmount: Number(gstAmount) || 0,
+        tdsAmount: Number(tdsAmount) || 0,
+        fileUrl: fileUrl || undefined,
+      }),
+    });
+    setSaving(false);
+    if (r.ok) { onCreated(); }
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  const net = (Number(amount) || 0) + (Number(gstAmount) || 0) - (Number(tdsAmount) || 0);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-md">
+        <div className="p-6">
+          <h2 className="text-white font-semibold text-lg mb-1">Upload Vendor Invoice</h2>
+          <p className="text-zinc-500 text-sm mb-4">PO: {po.poNumber} · {po.vendor.name}</p>
+          <div className="space-y-3">
+            <div>
+              <label className="text-zinc-400 text-sm">Invoice Number *</label>
+              <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="e.g. VIN/2025/001"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-zinc-400 text-xs">Amount (₹) *</label>
+                <input value={amount} onChange={e => setAmount(e.target.value)} type="number" min="0" placeholder="0"
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="text-zinc-400 text-xs">GST (₹)</label>
+                <input value={gstAmount} onChange={e => setGstAmount(e.target.value)} type="number" min="0" placeholder="0"
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="text-zinc-400 text-xs">TDS (₹)</label>
+                <input value={tdsAmount} onChange={e => setTdsAmount(e.target.value)} type="number" min="0" placeholder="0"
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+            </div>
+            {amount && <div className="text-xs text-zinc-400">Net payable: <span className="text-white font-medium">₹{net.toLocaleString('en-IN')}</span></div>}
+            <div>
+              <label className="text-zinc-400 text-sm">Attach Invoice (PDF/Image)</label>
+              <input type="file" accept=".pdf,image/*" onChange={uploadFile} disabled={uploading}
+                className="w-full mt-1 text-sm text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-zinc-700 file:text-white file:text-xs cursor-pointer" />
+              {uploading && <p className="text-xs text-zinc-500 mt-1">Uploading...</p>}
+              {fileUrl && <p className="text-xs text-emerald-400 mt-1">✓ File uploaded</p>}
+            </div>
+          </div>
+          <div className="flex gap-3 mt-6">
+            <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+            <button onClick={submit} disabled={saving || uploading}
+              className="flex-1 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium disabled:opacity-50">
+              {saving ? 'Saving...' : 'Save Invoice'}
             </button>
           </div>
         </div>

@@ -1173,13 +1173,15 @@ model PurchaseOrder {
 model POItem {
   id               String  @id @default(cuid())
   purchaseOrderId  String  @map("purchase_order_id")
-  rawMaterialId    String  @map("raw_material_id")
+  rawMaterialId    String? @map("raw_material_id")   // null for custom/description items
+  itemDescription  String? @map("item_description")  // for custom items without a material
+  itemUnit         String? @map("item_unit")          // unit for custom items
   quantity         Float
   unitPrice        Float   @map("unit_price")
   receivedQuantity Float   @default(0) @map("received_quantity")
 
   purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  rawMaterial   RawMaterial        @relation(fields: [rawMaterialId], references: [id])
+  rawMaterial   RawMaterial?       @relation(fields: [rawMaterialId], references: [id])
   receiptItems  GoodsReceiptItem[]
   batches       InventoryBatch[]
   ganItems      GANItem[]

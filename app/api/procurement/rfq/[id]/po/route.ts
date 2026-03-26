@@ -83,13 +83,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         createdById: session.id,
         items: {
           create: (selectedQuote.items as Array<{ rfqItemId: string; materialId: string | null; unitPrice: number }>)
-            .filter(qi => qi.materialId != null)  // skip custom/maintenance items — no rawMaterialId
-            .map(qi => ({
-              rawMaterialId: qi.materialId!,
-              quantity: (rfq.items as Array<{ id: string; qtyRequired: number }>).find(ri => ri.id === qi.rfqItemId)?.qtyRequired ?? 0,
-              unitPrice: qi.unitPrice,
-              receivedQuantity: 0,
-            })),
+            .map(qi => {
+              const rfqItem = (rfq.items as Array<{ id: string; qtyRequired: number; materialId: string | null; itemDescription: string | null; itemUnit: string | null }>).find(ri => ri.id === qi.rfqItemId);
+              if (qi.materialId) {
+                return { rawMaterialId: qi.materialId, quantity: rfqItem?.qtyRequired ?? 0, unitPrice: qi.unitPrice, receivedQuantity: 0 };
+              }
+              // Custom item — no rawMaterial FK, store description
+              return { rawMaterialId: null, itemDescription: rfqItem?.itemDescription ?? 'Custom Item', itemUnit: rfqItem?.itemUnit ?? null, quantity: rfqItem?.qtyRequired ?? 0, unitPrice: qi.unitPrice, receivedQuantity: 0 };
+            }),
         },
       },
     });
