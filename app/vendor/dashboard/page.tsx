@@ -8,6 +8,7 @@ type MyQuote = { id: string; status: string; totalAmount: number; submittedAt: s
 type RFQ = {
   id: string; rfqNumber: string; title: string; status: string;
   deadline?: string; paymentTerms?: string;
+  inviteToken: string;
   items: RFQItem[];
   myQuote: MyQuote;
 };
@@ -128,15 +129,16 @@ export default function VendorDashboard() {
                   </div>
                   <div className="flex flex-col gap-2">
                     {rfq.status === 'OPEN' && !rfq.myQuote && (
-                      <Link href={`/vendor/${rfq.id}`}
+                      <Link href={`/vendor/${rfq.inviteToken}`}
                         className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap">
                         Submit Quote
                       </Link>
                     )}
                     {rfq.myQuote && (
-                      <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-400 whitespace-nowrap">
-                        Quoted ✓
-                      </span>
+                      <Link href={`/vendor/${rfq.inviteToken}`}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 whitespace-nowrap">
+                        Quoted ✓ · View
+                      </Link>
                     )}
                   </div>
                 </div>

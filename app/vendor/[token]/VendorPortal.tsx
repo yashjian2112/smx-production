@@ -89,7 +89,7 @@ export default function VendorPortal({ token }: { token: string }) {
     const files = Array.from(e.target.files ?? []);
     for (const file of files) {
       const fd = new FormData(); fd.append('file', file);
-      const r = await fetch('/api/upload', { method: 'POST', body: fd });
+      const r = await fetch('/api/procurement/upload', { method: 'POST', body: fd });
       if (r.ok) { const d = await r.json(); setFileUrls(prev => [...prev, d.url]); }
     }
   }

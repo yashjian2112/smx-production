@@ -20,41 +20,61 @@ async function getVendorSession(req: NextRequest) {
 
 // GET /api/vendor-portal/rfq — vendor sees their open RFQs
 export async function GET(req: NextRequest) {
-  const vendor = await getVendorSession(req);
-  if (!vendor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  // Also support token-based access for direct link
   const { searchParams } = new URL(req.url);
-  const token = searchParams.get('token');
+  const inviteToken = searchParams.get('token');
 
   let rfqs;
 
-  if (token) {
-    // Single RFQ via invite token
+  if (inviteToken) {
+    // Token-based: vendor accessed via direct link (no session required)
     const invite = await prisma.rFQVendorInvite.findUnique({
-      where: { token },
+      where: { token: inviteToken },
       include: {
         rfq: {
           include: {
             items: {
               include: { material: { select: { id: true, name: true, code: true, unit: true } } },
             },
+            quotes: {
+              select: { id: true, status: true, totalAmount: true, submittedAt: true, vendorId: true },
+            },
           },
         },
       },
     });
-    if (!invite || invite.vendorId !== vendor.vendorId) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 403 });
+    if (!invite) {
+      return NextResponse.json({ error: 'Invalid or expired invite token' }, { status: 403 });
     }
     // Mark viewed
     if (!invite.viewedAt) {
       await prisma.rFQVendorInvite.update({ where: { id: invite.id }, data: { viewedAt: new Date() } });
     }
-    rfqs = [invite.rfq];
+    const myQuote = (invite.rfq as any).quotes?.find((q: { vendorId: string }) => q.vendorId === invite.vendorId) ?? null;
+    rfqs = [{ ...invite.rfq, inviteToken: invite.token, myQuote }];
   } else {
-    // All RFQs for this vendor
+    // Session-based: vendor logged in via dashboard
+    const vendor = await getVendorSession(req);
+    if (!vendor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Fetch vendor's categories to filter RFQs
+    const vendorRecord = await prisma.vendor.findUnique({
+      where: { id: vendor.vendorId },
+      select: { categories: true },
+    });
+    const vendorCategories = vendorRecord?.categories ?? [];
+
+    // All RFQs for this vendor — only those matching vendor's categories
     const invites = await prisma.rFQVendorInvite.findMany({
-      where: { vendorId: vendor.vendorId, rfq: { status: { in: ['OPEN', 'CLOSED'] } } },
+      where: {
+        vendorId: vendor.vendorId,
+        rfq: {
+          status: { in: ['OPEN', 'CLOSED'] },
+          // Show RFQ if: no category set (all vendors), OR category matches vendor's list
+          OR: [
+            { category: null },
+            { category: { in: vendorCategories.length > 0 ? vendorCategories : ['__no_match__'] } },
+          ],
+        },
+      },
       include: {
         rfq: {
           include: {
@@ -70,7 +90,11 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { invitedAt: 'desc' },
     });
-    rfqs = invites.map((i: { rfq: typeof invites[number]['rfq'] }) => ({ ...i.rfq, myQuote: (i.rfq as any).quotes?.[0] ?? null }));
+    rfqs = invites.map((i: typeof invites[number]) => ({
+      ...i.rfq,
+      inviteToken: i.token,
+      myQuote: (i.rfq as any).quotes?.[0] ?? null,
+    }));
   }
 
   return NextResponse.json(rfqs);

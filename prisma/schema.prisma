@@ -1425,7 +1425,8 @@ model RFQ {
   description String?
   fileUrls    String[]  @default([]) @map("file_urls")  // drawings, specs, PDFs
   deadline    DateTime?
-  paymentTerms String?   @map("payment_terms")
+  paymentTerms String?  @map("payment_terms")
+  category    String?   @map("category")              // vendor category this RFQ targets
   status      RFQStatus @default(DRAFT)
   createdById String    @map("created_by_id")
   createdAt   DateTime  @default(now()) @map("created_at")

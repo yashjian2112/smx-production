@@ -53,12 +53,13 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { title, description, fileUrls, deadline, paymentTerms, vendorIds, roItems } = body as {
+  const { title, description, fileUrls, deadline, paymentTerms, category, vendorIds, roItems } = body as {
     title: string;
     description?: string;
     fileUrls?: string[];
     deadline?: string;
     paymentTerms?: string;
+    category?: string;
     vendorIds: string[];
     roItems: { roItemId: string; materialId?: string; itemDescription?: string; itemUnit?: string; qtyRequired: number }[];
   };
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
   // Verify all selected vendors are active
   const selectedVendors = await prisma.vendor.findMany({
     where: { id: { in: vendorIds }, active: true },
-    select: { id: true, name: true },
+    select: { id: true, name: true, code: true, categories: true },
   });
   if (selectedVendors.length < vendorIds.length) {
     const missing = vendorIds.filter((vid: string) => !selectedVendors.find(v => v.id === vid));
@@ -79,6 +80,38 @@ export async function POST(req: NextRequest) {
   }
   if (selectedVendors.length < 5) {
     return NextResponse.json({ error: `Minimum 5 active vendors required. Only ${selectedVendors.length} valid.` }, { status: 400 });
+  }
+
+  // If category specified, verify all selected vendors belong to that category
+  if (category) {
+    const wrongCatVendors = selectedVendors.filter(v => !v.categories.includes(category));
+    if (wrongCatVendors.length > 0) {
+      const names = wrongCatVendors.map(v => `${v.name} (${v.code})`).join(', ');
+      return NextResponse.json({
+        error: `These vendors do not supply category "${category}": ${names}`,
+      }, { status: 400 });
+    }
+  }
+
+  // Enforce 1 active RFQ per vendor: block if any selected vendor already has an open unquoted RFQ invite
+  const busyInvites = await prisma.rFQVendorInvite.findMany({
+    where: {
+      vendorId: { in: vendorIds },
+      rfq: { status: 'OPEN' },
+      // No quote submitted by this vendor for that RFQ
+      NOT: {
+        rfq: {
+          quotes: { some: { vendorId: { in: vendorIds } } },
+        },
+      },
+    },
+    select: { vendorId: true, vendor: { select: { name: true, code: true } } },
+  });
+  if (busyInvites.length > 0) {
+    const names = busyInvites.map(b => `${b.vendor.name} (${b.vendor.code})`).join(', ');
+    return NextResponse.json({
+      error: `These vendors already have an open RFQ pending their quote — only 1 RFQ at a time allowed: ${names}`,
+    }, { status: 400 });
   }
 
   if (!roItems?.length) return NextResponse.json({ error: 'Select at least one item' }, { status: 400 });
@@ -118,6 +151,7 @@ export async function POST(req: NextRequest) {
       fileUrls: fileUrls ?? [],
       deadline: deadline ? new Date(deadline) : null,
       paymentTerms: paymentTerms ?? null,
+      category: category ?? null,
       status: 'OPEN',
       createdById: session.id,
       items: {

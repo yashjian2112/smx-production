@@ -60,7 +60,8 @@ type Vendor = {
   active: boolean;
 };
 
-type VendorInvoiceForPR = { id: string; invoiceNumber: string; amount: number; gstAmount: number; tdsAmount: number; netAmount: number; status: string };
+type VendorCat = { id: string; name: string; description?: string };
+type VendorInvoiceForPR = { id: string; invoiceNumber: string; amount: number; gstAmount: number; tdsAmount: number; netAmount: number; status: string; fileUrl?: string };
 type PaymentRequestRow = {
   id: string; requestNumber: string; status: string; aiVerified: boolean; aiVerificationNote?: string;
   requestedAt: string; notes?: string;
@@ -607,8 +608,10 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
+  const [category, setCategory] = useState('');
   const [fileUrls, setFileUrls] = useState<string[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [vendorCategories, setVendorCategories] = useState<VendorCat[]>([]);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [approvedROs, setApprovedROs] = useState<RO[]>([]);
   const [selectedROItems, setSelectedROItems] = useState<{ roItemId: string; materialId?: string; itemDescription?: string; itemUnit?: string; qtyRequired: number }[]>([]);
@@ -617,7 +620,19 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
   useEffect(() => {
     fetch('/api/procurement/requirement-orders?status=APPROVED').then(r => r.json()).then(setApprovedROs);
     fetch('/api/purchase/vendors').then(r => r.json()).then(v => setVendors(Array.isArray(v) ? v : []));
+    fetch('/api/purchase/vendor-categories').then(r => r.json()).then(v => setVendorCategories(Array.isArray(v) ? v : []));
   }, []);
+
+  // When category changes, clear vendor selection
+  function handleCategoryChange(cat: string) {
+    setCategory(cat);
+    setSelectedVendors([]);
+  }
+
+  // Vendors filtered by selected category
+  const filteredVendors = vendors.filter(v =>
+    v.active && (!category || v.categories.includes(category))
+  );
 
   // Pre-populate items from the RO that triggered this modal
   useEffect(() => {
@@ -663,13 +678,13 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
 
   async function submit() {
     if (!title.trim()) return alert('Title required');
-    if (!selectedVendors.length) return alert('Select at least one vendor');
+    if (selectedVendors.length < 5) return alert(`Minimum 5 vendors required. You selected ${selectedVendors.length}.`);
     if (!selectedROItems.length) return alert('Select at least one RO item');
     setSaving(true);
     const r = await fetch('/api/procurement/rfq', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, description, deadline: deadline || undefined, paymentTerms: paymentTerms || undefined, fileUrls, vendorIds: selectedVendors, roItems: selectedROItems }),
+      body: JSON.stringify({ title, description, deadline: deadline || undefined, paymentTerms: paymentTerms || undefined, category: category || undefined, fileUrls, vendorIds: selectedVendors, roItems: selectedROItems }),
     });
     setSaving(false);
     if (r.ok) onCreated();
@@ -710,6 +725,19 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
                 <option value="100% Advance">100% Advance</option>
                 <option value="30% Advance + 70% on Delivery">30% Advance + 70% on Delivery</option>
               </select>
+            </div>
+            <div>
+              <label className="text-zinc-400 text-sm">Vendor Category *</label>
+              <select value={category} onChange={e => handleCategoryChange(e.target.value)}
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                <option value="">All vendors (no category filter)</option>
+                {vendorCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+              </select>
+              {category && (
+                <p className="text-xs text-zinc-500 mt-1">
+                  Showing {filteredVendors.length} vendor{filteredVendors.length !== 1 ? 's' : ''} in this category
+                </p>
+              )}
             </div>
 
             {/* File uploads */}
@@ -752,17 +780,41 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
 
             {/* Vendors */}
             <div>
-              <label className="text-zinc-400 text-sm block mb-2">Select Vendors *</label>
-              <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
-                {vendors.filter(v => v.active).map(v => (
-                  <label key={v.id} className="flex items-center gap-2 cursor-pointer py-1">
-                    <input type="checkbox" checked={selectedVendors.includes(v.id)} onChange={() => toggleVendor(v.id)}
-                      className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 accent-blue-500" />
-                    <span className="text-sm text-zinc-300">{v.name}</span>
-                    <span className="text-xs text-zinc-500">{v.code}</span>
-                    {v.rating && <span className="text-xs text-amber-400">★ {v.rating}</span>}
-                  </label>
-                ))}
+              <label className="text-zinc-400 text-sm block mb-2">
+                Select Vendors * <span className="text-zinc-600 font-normal">(min 5 required)</span>
+              </label>
+              {filteredVendors.length === 0 ? (
+                <p className="text-xs text-amber-400">
+                  {category
+                    ? `No active vendors found in "${category}" category. Add vendors to this category first.`
+                    : 'No active vendors found.'}
+                </p>
+              ) : (
+                <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                  {filteredVendors.map(v => (
+                    <label key={v.id} className="flex items-center gap-2 cursor-pointer py-1">
+                      <input type="checkbox" checked={selectedVendors.includes(v.id)} onChange={() => toggleVendor(v.id)}
+                        className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 accent-blue-500" />
+                      <span className="text-sm text-zinc-300">{v.name}</span>
+                      <span className="text-xs text-zinc-500">{v.code}</span>
+                      {v.rating && <span className="text-xs text-amber-400">★ {v.rating}</span>}
+                      <div className="flex gap-1 ml-auto">
+                        {v.categories.map(c => <span key={c} className="text-xs bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">{c}</span>)}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center justify-between mt-1">
+                {selectedVendors.length > 0 && (
+                  <p className="text-xs text-zinc-500">{selectedVendors.length} selected</p>
+                )}
+                {selectedVendors.length > 0 && selectedVendors.length < 5 && (
+                  <p className="text-xs text-amber-400">Need {5 - selectedVendors.length} more vendor{5 - selectedVendors.length > 1 ? 's' : ''}</p>
+                )}
+                {selectedVendors.length >= 5 && (
+                  <p className="text-xs text-green-400">✓ Minimum met</p>
+                )}
               </div>
             </div>
           </div>
@@ -1026,26 +1078,90 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
   const [loading, setLoading] = useState(true);
   const [editPortal, setEditPortal] = useState<Vendor | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [vendorCategories, setVendorCategories] = useState<VendorCat[]>([]);
+  const [showCatPanel, setShowCatPanel] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [catSaving, setCatSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await fetch('/api/purchase/vendors');
-    if (r.ok) setVendors(await r.json());
+    const [vr, cr] = await Promise.all([fetch('/api/purchase/vendors'), fetch('/api/purchase/vendor-categories')]);
+    if (vr.ok) setVendors(await vr.json());
+    if (cr.ok) setVendorCategories(await cr.json());
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
+  async function createCategory() {
+    if (!newCatName.trim()) return;
+    setCatSaving(true);
+    const r = await fetch('/api/purchase/vendor-categories', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newCatName.trim() }),
+    });
+    setCatSaving(false);
+    if (r.ok) { setNewCatName(''); load(); }
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  async function deleteCategory(name: string) {
+    if (!confirm(`Delete category "${name}"?`)) return;
+    await fetch('/api/purchase/vendor-categories', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    load();
+  }
+
   return (
-    <div>
+    <div className="space-y-4">
+      {/* Category management panel */}
       {(isPM || isAdmin) && (
-        <div className="flex justify-end mb-4">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-white text-sm font-semibold">Vendor Categories</span>
+            <button onClick={() => setShowCatPanel(p => !p)}
+              className="text-xs text-zinc-400 hover:text-white">{showCatPanel ? 'Hide' : 'Manage'}</button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {vendorCategories.length === 0
+              ? <p className="text-xs text-zinc-600">No categories yet. Click Manage to add one.</p>
+              : vendorCategories.map(c => (
+                <span key={c.id} className="flex items-center gap-1 bg-zinc-800 text-zinc-300 text-xs px-2.5 py-1 rounded-full">
+                  {c.name}
+                  {showCatPanel && (
+                    <button onClick={() => deleteCategory(c.name)}
+                      className="text-zinc-600 hover:text-red-400 ml-1 leading-none">×</button>
+                  )}
+                </span>
+              ))
+            }
+          </div>
+          {showCatPanel && (
+            <div className="flex gap-2 mt-3">
+              <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
+                placeholder="New category name (e.g. VMC, CNC, Electrical)"
+                onKeyDown={e => e.key === 'Enter' && createCategory()}
+                className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+              <button onClick={createCategory} disabled={catSaving || !newCatName.trim()}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50">
+                {catSaving ? '...' : '+ Add'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(isPM || isAdmin) && (
+        <div className="flex justify-end">
           <button onClick={() => setShowCreate(true)}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white">
             + Add Vendor
           </button>
         </div>
       )}
+
       {loading ? (
         <div className="text-center text-zinc-500 py-12">Loading...</div>
       ) : vendors.length === 0 ? (
@@ -1058,8 +1174,8 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
           {vendors.map(v => (
             <div key={v.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-white font-semibold">{v.name}</span>
                     <span className="text-zinc-500 text-xs">{v.code}</span>
                     {v.rating && <span className="text-xs text-amber-400">★ {v.rating}</span>}
@@ -1077,14 +1193,14 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
                   <div className="text-xs mt-1">
                     {v.portalEmail ? (
                       <span className={v.isPortalActive ? 'text-green-400' : 'text-zinc-500'}>
-                        Portal: {v.portalEmail} {v.isPortalActive ? '(Active)' : '(Inactive)'}
+                        Portal: {v.portalEmail} {v.isPortalActive ? '✓ Active' : '(Inactive)'}
                       </span>
                     ) : <span className="text-zinc-600">No portal access</span>}
                   </div>
                 </div>
-                {isPM && (
+                {(isPM || isAdmin) && (
                   <button onClick={() => setEditPortal(v)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700">
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 shrink-0">
                     Portal Access
                   </button>
                 )}
@@ -1094,8 +1210,21 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
         </div>
       )}
 
-      {editPortal && <PortalAccessModal vendor={editPortal} onClose={() => setEditPortal(null)} onSaved={() => { setEditPortal(null); load(); }} />}
-      {showCreate && <CreateVendorModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(); }} />}
+      {editPortal && (
+        <PortalAccessModal
+          vendor={editPortal}
+          vendorCategories={vendorCategories}
+          onClose={() => setEditPortal(null)}
+          onSaved={() => { setEditPortal(null); load(); }}
+        />
+      )}
+      {showCreate && (
+        <CreateVendorModal
+          vendorCategories={vendorCategories}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => { setShowCreate(false); load(); }}
+        />
+      )}
     </div>
   );
 }
@@ -1103,18 +1232,26 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
 /* ═══════════════════════════════════════════════════════════
    CREATE VENDOR MODAL
 ══════════════════════════════════════════════════════════════*/
-function CreateVendorModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function CreateVendorModal({ vendorCategories, onClose, onCreated }: { vendorCategories: VendorCat[]; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [gstNumber, setGstNumber] = useState('');
-  const [categories, setCategories] = useState('');
+  const [selectedCats, setSelectedCats] = useState<string[]>([]);
+  // Portal credentials
+  const [portalEmail, setPortalEmail] = useState('');
+  const [portalPassword, setPortalPassword] = useState('');
   const [saving, setSaving] = useState(false);
+
+  function toggleCat(name: string) {
+    setSelectedCats(prev => prev.includes(name) ? prev.filter(c => c !== name) : [...prev, name]);
+  }
 
   async function submit() {
     if (!name.trim()) return alert('Vendor name is required');
+    if (portalEmail && !portalPassword) return alert('Set a portal password for this vendor');
     setSaving(true);
     const r = await fetch('/api/purchase/vendors', {
       method: 'POST',
@@ -1126,7 +1263,9 @@ function CreateVendorModal({ onClose, onCreated }: { onClose: () => void; onCrea
         phone: phone.trim() || undefined,
         address: address.trim() || undefined,
         gstNumber: gstNumber.trim() || undefined,
-        categories: categories.split(',').map(c => c.trim()).filter(Boolean),
+        categories: selectedCats,
+        portalEmail: portalEmail.trim() || undefined,
+        portalPassword: portalPassword || undefined,
       }),
     });
     setSaving(false);
@@ -1136,7 +1275,7 @@ function CreateVendorModal({ onClose, onCreated }: { onClose: () => void; onCrea
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h2 className="text-white font-semibold text-lg mb-4">Add New Vendor</h2>
           <div className="space-y-3">
@@ -1159,7 +1298,7 @@ function CreateVendorModal({ onClose, onCreated }: { onClose: () => void; onCrea
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-zinc-400 text-xs uppercase tracking-wider">Email</label>
+                <label className="text-zinc-400 text-xs uppercase tracking-wider">Business Email</label>
                 <input value={email} onChange={e => setEmail(e.target.value)} placeholder="vendor@email.com" type="email"
                   className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
@@ -1174,10 +1313,46 @@ function CreateVendorModal({ onClose, onCreated }: { onClose: () => void; onCrea
               <input value={address} onChange={e => setAddress(e.target.value)} placeholder="Full address"
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
             </div>
+
+            {/* Categories */}
             <div>
-              <label className="text-zinc-400 text-xs uppercase tracking-wider">Categories (comma separated)</label>
-              <input value={categories} onChange={e => setCategories(e.target.value)} placeholder="e.g. Electrical, Mechanical, Consumable"
-                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+              <label className="text-zinc-400 text-xs uppercase tracking-wider">Supply Categories</label>
+              {vendorCategories.length === 0 ? (
+                <p className="text-xs text-zinc-600 mt-1">No categories defined. Add categories in the Vendors tab first.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {vendorCategories.map(c => (
+                    <button key={c.id} type="button" onClick={() => toggleCat(c.name)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                        selectedCats.includes(c.name)
+                          ? 'bg-blue-600 border-blue-500 text-white'
+                          : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                      }`}>
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Portal Access */}
+            <div className="border-t border-zinc-800 pt-3">
+              <label className="text-zinc-400 text-xs uppercase tracking-wider">Portal Access (optional)</label>
+              <p className="text-xs text-zinc-600 mt-0.5 mb-2">Set login credentials so this vendor can access the portal</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-zinc-500 text-xs">Portal Login Email</label>
+                  <input value={portalEmail} onChange={e => setPortalEmail(e.target.value)} type="email"
+                    placeholder="login@vendor.com"
+                    className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="text-zinc-500 text-xs">Portal Password</label>
+                  <input value={portalPassword} onChange={e => setPortalPassword(e.target.value)} type="password"
+                    placeholder="Min 6 characters"
+                    className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+              </div>
             </div>
           </div>
           <div className="flex gap-3 mt-6">
@@ -1333,15 +1508,22 @@ function PaymentsTab({ isPM }: { isPM: boolean }) {
   );
 }
 
-function PortalAccessModal({ vendor, onClose, onSaved }: { vendor: Vendor; onClose: () => void; onSaved: () => void }) {
+function PortalAccessModal({ vendor, vendorCategories, onClose, onSaved }: {
+  vendor: Vendor; vendorCategories: VendorCat[]; onClose: () => void; onSaved: () => void;
+}) {
   const [email, setEmail] = useState(vendor.portalEmail ?? '');
   const [password, setPassword] = useState('');
   const [active, setActive] = useState(vendor.isPortalActive);
-  const [categories, setCategories] = useState(vendor.categories.join(', '));
+  const [selectedCats, setSelectedCats] = useState<string[]>(vendor.categories);
   const [saving, setSaving] = useState(false);
 
+  function toggleCat(name: string) {
+    setSelectedCats(prev => prev.includes(name) ? prev.filter(c => c !== name) : [...prev, name]);
+  }
+
   async function submit() {
-    if (!email) return alert('Email required');
+    if (!email) return alert('Portal email required');
+    if (!vendor.portalEmail && !password) return alert('Password required for new portal access');
     setSaving(true);
     const r = await fetch(`/api/procurement/vendors/${vendor.id}/portal-access`, {
       method: 'POST',
@@ -1350,7 +1532,7 @@ function PortalAccessModal({ vendor, onClose, onSaved }: { vendor: Vendor; onClo
         portalEmail: email,
         password: password || undefined,
         isPortalActive: active,
-        categories: categories.split(',').map(s => s.trim()).filter(Boolean),
+        categories: selectedCats,
       }),
     });
     setSaving(false);
@@ -1360,36 +1542,55 @@ function PortalAccessModal({ vendor, onClose, onSaved }: { vendor: Vendor; onClo
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto">
         <div className="p-6">
-          <h2 className="text-white font-semibold text-lg mb-4">Portal Access — {vendor.name}</h2>
+          <h2 className="text-white font-semibold text-lg mb-1">Portal Access</h2>
+          <p className="text-zinc-500 text-sm mb-4">{vendor.name} · {vendor.code}</p>
           <div className="space-y-3">
             <div>
-              <label className="text-zinc-400 text-sm">Portal Email *</label>
+              <label className="text-zinc-400 text-sm">Portal Login Email *</label>
               <input value={email} onChange={e => setEmail(e.target.value)} type="email"
+                placeholder="login@vendor.com"
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="text-zinc-400 text-sm">New Password {vendor.portalEmail ? '(leave blank to keep)' : '*'}</label>
+              <label className="text-zinc-400 text-sm">
+                Password {vendor.portalEmail ? <span className="text-zinc-600">(leave blank to keep current)</span> : '*'}
+              </label>
               <input value={password} onChange={e => setPassword(e.target.value)} type="password"
+                placeholder={vendor.portalEmail ? '••••••••' : 'Set a password'}
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="text-zinc-400 text-sm">Supply Categories (comma-separated)</label>
-              <input value={categories} onChange={e => setCategories(e.target.value)} placeholder="IGBTs, Capacitors, Resistors"
-                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+              <label className="text-zinc-400 text-sm block mb-2">Supply Categories</label>
+              {vendorCategories.length === 0
+                ? <p className="text-xs text-zinc-600">No categories defined yet.</p>
+                : (
+                  <div className="flex flex-wrap gap-2">
+                    {vendorCategories.map(c => (
+                      <button key={c.id} type="button" onClick={() => toggleCat(c.name)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          selectedCats.includes(c.name)
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                        }`}>
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
             </div>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer pt-1">
               <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)}
                 className="w-4 h-4 rounded accent-blue-500" />
-              <span className="text-sm text-zinc-300">Portal Active</span>
+              <span className="text-sm text-zinc-300">Portal Active (vendor can log in)</span>
             </label>
           </div>
           <div className="flex gap-3 mt-6">
             <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
             <button onClick={submit} disabled={saving}
               className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? 'Saving...' : 'Save Access'}
             </button>
           </div>
         </div>
