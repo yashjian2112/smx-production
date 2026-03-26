@@ -106,6 +106,12 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
 
   const tabs: readonly Tab[] = isAdmin ? ADMIN_TABS : isPM ? PM_TABS : IM_TABS;
   const [tab, setTab] = useState<Tab>(tabs[0]);
+  const [rfqFromRO, setRfqFromRO] = useState<RO | null>(null);
+
+  function handleCreateRFQFromRO(ro: RO) {
+    setRfqFromRO(ro);
+    setTab('RFQ');
+  }
 
   return (
     <div>
@@ -119,8 +125,8 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
           ))}
         </div>
       )}
-      {tab === 'Req. Orders'    && <ROTab isIM={isIM} isPM={isPM} onGoToRFQ={() => setTab('RFQ')} />}
-      {tab === 'RFQ'            && <RFQTab isPM={isPM} isIM={isIM} />}
+      {tab === 'Req. Orders'    && <ROTab isIM={isIM} isPM={isPM} onCreateRFQFromRO={handleCreateRFQFromRO} />}
+      {tab === 'RFQ'            && <RFQTab isPM={isPM} isIM={isIM} preselectedRO={rfqFromRO} onClearPreselected={() => setRfqFromRO(null)} />}
       {tab === 'Purchase Orders' && <POTab isPM={isPM} isIM={isIM} />}
       {tab === 'Vendors'        && <VendorsTab isAdmin={isAdmin} isPM={isPM} />}
       {tab === 'Payments'       && <PaymentsTab isPM={isPM} />}
@@ -321,7 +327,7 @@ function CreateManualROModal({ onClose, onCreated }: { onClose: () => void; onCr
   );
 }
 
-function ROTab({ isIM, isPM, onGoToRFQ }: { isIM: boolean; isPM: boolean; onGoToRFQ?: () => void }) {
+function ROTab({ isIM, isPM, onCreateRFQFromRO }: { isIM: boolean; isPM: boolean; onCreateRFQFromRO?: (ro: RO) => void }) {
   const [ros, setROs] = useState<RO[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('ALL');
@@ -405,7 +411,7 @@ function ROTab({ isIM, isPM, onGoToRFQ }: { isIM: boolean; isPM: boolean; onGoTo
                     </button>
                   )}
                   {isPM && ro.status === 'APPROVED' && (
-                    <button onClick={onGoToRFQ}
+                    <button onClick={() => onCreateRFQFromRO?.(ro)}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 hover:bg-blue-600 text-white">
                       Create RFQ →
                     </button>
@@ -444,12 +450,17 @@ function ROTab({ isIM, isPM, onGoToRFQ }: { isIM: boolean; isPM: boolean; onGoTo
 /* ═══════════════════════════════════════════════════════════
    RFQ TAB
 ══════════════════════════════════════════════════════════════*/
-function RFQTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
+function RFQTab({ isPM, isIM, preselectedRO, onClearPreselected }: { isPM: boolean; isIM: boolean; preselectedRO?: RO | null; onClearPreselected?: () => void }) {
   const [rfqs, setRFQs] = useState<RFQ[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedRFQ, setSelectedRFQ] = useState<RFQ | null>(null);
+
+  // Auto-open modal when arriving from RO card
+  useEffect(() => {
+    if (preselectedRO) { setCreating(true); }
+  }, [preselectedRO]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -583,7 +594,7 @@ function RFQTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
         </div>
       )}
 
-      {creating && <CreateRFQModal onClose={() => setCreating(false)} onCreated={() => { setCreating(false); load(); }} />}
+      {creating && <CreateRFQModal preselectedRO={preselectedRO} onClose={() => { setCreating(false); onClearPreselected?.(); }} onCreated={() => { setCreating(false); onClearPreselected?.(); load(); }} />}
     </div>
   );
 }
@@ -591,7 +602,7 @@ function RFQTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
 /* ═══════════════════════════════════════════════════════════
    CREATE RFQ MODAL
 ══════════════════════════════════════════════════════════════*/
-function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?: RO | null; onClose: () => void; onCreated: () => void }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState('');
@@ -607,6 +618,20 @@ function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated
     fetch('/api/procurement/requirement-orders?status=APPROVED').then(r => r.json()).then(setApprovedROs);
     fetch('/api/purchase/vendors').then(r => r.json()).then(v => setVendors(Array.isArray(v) ? v : []));
   }, []);
+
+  // Pre-populate items from the RO that triggered this modal
+  useEffect(() => {
+    if (preselectedRO) {
+      setSelectedROItems(preselectedRO.items.map(item => ({
+        roItemId: item.id,
+        materialId: item.materialId ?? undefined,
+        itemDescription: item.itemDescription ?? undefined,
+        itemUnit: item.itemUnit ?? undefined,
+        qtyRequired: item.qtyRequired,
+      })));
+      setTitle(`RFQ for ${preselectedRO.roNumber}`);
+    }
+  }, [preselectedRO]);
 
   function toggleVendor(id: string) {
     setSelectedVendors(prev => prev.includes(id) ? prev.filter(v => v !== id) : [...prev, id]);
