@@ -96,9 +96,12 @@ export default function VendorPortal({ token }: { token: string }) {
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     for (const file of files) {
-      const fd = new FormData(); fd.append('file', file);
-      const r = await fetch('/api/procurement/upload', { method: 'POST', body: fd });
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('token', token); // vendor auth via invite token
+      const r = await fetch('/api/vendor-portal/upload', { method: 'POST', body: fd });
       if (r.ok) { const d = await r.json(); setFileUrls(prev => [...prev, d.url]); }
+      else { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Upload failed'); }
     }
   }
 
@@ -109,7 +112,7 @@ export default function VendorPortal({ token }: { token: string }) {
     if (!notes.trim()) return alert('Notes / Terms are required');
     const items = rfq.items.map(i => ({
       rfqItemId: i.id,
-      materialId: i.materialId ?? undefined,
+      materialId: i.materialId ?? null,
       unitPrice: parseFloat(itemPrices[i.id] ?? '0') || 0,
       qty: i.qtyRequired,
     }));
@@ -669,9 +672,12 @@ function SubmitInvoiceModal({ po, token, onClose, onSubmitted }: {
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const fd = new FormData(); fd.append('file', file);
-    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('token', token); // vendor auth via invite token
+    const r = await fetch('/api/vendor-portal/upload', { method: 'POST', body: fd });
     if (r.ok) { const d = await r.json(); setFileUrl(d.url); }
+    else { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Upload failed'); }
   }
 
   async function submit(e: React.FormEvent) {

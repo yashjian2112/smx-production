@@ -1504,15 +1504,15 @@ model VendorQuoteItem {
   id         String  @id @default(cuid())
   quoteId    String  @map("quote_id")
   rfqItemId  String  @map("rfq_item_id")
-  materialId String  @map("material_id")
+  materialId String? @map("material_id")   // null for custom/maintenance items
   unitPrice  Float   @map("unit_price")
   currency   String  @default("INR")
   totalPrice Float   @map("total_price")
   notes      String?
 
-  quote      VendorQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  rfqItem    RFQItem     @relation(fields: [rfqItemId], references: [id])
-  material   RawMaterial @relation(fields: [materialId], references: [id])
+  quote      VendorQuote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  rfqItem    RFQItem      @relation(fields: [rfqItemId], references: [id])
+  material   RawMaterial? @relation(fields: [materialId], references: [id])
   breakdowns VendorQuoteItemBreakdown[]
 
   @@map("vendor_quote_items")

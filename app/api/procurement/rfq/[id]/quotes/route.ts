@@ -14,7 +14,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     fileUrls?: string[];
     items: {
       rfqItemId: string;
-      materialId: string;
+      materialId?: string | null;
       unitPrice: number;
       qty: number;
       breakdowns?: { factorId: string; amount: number }[];
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         items: {
           create: items.map(i => ({
             rfqItemId: i.rfqItemId,
-            materialId: i.materialId,
+            materialId: i.materialId ?? null,
             unitPrice: i.unitPrice,
             currency: currency ?? 'INR',
             totalPrice: i.unitPrice * i.qty,
