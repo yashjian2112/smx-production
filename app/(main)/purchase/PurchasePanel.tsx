@@ -17,8 +17,9 @@ type RO = {
 };
 
 type RFQItem = {
-  id: string; materialId: string; qtyRequired: number;
-  material: { id: string; name: string; code: string; unit: string };
+  id: string; materialId?: string | null; qtyRequired: number;
+  itemDescription?: string | null; itemUnit?: string | null;
+  material?: { id: string; name: string; code: string; unit: string } | null;
   roItem: { id: string; qtyRequired: number; ro: { roNumber: string } };
 };
 type VendorInvite = { id: string; vendor: { id: string; name: string; code: string }; viewedAt?: string };
@@ -534,8 +535,8 @@ function RFQTab({ isPM, isIM, preselectedRO, onClearPreselected }: { isPM: boole
                     <div className="text-xs text-zinc-500 font-medium mb-2 uppercase tracking-wider">Materials Required</div>
                     {rfq.items.map(item => (
                       <div key={item.id} className="flex justify-between text-sm py-1">
-                        <span className="text-zinc-300">{item.material.name}</span>
-                        <span className="text-zinc-500">{item.qtyRequired} {item.material.unit}</span>
+                        <span className="text-zinc-300">{item.material?.name ?? item.itemDescription ?? '—'}</span>
+                        <span className="text-zinc-500">{item.qtyRequired} {item.material?.unit ?? item.itemUnit ?? 'unit'}</span>
                       </div>
                     ))}
                   </div>
@@ -576,7 +577,7 @@ function RFQTab({ isPM, isIM, preselectedRO, onClearPreselected }: { isPM: boole
                                   const rfqItem = rfq.items.find(ri => ri.id === qi.rfqItemId);
                                   return (
                                     <div key={qi.id} className="flex justify-between text-xs text-zinc-400">
-                                      <span>{rfqItem?.material.name ?? qi.materialId}</span>
+                                      <span>{rfqItem?.material?.name ?? rfqItem?.itemDescription ?? qi.materialId ?? '—'}</span>
                                       <span>{q.currency === 'USD' ? '$' : '₹'}{qi.unitPrice} × {rfqItem?.qtyRequired} = {q.currency === 'USD' ? '$' : '₹'}{qi.totalPrice.toFixed(2)}</span>
                                     </div>
                                   );
