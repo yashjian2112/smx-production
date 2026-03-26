@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 
 type RFQItem = {
-  id: string; materialId: string; qtyRequired: number;
-  material: { id: string; name: string; code: string; unit: string };
+  id: string; materialId?: string | null; qtyRequired: number;
+  itemDescription?: string | null; itemUnit?: string | null;
+  material?: { id: string; name: string; code: string; unit: string } | null;
 };
 type RFQ = {
   id: string; rfqNumber: string; title: string; description?: string;
@@ -100,7 +101,7 @@ export default function VendorPortal({ token }: { token: string }) {
     if (!leadTimeDays || !validUntil) return alert('Fill all required fields');
     const items = rfq.items.map(i => ({
       rfqItemId: i.id,
-      materialId: i.materialId,
+      materialId: i.materialId ?? undefined,
       unitPrice: parseFloat(itemPrices[i.id] ?? '0') || 0,
       qty: i.qtyRequired,
     }));
@@ -277,10 +278,10 @@ export default function VendorPortal({ token }: { token: string }) {
             {rfq.items.map(item => (
               <div key={item.id} className="flex justify-between text-sm">
                 <div>
-                  <span className="text-zinc-200">{item.material.name}</span>
-                  <span className="text-zinc-500 ml-2 text-xs">{item.material.code}</span>
+                  <span className="text-zinc-200">{item.material?.name ?? item.itemDescription ?? 'Item'}</span>
+                  {item.material?.code && <span className="text-zinc-500 ml-2 text-xs">{item.material.code}</span>}
                 </div>
-                <span className="text-zinc-400">{item.qtyRequired} {item.material.unit}</span>
+                <span className="text-zinc-400">{item.qtyRequired} {item.material?.unit ?? item.itemUnit ?? 'unit'}</span>
               </div>
             ))}
           </div>
@@ -323,7 +324,7 @@ export default function VendorPortal({ token }: { token: string }) {
               <div className="space-y-2 mt-2">
                 {rfq.items.map(item => (
                   <div key={item.id} className="flex items-center gap-3">
-                    <span className="flex-1 text-sm text-zinc-300">{item.material.name} <span className="text-zinc-500">× {item.qtyRequired} {item.material.unit}</span></span>
+                    <span className="flex-1 text-sm text-zinc-300">{item.material?.name ?? item.itemDescription ?? 'Item'} <span className="text-zinc-500">× {item.qtyRequired} {item.material?.unit ?? item.itemUnit ?? 'unit'}</span></span>
                     <div className="flex items-center gap-1">
                       <span className="text-zinc-500 text-sm">{currency === 'USD' ? '$' : '₹'}</span>
                       <input type="number" min={0} step="0.01" placeholder="0.00"
@@ -338,7 +339,7 @@ export default function VendorPortal({ token }: { token: string }) {
                 <div className="flex justify-between pt-2 border-t border-zinc-700 text-sm font-medium">
                   <span className="text-zinc-400">Total Quote</span>
                   <span className="text-white">
-                    {currency === 'USD' ? '$' : '₹'}{rfq.items.reduce((s, i) => s + (parseFloat(itemPrices[i.id] ?? '0') || 0) * i.qtyRequired, 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    {currency === 'USD' ? '$' : '₹'}{rfq.items.reduce((s, i) => s + (parseFloat(itemPrices[i.id] ?? '0') || 0) * (i.qtyRequired || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
