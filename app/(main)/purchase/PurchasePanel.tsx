@@ -607,16 +607,30 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
 
   useEffect(() => { load(); }, [load]);
 
-  async function createPO(rfqId: string, quoteId: string) {
-    const delivery = prompt('Expected delivery date (YYYY-MM-DD):');
-    if (!delivery) return;
-    const r = await fetch(`/api/procurement/rfq/${rfqId}/po`, {
+  const [poModal, setPoModal] = useState<{ rfqId: string; quoteId: string; vendorName: string; deliveryDate: string } | null>(null);
+  const [poSaving, setPoSaving] = useState(false);
+  const [poError, setPoError] = useState('');
+
+  function openCreatePO(rfqId: string, quote: Quote) {
+    // Pre-fill delivery date from vendor's lead time
+    const eta = new Date(new Date(quote.submittedAt).getTime() + quote.leadTimeDays * 86_400_000);
+    const dateStr = eta.toISOString().split('T')[0];
+    setPoModal({ rfqId, quoteId: quote.id, vendorName: quote.vendor.name, deliveryDate: dateStr });
+    setPoError('');
+  }
+
+  async function confirmCreatePO() {
+    if (!poModal) return;
+    setPoSaving(true);
+    setPoError('');
+    const r = await fetch(`/api/procurement/rfq/${poModal.rfqId}/po`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selectedQuoteId: quoteId, expectedDelivery: delivery }),
+      body: JSON.stringify({ selectedQuoteId: poModal.quoteId, expectedDelivery: poModal.deliveryDate }),
     });
-    if (r.ok) { load(); alert('Purchase Order created!'); }
-    else { const e = await r.json(); alert(e.error); }
+    setPoSaving(false);
+    if (r.ok) { setPoModal(null); load(); }
+    else { const e = await r.json(); setPoError(e.error ?? 'Failed to create PO'); }
   }
 
   async function sampleAction(rfqId: string, quoteId: string, action: 'request' | 'approve' | 'reject', notes?: string) {
@@ -825,7 +839,7 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
                                       }
                                       if (q.sampleStatus === 'APPROVED') {
                                         return (
-                                          <button onClick={() => createPO(rfq.id, q.id)}
+                                          <button onClick={() => openCreatePO(rfq.id, q)}
                                             className="px-2 py-1 rounded text-xs bg-green-700 hover:bg-green-600 text-white font-medium">
                                             Create PO
                                           </button>
@@ -907,6 +921,39 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
       )}
 
       {creating && <CreateRFQModal preselectedRO={preselectedRO} onClose={() => { setCreating(false); onClearPreselected?.(); }} onCreated={() => { setCreating(false); onClearPreselected?.(); load(); }} />}
+
+      {/* Create PO modal */}
+      {poModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="text-white font-semibold">Create Purchase Order</h3>
+            <p className="text-zinc-400 text-sm">
+              Awarding to <span className="text-white font-medium">{poModal.vendorName}</span>
+            </p>
+            <div>
+              <label className="text-xs text-zinc-400 block mb-1">Expected Delivery Date</label>
+              <p className="text-xs text-zinc-500 mb-1.5">Pre-filled from vendor's lead time — edit if needed.</p>
+              <input
+                type="date"
+                value={poModal.deliveryDate}
+                onChange={e => setPoModal(prev => prev ? { ...prev, deliveryDate: e.target.value } : null)}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+              />
+            </div>
+            {poError && <p className="text-red-400 text-xs">{poError}</p>}
+            <div className="flex gap-3">
+              <button onClick={() => setPoModal(null)}
+                className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700">
+                Cancel
+              </button>
+              <button onClick={confirmCreatePO} disabled={poSaving || !poModal.deliveryDate}
+                className="flex-1 py-2 rounded-xl bg-green-700 hover:bg-green-600 text-white text-sm font-medium disabled:opacity-50">
+                {poSaving ? 'Creating…' : 'Confirm & Create PO'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sample notes modal */}
       {sampleNoteFor && (

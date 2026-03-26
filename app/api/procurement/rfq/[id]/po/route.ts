@@ -82,12 +82,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         approvedAt: new Date(),
         createdById: session.id,
         items: {
-          create: (selectedQuote.items as Array<{ rfqItemId: string; materialId: string; unitPrice: number }>).map(qi => ({
-            rawMaterialId: qi.materialId,
-            quantity: (rfq.items as Array<{ id: string; qtyRequired: number }>).find(ri => ri.id === qi.rfqItemId)?.qtyRequired ?? 0,
-            unitPrice: qi.unitPrice,
-            receivedQuantity: 0,
-          })),
+          create: (selectedQuote.items as Array<{ rfqItemId: string; materialId: string | null; unitPrice: number }>)
+            .filter(qi => qi.materialId != null)  // skip custom/maintenance items — no rawMaterialId
+            .map(qi => ({
+              rawMaterialId: qi.materialId!,
+              quantity: (rfq.items as Array<{ id: string; qtyRequired: number }>).find(ri => ri.id === qi.rfqItemId)?.qtyRequired ?? 0,
+              unitPrice: qi.unitPrice,
+              receivedQuantity: 0,
+            })),
         },
       },
     });
