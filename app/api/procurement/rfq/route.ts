@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       createdBy: { select: { name: true } },
       items: {
         include: {
-          material: { select: { id: true, name: true, code: true, unit: true } },
+          material: { select: { id: true, name: true, code: true, unit: true, aiPriceBenchmark: true } },
           roItem: { select: { id: true, qtyRequired: true, ro: { select: { roNumber: true } } } },
         },
       },
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
       },
       quotes: {
         include: {
-          vendor: { select: { id: true, name: true, code: true } },
+          vendor: { select: { id: true, name: true, code: true, rating: true } },
           items: true,
         },
       },

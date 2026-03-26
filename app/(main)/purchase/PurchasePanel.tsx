@@ -19,7 +19,7 @@ type RO = {
 type RFQItem = {
   id: string; materialId?: string | null; qtyRequired: number;
   itemDescription?: string | null; itemUnit?: string | null;
-  material?: { id: string; name: string; code: string; unit: string } | null;
+  material?: { id: string; name: string; code: string; unit: string; aiPriceBenchmark?: number | null } | null;
   roItem: { id: string; qtyRequired: number; ro: { roNumber: string } };
 };
 type VendorInvite = { id: string; vendor: { id: string; name: string; code: string }; viewedAt?: string };
@@ -28,7 +28,8 @@ type Quote = {
   validUntil: string; notes?: string; status: string; submittedAt: string;
   sampleStatus: string;         // NONE, REQUESTED, APPROVED, REJECTED
   sampleRequestedAt?: string | null;
-  vendor: { id: string; name: string; code: string };
+  sampleNotes?: string | null;
+  vendor: { id: string; name: string; code: string; rating?: number | null };
   items: { id: string; rfqItemId: string; materialId: string; unitPrice: number; totalPrice: number; currency: string }[];
 };
 type RFQ = {
@@ -74,10 +75,10 @@ type PaymentRequestRow = {
 };
 
 // Tabs are role-driven — PM sees procurement flow, IM sees approval queue
-const PM_TABS   = ['Req. Orders', 'RFQ', 'Purchase Orders', 'Vendors', 'Payments'] as const;
+const PM_TABS   = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments'] as const;
 const IM_TABS   = ['Req. Orders'] as const;
-const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Purchase Orders', 'Vendors', 'Payments'] as const;
-type Tab = 'Req. Orders' | 'RFQ' | 'Purchase Orders' | 'Vendors' | 'Payments';
+const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments'] as const;
+type Tab = 'Req. Orders' | 'RFQ' | 'Samples' | 'Purchase Orders' | 'Vendors' | 'Payments';
 
 const STATUS_COLOR: Record<string, string> = {
   PENDING: 'bg-amber-900/40 text-amber-300 border border-amber-700/50',
@@ -131,6 +132,7 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
       )}
       {tab === 'Req. Orders'    && <ROTab isIM={isIM} isPM={isPM} onCreateRFQFromRO={handleCreateRFQFromRO} />}
       {tab === 'RFQ'            && <RFQTab isPM={isPM} isIM={isIM} isAdmin={isAdmin} preselectedRO={rfqFromRO} onClearPreselected={() => setRfqFromRO(null)} />}
+      {tab === 'Samples'        && <SamplesTab isPM={isPM} isAdmin={isAdmin} />}
       {tab === 'Purchase Orders' && <POTab isPM={isPM} isIM={isIM} />}
       {tab === 'Vendors'        && <VendorsTab isAdmin={isAdmin} isPM={isPM} />}
       {tab === 'Payments'       && <PaymentsTab isPM={isPM} />}
@@ -452,6 +454,136 @@ function ROTab({ isIM, isPM, onCreateRFQFromRO }: { isIM: boolean; isPM: boolean
 }
 
 /* ═══════════════════════════════════════════════════════════
+   SAMPLES TAB
+══════════════════════════════════════════════════════════════*/
+type SampleRow = {
+  id: string; rfqId: string; vendorId: string; currency: string; totalAmount: number;
+  leadTimeDays: number; validUntil: string; status: string; submittedAt: string;
+  sampleStatus: string; sampleRequestedAt?: string | null; sampleNotes?: string | null;
+  vendor: { id: string; name: string; code: string };
+  rfq: { id: string; rfqNumber: string; title: string; items: { material?: { name: string; unit: string } | null; itemDescription?: string | null }[] };
+};
+
+function SamplesTab({ isPM, isAdmin }: { isPM: boolean; isAdmin: boolean }) {
+  const [rows, setRows] = useState<SampleRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'ALL' | 'REQUESTED' | 'APPROVED' | 'REJECTED'>('ALL');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch('/api/procurement/samples');
+    if (r.ok) setRows(await r.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function sampleAction(rfqId: string, quoteId: string, action: 'approve' | 'reject') {
+    const r = await fetch(`/api/procurement/rfq/${rfqId}/sample`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quoteId, action }),
+    });
+    if (r.ok) load();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  const filtered = filter === 'ALL' ? rows : rows.filter(r => r.sampleStatus === filter);
+
+  const counts = {
+    REQUESTED: rows.filter(r => r.sampleStatus === 'REQUESTED').length,
+    APPROVED:  rows.filter(r => r.sampleStatus === 'APPROVED').length,
+    REJECTED:  rows.filter(r => r.sampleStatus === 'REJECTED').length,
+  };
+
+  if (loading) return <div className="text-center text-zinc-500 py-12">Loading...</div>;
+
+  return (
+    <div>
+      {/* Summary strip */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        {([['REQUESTED','Awaiting Review','text-sky-400','border-sky-800/50'],['APPROVED','Approved','text-emerald-400','border-emerald-800/50'],['REJECTED','Rejected','text-red-400','border-red-800/50']] as const).map(([key,label,color,border]) => (
+          <button key={key} onClick={() => setFilter(filter === key ? 'ALL' : key)}
+            className={`rounded-xl border p-3 text-left transition-all ${filter === key ? 'bg-zinc-800' : 'bg-zinc-900/60'} ${border}`}>
+            <div className={`text-2xl font-bold ${color}`}>{counts[key]}</div>
+            <div className="text-xs text-zinc-500 mt-0.5">{label}</div>
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">No samples{filter !== 'ALL' ? ` with status ${filter}` : ''}</div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(row => {
+            const requestedAt = row.sampleRequestedAt ? new Date(row.sampleRequestedAt) : null;
+            const hoursElapsed = requestedAt ? (Date.now() - requestedAt.getTime()) / 3_600_000 : 0;
+            const canApprove = isAdmin || hoursElapsed >= 24;
+            const hoursLeft = Math.ceil(24 - hoursElapsed);
+            const sym = row.currency === 'USD' ? '$' : '₹';
+            const materials = row.rfq.items.map(i => i.material?.name ?? i.itemDescription ?? '—').join(', ');
+
+            return (
+              <div key={row.id} className={`rounded-xl border p-4 ${
+                row.sampleStatus === 'APPROVED' ? 'border-emerald-800/50 bg-emerald-950/10' :
+                row.sampleStatus === 'REJECTED' ? 'border-zinc-800 bg-zinc-900/40' :
+                'border-sky-800/50 bg-sky-950/10'}`}>
+                <div className="flex items-start justify-between flex-wrap gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-white text-sm font-semibold">{row.rfq.rfqNumber}</span>
+                      <span className="text-zinc-300 text-sm">{row.rfq.title}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                        row.sampleStatus === 'APPROVED' ? 'bg-emerald-900/50 text-emerald-300' :
+                        row.sampleStatus === 'REJECTED' ? 'bg-zinc-800 text-zinc-400' :
+                        'bg-sky-900/50 text-sky-300'}`}>
+                        {row.sampleStatus}
+                      </span>
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-1">
+                      <span className="text-zinc-300">{row.vendor.name}</span>
+                      {' · '}{sym}{row.totalAmount.toLocaleString('en-IN')}
+                      {' · '}{row.leadTimeDays}d lead
+                      {' · '}{materials}
+                    </div>
+                    {row.sampleNotes && (
+                      <div className="mt-1 text-xs text-zinc-400 italic">Note: {row.sampleNotes}</div>
+                    )}
+                    {requestedAt && (
+                      <div className="text-xs text-zinc-600 mt-0.5">
+                        Requested {requestedAt.toLocaleDateString('en-IN')} {requestedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        {row.sampleStatus === 'REQUESTED' && !canApprove && <span className="ml-1 text-amber-500">· {hoursLeft}h until review</span>}
+                      </div>
+                    )}
+                  </div>
+
+                  {isPM && row.sampleStatus === 'REQUESTED' && (
+                    canApprove ? (
+                      <div className="flex gap-2">
+                        <button onClick={() => sampleAction(row.rfq.id, row.id, 'approve')}
+                          className="px-3 py-1.5 rounded-lg text-xs bg-emerald-700 hover:bg-emerald-600 text-white font-medium">
+                          Approve
+                        </button>
+                        <button onClick={() => sampleAction(row.rfq.id, row.id, 'reject')}
+                          className="px-3 py-1.5 rounded-lg text-xs bg-red-800 hover:bg-red-700 text-white">
+                          Reject
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-zinc-500 self-center">Approve in {hoursLeft}h</span>
+                    )
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    RFQ TAB
 ══════════════════════════════════════════════════════════════*/
 function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { isPM: boolean; isIM: boolean; isAdmin: boolean; preselectedRO?: RO | null; onClearPreselected?: () => void }) {
@@ -487,15 +619,40 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
     else { const e = await r.json(); alert(e.error); }
   }
 
-  async function sampleAction(rfqId: string, quoteId: string, action: 'request' | 'approve' | 'reject') {
+  async function sampleAction(rfqId: string, quoteId: string, action: 'request' | 'approve' | 'reject', notes?: string) {
     const r = await fetch(`/api/procurement/rfq/${rfqId}/sample`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quoteId, action }),
+      body: JSON.stringify({ quoteId, action, notes }),
     });
     if (r.ok) load();
     else { const e = await r.json(); alert(e.error); }
   }
+
+  // Stats derived from rfq data
+  const openCount = rfqs.filter(r => r.status === 'OPEN').length;
+  const samplesInReview = rfqs.flatMap(r => r.quotes).filter(q => q.sampleStatus === 'REQUESTED').length;
+  const quotesNeeded = rfqs.filter(r => r.status === 'OPEN' && r._count.quotes < 5).length;
+
+  const [benchmarking, setBenchmarking] = useState<string | null>(null);
+  const [benchmarks, setBenchmarks] = useState<Record<string, { price: number; confidence: string; notes: string }>>({});
+
+  async function runBenchmark(materialId: string) {
+    setBenchmarking(materialId);
+    const r = await fetch('/api/procurement/ai-price-benchmark', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ materialId }),
+    });
+    setBenchmarking(null);
+    if (r.ok) {
+      const data = await r.json();
+      setBenchmarks(prev => ({ ...prev, [materialId]: { price: data.price, confidence: data.confidence, notes: data.notes } }));
+    }
+  }
+
+  const [sampleNoteFor, setSampleNoteFor] = useState<{ rfqId: string; quoteId: string } | null>(null);
+  const [sampleNoteText, setSampleNoteText] = useState('');
 
   return (
     <div>
@@ -505,6 +662,22 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
             className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">
             + Create RFQ
           </button>
+        </div>
+      )}
+
+      {/* Stats strip */}
+      {!loading && rfqs.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          {[
+            { label: 'Open RFQs', value: openCount, color: 'text-green-400' },
+            { label: 'Need More Quotes', value: quotesNeeded, color: 'text-amber-400' },
+            { label: 'Samples in Review', value: samplesInReview, color: 'text-sky-400' },
+          ].map(s => (
+            <div key={s.label} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+              <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+              <div className="text-xs text-zinc-500 mt-0.5">{s.label}</div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -558,106 +731,171 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
                     <div className="text-xs text-zinc-600 py-2">No quotes received yet</div>
                   ) : (
                     <div>
-                      <div className="text-xs text-zinc-500 font-medium mb-2 uppercase tracking-wider">Vendor Quotes</div>
-                      <div className="space-y-2">
-                        {rfq.quotes.sort((a, b) => a.totalAmount - b.totalAmount).map((q, idx) => {
-                          const isLowest = idx === 0 && q.status === 'SUBMITTED';
-                          const hasEnoughQuotes = rfq.quotes.length >= 5;
-                          const sym = q.currency === 'USD' ? '$' : '₹';
-                          return (
-                          <div key={q.id} className={`p-3 rounded-lg border ${q.status === 'SELECTED' ? 'border-green-600 bg-green-950/40' : isLowest ? 'border-amber-600/50 bg-amber-950/20' : 'border-zinc-700 bg-zinc-800'}`}>
-                            <div className="flex items-center justify-between flex-wrap gap-2">
-                              <div className="flex items-center flex-wrap gap-1.5">
-                                <span className="text-white font-medium">{q.vendor.name}</span>
-                                {isLowest && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-300 font-medium">Lowest</span>}
-                                {q.status === 'SELECTED' && <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/50 text-green-300 font-medium">✓ Selected</span>}
-                                {q.status === 'REJECTED' && <span className="text-xs text-zinc-500">Rejected</span>}
-                                {/* Sample status badge */}
-                                {isLowest && q.sampleStatus === 'REQUESTED' && <span className="text-xs px-1.5 py-0.5 rounded bg-sky-900/50 text-sky-300">Sample Requested</span>}
-                                {isLowest && q.sampleStatus === 'APPROVED'  && <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-900/50 text-emerald-300 font-medium">✓ Sample Approved</span>}
-                                {isLowest && q.sampleStatus === 'REJECTED'  && <span className="text-xs px-1.5 py-0.5 rounded bg-red-900/50 text-red-300">Sample Rejected</span>}
-                              </div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-white font-semibold">{sym}{q.totalAmount.toLocaleString('en-IN')}</span>
-                                <span className="text-xs text-zinc-400">{q.leadTimeDays}d lead</span>
+                      <div className="text-xs text-zinc-500 font-medium mb-2 uppercase tracking-wider">
+                        Vendor Quote Comparison
+                        <span className={`ml-2 normal-case ${rfq._count.quotes >= 5 ? 'text-green-400' : 'text-amber-400'}`}>
+                          {rfq._count.quotes}/5 quotes
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-zinc-500 border-b border-zinc-800">
+                              <th className="text-left pb-2 pr-3 w-6">#</th>
+                              <th className="text-left pb-2 pr-3">Vendor</th>
+                              <th className="text-right pb-2 pr-3">Total</th>
+                              <th className="text-right pb-2 pr-3">Lead</th>
+                              <th className="text-right pb-2 pr-3">Valid Until</th>
+                              <th className="text-center pb-2 pr-3">Sample</th>
+                              <th className="text-right pb-2">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rfq.quotes.sort((a, b) => a.totalAmount - b.totalAmount).map((q, idx) => {
+                              const isLowest = idx === 0 && q.status === 'SUBMITTED';
+                              const hasEnoughQuotes = rfq.quotes.length >= 5;
+                              const sym = q.currency === 'USD' ? '$' : '₹';
+                              const validUntil = new Date(q.validUntil);
+                              const daysUntilExpiry = Math.ceil((validUntil.getTime() - Date.now()) / 86_400_000);
+                              const isExpiringSoon = daysUntilExpiry <= 3 && daysUntilExpiry > 0;
+                              const isExpired = daysUntilExpiry <= 0;
 
-                                {isPM && rfq.status === 'OPEN' && isLowest && (() => {
-                                  if (!hasEnoughQuotes) {
-                                    return (
-                                      <div className="relative group">
-                                        <button disabled className="px-3 py-1 rounded-lg text-xs bg-zinc-700 text-zinc-500 cursor-not-allowed">
-                                          Request Sample
-                                        </button>
-                                        <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block z-10 w-52 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-xs text-zinc-300 shadow-lg">
-                                          Minimum 5 quotes required.<br />{rfq.quotes.length} of 5 received.
-                                        </div>
-                                      </div>
-                                    );
-                                  }
-                                  if (q.sampleStatus === 'NONE' || q.sampleStatus === 'REJECTED') {
-                                    return (
-                                      <button onClick={() => sampleAction(rfq.id, q.id, 'request')}
-                                        className="px-3 py-1 rounded-lg text-xs bg-sky-700 hover:bg-sky-600 text-white">
-                                        Request Sample
-                                      </button>
-                                    );
-                                  }
-                                  if (q.sampleStatus === 'REQUESTED') {
-                                    const requestedAt = q.sampleRequestedAt ? new Date(q.sampleRequestedAt) : null;
-                                    const hoursElapsed = requestedAt ? (Date.now() - requestedAt.getTime()) / 3_600_000 : 0;
-                                    const canApprove = isAdmin || hoursElapsed >= 24;
-                                    const hoursLeft = Math.ceil(24 - hoursElapsed);
-                                    return canApprove ? (
-                                      <div className="flex gap-1.5">
-                                        <button onClick={() => sampleAction(rfq.id, q.id, 'approve')}
-                                          className="px-3 py-1 rounded-lg text-xs bg-emerald-700 hover:bg-emerald-600 text-white">
-                                          Approve Sample
-                                        </button>
-                                        <button onClick={() => sampleAction(rfq.id, q.id, 'reject')}
-                                          className="px-3 py-1 rounded-lg text-xs bg-red-800 hover:bg-red-700 text-white">
-                                          Reject
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <div className="relative group">
-                                        <span className="text-xs text-zinc-500 cursor-default">
-                                          Awaiting 24h · {hoursLeft}h left
-                                        </span>
-                                        <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block z-10 w-56 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-xs text-zinc-300 shadow-lg">
-                                          Sample evaluation period: 24 hours from request.<br />Approve available in {hoursLeft}h.
-                                        </div>
-                                      </div>
-                                    );
-                                  }
-                                  if (q.sampleStatus === 'APPROVED') {
-                                    return (
-                                      <button onClick={() => createPO(rfq.id, q.id)}
-                                        className="px-3 py-1 rounded-lg text-xs bg-green-700 hover:bg-green-600 text-white font-medium">
-                                        Create PO
-                                      </button>
-                                    );
-                                  }
-                                  return null;
-                                })()}
-                              </div>
-                            </div>
-                            {/* Per-item pricing */}
-                            {q.items.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-zinc-700 space-y-1">
-                                {q.items.map(qi => {
-                                  const rfqItem = rfq.items.find(ri => ri.id === qi.rfqItemId);
-                                  return (
-                                    <div key={qi.id} className="flex justify-between text-xs text-zinc-400">
-                                      <span>{rfqItem?.material?.name ?? rfqItem?.itemDescription ?? qi.materialId ?? '—'}</span>
-                                      <span>{q.currency === 'USD' ? '$' : '₹'}{qi.unitPrice} × {rfqItem?.qtyRequired} = {q.currency === 'USD' ? '$' : '₹'}{qi.totalPrice.toFixed(2)}</span>
+                              return (
+                                <tr key={q.id} className={`border-b border-zinc-800/50 ${
+                                  q.status === 'SELECTED' ? 'bg-green-950/20' :
+                                  isLowest ? 'bg-amber-950/10' : ''}`}>
+                                  <td className="py-2 pr-3 text-zinc-500">{idx + 1}</td>
+                                  <td className="py-2 pr-3">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className={`font-medium ${isLowest ? 'text-amber-300' : 'text-white'}`}>{q.vendor.name}</span>
+                                      {isLowest && <span className="text-xs px-1 py-0.5 rounded bg-amber-900/50 text-amber-300">Lowest</span>}
+                                      {q.status === 'SELECTED' && <span className="text-xs px-1 py-0.5 rounded bg-green-900/50 text-green-300">✓ Selected</span>}
+                                      {q.status === 'REJECTED' && <span className="text-xs text-zinc-600">Rejected</span>}
+                                      {q.vendor.rating && <span className="text-xs text-yellow-400">★{q.vendor.rating.toFixed(1)}</span>}
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                        })}
+                                    {q.notes && <div className="text-zinc-500 text-xs mt-0.5 max-w-xs truncate">{q.notes}</div>}
+                                  </td>
+                                  <td className="py-2 pr-3 text-right">
+                                    <span className={`font-semibold ${isLowest ? 'text-amber-300' : 'text-white'}`}>
+                                      {sym}{q.totalAmount.toLocaleString('en-IN')}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 pr-3 text-right text-zinc-400">{q.leadTimeDays}d</td>
+                                  <td className="py-2 pr-3 text-right">
+                                    <span className={isExpired ? 'text-red-400' : isExpiringSoon ? 'text-amber-400' : 'text-zinc-400'}>
+                                      {validUntil.toLocaleDateString('en-IN')}
+                                      {isExpired && ' (expired)'}
+                                      {isExpiringSoon && ` (${daysUntilExpiry}d)`}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 pr-3 text-center">
+                                    {q.sampleStatus === 'NONE' ? <span className="text-zinc-700">—</span> :
+                                     q.sampleStatus === 'REQUESTED' ? <span className="px-1.5 py-0.5 rounded bg-sky-900/50 text-sky-300">Requested</span> :
+                                     q.sampleStatus === 'APPROVED'  ? <span className="px-1.5 py-0.5 rounded bg-emerald-900/50 text-emerald-300">✓ Approved</span> :
+                                     <span className="px-1.5 py-0.5 rounded bg-red-900/50 text-red-400">Rejected</span>}
+                                  </td>
+                                  <td className="py-2 text-right">
+                                    {isPM && rfq.status === 'OPEN' && isLowest && (() => {
+                                      if (!hasEnoughQuotes) {
+                                        return <span className="text-zinc-600 text-xs">{rfq.quotes.length}/5 needed</span>;
+                                      }
+                                      if (q.sampleStatus === 'NONE' || q.sampleStatus === 'REJECTED') {
+                                        return (
+                                          <button onClick={() => { setSampleNoteFor({ rfqId: rfq.id, quoteId: q.id }); setSampleNoteText(''); }}
+                                            className="px-2 py-1 rounded text-xs bg-sky-700 hover:bg-sky-600 text-white">
+                                            Request Sample
+                                          </button>
+                                        );
+                                      }
+                                      if (q.sampleStatus === 'REQUESTED') {
+                                        const requestedAt = q.sampleRequestedAt ? new Date(q.sampleRequestedAt) : null;
+                                        const hoursElapsed = requestedAt ? (Date.now() - requestedAt.getTime()) / 3_600_000 : 0;
+                                        const canApprove = isAdmin || hoursElapsed >= 24;
+                                        const hoursLeft = Math.ceil(24 - hoursElapsed);
+                                        return canApprove ? (
+                                          <div className="flex gap-1">
+                                            <button onClick={() => sampleAction(rfq.id, q.id, 'approve')}
+                                              className="px-2 py-1 rounded text-xs bg-emerald-700 hover:bg-emerald-600 text-white">✓</button>
+                                            <button onClick={() => sampleAction(rfq.id, q.id, 'reject')}
+                                              className="px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">✗</button>
+                                          </div>
+                                        ) : (
+                                          <span className="text-zinc-500 text-xs">{hoursLeft}h left</span>
+                                        );
+                                      }
+                                      if (q.sampleStatus === 'APPROVED') {
+                                        return (
+                                          <button onClick={() => createPO(rfq.id, q.id)}
+                                            className="px-2 py-1 rounded text-xs bg-green-700 hover:bg-green-600 text-white font-medium">
+                                            Create PO
+                                          </button>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Per-item price breakdown */}
+                      <div className="mt-3 pt-3 border-t border-zinc-800/50">
+                        <div className="text-xs text-zinc-500 font-medium mb-2 uppercase tracking-wider">Price Breakdown per Item</div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-zinc-600 border-b border-zinc-800">
+                                <th className="text-left pb-1 pr-3">Material</th>
+                                <th className="text-right pb-1 pr-3">Qty</th>
+                                {rfq.quotes.slice().sort((a,b) => a.totalAmount - b.totalAmount).map(q => (
+                                  <th key={q.id} className={`text-right pb-1 pr-3 ${q === rfq.quotes.slice().sort((a,b) => a.totalAmount - b.totalAmount)[0] ? 'text-amber-400' : ''}`}>
+                                    {q.vendor.name.split(' ')[0]}
+                                  </th>
+                                ))}
+                                <th className="text-right pb-1">AI Benchmark</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rfq.items.map(item => {
+                                const sortedQuotes = rfq.quotes.slice().sort((a, b) => a.totalAmount - b.totalAmount);
+                                return (
+                                  <tr key={item.id} className="border-b border-zinc-800/30">
+                                    <td className="py-1.5 pr-3 text-zinc-300">{item.material?.name ?? item.itemDescription ?? '—'}</td>
+                                    <td className="py-1.5 pr-3 text-right text-zinc-500">{item.qtyRequired} {item.material?.unit ?? item.itemUnit ?? ''}</td>
+                                    {sortedQuotes.map(q => {
+                                      const qi = q.items.find(i => i.rfqItemId === item.id);
+                                      return (
+                                        <td key={q.id} className="py-1.5 pr-3 text-right text-zinc-300">
+                                          {qi ? `₹${qi.unitPrice}/unit` : '—'}
+                                        </td>
+                                      );
+                                    })}
+                                    <td className="py-1.5 text-right">
+                                      {item.materialId ? (
+                                        benchmarks[item.materialId] ? (
+                                          <span className={`font-medium ${
+                                            benchmarks[item.materialId].confidence === 'HIGH' ? 'text-emerald-400' :
+                                            benchmarks[item.materialId].confidence === 'LOW'  ? 'text-red-400' : 'text-yellow-400'}`}>
+                                            ₹{benchmarks[item.materialId].price.toLocaleString('en-IN')}
+                                          </span>
+                                        ) : (
+                                          <button onClick={() => runBenchmark(item.materialId!)}
+                                            disabled={benchmarking === item.materialId}
+                                            className="px-1.5 py-0.5 rounded text-xs bg-violet-800 hover:bg-violet-700 text-white disabled:opacity-50">
+                                            {benchmarking === item.materialId ? '...' : 'AI Price'}
+                                          </button>
+                                        )
+                                      ) : <span className="text-zinc-700">—</span>}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -669,6 +907,36 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
       )}
 
       {creating && <CreateRFQModal preselectedRO={preselectedRO} onClose={() => { setCreating(false); onClearPreselected?.(); }} onCreated={() => { setCreating(false); onClearPreselected?.(); load(); }} />}
+
+      {/* Sample notes modal */}
+      {sampleNoteFor && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="text-white font-semibold">Request Sample</h3>
+            <p className="text-zinc-400 text-sm">Add any specific instructions for the vendor sample (e.g. quantity, finish, test requirements).</p>
+            <textarea
+              value={sampleNoteText}
+              onChange={e => setSampleNoteText(e.target.value)}
+              placeholder="e.g. Send 2 units, powder-coated finish, include test report…"
+              rows={3}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white resize-none focus:outline-none focus:border-zinc-500"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setSampleNoteFor(null)}
+                className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700">
+                Cancel
+              </button>
+              <button onClick={() => {
+                sampleAction(sampleNoteFor.rfqId, sampleNoteFor.quoteId, 'request', sampleNoteText || undefined);
+                setSampleNoteFor(null);
+              }}
+                className="flex-1 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium">
+                Send Request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -945,7 +1213,8 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
                   <div className="text-xs text-zinc-500 mt-1">
                     {po.currency === 'USD' ? '$' : '₹'}{po.totalAmount.toLocaleString('en-IN')} ·
                     {po.expectedDelivery && <> ETA: {new Date(po.expectedDelivery).toLocaleDateString('en-IN')} ·</>}
-                    {po.rfq && <> RFQ: {po.rfq.rfqNumber}</>}
+                    {po.rfq && <> · RFQ: {po.rfq.rfqNumber}</>}
+                    {po.rfq?.paymentTerms && <> · Terms: {po.rfq.paymentTerms}</>}
                   </div>
                 </div>
                 <div className="flex gap-2 items-center flex-wrap">

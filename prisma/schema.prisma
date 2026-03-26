@@ -1493,6 +1493,7 @@ model VendorQuote {
   submittedAt  DateTime    @default(now()) @map("submitted_at")
   sampleStatus      String    @default("NONE") @map("sample_status")       // NONE, REQUESTED, APPROVED, REJECTED
   sampleRequestedAt DateTime? @map("sample_requested_at")
+  sampleNotes       String?   @map("sample_notes")
 
   rfq    RFQ              @relation(fields: [rfqId], references: [id], onDelete: Cascade)
   vendor Vendor           @relation(fields: [vendorId], references: [id])

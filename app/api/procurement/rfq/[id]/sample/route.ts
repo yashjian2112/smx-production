@@ -11,7 +11,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const { id: rfqId } = await params;
-  const { quoteId, action } = await req.json() as { quoteId: string; action: string };
+  const { quoteId, action, notes } = await req.json() as { quoteId: string; action: string; notes?: string };
 
   if (!['request', 'approve', 'reject'].includes(action)) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: { id: quoteId },
     data: {
       sampleStatus,
-      ...(action === 'request' ? { sampleRequestedAt: new Date() } : {}),
+      ...(action === 'request' ? { sampleRequestedAt: new Date(), sampleNotes: notes ?? null } : {}),
     },
   });
 
