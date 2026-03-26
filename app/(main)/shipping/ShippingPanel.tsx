@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { Check, X } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type InvoiceItem = { id: string; invoiceNumber: string; notes: string | null };
@@ -475,7 +476,7 @@ export function ShippingPanel({
                       className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-white"
                       style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.25)' }}
                     >
-                      ✓ Approve &amp; Invoice
+                      <Check className="w-4 h-4 mr-1" /> Approve &amp; Invoice
                     </button>
                     <button
                       type="button"
@@ -483,7 +484,7 @@ export function ShippingPanel({
                       className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
                       style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}
                     >
-                      ✕ Reject
+                      <X className="w-4 h-4 mr-1" /> Reject
                     </button>
                   </div>
                 )}
@@ -600,7 +601,7 @@ export function ShippingPanel({
                               <button type="button"
                                 onClick={() => setTrackingEditing((p) => ({ ...p, [d.id]: false }))}
                                 className="text-xs px-1.5 py-1 rounded-md text-zinc-500 hover:text-zinc-300">
-                                ✕
+                                <X className="w-4 h-4" />
                               </button>
                             )}
                           </div>

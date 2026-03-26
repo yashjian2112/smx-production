@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { Package } from 'lucide-react';
 
 type ReturnItem = {
   id: string;
@@ -112,7 +113,7 @@ export default async function ReworkPage() {
 
       {items.length === 0 ? (
         <div className="card p-10 text-center">
-          <div className="text-4xl mb-3">📦</div>
+          <div className="flex justify-center mb-3"><Package className="w-4 h-4" /></div>
           <p className="text-slate-400 text-sm">No replacement requests yet.</p>
           <p className="text-slate-600 text-xs mt-1">When Sales logs a replacement PI, it will appear here.</p>
         </div>

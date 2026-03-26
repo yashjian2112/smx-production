@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { Check, Star, X } from 'lucide-react';
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 type ROItem = {
@@ -783,9 +784,9 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       <span className={`font-medium ${isLowest ? 'text-amber-300' : 'text-white'}`}>{q.vendor.name}</span>
                                       {isLowest && <span className="text-xs px-1 py-0.5 rounded bg-amber-900/50 text-amber-300">Lowest</span>}
-                                      {q.status === 'SELECTED' && <span className="text-xs px-1 py-0.5 rounded bg-green-900/50 text-green-300">✓ Selected</span>}
+                                      {q.status === 'SELECTED' && <span className="text-xs px-1 py-0.5 rounded bg-green-900/50 text-green-300 flex items-center gap-0.5"><Check className="w-4 h-4 mr-1 inline" /> Selected</span>}
                                       {q.status === 'REJECTED' && <span className="text-xs text-zinc-600">Rejected</span>}
-                                      {q.vendor.rating && <span className="text-xs text-yellow-400">★{q.vendor.rating.toFixed(1)}</span>}
+                                      {q.vendor.rating && <span className="text-xs text-yellow-400 flex items-center gap-0.5"><Star className="w-3 h-3 fill-amber-400 text-amber-400 inline" />{q.vendor.rating.toFixed(1)}</span>}
                                     </div>
                                     {q.notes && <div className="text-zinc-500 text-xs mt-0.5 max-w-xs truncate">{q.notes}</div>}
                                   </td>
@@ -805,7 +806,7 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
                                   <td className="py-2 pr-3 text-center">
                                     {q.sampleStatus === 'NONE' ? <span className="text-zinc-700">—</span> :
                                      q.sampleStatus === 'REQUESTED' ? <span className="px-1.5 py-0.5 rounded bg-sky-900/50 text-sky-300">Requested</span> :
-                                     q.sampleStatus === 'APPROVED'  ? <span className="px-1.5 py-0.5 rounded bg-emerald-900/50 text-emerald-300">✓ Approved</span> :
+                                     q.sampleStatus === 'APPROVED'  ? <span className="px-1.5 py-0.5 rounded bg-emerald-900/50 text-emerald-300 flex items-center gap-0.5"><Check className="w-4 h-4 mr-1 inline" /> Approved</span> :
                                      <span className="px-1.5 py-0.5 rounded bg-red-900/50 text-red-400">Rejected</span>}
                                   </td>
                                   <td className="py-2 text-right">
@@ -829,9 +830,9 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
                                         return canApprove ? (
                                           <div className="flex gap-1">
                                             <button onClick={() => sampleAction(rfq.id, q.id, 'approve')}
-                                              className="px-2 py-1 rounded text-xs bg-emerald-700 hover:bg-emerald-600 text-white">✓</button>
+                                              className="px-2 py-1 rounded text-xs bg-emerald-700 hover:bg-emerald-600 text-white"><Check className="w-4 h-4" /></button>
                                             <button onClick={() => sampleAction(rfq.id, q.id, 'reject')}
-                                              className="px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">✗</button>
+                                              className="px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white"><X className="w-4 h-4" /></button>
                                           </div>
                                         ) : (
                                           <span className="text-zinc-500 text-xs">{hoursLeft}h left</span>
@@ -1185,7 +1186,7 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
                         className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 accent-blue-500" />
                       <span className="text-sm text-zinc-300">{v.name}</span>
                       <span className="text-xs text-zinc-500">{v.code}</span>
-                      {v.rating && <span className="text-xs text-amber-400">★ {v.rating}</span>}
+                      {v.rating && <span className="text-xs text-amber-400 flex items-center gap-0.5"><Star className="w-3 h-3 fill-amber-400 text-amber-400 inline mr-1" />{v.rating}</span>}
                       <div className="flex gap-1 ml-auto">
                         {v.categories.map(c => <span key={c} className="text-xs bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">{c}</span>)}
                       </div>
@@ -1201,7 +1202,7 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
                   <p className="text-xs text-amber-400">Need {5 - selectedVendors.length} more vendor{5 - selectedVendors.length > 1 ? 's' : ''}</p>
                 )}
                 {selectedVendors.length >= 5 && (
-                  <p className="text-xs text-green-400">✓ Minimum met</p>
+                  <p className="text-xs text-green-400 flex items-center gap-0.5"><Check className="w-4 h-4 mr-1 inline" /> Minimum met</p>
                 )}
               </div>
             </div>
@@ -1596,7 +1597,7 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-white font-semibold">{v.name}</span>
                     <span className="text-zinc-500 text-xs">{v.code}</span>
-                    {v.rating && <span className="text-xs text-amber-400">★ {v.rating}</span>}
+                    {v.rating && <span className="text-xs text-amber-400 flex items-center gap-0.5"><Star className="w-3 h-3 fill-amber-400 text-amber-400 inline mr-1" />{v.rating}</span>}
                     {!v.active && <Badge label="INACTIVE" />}
                   </div>
                   <div className="text-xs text-zinc-500 mt-1">
@@ -1611,7 +1612,7 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
                   <div className="text-xs mt-1">
                     {v.portalEmail ? (
                       <span className={v.isPortalActive ? 'text-green-400' : 'text-zinc-500'}>
-                        Portal: {v.portalEmail} {v.isPortalActive ? '✓ Active' : '(Inactive)'}
+                        Portal: {v.portalEmail} {v.isPortalActive ? <><Check className="w-4 h-4 mr-1 inline" /> Active</> : '(Inactive)'}
                       </span>
                     ) : <span className="text-zinc-600">No portal access</span>}
                   </div>
@@ -1866,7 +1867,7 @@ function UploadVendorInvoiceModal({ po, onClose, onCreated }: { po: PO; onClose:
               <input type="file" accept=".pdf,image/*" onChange={uploadFile} disabled={uploading}
                 className="w-full mt-1 text-sm text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-zinc-700 file:text-white file:text-xs cursor-pointer" />
               {uploading && <p className="text-xs text-zinc-500 mt-1">Uploading...</p>}
-              {fileUrl && <p className="text-xs text-emerald-400 mt-1">✓ File uploaded</p>}
+              {fileUrl && <p className="text-xs text-emerald-400 mt-1 flex items-center gap-0.5"><Check className="w-4 h-4 mr-1 inline" /> File uploaded</p>}
             </div>
           </div>
           <div className="flex gap-3 mt-6">

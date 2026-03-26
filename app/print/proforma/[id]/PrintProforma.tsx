@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { X } from 'lucide-react';
 import { amountToWords } from '@/lib/number-to-words';
 import { getFiscalYear } from '@/lib/invoice-number';
 
@@ -213,8 +214,8 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
         <button onClick={() => window.print()} style={{ background: '#1a3a6b', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
           🖨️ Print / Save PDF
         </button>
-        <button onClick={() => window.close()} style={{ background: '#3f3f46', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>
-          ✕ Close
+        <button onClick={() => window.close()} style={{ background: '#3f3f46', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <X className="w-4 h-4 mr-1" /> Close
         </button>
         <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>Use Chrome → Print → Save as PDF for best results</span>
       </div>

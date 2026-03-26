@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Check } from 'lucide-react';
 import { QRCodeCanvas } from '@/components/QRCode';
 import { ScanInput } from '@/components/ScanInput';
 
@@ -102,7 +103,7 @@ export function ComponentChecklist({
     if (res.ok) {
       const data = await res.json();
       setChecks((prev) => ({ ...prev, [matched.id]: data }));
-      setScanMsg(`✓ Matched: ${matched.name}`);
+      setScanMsg(`MATCHED: ${matched.name}`);
     } else {
       setScanMsg('Failed to save check');
     }
@@ -134,7 +135,10 @@ export function ComponentChecklist({
         />
       </div>
       {scanMsg && (
-        <p className={`text-xs ${scanMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>{scanMsg}</p>
+        <p className={`flex items-center text-xs ${scanMsg.startsWith('MATCHED:') ? 'text-green-400' : 'text-red-400'}`}>
+          {scanMsg.startsWith('MATCHED:') && <Check className="w-4 h-4 mr-1 inline" />}
+          {scanMsg.startsWith('MATCHED:') ? `Matched:${scanMsg.slice('MATCHED:'.length)}` : scanMsg}
+        </p>
       )}
 
       {/* Component list */}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { Check } from 'lucide-react';
 import { loadFaceModels, getFaceDescriptor, getAveragedDescriptor, descriptorDistance, descriptorFromJson, descriptorToJson } from '@/lib/face-models';
 
 type Mode = 'verify' | 'enroll';
@@ -98,7 +99,7 @@ export function FaceGate({ mode = 'verify', userId, onVerified, onEnrolled, onCa
                     body: JSON.stringify({ descriptor: descriptorToJson(desc) }),
                   });
                   if (verifyRes.ok) {
-                    setMessage('Identity confirmed ✓');
+                    setMessage('Identity confirmed');
                     setTimeout(() => { stopCamera(); onVerified?.(); }, 800);
                   } else {
                     consecutiveMatchCount.current = 0;
@@ -160,7 +161,7 @@ export function FaceGate({ mode = 'verify', userId, onVerified, onEnrolled, onCa
                 });
                 if (res.ok) {
                   setStatus('enrolled');
-                  setMessage('Face enrolled successfully ✓');
+                  setMessage('Face enrolled successfully');
                   setTimeout(() => { stopCamera(); onEnrolled?.(); }, 1000);
                 } else {
                   setStatus('error');
@@ -304,13 +305,14 @@ export function FaceGate({ mode = 'verify', userId, onVerified, onEnrolled, onCa
       </div>
 
       {/* Status message */}
-      <p className={`mt-6 text-sm text-center px-6 ${
+      <p className={`mt-6 text-sm text-center px-6 flex items-center justify-center gap-1 ${
         isSuccess ? 'text-green-400' :
         isError ? 'text-red-400' :
         status === 'no_face' ? 'text-amber-400' :
         'text-slate-300'
       }`}>
         {message}
+        {isSuccess && <Check className="w-5 h-5 inline ml-1" />}
       </p>
 
       {/* Attempt dots for verify mode */}

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { AlertTriangle, Package, Check, X } from 'lucide-react';
 
 type RFQItem = {
   id: string; materialId?: string | null; qtyRequired: number;
@@ -154,7 +155,7 @@ export default function VendorPortal({ token }: { token: string }) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'rgb(9,9,11)' }}>
         <div className="text-center space-y-3 max-w-sm px-6">
-          <div className="text-4xl">⚠️</div>
+          <div className="text-4xl flex items-center justify-center"><AlertTriangle className="w-4 h-4" /></div>
           <p className="text-white font-medium text-lg">{error || 'Invalid link'}</p>
           <p className="text-zinc-500 text-sm">This RFQ link is invalid or has expired. Contact your purchase manager for assistance.</p>
         </div>
@@ -199,7 +200,7 @@ export default function VendorPortal({ token }: { token: string }) {
             </div>
           ) : myPOs.length === 0 ? (
             <div className="rounded-2xl border border-zinc-800 p-10 text-center mt-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
-              <div className="text-4xl mb-3">📦</div>
+              <div className="text-4xl mb-3 flex items-center justify-center"><Package className="w-4 h-4" /></div>
               <p className="text-white font-medium">No Purchase Orders Yet</p>
               <p className="text-zinc-500 text-sm mt-1">When SMX issues a PO to you, it will appear here.</p>
             </div>
@@ -218,7 +219,7 @@ export default function VendorPortal({ token }: { token: string }) {
                 // 6-step timeline
                 const advancePaid = isPartialPaid || isPaid;
                 const goodsChecked = po.status === 'RECEIVED';
-                type Step = { label: string; sub: string; done: boolean; active: boolean };
+                type Step = { label: string; sub: string | React.ReactNode; done: boolean; active: boolean };
                 const steps: Step[] = [
                   {
                     label: 'PO Issued',
@@ -252,7 +253,7 @@ export default function VendorPortal({ token }: { token: string }) {
                   },
                   {
                     label: 'Completed',
-                    sub: isPaid ? '✓ Done' : '—',
+                    sub: isPaid ? <><Check className="w-4 h-4 mr-1" /> Done</> : '—',
                     done: isPaid,
                     active: false,
                   },
@@ -297,7 +298,7 @@ export default function VendorPortal({ token }: { token: string }) {
                         )}
                         {(isPartialPaid || isPaid) && (
                           <div className="flex items-center gap-1.5 text-xs text-emerald-400">
-                            <span>✓</span>
+                            <Check className="w-4 h-4" />
                             <span>{sym}{po.paidAmount.toLocaleString('en-IN')} received</span>
                           </div>
                         )}
@@ -327,7 +328,7 @@ export default function VendorPortal({ token }: { token: string }) {
                                   ? 'bg-sky-950 border-sky-400 text-sky-300'
                                   : 'bg-zinc-900 border-zinc-700 text-zinc-600'
                             }`}>
-                              {step.done ? '✓' : idx + 1}
+                              {step.done ? <Check className="w-4 h-4" /> : idx + 1}
                             </div>
                             {/* Label */}
                             <p className={`text-[10px] font-semibold mt-1.5 text-center leading-tight px-0.5 ${step.done ? 'text-emerald-400' : step.active ? 'text-sky-400' : 'text-zinc-600'}`}>
@@ -409,7 +410,7 @@ export default function VendorPortal({ token }: { token: string }) {
                     )}
                     {isPaid && (
                       <div className="border-t border-emerald-900/30 px-5 py-3 flex items-center justify-center gap-2">
-                        <span className="text-emerald-400 text-sm">✓</span>
+                        <Check className="w-4 h-4 text-emerald-400" />
                         <p className="text-emerald-400 text-sm font-medium">Payment complete</p>
                       </div>
                     )}
@@ -512,7 +513,7 @@ export default function VendorPortal({ token }: { token: string }) {
         {/* Success */}
         {submitted && (
           <div className="rounded-xl border border-emerald-700 bg-emerald-900/20 p-4">
-            <p className="text-emerald-400 font-medium">✓ Quote submitted successfully!</p>
+            <p className="text-emerald-400 font-medium flex items-center"><Check className="w-4 h-4 mr-1 inline" /> Quote submitted successfully!</p>
             <p className="text-emerald-300/70 text-xs mt-1">The purchase team will review your quote and contact you if selected.</p>
           </div>
         )}
@@ -770,7 +771,7 @@ export default function VendorPortal({ token }: { token: string }) {
               <input type="file" accept=".pdf,.png" multiple onChange={handleFileUpload}
                 className="w-full mt-1 text-zinc-400 text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-zinc-700 file:text-white hover:file:bg-zinc-600 cursor-pointer" />
               {fileUrls.length > 0 && (
-                <p className="text-xs text-blue-400 mt-1">✓ {fileUrls.length} file{fileUrls.length > 1 ? 's' : ''} attached</p>
+                <p className="text-xs text-blue-400 mt-1 flex items-center"><Check className="w-4 h-4 mr-1 inline" />{fileUrls.length} file{fileUrls.length > 1 ? 's' : ''} attached</p>
               )}
             </div>
 
@@ -801,7 +802,7 @@ export default function VendorPortal({ token }: { token: string }) {
               <a href={previewFile} download target="_blank" rel="noopener noreferrer"
                 className="text-xs text-blue-400 hover:text-blue-300">⬇ Download</a>
               <button onClick={() => setPreviewFile(null)}
-                className="text-zinc-400 hover:text-white text-xl leading-none">✕</button>
+                className="text-zinc-400 hover:text-white text-xl leading-none"><X className="w-4 h-4" /></button>
             </div>
           </div>
           <div className="flex-1 overflow-hidden">

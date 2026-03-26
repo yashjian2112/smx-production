@@ -1,6 +1,7 @@
 'use client';
 
 import { Barcode128 } from '@/components/Barcode128';
+import { Check } from 'lucide-react';
 
 /* ── Types ── */
 type RawMaterial = {
@@ -323,7 +324,7 @@ export function PrintJobCard({
               <th style={{ width: '9%'  }} className="c">Type</th>
               <th style={{ width: '15%' }} className="c">Qty Required</th>
               <th style={{ width: '15%' }} className="c">Qty Issued</th>
-              <th style={{ width: '9%'  }} className="c">Rcvd ✓</th>
+              <th style={{ width: '9%'  }} className="c">Rcvd <Check className="w-4 h-4 ml-1 inline" /></th>
             </tr>
           </thead>
           <tbody>

@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Check } from 'lucide-react';
 
 type RFQItem = { id: string; qtyRequired: number; material?: { name: string; unit: string } | null; itemDescription?: string | null; itemUnit?: string | null };
 type MyQuote = { id: string; status: string; totalAmount: number; submittedAt: string } | null;
@@ -137,7 +138,7 @@ export default function VendorDashboard() {
                     {rfq.myQuote && (
                       <Link href={`/vendor/${rfq.inviteToken}`}
                         className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 whitespace-nowrap">
-                        Quoted ✓ · View
+                        Quoted <Check className="w-3 h-3 inline ml-1" /> · View
                       </Link>
                     )}
                   </div>

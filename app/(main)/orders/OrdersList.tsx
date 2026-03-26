@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { Check, Clock } from 'lucide-react';
 
 type UnitSummary = { currentStatus: string; currentStage: string };
 
@@ -39,9 +40,9 @@ const STAGE_LABEL: Record<string, string> = {
   FINAL_ASSEMBLY: 'Final Assembly',
 };
 
-const JC_STATUS: Record<string, { label: string; color: string }> = {
-  PENDING:     { label: '⏳ Waiting for Materials', color: '#fbbf24' },
-  DISPATCHED:  { label: '✓ Materials Dispatched',  color: '#4ade80' },
+const JC_STATUS: Record<string, { label: ReactNode; color: string }> = {
+  PENDING:     { label: <><Clock className="w-4 h-4 mr-1 inline" />Waiting for Materials</>, color: '#fbbf24' },
+  DISPATCHED:  { label: <><Check className="w-4 h-4 mr-1 inline" />Materials Dispatched</>,  color: '#4ade80' },
   IN_PROGRESS: { label: '⚙ In Progress',           color: '#38bdf8' },
   COMPLETED:   { label: '✅ Completed',             color: '#4ade80' },
 };

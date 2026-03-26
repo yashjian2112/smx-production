@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { Star } from 'lucide-react';
 
 type Analytics = {
   summary: {
@@ -34,9 +35,16 @@ function StatCard({ label, value, sub, color }: { label: string; value: string |
 
 function StarRating({ value }: { value: number | null }) {
   if (value === null) return <span className="text-zinc-600 text-xs">No data</span>;
+  const rounded = Math.round(value);
   return (
-    <span className="text-amber-400 text-xs">
-      {'★'.repeat(Math.round(value))}{'☆'.repeat(5 - Math.round(value))} {value.toFixed(1)}
+    <span className="inline-flex items-center gap-0.5 text-xs">
+      {Array.from({ length: rounded }).map((_, i) => (
+        <Star key={`f${i}`} className="w-4 h-4 fill-amber-400 text-amber-400 inline" />
+      ))}
+      {Array.from({ length: 5 - rounded }).map((_, i) => (
+        <Star key={`e${i}`} className="w-4 h-4 text-gray-300 inline" />
+      ))}
+      <span className="ml-1 text-amber-400">{value.toFixed(1)}</span>
     </span>
   );
 }

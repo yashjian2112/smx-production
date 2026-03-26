@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Barcode128 } from '@/components/Barcode128';
+import { Check, X } from 'lucide-react';
 
 const MONTH_CODES = ['JA', 'FE', 'MR', 'AP', 'MY', 'JN', 'JL', 'AU', 'SE', 'OC', 'NO', 'DE'] as const;
 
@@ -418,10 +419,10 @@ export function ManualFinalLabel({
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={confirmPrinted}
-                    className="btn-primary px-4 py-2 text-sm rounded-lg"
+                    className="btn-primary px-4 py-2 text-sm rounded-lg flex items-center"
                     disabled={saving}
                   >
-                    ✓ Yes — Save Barcode
+                    <Check className="w-4 h-4 mr-1" /> Yes — Save Barcode
                   </button>
                   <button
                     onClick={() => reprintBatch(activeBatch)}
@@ -434,10 +435,10 @@ export function ManualFinalLabel({
                   <button
                     onClick={() => abandonBatch(activeBatch.id)}
                     disabled={saving}
-                    className="px-4 py-2 text-sm rounded-lg"
+                    className="px-4 py-2 text-sm rounded-lg flex items-center"
                     style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}
                   >
-                    ✕ Abandon
+                    <X className="w-4 h-4 mr-1" /> Abandon
                   </button>
                 </div>
                 <p className="text-[11px] text-zinc-500">
@@ -448,10 +449,10 @@ export function ManualFinalLabel({
 
             {printState === 'confirmed' && (
               <div
-                className="rounded-xl p-3 text-sm font-semibold"
+                className="rounded-xl p-3 text-sm font-semibold flex items-center"
                 style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.28)', color: '#4ade80' }}
               >
-                ✓ Saved {lastSavedCount} serial{lastSavedCount !== 1 ? 's' : ''} to history
+                <Check className="w-4 h-4 mr-1 inline" /> Saved {lastSavedCount} serial{lastSavedCount !== 1 ? 's' : ''} to history
               </div>
             )}
 
@@ -684,10 +685,10 @@ export function ManualFinalLabel({
                             type="button"
                             onClick={() => savePendingBatches([batch.id])}
                             disabled={saving}
-                            className="px-3 py-2 rounded-lg text-xs font-semibold"
+                            className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center"
                             style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.25)', color: '#4ade80' }}
                           >
-                            ✓ Save
+                            <Check className="w-4 h-4 mr-1" /> Save
                           </button>
                           <button
                             type="button"
@@ -702,10 +703,10 @@ export function ManualFinalLabel({
                             type="button"
                             onClick={() => abandonBatch(batch.id)}
                             disabled={saving}
-                            className="px-3 py-2 rounded-lg text-xs font-semibold"
+                            className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center"
                             style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}
                           >
-                            ✕ Abandon
+                            <X className="w-4 h-4 mr-1" /> Abandon
                           </button>
                         </div>
                       </div>
@@ -813,10 +814,10 @@ export function ManualFinalLabel({
                                 type="button"
                                 onClick={() => setConfirmDeleteId(batch.id)}
                                 disabled={saving}
-                                className="px-3 py-2 rounded-lg text-xs font-semibold"
+                                className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center"
                                 style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.18)', color: '#f87171' }}
                               >
-                                ✕ Remove
+                                <X className="w-4 h-4 mr-1" /> Remove
                               </button>
                             )}
                           </div>

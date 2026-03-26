@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { Check, AlertTriangle } from 'lucide-react';
 
 type Props = {
   /** Blob URL of the captured photo */
@@ -371,7 +372,7 @@ export function ImageEnhancer({ src, onEnhancedBlob, minHeight = 220 }: Props) {
                 border:     enhanceFailed ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(74,222,128,0.2)',
               }}
             >
-              {enhanceFailed ? '⚠ raw' : '✓ deblurred'}
+              {enhanceFailed ? <><AlertTriangle className="w-3 h-3 inline mr-1" /> raw</> : <><Check className="w-3 h-3 inline mr-1" /> deblurred</>}
             </span>
           )}
           {/* Zoom badge */}

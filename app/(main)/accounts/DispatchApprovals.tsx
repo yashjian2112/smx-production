@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AlertTriangle, Camera, Check, MapPin, Building2, Package } from 'lucide-react';
 
 type DispatchItem = {
   id:                 string;
@@ -125,10 +126,10 @@ function DispatchCard({ dispatch, onDone }: { dispatch: Dispatch; onDone: () => 
             >
               <div className="font-semibold text-zinc-200 text-sm">{o.client.customerName}</div>
               {o.client.shippingAddress && (
-                <div className="text-zinc-400">📍 Ship to: {o.client.shippingAddress}</div>
+                <div className="text-zinc-400 flex items-center"><MapPin className="w-4 h-4 mr-1 inline" /> Ship to: {o.client.shippingAddress}</div>
               )}
               {o.client.billingAddress && (
-                <div className="text-zinc-500">🏢 Bill to: {o.client.billingAddress}</div>
+                <div className="text-zinc-500 flex items-center"><Building2 className="w-4 h-4 mr-1 inline" /> Bill to: {o.client.billingAddress}</div>
               )}
               {o.client.gstNumber && (
                 <div className="text-zinc-500">GST: {o.client.gstNumber}</div>
@@ -145,7 +146,7 @@ function DispatchCard({ dispatch, onDone }: { dispatch: Dispatch; onDone: () => 
               className="rounded-lg p-3 text-xs"
               style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', color: '#fbbf24' }}
             >
-              ⚠️ Partial Dispatch — {dispatch.partialReason}
+              <AlertTriangle className="w-4 h-4 mr-1 inline" /> Partial Dispatch — {dispatch.partialReason}
             </div>
           )}
 
@@ -175,7 +176,7 @@ function DispatchCard({ dispatch, onDone }: { dispatch: Dispatch; onDone: () => 
                   </div>
                   <div className="flex items-center gap-2 text-xs text-zinc-500">
                     {item.controllerPhotoUrl
-                      ? <a href={`/api/blob-image?url=${encodeURIComponent(item.controllerPhotoUrl)}`} target="_blank" className="text-sky-400 hover:underline">📷 photo</a>
+                      ? <a href={`/api/blob-image?url=${encodeURIComponent(item.controllerPhotoUrl)}`} target="_blank" className="text-sky-400 hover:underline flex items-center"><Camera className="w-4 h-4 mr-1 inline" /> photo</a>
                       : <span>no photo</span>
                     }
                   </div>
@@ -194,7 +195,7 @@ function DispatchCard({ dispatch, onDone }: { dispatch: Dispatch; onDone: () => 
                 className="inline-flex items-center gap-1.5 text-xs text-sky-400 hover:underline px-3 py-2 rounded-lg"
                 style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.2)' }}
               >
-                📦 View Box Photo
+                <Package className="w-4 h-4 mr-1 inline" /> View Box Photo
               </a>
             </div>
           )}
@@ -244,7 +245,7 @@ function DispatchCard({ dispatch, onDone }: { dispatch: Dispatch; onDone: () => 
                 className="flex-1 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50"
                 style={{ background: '#22c55e', color: '#fff' }}
               >
-                {loading ? '…' : '✓ Approve Dispatch'}
+                {loading ? '…' : <><Check className="w-4 h-4 mr-1" /> Approve Dispatch</>}
               </button>
               <button
                 type="button"

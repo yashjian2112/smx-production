@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useCallback, useState, useEffect } from 'react';
+import { Check, AlertTriangle } from 'lucide-react';
 
 export type MarkerPosition = { x: number; y: number; label: string; size?: ComponentSize };
 
@@ -249,13 +250,13 @@ export function InlineBoardPicker({
       )}
 
       {isDone && (
-        <p className="text-[10px] text-green-400">
-          ✓ All {expectedCount} positions marked
+        <p className="text-[10px] text-green-400 flex items-center">
+          <Check className="w-4 h-4 mr-1 inline" /> All {expectedCount} positions marked
         </p>
       )}
       {isOver && (
-        <p className="text-[10px] text-red-400">
-          ⚠ {placed - expectedCount} extra marker{placed - expectedCount !== 1 ? 's' : ''} — right-click to remove
+        <p className="text-[10px] text-red-400 flex items-center">
+          <AlertTriangle className="w-4 h-4 mr-1 inline" /> {placed - expectedCount} extra marker{placed - expectedCount !== 1 ? 's' : ''} — right-click to remove
         </p>
       )}
     </div>

@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import * as XLSX from 'xlsx';
+import { Check, X, AlertTriangle, Bot, MapPin, Camera, Trash2 } from 'lucide-react';
 import { InlineBoardPicker, SIZE_RADIUS, SIZE_MIN_DIST } from '@/components/InlineBoardPicker';
 import type { MarkerPosition as InlineMarkerPosition, ComponentSize } from '@/components/InlineBoardPicker';
 import { zonesToText, parseZoneIds } from '@/lib/boardZones';
@@ -38,7 +39,7 @@ type Preset = {
 const COMPONENT_PRESETS: Preset[] = [
   {
     id: 'mosfet',
-    emoji: '⚡',
+    emoji: 'zap',
     label: 'MOSFET',
     name: 'MOSFET',
     orientationRule: 'Heatsink tab must face outward from board centre',
@@ -47,7 +48,7 @@ const COMPONENT_PRESETS: Preset[] = [
   },
   {
     id: 'resistor',
-    emoji: '▬',
+    emoji: 'resistor',
     label: 'Resistor',
     name: 'Resistor',
     orientationRule: '',
@@ -56,7 +57,7 @@ const COMPONENT_PRESETS: Preset[] = [
   },
   {
     id: 'smd-cap',
-    emoji: '▪',
+    emoji: 'cap',
     label: 'SMD Cap',
     name: 'SMD Ceramic Capacitor',
     orientationRule: '',
@@ -65,7 +66,7 @@ const COMPONENT_PRESETS: Preset[] = [
   },
   {
     id: 'elec-cap',
-    emoji: '🔋',
+    emoji: 'battery',
     label: 'Elec. Cap',
     name: 'Electrolytic Capacitor',
     orientationRule: 'Negative stripe (white band) must match negative pad marking on PCB silkscreen',
@@ -74,7 +75,7 @@ const COMPONENT_PRESETS: Preset[] = [
   },
   {
     id: 'diode',
-    emoji: '▷',
+    emoji: 'diode',
     label: 'Diode',
     name: 'Diode',
     orientationRule: 'Cathode band (silver/grey stripe) must face the direction marked on PCB',
@@ -83,7 +84,7 @@ const COMPONENT_PRESETS: Preset[] = [
   },
   {
     id: 'ic',
-    emoji: '▣',
+    emoji: 'ic',
     label: 'IC / Chip',
     name: 'IC',
     orientationRule: 'Pin 1 dot or notch must align with the triangle marker on PCB silkscreen',
@@ -92,7 +93,7 @@ const COMPONENT_PRESETS: Preset[] = [
   },
   {
     id: 'header',
-    emoji: '⬛',
+    emoji: 'connector',
     label: 'Header',
     name: 'Header',
     orientationRule: 'Pins must be straight and connector fully seated into PCB',
@@ -101,7 +102,7 @@ const COMPONENT_PRESETS: Preset[] = [
   },
   {
     id: 'bus-bar',
-    emoji: '━',
+    emoji: 'busbar',
     label: 'Bus Bar',
     name: 'Bus Bar',
     orientationRule: '',
@@ -110,7 +111,7 @@ const COMPONENT_PRESETS: Preset[] = [
   },
   {
     id: 'inductor',
-    emoji: '〰',
+    emoji: 'inductor',
     label: 'Inductor',
     name: 'Inductor',
     orientationRule: '',
@@ -119,7 +120,7 @@ const COMPONENT_PRESETS: Preset[] = [
   },
   {
     id: 'transformer',
-    emoji: '⊞',
+    emoji: 'transformer',
     label: 'Transformer',
     name: 'Transformer',
     orientationRule: 'Pin 1 orientation must match triangle/dot marker on PCB silkscreen',
@@ -128,7 +129,7 @@ const COMPONENT_PRESETS: Preset[] = [
   },
   {
     id: 'spacer',
-    emoji: '🔩',
+    emoji: 'spacer',
     label: 'Spacer',
     name: 'Spacer',
     orientationRule: '',
@@ -137,7 +138,7 @@ const COMPONENT_PRESETS: Preset[] = [
   },
   {
     id: 'custom',
-    emoji: '✏️',
+    emoji: 'custom',
     label: 'Custom',
     name: '',
     orientationRule: '',
@@ -955,7 +956,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
             )}
             {boardRefItem?.referenceImageUrl && !boardRefPreview && (
               <div className="absolute top-1 right-1">
-                <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.8)', color: 'white' }}>✓ SET</span>
+                <span className="flex items-center text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.8)', color: 'white' }}><Check className="w-4 h-4 mr-1" />SET</span>
               </div>
             )}
           </div>
@@ -986,7 +987,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                     className="flex-1 py-2 rounded-lg text-xs font-bold text-black"
                     style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)' }}
                   >
-                    {savingBoardRef ? 'Saving…' : '✓ Save Reference'}
+                    {savingBoardRef ? 'Saving…' : <><Check className="w-4 h-4 mr-1" />Save Reference</>}
                   </button>
                   <button
                     type="button"
@@ -1022,7 +1023,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                         <span className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
                         Scanning board…
                       </span>
-                    ) : '🤖 Auto-detect components with AI'}
+                    ) : <><Bot className="w-4 h-4 mr-1" />Auto-detect components with AI</>}
                   </button>
                 )}
                 {/* Pick & place button */}
@@ -1057,8 +1058,8 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
 
       {/* ── AI Scan error ─────────────────────────────────────────────────────── */}
       {scanError && (
-        <div className="rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-          🤖 Scan error: {scanError}
+        <div className="flex items-center rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <Bot className="w-4 h-4 mr-1 inline" /> Scan error: {scanError}
         </div>
       )}
 
@@ -1076,10 +1077,10 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
             <button
               type="button"
               onClick={exitPickMode}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 transition-all"
+              className="flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 transition-all"
               style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
             >
-              ✕ Cancel
+              <X className="w-4 h-4 mr-1" />Cancel
             </button>
           </div>
 
@@ -1336,10 +1337,10 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 <button
                   type="button"
                   onClick={() => setPickTab('ai')}
-                  className="flex-1 py-1.5 text-[11px] font-semibold transition-all"
+                  className="flex items-center justify-center gap-1 flex-1 py-1.5 text-[11px] font-semibold transition-all"
                   style={{ background: pickTab === 'ai' ? 'rgba(20,184,166,0.2)' : 'transparent', color: pickTab === 'ai' ? '#5eead4' : '#71717a' }}
                 >
-                  🤖 AI Pick
+                  <Bot className="w-4 h-4 mr-1" />AI Pick
                 </button>
                 <button
                   type="button"
@@ -1372,9 +1373,9 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                     </div>
                     <div className="flex gap-1.5">
                       <button type="button" onClick={confirmLastPick}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-bold text-black"
+                        className="flex items-center justify-center flex-1 py-1.5 rounded-lg text-xs font-bold text-black"
                         style={{ background: 'linear-gradient(135deg,#fbbf24,#f59e0b)' }}>
-                        ✓ Add
+                        <Check className="w-4 h-4 mr-1" />Add
                       </button>
                       <button type="button" onClick={() => setLastPick(null)}
                         className="px-3 py-1.5 rounded-lg text-xs text-zinc-500"
@@ -1389,7 +1390,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
               {/* AI Pick: hint when idle */}
               {pickTab === 'ai' && !lastPick && (
                 <div className="rounded-xl p-3 text-center text-[11px] text-zinc-600" style={{ border: '1px dashed rgba(20,184,166,0.2)' }}>
-                  {picking ? '🤖 Identifying…' : 'Click on the board image to identify a component. Set qty, then add.'}
+                  {picking ? <><Bot className="w-4 h-4 mr-1 inline" />Identifying…</> : 'Click on the board image to identify a component. Set qty, then add.'}
                 </div>
               )}
 
@@ -1408,7 +1409,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                               background: manualStep === s ? 'rgba(139,92,246,0.8)' : manualStep > s ? 'rgba(20,184,166,0.6)' : 'rgba(255,255,255,0.08)',
                               color: manualStep >= s ? 'white' : '#52525b',
                             }}>
-                            {manualStep > s ? '✓' : s}
+                            {manualStep > s ? <Check className="w-3 h-3" /> : s}
                           </div>
                           {s < 3 && <div className="flex-1 h-px" style={{ background: manualStep > s ? 'rgba(20,184,166,0.4)' : 'rgba(255,255,255,0.08)', width: '16px' }} />}
                         </div>
@@ -1664,7 +1665,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
         <div className="card p-4 space-y-3" style={{ border: '1px solid rgba(139,92,246,0.25)', background: 'rgba(139,92,246,0.04)' }}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-purple-300">🤖 AI detected {scanResults.length} component types</p>
+              <p className="flex items-center text-sm font-semibold text-purple-300"><Bot className="w-4 h-4 mr-1 inline" />AI detected {scanResults.length} component types</p>
               <p className="text-[11px] text-zinc-500 mt-0.5">Review counts and locations, then add all to the checklist.</p>
             </div>
             <button type="button" onClick={() => setScanResults(null)} className="text-zinc-600 hover:text-zinc-400 text-lg leading-none">×</button>
@@ -1721,7 +1722,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Adding…
                 </span>
-              ) : `✓ Add all ${scanResults.length} components to checklist`}
+              ) : <><Check className="w-4 h-4 mr-1 inline" />Add all {scanResults.length} components to checklist</>}
             </button>
             <button
               type="button"
@@ -1750,7 +1751,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all"
                 style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.3)', color: '#2dd4bf' }}
               >
-                📍 Map on board
+                <MapPin className="w-4 h-4 mr-1" />Map on board
               </button>
             )}
             {stageItems.length > 0 && (
@@ -1799,7 +1800,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 </div>
               )}
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <span className="text-[9px] text-white font-semibold text-center leading-tight px-1">📷 Upload ref</span>
+                <span className="flex items-center text-[9px] text-white font-semibold text-center leading-tight px-1"><Camera className="w-4 h-4 mr-1" />Upload ref</span>
               </div>
             </div>
 
@@ -1835,15 +1836,15 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                 )}
                 {/* Mapped indicator */}
                 {item.componentPositions && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-teal-400" style={{ background: 'rgba(20,184,166,0.1)' }}>
-                    📍 {JSON.parse(item.componentPositions).length} mapped
+                  <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded text-teal-400" style={{ background: 'rgba(20,184,166,0.1)' }}>
+                    <MapPin className="w-4 h-4 mr-1 inline" />{JSON.parse(item.componentPositions).length} mapped
                   </span>
                 )}
                 <span className="text-[10px] text-zinc-600">#{item.sortOrder}</span>
               </div>
               {item.boardLocation && (
                 <p className="text-[11px] text-sky-400/70 mt-0.5 flex items-center gap-1">
-                  <span>📍</span> {zonesToText(parseZoneIds(item.boardLocation)) || item.boardLocation}
+                  <MapPin className="w-4 h-4 mr-1 inline" />{zonesToText(parseZoneIds(item.boardLocation)) || item.boardLocation}
                 </p>
               )}
               {item.orientationRule && (
@@ -2024,16 +2025,16 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   className="rounded-xl px-3 py-3 text-center"
                   style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.1)' }}
                 >
-                  <p className="text-[11px] text-zinc-600">
-                    📷 Upload a board reference image above to enable visual position marking
+                  <p className="flex items-center text-[11px] text-zinc-600">
+                    <Camera className="w-4 h-4 mr-1 inline" />Upload a board reference image above to enable visual position marking
                   </p>
                 </div>
               )}
 
               {/* ── Photo zone picker ─────────────────────────────────────────── */}
               <div>
-                <label className="block text-[11px] text-zinc-500 uppercase tracking-wide mb-2">
-                  📷 Photo zone — which camera shot covers this component?
+                <label className="flex items-center text-[11px] text-zinc-500 uppercase tracking-wide mb-2">
+                  <Camera className="w-4 h-4 mr-1" />Photo zone — which camera shot covers this component?
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {([
@@ -2249,7 +2250,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
           <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
             {bulkRows.map((row, i) => row.error ? (
               <div key={i} className="rounded-lg px-3 py-2 text-xs text-red-400" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
-                ⚠ {row.error}
+                <AlertTriangle className="w-4 h-4 mr-1 inline" /> {row.error}
               </div>
             ) : (
               <div key={i} className="grid gap-1 items-center rounded-lg px-2 py-1.5" style={{ gridTemplateColumns: '2fr 1fr 3fr 1fr 1fr', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(34,197,94,0.08)' }}>
@@ -2281,7 +2282,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   onChange={e => setBulkRows(prev => prev!.map((r, j) => j === i ? { ...r, required: e.target.value === 'true' } : r))}
                   className="input-field text-xs py-1"
                 >
-                  <option value="true">✓ Yes</option>
+                  <option value="true">Yes</option>
                   <option value="false">No</option>
                 </select>
               </div>
@@ -2301,7 +2302,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Uploading…
                 </span>
-              ) : `✓ Import ${bulkRows.filter(r => !r.error && r.name).length} components`}
+              ) : <><Check className="w-4 h-4 mr-1 inline" />Import {bulkRows.filter(r => !r.error && r.name).length} components</>}
             </button>
             <button
               type="button"
@@ -2328,7 +2329,7 @@ export function ChecklistAdmin({ initialItems, products }: Props) {
                   <span className="text-sky-400">×{item.expectedCount}</span>
                 )}
                 {item.boardLocation && (
-                  <span className="text-sky-400/60 truncate">📍 {zonesToText(parseZoneIds(item.boardLocation)) || item.boardLocation}</span>
+                  <span className="inline-flex items-center text-sky-400/60 truncate"><MapPin className="w-4 h-4 mr-1 inline" />{zonesToText(parseZoneIds(item.boardLocation)) || item.boardLocation}</span>
                 )}
                 {item.orientationRule && (
                   <span className="text-amber-400/60 truncate">🔄 {item.orientationRule}</span>

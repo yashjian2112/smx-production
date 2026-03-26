@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Camera, Check, MapPin, Building2 } from 'lucide-react';
 
 type PackingBoxItemRow = {
   id: string;
@@ -152,10 +153,10 @@ function DOCard({ dispatch, onDone }: { dispatch: DORow; onDone: () => void }) {
             >
               <div className="font-semibold text-zinc-200 text-sm">{o.client.customerName}</div>
               {o.client.shippingAddress && (
-                <div className="text-zinc-400">📍 Ship to: {o.client.shippingAddress}</div>
+                <div className="text-zinc-400 flex items-center"><MapPin className="w-4 h-4 mr-1 inline" /> Ship to: {o.client.shippingAddress}</div>
               )}
               {o.client.billingAddress && (
-                <div className="text-zinc-500">🏢 Bill to: {o.client.billingAddress}</div>
+                <div className="text-zinc-500 flex items-center"><Building2 className="w-4 h-4 mr-1 inline" /> Bill to: {o.client.billingAddress}</div>
               )}
               {o.client.gstNumber && (
                 <div className="text-zinc-500">GST: {o.client.gstNumber}</div>
@@ -213,7 +214,7 @@ function DOCard({ dispatch, onDone }: { dispatch: DORow; onDone: () => void }) {
                           className="flex items-center gap-1 text-xs text-sky-400 hover:underline px-2 py-1 rounded"
                           style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.15)' }}
                         >
-                          📷 Photo
+                          <Camera className="w-4 h-4 mr-1 inline" /> Photo
                         </a>
                       )}
                     </div>
@@ -248,7 +249,7 @@ function DOCard({ dispatch, onDone }: { dispatch: DORow; onDone: () => void }) {
               className="rounded-lg px-3 py-2 text-sm text-green-300"
               style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}
             >
-              ✓ {successMsg}
+              <Check className="w-4 h-4 mr-1 inline" /> {successMsg}
             </div>
           )}
 
@@ -300,7 +301,7 @@ function DOCard({ dispatch, onDone }: { dispatch: DORow; onDone: () => void }) {
                   className="flex-1 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50"
                   style={{ background: '#22c55e', color: '#fff' }}
                 >
-                  {loading ? '…' : '✓ Approve & Generate Invoice'}
+                  {loading ? '…' : <><Check className="w-4 h-4 mr-1" /> Approve & Generate Invoice</>}
                 </button>
                 <button
                   type="button"

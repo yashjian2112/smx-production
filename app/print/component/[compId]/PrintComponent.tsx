@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
+import { Check } from 'lucide-react';
 
 const STAGE_LABELS: Record<string, string> = {
   POWERSTAGE_MANUFACTURING: 'Powerstage',
@@ -384,8 +385,8 @@ export function PrintComponent({
             <div className="mb-4 rounded-lg p-3" style={{ background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.3)' }}>
               <div className="text-yellow-300 font-semibold text-sm mb-3">Did the stickers print successfully?</div>
               <div className="flex gap-2">
-                <button onClick={confirmPrinted} className="btn-primary px-4 py-2 text-sm rounded-lg">
-                  ✓ Yes, printed
+                <button onClick={confirmPrinted} className="btn-primary px-4 py-2 text-sm rounded-lg flex items-center">
+                  <Check className="w-4 h-4 mr-1" /> Yes, printed
                 </button>
                 <button onClick={reprint} style={{ background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>
                   ↺ Reprint
@@ -395,8 +396,8 @@ export function PrintComponent({
           )}
 
           {printState === 'confirmed' && (
-            <div className="mb-4 rounded-lg p-3 text-sm font-semibold" style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.3)', color: '#4ade80' }}>
-              ✓ Saved {lastConfirmedCount} barcode{lastConfirmedCount !== 1 ? 's' : ''} to history
+            <div className="mb-4 rounded-lg p-3 text-sm font-semibold flex items-center" style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.3)', color: '#4ade80' }}>
+              <Check className="w-4 h-4 mr-1 inline" /> Saved {lastConfirmedCount} barcode{lastConfirmedCount !== 1 ? 's' : ''} to history
             </div>
           )}
 

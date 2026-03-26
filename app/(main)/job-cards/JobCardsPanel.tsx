@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { X, Camera, Star, Check, ClipboardList } from 'lucide-react';
 
 interface RawMaterial {
   id: string; name: string; code: string; unit: string; barcode?: string | null;
@@ -124,13 +125,13 @@ function DispatchModal({
             <p className="text-white font-semibold">{card.cardNumber}</p>
             <p className="text-zinc-500 text-xs">{card.order.orderNumber} · {card.orderQuantity} units · {STAGE_LABEL[card.stage] ?? card.stage}</p>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white text-lg px-2">✕</button>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white px-2"><X className="w-4 h-4" /></button>
         </div>
 
         {/* Scan bar */}
         <div className="px-4 pt-3 pb-2 border-b border-zinc-800/50">
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.15)' }}>
-            <span className="text-sky-400 text-sm">📷</span>
+            <Camera className="w-4 h-4 text-sky-400" />
             <input
               ref={scanRef}
               type="text"
@@ -290,7 +291,7 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
         </div>
       ) : cards.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
-          <div className="text-4xl mb-3">📋</div>
+          <div className="flex justify-center mb-3"><ClipboardList className="w-8 h-8 text-zinc-600" /></div>
           <p className="text-zinc-400 text-sm">No {tab} job cards</p>
           {tab === 'pending' && <p className="text-zinc-600 text-xs mt-1">Created when production employees accept an order</p>}
         </div>
@@ -391,13 +392,13 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
                           <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok ? 'bg-emerald-400' : low ? 'bg-amber-400' : 'bg-red-400'}`} />
                           <span className="text-zinc-500 font-mono text-[10px] shrink-0">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
                           <span className="text-zinc-300 flex-1 truncate">{item.rawMaterial.name}</span>
-                          {item.isCritical && <span className="text-[10px] text-rose-400 shrink-0">★</span>}
+                          {item.isCritical && <Star className="w-3 h-3 fill-red-500 text-red-500 inline shrink-0" />}
                           <span className="text-amber-300 font-medium shrink-0">{fmt(need)} {item.rawMaterial.unit}</span>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${ok ? 'text-emerald-400 bg-emerald-900/20' : low ? 'text-amber-400 bg-amber-900/20' : 'text-red-400 bg-red-900/20'}`}>
                             {fmt(stock)} stk
                           </span>
                           {item.quantityIssued > 0 && (
-                            <span className="text-emerald-400 text-[10px] shrink-0">✓ {fmt(item.quantityIssued)}</span>
+                            <span className="text-emerald-400 text-[10px] shrink-0 inline-flex items-center"><Check className="w-4 h-4 mr-1 inline" />{fmt(item.quantityIssued)}</span>
                           )}
                         </div>
                       );

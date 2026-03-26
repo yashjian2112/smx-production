@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { Check, X } from 'lucide-react';
 
 const QC_ITEMS = [
   { key: 'vin',         label: 'VIN'         },
@@ -274,7 +275,7 @@ export function QcChecklist({
                 color: '#4ade80',
               }}
             >
-              ✓ Pass
+              <Check className="w-4 h-4 mr-1" /> Pass
             </button>
             <button
               onClick={() => markCurrent('NA')}
@@ -452,7 +453,7 @@ export function QcChecklist({
                   color: '#4ade80',
                 }}
               >
-                {phase === 'submitting' ? '…' : '✓ PASS'}
+                {phase === 'submitting' ? '…' : <><Check className="w-4 h-4 mr-1" /> PASS</>}
               </button>
               <button
                 onClick={() => submitResult('FAIL')}
@@ -464,7 +465,7 @@ export function QcChecklist({
                   color: '#f87171',
                 }}
               >
-                {phase === 'submitting' ? '…' : '✗ REJECT'}
+                {phase === 'submitting' ? '…' : <><X className="w-4 h-4 mr-1" /> REJECT</>}
               </button>
             </div>
           </div>
@@ -475,7 +476,7 @@ export function QcChecklist({
       {phase === 'done' && submittedResult && (
         <div style={{ ...cardStyle, textAlign: 'center' }}>
           <div
-            className="w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center text-2xl"
+            className="w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center"
             style={{
               background:
                 submittedResult === 'PASS'
@@ -488,7 +489,7 @@ export function QcChecklist({
               }`,
             }}
           >
-            {submittedResult === 'PASS' ? '✓' : '✗'}
+            {submittedResult === 'PASS' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
           </div>
           <p
             className={`text-lg font-bold mb-1 ${
@@ -555,7 +556,7 @@ export function QcChecklist({
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: '#555', textTransform: 'uppercase' }}>Final QC Determination</div>
             <div style={{ fontSize: 20, fontWeight: 900, marginTop: 2, color: submittedResult === 'PASS' ? '#15803d' : submittedResult === 'FAIL' ? '#b91c1c' : '#475569', letterSpacing: 1 }}>
-              {submittedResult === 'PASS' ? '✓  PASSED — APPROVED FOR NEXT STAGE' : submittedResult === 'FAIL' ? '✗  REJECTED — RETURN TO REWORK' : 'PENDING'}
+              {submittedResult === 'PASS' ? <><Check className="w-4 h-4 mr-1 inline" /> PASSED — APPROVED FOR NEXT STAGE</> : submittedResult === 'FAIL' ? <><X className="w-4 h-4 mr-1 inline" /> REJECTED — RETURN TO REWORK</> : 'PENDING'}
             </div>
           </div>
           <div style={{ textAlign: 'right', fontSize: 9, color: '#666' }}>
@@ -630,7 +631,7 @@ export function QcChecklist({
                       fontSize: 10,
                       color: isNA ? '#94a3b8' : isPass ? '#15803d' : '#b91c1c',
                     }}>
-                      {isNA ? 'N/A' : isPass ? '✓ PASS' : check?.status ?? '—'}
+                      {isNA ? 'N/A' : isPass ? <><Check className="w-4 h-4 mr-1 inline" />PASS</> : check?.status ?? '—'}
                     </td>
                   </tr>
                 );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { Check, X, Bot, MapPin, Trash2 } from 'lucide-react';
 import type { ComponentMarkers, MarkerPosition } from '@/app/api/admin/checklists/locate/route';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -165,7 +166,7 @@ export function BoardMapper({ imageUrl, components, initialMarkers = [], onSave,
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0a0a0a' }}>
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 px-4 py-2 shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}>
-        <span className="text-lg">📍</span>
+        <MapPin className="w-4 h-4 text-zinc-300" />
         <div className="flex-1">
           <p className="text-sm font-semibold text-white">PCB Component Position Mapper</p>
           <p className="text-[10px] text-zinc-500">
@@ -186,7 +187,7 @@ export function BoardMapper({ imageUrl, components, initialMarkers = [], onSave,
           >
             {locating ? (
               <><span className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" /> Detecting…</>
-            ) : '🤖 AI Auto-detect'}
+            ) : <><Bot className="w-4 h-4" /> AI Auto-detect</>}
           </button>
           <button
             onClick={handleSave}
@@ -194,17 +195,17 @@ export function BoardMapper({ imageUrl, components, initialMarkers = [], onSave,
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all"
             style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)', border: '1px solid rgba(34,197,94,0.4)' }}
           >
-            {saving ? 'Saving…' : '✓ Save positions'}
+            {saving ? 'Saving…' : <><Check className="w-4 h-4 mr-1" /> Save positions</>}
           </button>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white px-2 py-1.5 rounded-lg text-sm transition-colors" style={{ background: 'rgba(255,255,255,0.04)' }}>
-            ✕ Close
+          <button onClick={onClose} className="flex items-center gap-1 text-zinc-500 hover:text-white px-2 py-1.5 rounded-lg text-sm transition-colors" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <X className="w-4 h-4 mr-1" /> Close
           </button>
         </div>
       </div>
 
       {locateError && (
-        <div className="px-4 py-2 text-xs text-red-400 shrink-0" style={{ background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(239,68,68,0.15)' }}>
-          🤖 {locateError}
+        <div className="flex items-center px-4 py-2 text-xs text-red-400 shrink-0" style={{ background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(239,68,68,0.15)' }}>
+          <Bot className="w-4 h-4 mr-1 inline" /> {locateError}
         </div>
       )}
 
@@ -247,10 +248,10 @@ export function BoardMapper({ imageUrl, components, initialMarkers = [], onSave,
             <p className="text-[10px] text-zinc-600">Right-click any marker to remove it. Drag to reposition.</p>
             <button
               onClick={() => setMarkerSets((prev) => prev.map((m) => ({ ...m, positions: [] })))}
-              className="w-full py-1.5 rounded-lg text-xs text-zinc-600 hover:text-red-400 transition-colors"
+              className="w-full py-1.5 rounded-lg text-xs text-zinc-600 hover:text-red-400 transition-colors flex items-center justify-center"
               style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
             >
-              🗑 Clear all markers
+              <Trash2 className="w-4 h-4 mr-1" /> Clear all markers
             </button>
           </div>
         </div>
@@ -355,8 +356,8 @@ export function BoardMapper({ imageUrl, components, initialMarkers = [], onSave,
               <p>2. Click on the board to place a marker</p>
               <p>3. Drag markers to adjust position</p>
               <p>4. Right-click to remove a marker</p>
-              <p>5. Or click <strong className="text-purple-400">🤖 AI Auto-detect</strong> to let AI place all markers automatically</p>
-              <p>6. Click <strong className="text-green-400">✓ Save positions</strong> when done</p>
+              <p>5. Or click <strong className="text-purple-400 inline-flex items-center gap-1"><Bot className="w-3 h-3" /> AI Auto-detect</strong> to let AI place all markers automatically</p>
+              <p>6. Click <strong className="text-green-400 inline-flex items-center gap-1"><Check className="w-3 h-3" /> Save positions</strong> when done</p>
             </div>
           </div>
 
@@ -370,7 +371,7 @@ export function BoardMapper({ imageUrl, components, initialMarkers = [], onSave,
                 </div>
                 <p className="text-zinc-500">
                   {selectedSet.positions.length}/{selectedComp.count} placed
-                  {selectedSet.positions.length >= selectedComp.count && <span className="text-green-400 ml-1">✓ Done</span>}
+                  {selectedSet.positions.length >= selectedComp.count && <span className="text-green-400 ml-1 inline-flex items-center"><Check className="w-4 h-4 mr-1" /> Done</span>}
                 </p>
               </div>
             </div>

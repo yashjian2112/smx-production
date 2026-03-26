@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback } from 'react';
 import { useState } from 'react';
+import { AlertTriangle, Check, X, Plane, Truck } from 'lucide-react';
 
 type OrderUnit = {
   currentStage:     string;
@@ -325,11 +326,11 @@ function InvoiceDOFolder({
               hasTracking
                 ? <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-1"
                     style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80' }}>
-                    ✓ {localTracking}
+                    <Check className="w-4 h-4" /> {localTracking}
                   </span>
                 : <span className="text-[9px] font-bold px-1.5 py-0.5 rounded animate-pulse"
                     style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}>
-                    ⚠ No tracking
+                    <AlertTriangle className="w-3 h-3 mr-1 inline" /> No tracking
                   </span>
             )}
           </div>
@@ -386,7 +387,7 @@ function InvoiceDOFolder({
             onClick={() => { setEditing(false); setTrackingInput(localTracking); }}
             className="text-[10px] text-zinc-500 hover:text-zinc-300 px-1"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -492,7 +493,7 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
               <span className="text-zinc-600 text-xs">{order.quantity} unit{order.quantity !== 1 ? 's' : ''}</span>
               {dueDate && (
                 <span className="text-xs font-medium" style={{ color: dueColor ?? '#a1a1aa' }}>
-                  {dueMsLeft! < 0 ? '⚠ Overdue · ' : 'Due '}
+                  {dueMsLeft! < 0 ? <><AlertTriangle className="w-4 h-4 mr-1 inline" />Overdue · </> : 'Due '}
                   {fmtDate(dueDate.toISOString())}
                   {p.deliveryDays ? ` (${p.deliveryDays}d)` : ''}
                 </span>
@@ -571,7 +572,7 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
         {a.rework > 0 && (
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
             style={{ background: 'rgba(249,115,22,0.12)', color: '#fb923c', border: '1px solid rgba(249,115,22,0.3)' }}>
-            ⚠ Rework: {a.rework}
+            <AlertTriangle className="w-4 h-4 mr-1 inline" /> Rework: {a.rework}
           </span>
         )}
         {a.blocked > 0 && (
@@ -583,7 +584,7 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
         {a.ready > 0 && (
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
             style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }}>
-            ✓ Ready: {a.ready}
+            <Check className="w-4 h-4" /> Ready: {a.ready}
           </span>
         )}
       </div>
@@ -604,7 +605,7 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
             </span>
           )}
           <span className="text-[10px] text-zinc-400">
-            ✈ {a.dispatched} of {total} unit{total !== 1 ? 's' : ''}
+            <Plane className="w-3 h-3 inline mr-1" />{a.dispatched} of {total} unit{total !== 1 ? 's' : ''}
             {order.dispatchOrders.at(-1)?.approvedAt
               ? ` · ${fmtDate(order.dispatchOrders.at(-1)!.approvedAt!)}`
               : ''}
@@ -1037,7 +1038,7 @@ export function ProformaList({
                               </Link>
                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
                                 style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
-                                ✓ All dispatched
+                                <Check className="w-4 h-4" /> All dispatched
                               </span>
                             </div>
                             <p className="text-zinc-500 text-xs mt-0.5">{p.client.customerName} · {order.quantity} units</p>
@@ -1049,7 +1050,7 @@ export function ProformaList({
                             return tracking ? (
                               <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0"
                                 style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
-                                🚚 {tracking}
+                                <Truck className="w-4 h-4 inline mr-1" />{tracking}
                               </span>
                             ) : null;
                           })()}

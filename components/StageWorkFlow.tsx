@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ImageEnhancer } from '@/components/ImageEnhancer';
+import { Check, Package } from 'lucide-react';
 
 type Submission = {
   id: string;
@@ -212,9 +213,9 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
 
   // ── zone info lookup ───────────────────────────────────────────────────────
   const ZONE_INFO: Record<string, { title: string; hint: string; icon: string }> = {
-    full:   { icon: '', title: 'Full Board Photo',   hint: 'Hold phone ~40 cm above — fit the entire PCB in frame' },
-    top:    { icon: '', title: 'Top Close-up',       hint: 'Move in to ~10–15 cm — small components should fill the frame' },
-    bottom: { icon: '', title: 'Bottom Close-up',    hint: 'Move in to ~10–15 cm — small components should fill the frame' },
+    full:   { icon: 'camera', title: 'Full Board Photo',   hint: 'Hold phone ~40 cm above — fit the entire PCB in frame' },
+    top:    { icon: 'camera', title: 'Top Close-up',       hint: 'Move in to ~10–15 cm — small components should fill the frame' },
+    bottom: { icon: 'camera', title: 'Bottom Close-up',    hint: 'Move in to ~10–15 cm — small components should fill the frame' },
   };
 
   // Pre-fill scan inputs when entering jc_scan step
@@ -765,7 +766,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
           <button onClick={issueJobCard} disabled={jcIssuing}
             className="w-full mt-3 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50"
             style={{ background: jcIssuing ? 'rgba(34,197,94,0.3)' : 'rgba(34,197,94,0.7)' }}>
-            {jcIssuing ? 'Issuing…' : '✓ Issue Materials & Proceed'}
+            {jcIssuing ? 'Issuing…' : <><Check className="w-4 h-4 mr-1" /> Issue Materials & Proceed</>}
           </button>
         </div>
       </div>
@@ -780,7 +781,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
       <div className="space-y-4">
         <div className="rounded-2xl p-5" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
           <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl">📦</span>
+            <Package className="w-4 h-4" />
             <div>
               <p className="text-white font-semibold text-sm">Verify Received Materials</p>
               <p className="text-zinc-400 text-xs">Confirm qty of each component you received from store</p>
@@ -797,7 +798,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
                 </div>
                 {item.isVerified ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-emerald-400 text-xs">✓ Verified: {item.verifiedQty} {item.rawMaterial.unit}</span>
+                    <span className="text-emerald-400 text-xs flex items-center"><Check className="w-4 h-4 mr-1 inline" /> Verified: {item.verifiedQty} {item.rawMaterial.unit}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -815,7 +816,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
                       disabled={scanSaving[item.id]}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
                       style={{ background: 'rgba(34,197,94,0.7)' }}>
-                      {scanSaving[item.id] ? '…' : '✓ Verify'}
+                      {scanSaving[item.id] ? '…' : <><Check className="w-4 h-4 mr-1" /> Verify</>}
                     </button>
                   </div>
                 )}
@@ -1177,7 +1178,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
                 {zones.map(z => {
                   const photo = zonePhotos[z];
                   const url   = photo ? URL.createObjectURL(photo) : null;
-                  const info  = ZONE_INFO[z] ?? { icon: '📷', title: z };
+                  const info  = ZONE_INFO[z] ?? { icon: 'camera', title: z };
                   return (
                     <div key={z} className="relative rounded-xl overflow-hidden flex flex-col">
                       <div className="relative w-full" style={{ aspectRatio: '4/3', background: 'rgba(255,255,255,0.04)' }}>

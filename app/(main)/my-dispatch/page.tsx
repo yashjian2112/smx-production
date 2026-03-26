@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Check } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +60,7 @@ const STATUS_LABEL: Record<DOStatus, string> = {
   OPEN:      'Open',
   PACKING:   'Packing',
   SUBMITTED: 'Pending Approval',
-  APPROVED:  'Dispatched ✓',
+  APPROVED:  'Dispatched',
   REJECTED:  'Rejected',
 };
 
@@ -238,8 +239,9 @@ function DORow({ d }: { d: DispatchOrder }) {
       </div>
 
       {/* Status badge */}
-      <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${STATUS_STYLE[d.status]}`}>
+      <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap flex items-center gap-0.5 ${STATUS_STYLE[d.status]}`}>
         {STATUS_LABEL[d.status]}
+        {d.status === 'APPROVED' && <Check className="w-4 h-4 ml-1 inline" />}
       </span>
 
       {/* Pack button — only for active DOs */}
@@ -407,7 +409,7 @@ export default function MyDispatchPage() {
       }
       const msg = data.existing
         ? `Dispatch Order ${data.doNumber ?? ''} already exists — packing team will handle it`
-        : `Dispatch Order ${data.doNumber ?? ''} created — handed off to packing team ✓`;
+        : `Dispatch Order ${data.doNumber ?? ''} created — handed off to packing team`;
       setCreateSuccess(msg);
       // Auto-open the print slip in a new tab
       if (data.id) window.open(`/print/dispatch-order/${data.id}`, '_blank');
@@ -485,8 +487,8 @@ export default function MyDispatchPage() {
         ) : (
           <div className="space-y-3">
             {createSuccess && (
-              <div className="rounded-xl p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
-                {createSuccess}
+              <div className="rounded-xl p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-1">
+                <Check className="w-4 h-4" /> {createSuccess}
               </div>
             )}
             {createError && (

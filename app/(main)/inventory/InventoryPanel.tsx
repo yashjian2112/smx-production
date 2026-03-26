@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { Check, X, Package } from 'lucide-react';
 
 const TABS = ['Materials', 'GRN', 'Reports', 'Settings'] as const;
 type Tab = typeof TABS[number];
@@ -196,7 +197,7 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
     const res = await fetch('/api/inventory/reorder-prs', { method: 'POST' });
     setReorderBusy(false);
     const data = await res.json();
-    if (res.ok) setReorderMsg(`✓ Created ${data.created} PR${data.created !== 1 ? 's' : ''}`);
+    if (res.ok) setReorderMsg(`Created ${data.created} PR${data.created !== 1 ? 's' : ''}`);
     else setReorderMsg('Failed to create PRs');
     setTimeout(() => setReorderMsg(''), 4000);
   }
@@ -239,7 +240,7 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
           <div className="px-4 py-3 border-b border-red-900/30 flex items-center justify-between gap-3">
             <span className="text-red-400 text-sm font-medium">⚠ Reorder Alerts ({lowStockItems.length})</span>
             <div className="flex items-center gap-2">
-              {reorderMsg && <span className="text-xs text-emerald-400">{reorderMsg}</span>}
+              {reorderMsg && <span className="inline-flex items-center text-xs text-emerald-400"><Check className="w-4 h-4 mr-1 inline" />{reorderMsg}</span>}
               {isAdmin && (
                 <button onClick={handleCreateAllPRs} disabled={reorderBusy}
                   className="px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-700 hover:bg-sky-600 text-white transition-colors disabled:opacity-50">
@@ -295,7 +296,7 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
       {/* Material list */}
       {data?.materials.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
-          <div className="text-5xl mb-4">📦</div>
+          <div className="mb-4"><Package className="w-4 h-4" /></div>
           <h3 className="text-white text-lg font-semibold mb-2">No materials yet</h3>
           <p className="text-zinc-400 text-sm mb-6 max-w-xs">
             Start by creating your raw materials in the Materials tab, then add opening stock here.
@@ -666,7 +667,7 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
     });
     const data = await r.json();
     if (r.ok) {
-      setScanResult({ ok: true, message: data.alreadyConfirmed ? `Already confirmed: ${scanBarcode}` : `✓ Confirmed: ${scanBarcode} (${data.material?.name ?? ''})` });
+      setScanResult({ ok: true, message: data.alreadyConfirmed ? `Already confirmed: ${scanBarcode}` : `Confirmed: ${scanBarcode} (${data.material?.name ?? ''})` });
       setScanBarcode('');
       if (scanningGRN) loadSerials(scanningGRN.id);
     } else {
@@ -1057,7 +1058,7 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
                 <p className="text-zinc-400 text-xs mt-0.5">{scanningGRN.grnNumber} — stick label on board, then scan</p>
               </div>
               <button onClick={() => { setScanningGRN(null); setScanBarcode(''); setScanResult(null); }}
-                className="text-zinc-400 hover:text-white text-xl leading-none">✕</button>
+                className="text-zinc-400 hover:text-white text-xl leading-none"><X className="w-4 h-4" /></button>
             </div>
             <form onSubmit={handleScan} className="space-y-3">
               <div>
@@ -1072,8 +1073,8 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
                 />
               </div>
               {scanResult && (
-                <div className={`px-3 py-2 rounded-lg text-sm ${scanResult.ok ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'}`}>
-                  {scanResult.message}
+                <div className={`px-3 py-2 rounded-lg text-sm flex items-center gap-1 ${scanResult.ok ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'}`}>
+                  {scanResult.ok && <Check className="w-4 h-4 mr-1 inline" />}{scanResult.message}
                 </div>
               )}
               <div className="flex gap-2">
@@ -1439,7 +1440,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                         <span className="text-white text-xs font-medium flex-1">{v.name}</span>
                         <span className="text-zinc-500 text-xs font-mono">{v.barcode}</span>
                         <span className="text-sky-400 text-xs">{fmt(v.currentStock)} {m.unit}</span>
-                        <button onClick={() => deleteVariant(v.id)} className="text-zinc-600 hover:text-red-400 text-xs transition-colors">✕</button>
+                        <button onClick={() => deleteVariant(v.id)} className="text-zinc-600 hover:text-red-400 text-xs transition-colors"><X className="w-4 h-4" /></button>
                       </div>
                     ))}
                   </div>
@@ -1455,7 +1456,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                         {vSavingVar ? '…' : 'Add'}
                       </button>
                       <button onClick={() => { setAddingVariant(null); setVariantName(''); }}
-                        className="px-2 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white">✕</button>
+                        className="px-2 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white"><X className="w-4 h-4" /></button>
                     </div>
                   )}
                 </div>
@@ -2048,7 +2049,7 @@ function ReportsTab({ isAdmin }: { isAdmin: boolean }) {
     const res = await fetch('/api/inventory/reorder-prs', { method: 'POST' });
     setReorderBusy(false);
     const data = await res.json();
-    if (res.ok) { setReorderMsg(`✓ Created ${data.created} PR${data.created !== 1 ? 's' : ''}`); loadReorder(); }
+    if (res.ok) { setReorderMsg(`Created ${data.created} PR${data.created !== 1 ? 's' : ''}`); loadReorder(); }
     else setReorderMsg('Failed');
     setTimeout(() => setReorderMsg(''), 4000);
   }
@@ -2192,7 +2193,7 @@ function ReportsTab({ isAdmin }: { isAdmin: boolean }) {
           <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
             <span className="text-zinc-400 text-sm">{reorderData.length} item{reorderData.length !== 1 ? 's' : ''} below reorder point</span>
             <div className="flex items-center gap-2">
-              {reorderMsg && <span className="text-xs text-emerald-400">{reorderMsg}</span>}
+              {reorderMsg && <span className="inline-flex items-center text-xs text-emerald-400"><Check className="w-4 h-4 mr-1 inline" />{reorderMsg}</span>}
               {isAdmin && (
                 <button onClick={handleCreateAllPRs} disabled={reorderBusy}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-700 hover:bg-sky-600 text-white transition-colors disabled:opacity-50">
@@ -2396,7 +2397,7 @@ function SettingsTab({ isAdmin }: { isAdmin: boolean }) {
                   <div key={`s-${u.id}`} className="px-3 py-2 text-sky-400 text-xs font-mono font-medium border-b border-zinc-800/40">{u.symbol}</div>
                   <div key={`t-${u.id}`} className="px-3 py-2 border-b border-zinc-800/40"><Badge color={typeColor[u.type] ?? 'zinc'}>{u.type}</Badge></div>
                   <div key={`d-${u.id}`} className="px-3 py-2 border-b border-zinc-800/40 flex items-center justify-center">
-                    {isAdmin && <button onClick={() => deleteUOM(u.id)} className="text-zinc-600 hover:text-red-400 text-xs transition-colors">✕</button>}
+                    {isAdmin && <button onClick={() => deleteUOM(u.id)} className="text-zinc-600 hover:text-red-400 text-xs transition-colors"><X className="w-4 h-4" /></button>}
                   </div>
                 </>
               ))}

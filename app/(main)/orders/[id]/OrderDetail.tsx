@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
+import { Check } from 'lucide-react';
 
 // ── Assembly Unit Selector ─────────────────────────────────────────────────
 function AssemblySelectModal({
@@ -330,7 +331,7 @@ const STATUS_STYLES: Record<string, { dot: string; text: string; label: string }
   WAITING_APPROVAL: { dot: 'bg-sky-400',     text: 'text-sky-400',     label: 'Approval'     },
   APPROVED:         { dot: 'bg-green-300',   text: 'text-green-300',   label: 'Approved'     },
   REJECTED_BACK:    { dot: 'bg-red-400',     text: 'text-red-300',     label: 'Rejected'     },
-  DISPATCHED:       { dot: 'bg-violet-400',  text: 'text-violet-400',  label: 'Dispatched ✓' },
+  DISPATCHED:       { dot: 'bg-violet-400',  text: 'text-violet-400',  label: 'Dispatched' },
 };
 
 // Pipeline order — used to derive dynamic stage accessibility
@@ -585,8 +586,8 @@ function StageCard({
                         <span className="font-mono text-sky-400 text-sm flex-1 truncate">
                           {u.barcodeForStage ?? u.serialNumber}
                         </span>
-                        <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${s.text}`}>
-                          {isDispatched ? 'Dispatched ✓' : isCompleted ? 'Done ✓' : s.label}
+                        <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 inline-flex items-center gap-0.5 ${s.text}`}>
+                          {isDispatched ? <>Dispatched <Check className="w-4 h-4 ml-1 inline" /></> : isCompleted ? <>Done <Check className="w-4 h-4 ml-1 inline" /></> : s.label}
                         </span>
                         <svg className="text-zinc-600 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M9 18l6-6-6-6" />

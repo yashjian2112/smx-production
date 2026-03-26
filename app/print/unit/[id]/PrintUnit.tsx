@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { QRCodeCanvas } from '@/components/QRCode';
 import { Barcode128 } from '@/components/Barcode128';
+import { Star } from 'lucide-react';
 
 export function PrintUnit({
   serialNumber,
@@ -85,8 +86,8 @@ export function PrintUnit({
         {/* Bottom: Final Assembly — customer label */}
         {barcodes.filter(b => b.isFinal).map(({ label, value }) => (
           <div key={label} style={{ border: '2px solid #000', borderRadius: 6, padding: 14, textAlign: 'center' }}>
-            <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 8, color: '#333' }}>
-              ★ {label} — Serial Number Label
+            <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 8, color: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+              <Star className="w-4 h-4 inline mr-1" /> {label} — Serial Number Label
             </div>
             <div style={{ fontSize: 10, fontWeight: 'bold', color: '#111', marginBottom: 8 }}>
               NOTE: Warranty Void If Removed

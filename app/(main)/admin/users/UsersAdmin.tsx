@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaceGate } from '@/components/FaceGate';
+import { Check } from 'lucide-react';
 
 type User = { id: string; name: string; email: string; role: string; faceEnrolled: boolean; active: boolean };
 
@@ -188,8 +189,8 @@ export function UsersAdmin({ users: initial }: { users: User[] }) {
                       {ROLE_LABEL[u.role] ?? u.role}
                     </span>
                     {u.faceEnrolled ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded border bg-green-500/10 text-green-400 border-green-500/20">
-                        Face ✓
+                      <span className="text-[10px] px-1.5 py-0.5 rounded border bg-green-500/10 text-green-400 border-green-500/20 flex items-center gap-0.5">
+                        Face <Check className="w-4 h-4 inline ml-1" />
                       </span>
                     ) : (
                       <span className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-500/10 text-amber-400 border-amber-500/20">

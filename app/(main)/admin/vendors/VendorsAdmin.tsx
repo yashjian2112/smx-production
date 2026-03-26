@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { Check, Star } from 'lucide-react';
 
 type VendorCategory = { id: string; name: string; description?: string | null };
 type Vendor = {
@@ -119,7 +120,7 @@ export function VendorsAdmin() {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className={`text-xs font-medium px-2 py-0.5 rounded ${count >= 5 ? 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/40' : count > 0 ? 'bg-amber-900/40 text-amber-300 border border-amber-700/40' : 'bg-zinc-800 text-zinc-500'}`}>
-                        {count} vendor{count !== 1 ? 's' : ''} {count < 5 ? `(need ${5 - count} more)` : '✓ min met'}
+                        {count} vendor{count !== 1 ? 's' : ''} {count < 5 ? `(need ${5 - count} more)` : <><Check className="w-4 h-4 mr-1 inline" /> min met</>}
                       </span>
                       <button onClick={() => deleteCategory(cat.id)} className="text-zinc-500 hover:text-red-400 text-xs">Delete</button>
                     </div>
@@ -161,7 +162,7 @@ export function VendorsAdmin() {
                           <span className="font-mono text-xs text-zinc-500">{v.code}</span>
                           <span className="font-semibold text-white">{v.name}</span>
                           {!v.active && <span className="text-xs bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">Inactive</span>}
-                          {rating && <span className="text-xs text-amber-400">★ {rating}</span>}
+                          {rating && <span className="text-xs text-amber-400 flex items-center gap-0.5"><Star className="w-3 h-3 fill-amber-400 text-amber-400 inline mr-1" />{rating}</span>}
                         </div>
                         <div className="text-xs text-zinc-500 mt-1 space-x-3">
                           {v.contactPerson && <span>{v.contactPerson}</span>}

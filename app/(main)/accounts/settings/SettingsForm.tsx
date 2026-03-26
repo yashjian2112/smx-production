@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Check } from 'lucide-react';
 
 type Settings = Record<string, string>;
 
@@ -79,7 +80,7 @@ export function SettingsForm({ settings: initial }: { settings: Settings }) {
       )}
       {saved && (
         <div className="p-3 rounded-lg text-sm text-green-400" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
-          Settings saved successfully ✓
+          Settings saved successfully <Check className="w-4 h-4 inline ml-1" />
         </div>
       )}
 

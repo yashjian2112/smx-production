@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Check, X } from 'lucide-react';
 
 type Item = { id: string; description: string; hsnCode: string; quantity: number; unitPrice: number; discountPercent: number; voltageFrom?: string | null; voltageTo?: string | null; product?: { code: string; name: string } | null };
 type Client = { id: string; code: string; customerName: string; email: string | null; phone: string | null; billingAddress: string | null; shippingAddress: string | null; gstNumber: string | null; globalOrIndian: string | null; state: string | null };
@@ -330,11 +331,11 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
           <>
             <button onClick={approve} disabled={loading}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-700 hover:bg-green-600 text-sm text-white font-medium transition-colors disabled:opacity-50">
-              ✓ Approve
+              <Check className="w-4 h-4 mr-1 inline-flex" /> Approve
             </button>
             <button onClick={() => setRejectModal(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-800 hover:bg-red-700 text-sm text-white font-medium transition-colors">
-              ✕ Reject
+              <X className="w-4 h-4 mr-1 inline-flex" /> Reject
             </button>
           </>
         )}
@@ -390,7 +391,7 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Split Invoice</p>
             {splitSaved && (
-              <span className="text-xs text-green-400">Saved ✓</span>
+              <span className="text-xs text-green-400">Saved <Check className="w-3 h-3 inline ml-1" /></span>
             )}
           </div>
 

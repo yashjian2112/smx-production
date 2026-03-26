@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Check } from 'lucide-react';
 import { Barcode128 } from '@/components/Barcode128';
 import { FaceGate } from '@/components/FaceGate';
 
@@ -102,7 +103,7 @@ export function DispatchSection({
             : { background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)' }
           }
         >
-          {readyForDispatch ? '✓ Dispatched' : 'Ready for Dispatch'}
+          {readyForDispatch ? <><Check className="w-4 h-4 mr-1 inline" /> Dispatched</> : 'Ready for Dispatch'}
         </span>
       </div>
 

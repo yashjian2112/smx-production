@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Check } from 'lucide-react';
 import { StageWorkFlow } from '@/components/StageWorkFlow';
 import { StageHistory } from '@/components/StageHistory';
 import { QcChecklist } from './QcChecklist';
@@ -131,7 +132,7 @@ function ReworkTab({ unitId, reworkRecords }: { unitId: string; reworkRecords: R
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50"
               style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.2)' }}
             >
-              {loading === 'COMPLETED' ? 'Saving…' : 'Mark Complete ✓'}
+              {loading === 'COMPLETED' ? 'Saving…' : <>Mark Complete <Check className="w-4 h-4 ml-1 inline" /></>}
             </button>
           </div>
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { X, ClipboardList } from 'lucide-react';
 
 interface Product { id: string; name: string; code: string; }
 interface BOMItem {
@@ -215,7 +216,7 @@ export default function BOMAdmin() {
             <p className="text-zinc-500 text-sm text-center py-8">Loading…</p>
           ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-zinc-600">
-              <p className="text-4xl mb-3">📋</p>
+              <div className="flex justify-center mb-3"><ClipboardList className="w-5 h-5" /></div>
               <p className="text-sm">{items.length === 0 ? 'No BOM items for this product' : 'No items match your filter'}</p>
             </div>
           ) : (
@@ -255,7 +256,7 @@ export default function BOMAdmin() {
                         </button>
                       </td>
                       <td className="px-3 py-3 text-right">
-                        <button onClick={() => deleteItem(item.id)} className="text-zinc-600 hover:text-red-400 transition-colors text-sm">✕</button>
+                        <button onClick={() => deleteItem(item.id)} className="text-zinc-600 hover:text-red-400 transition-colors text-sm"><X className="w-4 h-4" /></button>
                       </td>
                     </tr>
                   ))}

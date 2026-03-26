@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ScanInput } from '@/components/ScanInput';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
+import { Camera, Check, Package, X } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type BoxSizeOption = {
@@ -167,7 +168,7 @@ function InspectionStep({
           <div className="font-mono text-sm font-bold text-white">{unit.serialNumber}</div>
           {unit.finalAssemblyBarcode && <div className="text-xs text-zinc-500">{unit.finalAssemblyBarcode}</div>}
         </div>
-        <button onClick={onCancel} className="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1 rounded">✕ Cancel</button>
+        <button onClick={onCancel} className="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1 rounded"><X className="w-4 h-4 mr-1" /> Cancel</button>
       </div>
 
       <div>
@@ -176,12 +177,12 @@ function InspectionStep({
         {photoPreview ? (
           <div className="space-y-2">
             <img src={photoPreview} alt="Controller" className="w-full max-h-52 object-contain rounded-lg border border-zinc-700" />
-            <button onClick={() => photoRef.current?.click()} className="text-xs text-zinc-400 hover:text-white">📷 Retake</button>
+            <button onClick={() => photoRef.current?.click()} className="text-xs text-zinc-400 hover:text-white flex items-center"><Camera className="w-4 h-4 mr-1" /> Retake</button>
           </div>
         ) : (
           <button onClick={() => photoRef.current?.click()}
-            className="w-full py-3 rounded-lg text-sm font-medium border-2 border-dashed border-zinc-600 text-zinc-400 hover:border-amber-500 hover:text-amber-400 transition-colors">
-            📷 Take photo of controller (optional)
+            className="w-full py-3 rounded-lg text-sm font-medium border-2 border-dashed border-zinc-600 text-zinc-400 hover:border-amber-500 hover:text-amber-400 transition-colors flex items-center justify-center">
+            <Camera className="w-4 h-4 mr-1" /> Take photo of controller (optional)
           </button>
         )}
         {uploading && <p className="text-xs text-zinc-500 mt-1">Uploading…</p>}
@@ -208,13 +209,13 @@ function InspectionStep({
         </div>
       ) : (
         <div className="flex gap-2">
-          <button onClick={() => setShowReject(true)} className="flex-1 py-2.5 rounded-lg text-sm font-semibold"
+          <button onClick={() => setShowReject(true)} className="flex-1 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center"
             style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}>
-            ✗ Yes — Reject
+            <X className="w-4 h-4 mr-1" /> Yes — Reject
           </button>
           <button onClick={handlePass} disabled={passing || uploading}
-            className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: '#22c55e' }}>
-            {passing ? 'Adding…' : '✓ No — Pass'}
+            className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 flex items-center justify-center" style={{ background: '#22c55e' }}>
+            {passing ? 'Adding…' : <><Check className="w-4 h-4 mr-1" /> No — Pass</>}
           </button>
         </div>
       )}
@@ -387,7 +388,7 @@ function PhaseBVerify({
             <div className="text-2xl font-bold text-green-400">{scans.length}</div>
           </div>
         </div>
-        <div className="text-xs text-green-400 font-semibold">✓ All {dispatchQty} units scanned</div>
+        <div className="text-xs text-green-400 font-semibold flex items-center">All {dispatchQty} units scanned <Check className="w-4 h-4 ml-1 inline" /></div>
       </div>
 
       {/* Serial list */}
@@ -556,7 +557,7 @@ function PhaseCBoxSetup({
         <button onClick={handleCreate} disabled={creating}
           className="flex-[2] py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
           style={{ background: '#22c55e' }}>
-          {creating ? 'Creating…' : `✓ Create ${boxCount} Box${boxCount !== 1 ? 'es' : ''} →`}
+          {creating ? 'Creating…' : <><Check className="w-4 h-4 mr-1" />Create {boxCount} Box{boxCount !== 1 ? 'es' : ''} →</>}
         </button>
       </div>
     </div>
@@ -658,10 +659,10 @@ function BoxScanCard({
             <span className="text-sm font-semibold text-white">Box {box.boxNumber}</span>
             <span className="ml-2 font-mono text-xs text-zinc-400">{box.boxLabel}</span>
           </div>
-          <span className="bg-green-500/10 text-green-400 border border-green-500/20 text-xs px-2 py-0.5 rounded">Confirmed ✓</span>
+          <span className="bg-green-500/10 text-green-400 border border-green-500/20 text-xs px-2 py-0.5 rounded flex items-center">Confirmed <Check className="w-4 h-4 ml-1 inline" /></span>
         </div>
         <div className="flex flex-wrap gap-3 text-xs text-zinc-400">
-          {box.boxSize && <span>📦 {box.boxSize.name} · {box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm</span>}
+          {box.boxSize && <span className="flex items-center"><Package className="w-4 h-4 mr-1 inline" />{box.boxSize.name} · {box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm</span>}
           <span>{box.items.length} unit{box.items.length !== 1 ? 's' : ''}</span>
         </div>
 
@@ -737,7 +738,7 @@ function BoxScanCard({
       {box.boxSize && (
         <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
           style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          <span className="text-zinc-500">📦 Size</span>
+          <span className="text-zinc-500 flex items-center"><Package className="w-4 h-4 mr-1 inline" /> Size</span>
           <span className="font-semibold text-white">{box.boxSize.name}</span>
           <span className="text-zinc-500">{box.boxSize.lengthCm} × {box.boxSize.widthCm} × {box.boxSize.heightCm} cm</span>
         </div>
@@ -973,7 +974,7 @@ export function DOPackingPanel({
           <div className="card p-4 space-y-3">
             <div className="flex items-center justify-between text-sm">
               <span className="text-zinc-400">{scannedCount} of {totalBoxes} label{totalBoxes !== 1 ? 's' : ''} scanned</span>
-              {allScanned && <span className="text-xs text-green-400 font-semibold">All labels scanned ✓</span>}
+              {allScanned && <span className="text-xs text-green-400 font-semibold flex items-center">All labels scanned <Check className="w-4 h-4 ml-1 inline" /></span>}
             </div>
             <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
               <div className="h-full rounded-full transition-all"
@@ -1033,7 +1034,7 @@ export function DOPackingPanel({
       {doData.status === 'APPROVED' && (
         <div className="space-y-4">
           <div className="rounded-xl p-4 space-y-1" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
-            <div className="text-sm font-semibold text-green-400">Approved ✓</div>
+            <div className="text-sm font-semibold text-green-400 flex items-center">Approved <Check className="w-4 h-4 ml-1 inline" /></div>
             {doData.invoices && doData.invoices.length > 0 && (
               <div className="text-xs text-zinc-400">Invoice{doData.invoices.length > 1 ? 's' : ''}: {doData.invoices.map((i) => i.invoiceNumber).join(', ')}</div>
             )}
@@ -1073,12 +1074,12 @@ function ReadOnlyBoxList({ boxes }: { boxes: PackingBoxRow[] }) {
               <span className="ml-2 font-mono text-xs text-zinc-400">{box.boxLabel}</span>
             </div>
             {box.labelScanned && (
-              <span className="bg-green-500/10 text-green-400 border border-green-500/20 text-xs px-2 py-0.5 rounded">Confirmed ✓</span>
+              <span className="bg-green-500/10 text-green-400 border border-green-500/20 text-xs px-2 py-0.5 rounded flex items-center">Confirmed <Check className="w-4 h-4 ml-1 inline" /></span>
             )}
           </div>
           <div className="flex flex-wrap gap-3 text-xs text-zinc-400">
             {box.weightKg && <span>⚖ {box.weightKg} kg</span>}
-            {box.boxSize  && <span>📦 {box.boxSize.name} · {box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm</span>}
+            {box.boxSize  && <span className="flex items-center"><Package className="w-4 h-4 mr-1 inline" />{box.boxSize.name} · {box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm</span>}
           </div>
           {box.items.length > 0 && (
             <div className="flex flex-wrap gap-1">
