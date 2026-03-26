@@ -70,7 +70,7 @@ type PaymentRequestRow = {
 };
 
 // Tabs are role-driven — PM sees procurement flow, IM sees approval queue
-const PM_TABS   = ['RFQ', 'Purchase Orders', 'Vendors', 'Payments'] as const;
+const PM_TABS   = ['Req. Orders', 'RFQ', 'Purchase Orders', 'Vendors', 'Payments'] as const;
 const IM_TABS   = ['Req. Orders'] as const;
 const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Purchase Orders', 'Vendors', 'Payments'] as const;
 type Tab = 'Req. Orders' | 'RFQ' | 'Purchase Orders' | 'Vendors' | 'Payments';
