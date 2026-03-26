@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 type RFQItem = {
   id: string; materialId?: string | null; qtyRequired: number;
@@ -48,6 +48,10 @@ export default function VendorPortal({ token }: { token: string }) {
   const [fileUrls, setFileUrls] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [previewFile, setPreviewFile] = useState<string | null>(null);
+  const [calOpen, setCalOpen] = useState(false);
+  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+  const calRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch(`/api/vendor-portal/rfq?token=${token}`)
@@ -103,7 +107,6 @@ export default function VendorPortal({ token }: { token: string }) {
     if (!rfq) return;
     if (!leadTimeDays || !validUntil) return alert('Lead time and valid until date are required');
     if (!notes.trim()) return alert('Notes / Terms are required');
-    if (fileUrls.length === 0) return alert('Please attach your quotation PDF before submitting');
     const items = rfq.items.map(i => ({
       rfqItemId: i.id,
       materialId: i.materialId ?? undefined,
@@ -504,12 +507,86 @@ export default function VendorPortal({ token }: { token: string }) {
                   placeholder="e.g. 7"
                   className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
-              <div>
+              <div ref={calRef} className="relative">
                 <label className="text-xs text-zinc-400">Quote Valid Until *</label>
-                <input type="date" required value={validUntil}
-                  onChange={e => setValidUntil(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
-                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                <button type="button" onClick={() => setCalOpen(o => !o)}
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-left text-sm focus:outline-none focus:border-sky-500 flex items-center justify-between">
+                  <span className={validUntil ? 'text-white' : 'text-zinc-500'}>
+                    {validUntil ? new Date(validUntil + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Select date'}
+                  </span>
+                  <span className="text-zinc-400 text-base">📅</span>
+                </button>
+                {calOpen && (
+                  <div className="absolute top-full left-0 mt-1 z-30 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-4 w-72">
+                    {/* Month nav */}
+                    <div className="flex items-center justify-between mb-3">
+                      <button type="button" onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); } else setCalMonth(m => m - 1); }}
+                        className="text-zinc-400 hover:text-white px-2 py-1 rounded">‹</button>
+                      <span className="text-white text-sm font-semibold">
+                        {new Date(calYear, calMonth).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+                      </span>
+                      <button type="button" onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); } else setCalMonth(m => m + 1); }}
+                        className="text-zinc-400 hover:text-white px-2 py-1 rounded">›</button>
+                    </div>
+                    {/* Day labels */}
+                    <div className="grid grid-cols-7 mb-1">
+                      {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                        <span key={d} className="text-center text-xs text-zinc-500 py-1">{d}</span>
+                      ))}
+                    </div>
+                    {/* Day grid */}
+                    {(() => {
+                      const today = new Date(); today.setHours(0,0,0,0);
+                      const firstDay = new Date(calYear, calMonth, 1).getDay();
+                      const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+                      const cells: (number | null)[] = [...Array(firstDay).fill(null), ...Array.from({length: daysInMonth}, (_,i) => i+1)];
+                      while (cells.length % 7 !== 0) cells.push(null);
+                      const selParts = validUntil ? validUntil.split('-').map(Number) : null;
+                      return (
+                        <div className="grid grid-cols-7 gap-0.5">
+                          {cells.map((d, i) => {
+                            if (!d) return <span key={i} />;
+                            const date = new Date(calYear, calMonth, d);
+                            const isPast = date < today;
+                            const isSelected = selParts && selParts[0] === calYear && selParts[1]-1 === calMonth && selParts[2] === d;
+                            const isToday = date.getTime() === today.getTime();
+                            return (
+                              <button key={i} type="button" disabled={isPast}
+                                onClick={() => {
+                                  const mm = String(calMonth + 1).padStart(2, '0');
+                                  const dd = String(d).padStart(2, '0');
+                                  setValidUntil(`${calYear}-${mm}-${dd}`);
+                                  setCalOpen(false);
+                                }}
+                                className={`w-full aspect-square rounded-lg text-sm font-medium transition-colors
+                                  ${isPast ? 'text-zinc-700 cursor-not-allowed' : 'hover:bg-zinc-700 cursor-pointer'}
+                                  ${isSelected ? 'bg-sky-600 text-white hover:bg-sky-500' : ''}
+                                  ${isToday && !isSelected ? 'border border-sky-600 text-sky-400' : ''}
+                                  ${!isSelected && !isToday && !isPast ? 'text-zinc-300' : ''}
+                                `}>
+                                {d}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                    {/* Quick picks */}
+                    <div className="flex gap-2 mt-3 pt-3 border-t border-zinc-700/50 flex-wrap">
+                      {[15, 30, 45, 60, 90].map(days => {
+                        const d = new Date(); d.setDate(d.getDate() + days);
+                        const iso = d.toISOString().split('T')[0];
+                        return (
+                          <button key={days} type="button"
+                            onClick={() => { setValidUntil(iso); setCalYear(d.getFullYear()); setCalMonth(d.getMonth()); setCalOpen(false); }}
+                            className="text-xs px-2 py-1 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 border border-zinc-700">
+                            +{days}d
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -520,15 +597,14 @@ export default function VendorPortal({ token }: { token: string }) {
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm resize-none focus:outline-none focus:border-blue-500" />
             </div>
 
-            {/* Attachment — mandatory */}
+            {/* Attachment — optional, PDF or PNG only */}
             <div>
-              <label className="text-xs text-zinc-400">Attach Quotation PDF *</label>
-              <input type="file" accept=".pdf,.jpg,.png" multiple onChange={handleFileUpload}
-                className="w-full mt-1 text-zinc-400 text-sm file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-zinc-700 file:text-white hover:file:bg-zinc-600" />
-              {fileUrls.length > 0
-                ? <p className="text-xs text-blue-400 mt-1">✓ {fileUrls.length} file{fileUrls.length > 1 ? 's' : ''} uploaded</p>
-                : <p className="text-xs text-red-500/70 mt-1">Required — attach your signed quotation</p>
-              }
+              <label className="text-xs text-zinc-400">Attach Quotation <span className="text-zinc-600">(optional — PDF or PNG)</span></label>
+              <input type="file" accept=".pdf,.png" multiple onChange={handleFileUpload}
+                className="w-full mt-1 text-zinc-400 text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-zinc-700 file:text-white hover:file:bg-zinc-600 cursor-pointer" />
+              {fileUrls.length > 0 && (
+                <p className="text-xs text-blue-400 mt-1">✓ {fileUrls.length} file{fileUrls.length > 1 ? 's' : ''} attached</p>
+              )}
             </div>
 
             <button type="submit" disabled={submitting}
