@@ -594,7 +594,7 @@ function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [approvedROs, setApprovedROs] = useState<RO[]>([]);
-  const [selectedROItems, setSelectedROItems] = useState<{ roItemId: string; materialId: string; qtyRequired: number }[]>([]);
+  const [selectedROItems, setSelectedROItems] = useState<{ roItemId: string; materialId?: string; itemDescription?: string; itemUnit?: string; qtyRequired: number }[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -611,7 +611,13 @@ function CreateRFQModal({ onClose, onCreated }: { onClose: () => void; onCreated
     setSelectedROItems(prev => {
       const exists = prev.find(i => i.roItemId === key);
       if (exists) return prev.filter(i => i.roItemId !== key);
-      return [...prev, { roItemId: key, materialId: item.materialId ?? '', qtyRequired: item.qtyRequired }];
+      return [...prev, {
+        roItemId: key,
+        materialId: item.materialId ?? undefined,
+        itemDescription: item.itemDescription ?? undefined,
+        itemUnit: item.itemUnit ?? undefined,
+        qtyRequired: item.qtyRequired,
+      }];
     });
   }
 

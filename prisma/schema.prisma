@@ -1441,15 +1441,17 @@ model RFQ {
 }
 
 model RFQItem {
-  id          String  @id @default(cuid())
-  rfqId       String  @map("rfq_id")
-  roItemId    String  @map("ro_item_id")
-  materialId  String  @map("material_id")
-  qtyRequired Float   @map("qty_required")
+  id              String  @id @default(cuid())
+  rfqId           String  @map("rfq_id")
+  roItemId        String  @map("ro_item_id")
+  materialId      String? @map("material_id")       // null for custom/maintenance items
+  itemDescription String? @map("item_description")  // used when materialId is null
+  itemUnit        String? @map("item_unit")          // unit for custom items
+  qtyRequired     Float   @map("qty_required")
 
   rfq        RFQ                  @relation(fields: [rfqId], references: [id], onDelete: Cascade)
   roItem     RequirementOrderItem @relation(fields: [roItemId], references: [id])
-  material   RawMaterial          @relation(fields: [materialId], references: [id])
+  material   RawMaterial?         @relation(fields: [materialId], references: [id])
   quoteItems VendorQuoteItem[]
 
   @@map("rfq_items")

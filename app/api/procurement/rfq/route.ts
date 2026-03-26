@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     deadline?: string;
     paymentTerms?: string;
     vendorIds: string[];
-    roItems: { roItemId: string; materialId: string; qtyRequired: number }[];
+    roItems: { roItemId: string; materialId?: string; itemDescription?: string; itemUnit?: string; qtyRequired: number }[];
   };
 
   if (!title) return NextResponse.json({ error: 'Title required' }, { status: 400 });
@@ -123,7 +123,9 @@ export async function POST(req: NextRequest) {
       items: {
         create: roItems.map(i => ({
           roItemId: i.roItemId,
-          materialId: i.materialId,
+          materialId: i.materialId || null,
+          itemDescription: i.itemDescription ?? null,
+          itemUnit: i.itemUnit ?? null,
           qtyRequired: i.qtyRequired,
         })),
       },
