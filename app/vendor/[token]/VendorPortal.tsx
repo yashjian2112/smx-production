@@ -101,7 +101,9 @@ export default function VendorPortal({ token }: { token: string }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!rfq) return;
-    if (!leadTimeDays || !validUntil) return alert('Fill all required fields');
+    if (!leadTimeDays || !validUntil) return alert('Lead time and valid until date are required');
+    if (!notes.trim()) return alert('Notes / Terms are required');
+    if (fileUrls.length === 0) return alert('Please attach your quotation PDF before submitting');
     const items = rfq.items.map(i => ({
       rfqItemId: i.id,
       materialId: i.materialId ?? undefined,
@@ -470,18 +472,21 @@ export default function VendorPortal({ token }: { token: string }) {
             </div>
 
             <div>
-              <label className="text-xs text-zinc-400">Notes / Terms (optional)</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-                placeholder="Payment terms, warranty, delivery conditions..."
+              <label className="text-xs text-zinc-400">Notes / Terms *</label>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} required
+                placeholder="Payment terms, warranty, delivery conditions, validity..."
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white text-sm resize-none focus:outline-none focus:border-blue-500" />
             </div>
 
-            {/* Attachment */}
+            {/* Attachment — mandatory */}
             <div>
-              <label className="text-xs text-zinc-400">Attach Quotation PDF (optional)</label>
-              <input type="file" accept=".pdf,.jpg,.png" onChange={handleFileUpload}
+              <label className="text-xs text-zinc-400">Attach Quotation PDF *</label>
+              <input type="file" accept=".pdf,.jpg,.png" multiple onChange={handleFileUpload}
                 className="w-full mt-1 text-zinc-400 text-sm file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-zinc-700 file:text-white hover:file:bg-zinc-600" />
-              {fileUrls.length > 0 && <p className="text-xs text-blue-400 mt-1">✓ {fileUrls.length} file uploaded</p>}
+              {fileUrls.length > 0
+                ? <p className="text-xs text-blue-400 mt-1">✓ {fileUrls.length} file{fileUrls.length > 1 ? 's' : ''} uploaded</p>
+                : <p className="text-xs text-red-500/70 mt-1">Required — attach your signed quotation</p>
+              }
             </div>
 
             <button type="submit" disabled={submitting}
