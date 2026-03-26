@@ -119,7 +119,7 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
           ))}
         </div>
       )}
-      {tab === 'Req. Orders'    && <ROTab isIM={isIM} isPM={isPM} />}
+      {tab === 'Req. Orders'    && <ROTab isIM={isIM} isPM={isPM} onGoToRFQ={() => setTab('RFQ')} />}
       {tab === 'RFQ'            && <RFQTab isPM={isPM} isIM={isIM} />}
       {tab === 'Purchase Orders' && <POTab isPM={isPM} isIM={isIM} />}
       {tab === 'Vendors'        && <VendorsTab isAdmin={isAdmin} isPM={isPM} />}
@@ -321,7 +321,7 @@ function CreateManualROModal({ onClose, onCreated }: { onClose: () => void; onCr
   );
 }
 
-function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
+function ROTab({ isIM, isPM, onGoToRFQ }: { isIM: boolean; isPM: boolean; onGoToRFQ?: () => void }) {
   const [ros, setROs] = useState<RO[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('ALL');
@@ -402,6 +402,12 @@ function ROTab({ isIM, isPM }: { isIM: boolean; isPM: boolean }) {
                     <button onClick={() => approve(ro.id)}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-700 hover:bg-green-600 text-white">
                       Approve
+                    </button>
+                  )}
+                  {isPM && ro.status === 'APPROVED' && (
+                    <button onClick={onGoToRFQ}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 hover:bg-blue-600 text-white">
+                      Create RFQ →
                     </button>
                   )}
                 </div>
