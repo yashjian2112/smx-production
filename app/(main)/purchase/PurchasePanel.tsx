@@ -514,7 +514,7 @@ function RFQTab({ isPM, isIM, preselectedRO, onClearPreselected }: { isPM: boole
                   <div className="text-xs text-zinc-500 mt-1">
                     {new Date(rfq.createdAt).toLocaleDateString('en-IN')} · By {rfq.createdBy.name}
                     {rfq.deadline && <> · Deadline: {new Date(rfq.deadline).toLocaleDateString('en-IN')}</>}
-                    <> · {rfq._count.vendorInvites} vendors · {rfq._count.quotes} quotes</>
+                    <> · {rfq._count.vendorInvites} vendors · <span className={rfq._count.quotes >= 5 ? 'text-green-400' : 'text-amber-400'}>{rfq._count.quotes}/5 quotes</span></>
                   </div>
                 </div>
                 <div className="flex gap-2 items-center">
@@ -563,10 +563,23 @@ function RFQTab({ isPM, isIM, preselectedRO, onClearPreselected }: { isPM: boole
                                 </span>
                                 <span className="text-xs text-zinc-400">{q.leadTimeDays}d lead</span>
                                 {isPM && rfq.status === 'OPEN' && q.status === 'SUBMITTED' && (
-                                  <button onClick={() => createPO(rfq.id, q.id)}
-                                    className="px-3 py-1 rounded-lg text-xs bg-green-700 hover:bg-green-600 text-white">
-                                    Create PO
-                                  </button>
+                                  rfq.quotes.length >= 5 ? (
+                                    <button onClick={() => createPO(rfq.id, q.id)}
+                                      className="px-3 py-1 rounded-lg text-xs bg-green-700 hover:bg-green-600 text-white">
+                                      Create PO
+                                    </button>
+                                  ) : (
+                                    <div className="relative group">
+                                      <button disabled
+                                        className="px-3 py-1 rounded-lg text-xs bg-zinc-700 text-zinc-500 cursor-not-allowed">
+                                        Create PO
+                                      </button>
+                                      <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block z-10 w-52 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-xs text-zinc-300 shadow-lg">
+                                        Minimum 5 quotes required.<br />
+                                        {rfq.quotes.length} of 5 received.
+                                      </div>
+                                    </div>
+                                  )
                                 )}
                               </div>
                             </div>

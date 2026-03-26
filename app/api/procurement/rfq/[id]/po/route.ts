@@ -29,6 +29,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const selectedQuote = rfq.quotes.find((q: { id: string }) => q.id === selectedQuoteId);
   if (!selectedQuote) return NextResponse.json({ error: 'Quote not found in this RFQ' }, { status: 404 });
 
+  // Enforce minimum 5 quotes before PO can be created
+  const submittedQuotes = rfq.quotes.filter((q: { status: string }) => q.status === 'SUBMITTED' || q.status === 'SELECTED');
+  if (submittedQuotes.length < 5) {
+    return NextResponse.json({
+      error: `Cannot create PO — minimum 5 vendor quotes required. Only ${submittedQuotes.length} received so far.`
+    }, { status: 400 });
+  }
+
   const poNumber = await generatePONumber();
 
   const po = await prisma.$transaction(async (tx) => {
