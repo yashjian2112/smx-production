@@ -26,7 +26,8 @@ type VendorInvite = { id: string; vendor: { id: string; name: string; code: stri
 type Quote = {
   id: string; vendorId: string; currency: string; totalAmount: number; leadTimeDays: number;
   validUntil: string; notes?: string; status: string; submittedAt: string;
-  sampleStatus: string;  // NONE, REQUESTED, APPROVED, REJECTED
+  sampleStatus: string;         // NONE, REQUESTED, APPROVED, REJECTED
+  sampleRequestedAt?: string | null;
   vendor: { id: string; name: string; code: string };
   items: { id: string; rfqItemId: string; materialId: string; unitPrice: number; totalPrice: number; currency: string }[];
 };
@@ -129,7 +130,7 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
         </div>
       )}
       {tab === 'Req. Orders'    && <ROTab isIM={isIM} isPM={isPM} onCreateRFQFromRO={handleCreateRFQFromRO} />}
-      {tab === 'RFQ'            && <RFQTab isPM={isPM} isIM={isIM} preselectedRO={rfqFromRO} onClearPreselected={() => setRfqFromRO(null)} />}
+      {tab === 'RFQ'            && <RFQTab isPM={isPM} isIM={isIM} isAdmin={isAdmin} preselectedRO={rfqFromRO} onClearPreselected={() => setRfqFromRO(null)} />}
       {tab === 'Purchase Orders' && <POTab isPM={isPM} isIM={isIM} />}
       {tab === 'Vendors'        && <VendorsTab isAdmin={isAdmin} isPM={isPM} />}
       {tab === 'Payments'       && <PaymentsTab isPM={isPM} />}
@@ -453,7 +454,7 @@ function ROTab({ isIM, isPM, onCreateRFQFromRO }: { isIM: boolean; isPM: boolean
 /* ═══════════════════════════════════════════════════════════
    RFQ TAB
 ══════════════════════════════════════════════════════════════*/
-function RFQTab({ isPM, isIM, preselectedRO, onClearPreselected }: { isPM: boolean; isIM: boolean; preselectedRO?: RO | null; onClearPreselected?: () => void }) {
+function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { isPM: boolean; isIM: boolean; isAdmin: boolean; preselectedRO?: RO | null; onClearPreselected?: () => void }) {
   const [rfqs, setRFQs] = useState<RFQ[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -602,7 +603,11 @@ function RFQTab({ isPM, isIM, preselectedRO, onClearPreselected }: { isPM: boole
                                     );
                                   }
                                   if (q.sampleStatus === 'REQUESTED') {
-                                    return (
+                                    const requestedAt = q.sampleRequestedAt ? new Date(q.sampleRequestedAt) : null;
+                                    const hoursElapsed = requestedAt ? (Date.now() - requestedAt.getTime()) / 3_600_000 : 0;
+                                    const canApprove = isAdmin || hoursElapsed >= 24;
+                                    const hoursLeft = Math.ceil(24 - hoursElapsed);
+                                    return canApprove ? (
                                       <div className="flex gap-1.5">
                                         <button onClick={() => sampleAction(rfq.id, q.id, 'approve')}
                                           className="px-3 py-1 rounded-lg text-xs bg-emerald-700 hover:bg-emerald-600 text-white">
@@ -612,6 +617,15 @@ function RFQTab({ isPM, isIM, preselectedRO, onClearPreselected }: { isPM: boole
                                           className="px-3 py-1 rounded-lg text-xs bg-red-800 hover:bg-red-700 text-white">
                                           Reject
                                         </button>
+                                      </div>
+                                    ) : (
+                                      <div className="relative group">
+                                        <span className="text-xs text-zinc-500 cursor-default">
+                                          Awaiting 24h · {hoursLeft}h left
+                                        </span>
+                                        <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block z-10 w-56 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-xs text-zinc-300 shadow-lg">
+                                          Sample evaluation period: 24 hours from request.<br />Approve available in {hoursLeft}h.
+                                        </div>
                                       </div>
                                     );
                                   }

@@ -26,8 +26,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const updated = await prisma.vendorQuote.update({
     where: { id: quoteId },
-    data: { sampleStatus },
+    data: {
+      sampleStatus,
+      ...(action === 'request' ? { sampleRequestedAt: new Date() } : {}),
+    },
   });
 
-  return NextResponse.json({ sampleStatus: updated.sampleStatus });
+  return NextResponse.json({ sampleStatus: updated.sampleStatus, sampleRequestedAt: updated.sampleRequestedAt });
 }

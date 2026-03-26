@@ -1491,7 +1491,8 @@ model VendorQuote {
   fileUrls     String[]    @default([]) @map("file_urls")  // vendor's quotation doc
   status       QuoteStatus @default(SUBMITTED)
   submittedAt  DateTime    @default(now()) @map("submitted_at")
-  sampleStatus String      @default("NONE") @map("sample_status")  // NONE, REQUESTED, APPROVED, REJECTED
+  sampleStatus      String    @default("NONE") @map("sample_status")       // NONE, REQUESTED, APPROVED, REJECTED
+  sampleRequestedAt DateTime? @map("sample_requested_at")
 
   rfq    RFQ              @relation(fields: [rfqId], references: [id], onDelete: Cascade)
   vendor Vendor           @relation(fields: [vendorId], references: [id])
