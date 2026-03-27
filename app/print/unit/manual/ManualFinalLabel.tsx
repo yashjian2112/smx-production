@@ -558,6 +558,7 @@ export function ManualFinalLabel({
                     value={qtyInput}
                     onChange={(e) => setQtyInput(e.target.value)}
                     onBlur={(e) => setQtyInput(String(Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 1))))}
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="input-field text-sm font-mono"
                   />
                 </div>
@@ -571,6 +572,7 @@ export function ManualFinalLabel({
                     value={copiesInput}
                     onChange={(e) => setCopiesInput(e.target.value)}
                     onBlur={(e) => setCopiesInput(String(Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 1))))}
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="input-field text-sm font-mono"
                   />
                 </div>

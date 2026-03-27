@@ -223,6 +223,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           }));
 
           // Create SERVICE invoice first
+          const serviceTotalAmount = packedUnitIds.length * serviceLineUnitPrice;
           const serviceInvoice = await tx.invoice.create({
             data: {
               invoiceNumber:   serviceInvoiceNumber,
@@ -230,6 +231,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
               proformaId:      proforma.id,
               subType:         'SERVICE',
               splitPercent:    servicePct,
+              totalAmount:     serviceTotalAmount,
               clientId,
               currency,
               exchangeRate,
@@ -251,6 +253,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           });
 
           // Create GOODS invoice linked to SERVICE invoice
+          const goodsTotalAmount = goodsItems.reduce((sum: number, item: any) =>
+            sum + item.quantity * item.unitPrice * (1 - (item.discountPercent ?? 0) / 100), 0);
           await tx.invoice.create({
             data: {
               invoiceNumber:   goodsInvoiceNumber,
@@ -259,6 +263,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
               subType:         'GOODS',
               splitPercent:    goodsPct,
               relatedInvoiceId: serviceInvoice.id,
+              totalAmount:     goodsTotalAmount,
               clientId,
               currency,
               exchangeRate,
@@ -285,12 +290,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
                 : null,
           }));
 
+          const fullTotalAmount = allItems.reduce((sum: number, item: any) =>
+            sum + item.quantity * item.unitPrice * (1 - (item.discountPercent ?? 0) / 100), 0);
           await tx.invoice.create({
             data: {
               invoiceNumber:   fullInvoiceNumber,
               dispatchOrderId: params.id,
               proformaId:      proforma.id,
               subType:         'FULL',
+              totalAmount:     fullTotalAmount,
               clientId,
               currency,
               exchangeRate,

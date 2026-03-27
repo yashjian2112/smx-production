@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN');
+    requireRole(session, 'ADMIN', 'PRODUCTION_EMPLOYEE');
     const { searchParams } = new URL(req.url);
     const serial = searchParams.get('serial');
     const orderId = searchParams.get('orderId');

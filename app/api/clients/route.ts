@@ -59,6 +59,12 @@ export async function POST(req: NextRequest) {
 
     const { customerName, email, phone, customerType, globalOrIndian, state, billingAddress, shippingAddress, gstNumber } = parsed.data;
 
+    if (parsed.data.gstNumber) {
+      const existing = await prisma.client.findFirst({ where: { gstNumber: parsed.data.gstNumber } });
+      if (existing)
+        return NextResponse.json({ error: 'A client with this GST number already exists' }, { status: 409 });
+    }
+
     const code = await generateClientCode();
 
     const client = await prisma.client.create({

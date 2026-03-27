@@ -126,6 +126,7 @@ function FactorModal({
             <div className="flex-1">
               <label className="block text-xs text-zinc-400 mb-1">Display Order</label>
               <input type="number" value={order} onChange={e => setOrder(Number(e.target.value))} min={0}
+                onWheel={(e) => e.currentTarget.blur()}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm" />
             </div>
             <div className="flex items-end pb-2 gap-2">

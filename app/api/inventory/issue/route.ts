@@ -24,6 +24,12 @@ export async function POST(req: Request) {
   const material = await prisma.rawMaterial.findUnique({ where: { id: data.rawMaterialId } });
   if (!material) return NextResponse.json({ error: 'Material not found' }, { status: 404 });
 
+  // Discrete units (pcs, pieces, units, nos, sets) must have integer quantities
+  const discreteUnits = ['pcs', 'pieces', 'units', 'nos', 'sets', 'pc', 'unit', 'no'];
+  if (discreteUnits.includes(material.unit?.toLowerCase() ?? '') && !Number.isInteger(data.quantity)) {
+    return NextResponse.json({ error: `Quantity must be a whole number for unit type: ${material.unit}` }, { status: 400 });
+  }
+
   let result;
   try {
     result = await prisma.$transaction(async (tx) => {
@@ -72,7 +78,7 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     if (message === 'Insufficient stock') {
-      return NextResponse.json({ error: 'Insufficient stock' }, { status: 400 });
+      return NextResponse.json({ error: `Insufficient stock. Available: ${material.currentStock} ${material.unit}` }, { status: 400 });
     }
     throw err;
   }

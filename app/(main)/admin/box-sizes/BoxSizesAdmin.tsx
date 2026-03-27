@@ -188,6 +188,7 @@ export function BoxSizesAdmin({ boxSizes: initial }: { boxSizes: BoxSizeRow[] })
                       min="0"
                       value={form[field]}
                       onChange={(e) => fieldChange(field, e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       placeholder="0"
                       className="input-field text-sm w-full"
                     />

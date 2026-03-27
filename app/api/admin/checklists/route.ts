@@ -5,7 +5,8 @@ import { put } from '@vercel/blob';
 
 // GET: list all checklist items (optionally filtered by productId)
 export async function GET(req: NextRequest) {
-  await requireSession();
+  const session = await requireSession();
+  requireRole(session, 'ADMIN', 'PRODUCTION_EMPLOYEE', 'PACKING');
   const productId = req.nextUrl.searchParams.get('productId');
   const items = await prisma.stageChecklistItem.findMany({
     where: productId ? { productId } : undefined,

@@ -216,6 +216,7 @@ export function CreateOrderForm({ products, clients }: { products: Product[]; cl
             min={1}
             value={quantity}
             onChange={(e) => setQuantity(parseInt(e.target.value, 10) || 1)}
+            onWheel={(e) => e.currentTarget.blur()}
             className="input-field text-sm"
           />
         </div>
@@ -238,6 +239,7 @@ export function CreateOrderForm({ products, clients }: { products: Product[]; cl
             type="number"
             value={priority}
             onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
+            onWheel={(e) => e.currentTarget.blur()}
             className="input-field text-sm"
           />
         </div>

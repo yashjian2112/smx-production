@@ -884,17 +884,20 @@ function SubmitInvoiceModal({ po, token, onClose, onSubmitted }: {
           <div>
             <label className="text-xs text-zinc-400">Invoice Amount (₹) *</label>
             <input type="number" value={amount} onChange={e => setAmount(e.target.value)} min={0} step="0.01" required
+              onWheel={(e) => e.currentTarget.blur()}
               className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-zinc-400">GST Amount (₹)</label>
               <input type="number" value={gstAmount} onChange={e => setGstAmount(e.target.value)} min={0} step="0.01"
+                onWheel={(e) => e.currentTarget.blur()}
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500" />
             </div>
             <div>
               <label className="text-xs text-zinc-400">TDS Amount (₹)</label>
               <input type="number" value={tdsAmount} onChange={e => setTdsAmount(e.target.value)} min={0} step="0.01"
+                onWheel={(e) => e.currentTarget.blur()}
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sky-500" />
             </div>
           </div>

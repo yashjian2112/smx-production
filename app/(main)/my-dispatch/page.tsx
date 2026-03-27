@@ -167,6 +167,7 @@ function ReadyCard({ order, onCreateDO, creating }: {
             <input
               type="number" min="1" max={order.readyCount}
               value={qtyInput} onChange={(e) => { setQtyInput(e.target.value); setQtyError(''); }}
+              onWheel={(e) => e.currentTarget.blur()}
               className="input-field text-sm flex-1"
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleConfirmCreate(); } }}
               autoFocus

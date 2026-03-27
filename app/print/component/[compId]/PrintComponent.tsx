@@ -416,6 +416,7 @@ export function PrintComponent({
                   max={1000}
                   value={qty}
                   onChange={(e) => setQty(Math.max(1, Math.min(1000, Number(e.target.value) || 1)))}
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="w-14 text-center text-sm font-bold text-white rounded-md"
                   style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 0' }}
                 />

@@ -1848,16 +1848,19 @@ function UploadVendorInvoiceModal({ po, onClose, onCreated }: { po: PO; onClose:
               <div>
                 <label className="text-zinc-400 text-xs">Amount (₹) *</label>
                 <input value={amount} onChange={e => setAmount(e.target.value)} type="number" min="0" placeholder="0"
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
               <div>
                 <label className="text-zinc-400 text-xs">GST (₹)</label>
                 <input value={gstAmount} onChange={e => setGstAmount(e.target.value)} type="number" min="0" placeholder="0"
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
               <div>
                 <label className="text-zinc-400 text-xs">TDS (₹)</label>
                 <input value={tdsAmount} onChange={e => setTdsAmount(e.target.value)} type="number" min="0" placeholder="0"
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
             </div>

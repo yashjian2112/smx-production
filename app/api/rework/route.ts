@@ -2,32 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SALES');
+    requireRole(session, 'ADMIN', 'PRODUCTION_EMPLOYEE');
 
-    const salesFilter = session.role === 'SALES'
-      ? { proforma: { createdById: session.id } }
-      : {};
-
-    const invoices = await prisma.invoice.findMany({
-      where: salesFilter,
+    const records = await prisma.reworkRecord.findMany({
       include: {
-        client: { select: { customerName: true, globalOrIndian: true } },
-        dispatchOrder: {
-          select: {
-            doNumber: true,
-            order: { select: { orderNumber: true } },
-          },
-        },
-        _count: { select: { items: true } },
+        unit:         { select: { id: true, serialNumber: true, currentStage: true } },
+        assignedUser: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 200,
+      take: 100,
     });
 
-    return NextResponse.json(invoices);
+    return NextResponse.json(records);
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

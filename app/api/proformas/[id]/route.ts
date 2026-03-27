@@ -73,6 +73,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
+    if (session.role === 'SALES' && parsed.data.status !== undefined && parsed.data.status !== 'PENDING_APPROVAL')
+      return NextResponse.json({ error: 'Forbidden: SALES can only submit for approval' }, { status: 403 });
+
     const { items, ...rest } = parsed.data;
 
     const proforma = await prisma.proformaInvoice.update({

@@ -167,6 +167,7 @@ export default function BOMAdmin() {
                 <div>
                   <label className="text-xs text-zinc-500 mb-1 block">Qty Required</label>
                   <input type="number" value={newQty} onChange={e => setNewQty(e.target.value)} placeholder="e.g. 4"
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="w-full rounded-xl px-3 py-2 text-sm text-white"
                     style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }} />
                 </div>

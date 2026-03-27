@@ -11,7 +11,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET() {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING');
+    requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING', 'PACKING');
 
     // BUG#1 FIX: single query — count approved dispatch items per order directly
     const approvedItems = await prisma.dispatchItem.findMany({

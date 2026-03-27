@@ -50,6 +50,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     requireRole(session, 'ADMIN', 'ACCOUNTS', 'SHIPPING');
 
     const body = await req.json() as { notes?: string };
+    if (body.notes !== undefined && body.notes !== null && typeof body.notes !== 'string')
+      return NextResponse.json({ error: 'notes must be a string' }, { status: 400 });
     const invoice = await prisma.invoice.update({
       where: { id: params.id },
       data:  { notes: body.notes ?? null },

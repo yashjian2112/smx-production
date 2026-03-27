@@ -16,6 +16,9 @@ export async function POST(
     const unit = await prisma.controllerUnit.findUnique({ where: { id } });
     if (!unit) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+    if (unit.currentStatus === 'APPROVED' && unit.readyForDispatch)
+      return NextResponse.json({ error: 'Unit is already dispatched' }, { status: 400 });
+
     await prisma.stageAssignment.upsert({
       where: { unitId_stage: { unitId: id, stage: unit.currentStage } },
       create: { unitId: id, userId, stage: unit.currentStage },

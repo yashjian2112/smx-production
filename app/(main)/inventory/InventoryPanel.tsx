@@ -479,6 +479,7 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
                   {addMode === 'physical' ? `Actual counted quantity (${addMat.unit})` : `Quantity (${addMat.unit})`}
                 </label>
                 <input type="number" step="any" min="0" value={addQty} onChange={e => setAddQty(e.target.value)} required
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
                   style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
                 {addMode === 'physical' && addQty !== '' && (
@@ -501,6 +502,7 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
                   <div>
                     <label className="text-zinc-400 text-xs">Unit Price ₹ (optional)</label>
                     <input type="number" step="any" min="0" value={addPrice} onChange={e => setAddPrice(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
                       style={{ background: 'rgb(39,39,42)' }} placeholder="0.00" />
                   </div>
@@ -578,6 +580,7 @@ function StockTab({ isAdmin, onSwitchTab }: { isAdmin: boolean; onSwitchTab: (ta
               <div>
                 <label className="text-zinc-400 text-xs">Quantity to Issue ({issueMat.unit})</label>
                 <input type="number" step="any" min="0.01" max={issueMat.currentStock} value={issueQty} onChange={e => setIssueQty(e.target.value)} required
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-orange-500"
                   style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
               </div>
@@ -945,6 +948,7 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
                             <label className="text-zinc-500 text-xs">Qty {mat ? `(${mat.unit})` : ''}</label>
                             <input type="number" step="any" min="0.01" value={item.quantity}
                               onChange={e => setDrItems(prev => prev.map((r, i) => i === idx ? { ...r, quantity: e.target.value } : r))}
+                              onWheel={(e) => e.currentTarget.blur()}
                               placeholder="0"
                               className="w-full mt-0.5 px-2 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
                               style={{ background: 'rgb(39,39,42)' }} />
@@ -953,6 +957,7 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
                             <label className="text-zinc-500 text-xs">Unit Price (₹)</label>
                             <input type="number" step="any" min="0" value={item.unitPrice}
                               onChange={e => setDrItems(prev => prev.map((r, i) => i === idx ? { ...r, unitPrice: e.target.value } : r))}
+                              onWheel={(e) => e.currentTarget.blur()}
                               placeholder="0"
                               className="w-full mt-0.5 px-2 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
                               style={{ background: 'rgb(39,39,42)' }} />
@@ -1008,6 +1013,7 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
                         <label className="text-zinc-400 text-xs">Qty ({poItem?.rawMaterial.unit})</label>
                         <input type="number" step="any" min="0" value={item.quantity}
                           onChange={e => setFormItems(fi => fi.map((f, i) => i === idx ? { ...f, quantity: e.target.value } : f))}
+                          onWheel={(e) => e.currentTarget.blur()}
                           className="w-full mt-1 px-2 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                           style={{ background: 'rgb(39,39,42)' }} />
                         {pending > 0 && <p className="text-zinc-500 text-xs mt-0.5">Pending: {fmt(pending)}</p>}
@@ -1016,6 +1022,7 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
                         <label className="text-zinc-400 text-xs">Unit Price (₹)</label>
                         <input type="number" step="any" min="0" value={item.unitPrice}
                           onChange={e => setFormItems(fi => fi.map((f, i) => i === idx ? { ...f, unitPrice: e.target.value } : f))}
+                          onWheel={(e) => e.currentTarget.blur()}
                           className="w-full mt-1 px-2 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                           style={{ background: 'rgb(39,39,42)' }} />
                       </div>
@@ -1533,6 +1540,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                   </select>
                   {fPurchaseUnit && (
                     <input type="number" step="any" min="1" value={fConvFactor} onChange={e => setFConvFactor(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       placeholder={`${fUnit || 'PCS'} per ${fPurchaseUnit}`}
                       className="flex-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                       style={{ background: 'rgb(39,39,42)' }} />
@@ -1668,6 +1676,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                   <div>
                     <label className="text-zinc-500 text-xs">Qty ({fUnit})</label>
                     <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
                       style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
                   </div>
