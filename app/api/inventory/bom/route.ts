@@ -1,19 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireSession } from '@/lib/auth';
+import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { StageType } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
-  await requireSession();
-  const { searchParams } = new URL(req.url);
-  const productId = searchParams.get('productId');
+  try {
+    const session = await requireSession();
+    requireRole(session, 'ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER', 'PRODUCTION_EMPLOYEE');
+    const { searchParams } = new URL(req.url);
+    const productId = searchParams.get('productId');
 
-  const items = await prisma.bOMItem.findMany({
-    where: productId ? { productId } : {},
-    include: { rawMaterial: { select: { id: true, name: true, code: true, unit: true } } },
-    orderBy: [{ stage: 'asc' }, { voltage: 'asc' }],
-  });
-  return NextResponse.json(items);
+    const items = await prisma.bOMItem.findMany({
+      where: productId ? { productId } : {},
+      include: { rawMaterial: { select: { id: true, name: true, code: true, unit: true } } },
+      orderBy: [{ stage: 'asc' }, { voltage: 'asc' }],
+    });
+    return NextResponse.json(items);
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Unauthorized')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (e instanceof Error && e.message === 'Forbidden')
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    console.error(e);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {

@@ -31,6 +31,7 @@ async function generateClientCode(): Promise<string> {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS', 'PURCHASE_MANAGER');
     const { searchParams } = new URL(req.url);
     const active = searchParams.get('active');
 
@@ -42,6 +43,8 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (e instanceof Error && e.message === 'Forbidden')
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     console.error(e);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
