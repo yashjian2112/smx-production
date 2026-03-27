@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
       where: { id: order.id },
       include: { product: true, units: true },
     });
-    return NextResponse.json(updated);
+    return NextResponse.json(updated, { status: 201 });
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

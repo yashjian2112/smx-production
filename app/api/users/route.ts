@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       },
       select: { id: true, email: true, name: true, role: true, active: true },
     });
-    return NextResponse.json(user);
+    return NextResponse.json(user, { status: 201 });
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -73,7 +73,10 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const data = createSchema.parse(body);
+  const parsed = createSchema.safeParse(body);
+  if (!parsed.success)
+    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  const data = parsed.data;
 
   const code    = data.code || await generateNextMaterialCode();
   const barcode = await generateMaterialBarcode(data.categoryId, data.barcodePrefix);

@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     const product = await prisma.product.create({
       data: { code, name, description: description ?? null },
     });
-    return NextResponse.json(product);
+    return NextResponse.json(product, { status: 201 });
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
