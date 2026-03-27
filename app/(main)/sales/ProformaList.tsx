@@ -1181,7 +1181,8 @@ export function ProformaList({
   implGoods?: IGRow[];
 }) {
   const router = useRouter();
-  const [tab, setTab]               = useState<TabKey>(initialTab ?? 'pi');
+  const defaultTab: TabKey = ['PURCHASE_MANAGER', 'STORE_MANAGER'].includes(role) ? 'impl' : 'pi';
+  const [tab, setTab]               = useState<TabKey>(initialTab ?? defaultTab);
   const [search, setSearch]         = useState('');
   const [invSubTab, setInvSubTab]   = useState<'current' | 'history'>('current');
   const [statusSubTab, setStatusSubTab] = useState<'processing' | 'completed'>('processing');
@@ -1205,15 +1206,19 @@ export function ProformaList({
   });
 
   // Main tabs — Status is handled separately (no count clutter)
+  const igOnlyRole = ['PURCHASE_MANAGER', 'STORE_MANAGER'].includes(role);
+
   const mainTabs: Array<{ key: TabKey; label: string; count: number }> = [
-    { key: 'pi',      label: 'Proforma', count: piList.length         },
-    { key: 'invoice', label: 'Invoice',  count: invoices.length       },
-    { key: 'returns', label: 'Returns',  count: returnRequests.length },
+    ...(!igOnlyRole ? [
+      { key: 'pi'      as TabKey, label: 'Proforma', count: piList.length         },
+      { key: 'invoice' as TabKey, label: 'Invoice',  count: invoices.length       },
+      { key: 'returns' as TabKey, label: 'Returns',  count: returnRequests.length },
+    ] : []),
     ...(['ADMIN', 'SALES'].includes(role)
-      ? [
-          { key: 'samples' as TabKey, label: 'Samples',     count: samples.length    },
-          { key: 'impl'    as TabKey, label: 'Impl. Goods', count: implGoods.length  },
-        ]
+      ? [{ key: 'samples' as TabKey, label: 'Samples', count: samples.length }]
+      : []),
+    ...(['ADMIN', 'SALES', 'PURCHASE_MANAGER', 'STORE_MANAGER'].includes(role)
+      ? [{ key: 'impl' as TabKey, label: 'Impl. Goods', count: implGoods.length }]
       : []),
   ];
 

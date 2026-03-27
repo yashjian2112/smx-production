@@ -199,19 +199,19 @@ const shippingNav: NavItem[] = [
   { href: '/dashboard',   label: 'Dashboard', icon: 'Dashboard' },
 ];
 
-// PURCHASE_MANAGER: full procurement flow
+// PURCHASE_MANAGER: procurement + IG/GAN
 const purchaseNav: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard',   icon: 'Dashboard'  },
-  { href: '/purchase',  label: 'Procurement', icon: 'Purchase'   },
-  { href: '/inventory', label: 'Inventory',   icon: 'Inventory'  },
+  { href: '/dashboard',       label: 'Dashboard',   icon: 'Dashboard'  },
+  { href: '/purchase',        label: 'Procurement', icon: 'Purchase'   },
+  { href: '/sales?tab=impl',  label: 'Impl. Goods', icon: 'Pack'       },
 ];
 
 // INVENTORY_MANAGER / STORE_MANAGER
 const inventoryNav: NavItem[] = [
-  { href: '/inventory',  label: 'Inventory',  icon: 'Inventory'  },
-  { href: '/job-cards',  label: 'Job Cards',  icon: 'JobCards'   },
-  { href: '/purchase',   label: 'Req. Order',   icon: 'Purchase'   },
-  { href: '/dashboard',  label: 'Dashboard',  icon: 'Dashboard'  },
+  { href: '/inventory',       label: 'Inventory',   icon: 'Inventory'  },
+  { href: '/job-cards',        label: 'Job Cards',   icon: 'JobCards'   },
+  { href: '/sales?tab=impl',   label: 'Impl. Goods', icon: 'Pack'       },
+  { href: '/dashboard',        label: 'Dashboard',   icon: 'Dashboard'  },
 ];
 
 export function BottomNav({ role }: { role: string }) {
