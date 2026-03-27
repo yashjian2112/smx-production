@@ -235,11 +235,11 @@ export function BottomNav({ role }: { role: string }) {
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 pb-safe md:relative md:pb-0"
       style={{
-        background: 'rgba(12, 12, 16, 0.65)',
-        backdropFilter: 'blur(24px) saturate(160%)',
-        WebkitBackdropFilter: 'blur(24px) saturate(160%)',
-        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-        boxShadow: '0 -1px 24px rgba(0,0,0,0.4)',
+        background: 'linear-gradient(0deg, rgba(22,22,28,0.68) 0%, rgba(38,38,44,0.72) 100%)',
+        backdropFilter: 'blur(40px) saturate(200%) brightness(1.1)',
+        WebkitBackdropFilter: 'blur(40px) saturate(200%) brightness(1.1)',
+        borderTop: '1px solid rgba(255,255,255,0.12)',
+        boxShadow: '0 -1px 0 rgba(255,255,255,0.06) inset, 0 -2px 20px rgba(0,0,0,0.35)',
       }}
     >
       <div className="flex justify-around items-center h-16 md:gap-2">

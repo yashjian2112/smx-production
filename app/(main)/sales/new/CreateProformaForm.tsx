@@ -86,6 +86,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
 
   // ─── Derived ─────────────────────────────────────────────────────
   const selectedClient = clients.find((c) => c.id === clientId);
+  const isGlobal = selectedClient?.globalOrIndian === 'Global';
   const rate = typeof exchangeRate === 'number' ? exchangeRate : 0;
 
   // Auto-set currency when client changes
@@ -94,10 +95,12 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
     const c = clients.find((x) => x.id === id);
     if (c) {
       if (c.globalOrIndian === 'Global') {
+        // Export client → USD only (no dual)
         setCurrency('USD');
-        setDualCurrency(true);
-        if (!exchangeRate) fetchLiveRate();
+        setDualCurrency(false);
+        setExchangeRate('');
       } else {
+        // Domestic client → INR default
         setCurrency('INR');
         setDualCurrency(false);
         setExchangeRate('');
@@ -336,7 +339,11 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
         <div>
           <label className={lCls}>Currency</label>
           <div className="flex gap-2">
-            {(['INR', 'USD', 'USD-INR'] as const).map((c) => {
+            {/* Domestic: INR + USD-INR | Global/Export: USD only */}
+            {(isGlobal
+              ? (['USD'] as const)
+              : (['INR', 'USD-INR'] as const)
+            ).map((c) => {
               const isActive = c === 'USD-INR' ? dualCurrency : (currency === c && !dualCurrency);
               return (
                 <button key={c} type="button" onClick={() => handleCurrencyChange(c)}

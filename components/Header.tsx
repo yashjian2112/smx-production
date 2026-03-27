@@ -26,11 +26,11 @@ export function Header({ title, user }: { title: string; user: { name: string; r
     <header
       className="sticky top-0 z-40 px-4 py-3 flex items-center justify-between"
       style={{
-        background: 'rgba(12, 12, 16, 0.65)',
-        backdropFilter: 'blur(20px) saturate(160%)',
-        WebkitBackdropFilter: 'blur(20px) saturate(160%)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-        boxShadow: '0 1px 24px rgba(0,0,0,0.4)',
+        background: 'linear-gradient(180deg, rgba(38,38,44,0.72) 0%, rgba(22,22,28,0.68) 100%)',
+        backdropFilter: 'blur(40px) saturate(200%) brightness(1.1)',
+        WebkitBackdropFilter: 'blur(40px) saturate(200%) brightness(1.1)',
+        borderBottom: '1px solid rgba(255,255,255,0.12)',
+        boxShadow: '0 1px 0 rgba(255,255,255,0.06) inset, 0 2px 20px rgba(0,0,0,0.35)',
       }}
     >
       {/* Brand icon + title */}
