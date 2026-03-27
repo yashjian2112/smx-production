@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 type Client  = { id: string; code: string; customerName: string; globalOrIndian: string | null; gstNumber: string | null; state: string | null };
@@ -66,17 +66,42 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   ]);
   const [hsnInputs, setHsnInputs] = useState<Record<number, string>>({});  // custom HSN per item
 
+  const [exchangeRate,     setExchangeRate]     = useState<number | ''>('');
+  const [rateLoading,      setRateLoading]      = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
 
+  // ─── Live rate fetch ──────────────────────────────────────────────
+  const fetchLiveRate = useCallback(async () => {
+    setRateLoading(true);
+    try {
+      const res = await fetch('https://open.er-api.com/v6/latest/USD');
+      const data = await res.json();
+      if (data?.rates?.INR) setExchangeRate(Math.round(data.rates.INR * 100) / 100);
+    } catch { /* leave blank if unavailable */ }
+    finally { setRateLoading(false); }
+  }, []);
+
   // ─── Derived ─────────────────────────────────────────────────────
   const selectedClient = clients.find((c) => c.id === clientId);
+  const rate = typeof exchangeRate === 'number' ? exchangeRate : 0;
 
   // Auto-set currency when client changes
   function handleClientChange(id: string) {
     setClientId(id);
     const c = clients.find((x) => x.id === id);
-    if (c) setCurrency(c.globalOrIndian === 'Global' ? 'USD' : 'INR');
+    if (c) {
+      const newCurrency = c.globalOrIndian === 'Global' ? 'USD' : 'INR';
+      setCurrency(newCurrency);
+      if (newCurrency === 'USD' && !exchangeRate) fetchLiveRate();
+    }
+  }
+
+  function handleCurrencyChange(c: 'INR' | 'USD') {
+    setCurrency(c);
+    if (c === 'USD' && !exchangeRate) fetchLiveRate();
+    if (c === 'INR') setExchangeRate('');
   }
 
   // ─── Line Item helpers ────────────────────────────────────────────
@@ -124,6 +149,10 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
     ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
     : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
+  const fmtInr = (usd: number) => rate > 0
+    ? `₹${(usd * rate).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+    : null;
+
   // ─── Submit ──────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -132,8 +161,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       setError('Fill in all line items (HSN code, price)');
       return;
     }
-    if (items.some((i) => i.hsnCode !== '9965' && (!i.voltageFrom || !i.voltageTo))) {
-      setError('Please enter voltage range (From and To) for all product line items');
+    if (items.some((i) => !i.voltageFrom || !i.voltageTo)) {
+      setError('Please enter voltage range (From and To) for all line items');
       return;
     }
     if (invoiceType === 'REPLACEMENT' && (!unitSerial.trim() || !problemDesc.trim())) {
@@ -184,6 +213,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           documentType: invoiceType === 'SALE' ? documentType : 'PROFORMA',
           invoiceType,
           currency,
+          exchangeRate:    currency === 'USD' && rate > 0 ? rate : undefined,
           termsOfPayment:  termsOfPayment || undefined,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : undefined,
           notes:           finalNotes || undefined,
@@ -289,19 +319,58 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       </div>
 
       {/* Currency */}
-      <div>
-        <label className={lCls}>Currency</label>
-        <div className="flex gap-2 max-w-[160px]">
-          {(['INR', 'USD'] as const).map((c) => (
-            <button key={c} type="button" onClick={() => setCurrency(c)}
-              className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
-              style={currency === c
-                ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
-                : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-              {c}
-            </button>
-          ))}
+      <div className="space-y-3">
+        <div>
+          <label className={lCls}>Currency</label>
+          <div className="flex gap-2 max-w-[160px]">
+            {(['INR', 'USD'] as const).map((c) => (
+              <button key={c} type="button" onClick={() => handleCurrencyChange(c)}
+                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
+                style={currency === c
+                  ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+                {c}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* Exchange rate — only when USD selected */}
+        {currency === 'USD' && (
+          <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.15)' }}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-sky-400">USD → INR Rate</span>
+              <button
+                type="button"
+                onClick={fetchLiveRate}
+                disabled={rateLoading}
+                className="text-[10px] px-2 py-0.5 rounded-full border text-sky-500 hover:text-sky-300 transition-colors"
+                style={{ borderColor: 'rgba(56,189,248,0.3)' }}
+              >
+                {rateLoading ? 'Fetching…' : 'Refresh live rate'}
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500 text-xs shrink-0">1 USD =</span>
+              <input
+                type="number"
+                min={1}
+                step="0.01"
+                value={exchangeRate}
+                onChange={(e) => setExchangeRate(parseFloat(e.target.value) || '')}
+                onWheel={(e) => e.currentTarget.blur()}
+                className={iCls + ' !w-28'}
+                placeholder="e.g. 84.50"
+              />
+              <span className="text-zinc-500 text-xs shrink-0">INR</span>
+            </div>
+            {rate > 0 && (
+              <p className="text-[10px] text-zinc-600">
+                Prices entered in USD · INR equivalent shown for reference
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Terms of Payment */}
@@ -322,7 +391,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       {/* Delivery Days */}
       <div>
         <label className={lCls}>Delivery Days <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
-        <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} className={iCls} placeholder="e.g. 30" />
+        <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 30" />
       </div>
 
       {/* ── Split Invoice ── */}
@@ -351,6 +420,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                 type="number" min={1} max={99}
                 value={splitServicePercent}
                 onChange={(e) => setSplitServicePercent(e.target.value)}
+                onWheel={(e) => e.currentTarget.blur()}
                 className={iCls + ' !w-24'}
                 placeholder="e.g. 30"
               />
@@ -440,7 +510,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                 {/* Quantity */}
                 <div>
                   <label className={lCls}>Qty (PCS) <span className="text-red-400">*</span></label>
-                  <input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.key, { quantity: parseInt(e.target.value, 10) || 1 })} className={iCls} />
+                  <input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.key, { quantity: parseInt(e.target.value, 10) || 1 })} onWheel={(e) => e.currentTarget.blur()} className={iCls} />
                 </div>
               </div>
 
@@ -448,9 +518,9 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
               <div>
                 <label className={lCls}>Voltage Range <span className="text-red-400">*</span></label>
                 <div className="flex items-center gap-2">
-                  <input type="number" min={0} value={item.voltageFrom} onChange={(e) => updateItem(item.key, { voltageFrom: e.target.value })} className={iCls} placeholder="From (e.g. 48)" required />
+                  <input type="number" min={0} value={item.voltageFrom} onChange={(e) => updateItem(item.key, { voltageFrom: e.target.value })} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="From (e.g. 48)" required />
                   <span className="text-zinc-500 text-sm shrink-0">to</span>
-                  <input type="number" min={0} value={item.voltageTo} onChange={(e) => updateItem(item.key, { voltageTo: e.target.value })} className={iCls} placeholder="To (e.g. 120)" required />
+                  <input type="number" min={0} value={item.voltageTo} onChange={(e) => updateItem(item.key, { voltageTo: e.target.value })} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="To (e.g. 120)" required />
                   <span className="text-zinc-500 text-xs shrink-0">V</span>
                 </div>
               </div>
@@ -459,16 +529,19 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className={lCls}>Unit Price ({currency === 'USD' ? '$' : '₹'}) <span className="text-red-400">*</span></label>
-                  <input type="number" min={0} step="0.01" value={item.unitPrice || ''} onChange={(e) => updateItem(item.key, { unitPrice: parseFloat(e.target.value) || 0 })} className={iCls} placeholder="0.00" required />
+                  <input type="number" min={0} step="0.01" value={item.unitPrice || ''} onChange={(e) => updateItem(item.key, { unitPrice: parseFloat(e.target.value) || 0 })} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="0.00" required />
                 </div>
                 <div>
                   <label className={lCls}>Discount %</label>
-                  <input type="number" min={0} max={100} step="0.01" value={item.discountPercent || ''} onChange={(e) => updateItem(item.key, { discountPercent: parseFloat(e.target.value) || 0 })} className={iCls} placeholder="0" />
+                  <input type="number" min={0} max={100} step="0.01" value={item.discountPercent || ''} onChange={(e) => updateItem(item.key, { discountPercent: parseFloat(e.target.value) || 0 })} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="0" />
                 </div>
                 <div>
                   <label className={lCls}>Amount</label>
-                  <div className="input-field text-sm text-zinc-400 select-none" style={{ background: 'rgba(255,255,255,0.02)' }}>
-                    {currency === 'USD' ? '$' : '₹'}{calcAmount(item).toLocaleString(currency === 'USD' ? 'en-US' : 'en-IN', { minimumFractionDigits: 2 })}
+                  <div className="input-field text-sm text-zinc-400 select-none space-y-0.5" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                    <div>{currency === 'USD' ? '$' : '₹'}{calcAmount(item).toLocaleString(currency === 'USD' ? 'en-US' : 'en-IN', { minimumFractionDigits: 2 })}</div>
+                    {currency === 'USD' && fmtInr(calcAmount(item)) && (
+                      <div className="text-[10px] text-zinc-600">{fmtInr(calcAmount(item))}</div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -486,6 +559,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           step="0.01"
           value={shippingCharges}
           onChange={(e) => setShippingCharges(e.target.value)}
+          onWheel={(e) => e.currentTarget.blur()}
           className={iCls}
           placeholder="0.00"
         />
@@ -494,9 +568,23 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       {/* ── Totals Summary ── */}
       {items.length > 0 && (
         <div className="rounded-xl border border-zinc-800 p-4 space-y-2" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          {/* Column headers when dual currency */}
+          {isExport && rate > 0 && (
+            <div className="flex justify-between text-[10px] text-zinc-600 pb-1 border-b border-zinc-800">
+              <span></span>
+              <div className="flex gap-6">
+                <span className="w-24 text-right">USD</span>
+                <span className="w-24 text-right">INR equiv.</span>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-between text-sm">
             <span className="text-zinc-500">Sub Total</span>
-            <span>{fmtAmt(subtotal)}</span>
+            <div className="flex gap-6">
+              <span className={isExport && rate > 0 ? 'w-24 text-right' : ''}>{fmtAmt(subtotal)}</span>
+              {isExport && rate > 0 && <span className="w-24 text-right text-zinc-600">{fmtInr(subtotal)}</span>}
+            </div>
           </div>
           {!isExport && isIntra && (
             <>
@@ -508,11 +596,22 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
             <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{fmtAmt(gst)}</span></div>
           )}
           {shipping > 0 && (
-            <div className="flex justify-between text-sm text-zinc-500"><span>Shipping</span><span>{fmtAmt(shipping)}</span></div>
+            <div className="flex justify-between text-sm text-zinc-500">
+              <span>Shipping</span>
+              <div className="flex gap-6">
+                <span className={isExport && rate > 0 ? 'w-24 text-right' : ''}>{fmtAmt(shipping)}</span>
+                {isExport && rate > 0 && <span className="w-24 text-right text-zinc-600">{fmtInr(shipping)}</span>}
+              </div>
+            </div>
           )}
           <div className="flex justify-between text-sm font-semibold border-t border-zinc-800 pt-2">
             <span>Total</span>
-            <span className="text-sky-400">{fmtAmt(total)}</span>
+            <div className="flex gap-6 items-baseline">
+              <span className={`text-sky-400${isExport && rate > 0 ? ' w-24 text-right' : ''}`}>{fmtAmt(total)}</span>
+              {isExport && rate > 0 && (
+                <span className="w-24 text-right text-emerald-400 text-xs font-semibold">{fmtInr(total)}</span>
+              )}
+            </div>
           </div>
         </div>
       )}
