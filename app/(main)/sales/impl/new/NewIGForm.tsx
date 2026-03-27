@@ -49,6 +49,8 @@ export default function NewIGForm({ clients }: { clients: ClientOption[] }) {
 
     if (!clientId) { setError('Please select a client.'); return; }
     if (!description.trim()) { setError('Description is required.'); return; }
+    if (!expectedReturn) { setError('Expected return date is required.'); return; }
+    if (!purpose.trim()) { setError('Purpose is required.'); return; }
     if (items.some((item) => !item.name.trim())) {
       setError('All items must have a name.');
       return;
@@ -218,20 +220,21 @@ export default function NewIGForm({ clients }: { clients: ClientOption[] }) {
       {/* Expected return */}
       <div>
         <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-          Expected Return Date <span className="text-zinc-600">(optional)</span>
+          Expected Return Date <span className="text-red-400">*</span>
         </label>
         <input
           type="date"
           className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
           value={expectedReturn}
           onChange={(e) => setExpectedReturn(e.target.value)}
+          required
         />
       </div>
 
       {/* Purpose */}
       <div>
         <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-          Purpose <span className="text-zinc-600">(optional)</span>
+          Purpose <span className="text-red-400">*</span>
         </label>
         <input
           type="text"
@@ -239,6 +242,7 @@ export default function NewIGForm({ clients }: { clients: ClientOption[] }) {
           placeholder="Research, demo, installation…"
           value={purpose}
           onChange={(e) => setPurpose(e.target.value)}
+          required
           maxLength={500}
         />
       </div>

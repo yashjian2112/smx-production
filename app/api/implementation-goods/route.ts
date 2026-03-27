@@ -81,6 +81,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'description is required' }, { status: 400 });
     if (!items || !Array.isArray(items) || items.length === 0)
       return NextResponse.json({ error: 'items must be a non-empty array' }, { status: 400 });
+    if (!expectedReturn || typeof expectedReturn !== 'string')
+      return NextResponse.json({ error: 'Expected return date is required' }, { status: 400 });
+    if (!purpose || typeof purpose !== 'string' || !purpose.trim())
+      return NextResponse.json({ error: 'Purpose is required' }, { status: 400 });
 
     const igNumber = await generateNextIGNumber();
 
