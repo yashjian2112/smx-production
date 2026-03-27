@@ -66,6 +66,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     // Only DRAFT can be edited by SALES; ACCOUNTS can only edit PENDING_APPROVAL; ADMIN can always edit
+    if (session.role === 'SALES' && existing.createdById !== session.id)
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     if (session.role === 'SALES' && existing.status !== 'DRAFT')
       return NextResponse.json({ error: 'Only draft invoices can be edited' }, { status: 400 });
     if (session.role === 'ACCOUNTS' && existing.status !== 'PENDING_APPROVAL')
@@ -139,6 +141,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 
     const existing = await prisma.proformaInvoice.findUnique({ where: { id: params.id } });
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    // SALES can only delete their own proformas
+    if (session.role === 'SALES' && existing.createdById !== session.id)
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     // Only DRAFT can be deleted
     if (existing.status !== 'DRAFT')
