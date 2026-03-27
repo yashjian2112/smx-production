@@ -31,7 +31,7 @@ async function generateClientCode(): Promise<string> {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS', 'PURCHASE_MANAGER');
+    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS', 'PURCHASE_MANAGER', 'STORE_MANAGER');
     const { searchParams } = new URL(req.url);
     const active = searchParams.get('active');
 
