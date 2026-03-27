@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Building2, Package, ClipboardList, BarChart3, Settings, User, CheckSquare, Factory, Landmark } from 'lucide-react';
+import { Building2, Package, ClipboardList, BarChart3, Settings, User, CheckSquare, Factory, Landmark, TrendingUp } from 'lucide-react';
 
 /** Auto-run any pending DB enum migrations so Vercel deploys self-heal */
 async function runPendingMigrations() {
@@ -80,6 +80,11 @@ export default async function AdminPage() {
           <div className="text-3xl mb-2 flex justify-center"><ClipboardList className="w-5 h-5" /></div>
           <p className="font-medium">Price Breakdown</p>
           <p className="text-slate-400 text-xs mt-1">Define cost factors vendors must break down in quotes</p>
+        </Link>
+        <Link href="/my-performance" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center">
+          <div className="text-3xl mb-2 flex justify-center"><TrendingUp className="w-5 h-5" /></div>
+          <p className="font-medium">Employee Performance</p>
+          <p className="text-slate-400 text-xs mt-1">Stage completions, build times per employee</p>
         </Link>
         <Link href="/accounts/settings" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center col-span-2">
           <div className="text-3xl mb-2 flex justify-center"><Landmark className="w-5 h-5" /></div>

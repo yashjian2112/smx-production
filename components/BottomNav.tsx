@@ -165,11 +165,10 @@ const adminNav: NavItem[] = [
 ];
 
 const employeeNav: NavItem[] = [
-  { href: '/my-tasks',       label: 'My Tasks',    icon: 'Dashboard'   },
-  { href: '/orders',         label: 'Orders',      icon: 'Orders'      },
-  { href: '/my-dispatch',    label: 'Dispatch',    icon: 'Dispatch'    },
-  { href: '/rework',         label: 'Rework',      icon: 'Returns'     },
-  { href: '/my-performance', label: 'Performance', icon: 'Performance' },
+  { href: '/my-tasks',    label: 'My Tasks', icon: 'Dashboard' },
+  { href: '/orders',      label: 'Orders',   icon: 'Orders'    },
+  { href: '/my-dispatch', label: 'Dispatch', icon: 'Dispatch'  },
+  { href: '/rework',      label: 'Rework',   icon: 'Returns'   },
 ];
 
 const packingNav: NavItem[] = [
