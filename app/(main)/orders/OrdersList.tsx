@@ -84,13 +84,18 @@ export function OrdersList({ orders, isManager, sessionRole }: {
     if (res.ok) await loadPending();
   }
 
+  const allUnitsDone = (o: OrderItem) =>
+    o.units.length > 0 &&
+    o.units.every(u => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED');
+
   const processing = orders.filter((o) => {
     if (o.status !== 'ACTIVE') return false;
+    if (allUnitsDone(o)) return false;
     // For employees: only show in Processing if work has actually started (not all-PENDING)
     if (isEmployee) return o.units.some(u => u.currentStatus !== 'PENDING');
     return true;
   });
-  const completed  = orders.filter((o) => o.status !== 'ACTIVE');
+  const completed = orders.filter((o) => o.status !== 'ACTIVE' || allUnitsDone(o));
 
   const tabs = isEmployee
     ? [
