@@ -92,11 +92,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const doNumber      = dispatchOrder.doNumber;
 
     const proforma = dispatchOrder.order.proformaInvoice;
-
-    // Skip invoice generation for RETURN or REPLACEMENT proformas
-    const skipInvoiceGeneration =
-      proforma?.invoiceType === 'RETURN' || proforma?.invoiceType === 'REPLACEMENT';
-
     const isExport =
       proforma?.currency === 'USD' ||
       proforma?.client?.globalOrIndian === 'Global';
@@ -109,7 +104,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     // Generate all needed numbers before opening the transaction.
     // C1: Retry on duplicate (P2002) — if concurrent approval generates same number, regenerate.
     let preGenNumbers: string[] = [];
-    if (proforma && !skipInvoiceGeneration) {
+    if (proforma) {
       for (let attempt = 0; attempt < 3; attempt++) {
         if (proforma.splitInvoice && proforma.splitServicePercent != null) {
           const n1  = await generateNextFinalInvoiceNumber(isExport ?? false);
@@ -163,20 +158,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         });
       }
 
-      // 4. Check if all order units are now dispatched → close order
-      const allOrderUnits  = dispatchOrder.order.units;
-      const alreadyDisp    = allOrderUnits.filter((u) => u.readyForDispatch).map((u) => u.id);
-      const nowDispatched  = new Set([...alreadyDisp, ...packedUnitIds]);
-      const allDispatched  = allOrderUnits.every((u) => nowDispatched.has(u.id));
-      if (allDispatched) {
-        await tx.order.update({
-          where: { id: dispatchOrder.orderId },
-          data:  { status: 'CLOSED' },
-        });
-      }
-
       // 5. Auto-generate Invoice(s) using pre-generated numbers
-      if (proforma && !skipInvoiceGeneration && preGenNumbers.length > 0) {
+      if (proforma && preGenNumbers.length > 0) {
         const clientId    = proforma.clientId;
         const currency    = proforma.currency;
         const exchangeRate = proforma.exchangeRate ?? null;
@@ -253,8 +236,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           });
 
           // Create GOODS invoice linked to SERVICE invoice
-          const goodsTotalAmount = goodsItems.reduce((sum: number, item: any) =>
-            sum + item.quantity * item.unitPrice * (1 - (item.discountPercent ?? 0) / 100), 0);
+          const goodsTotalAmount = goodsItems.reduce(
+            (sum, item) => sum + item.quantity * item.unitPrice * (1 - item.discountPercent / 100),
+            0
+          );
           await tx.invoice.create({
             data: {
               invoiceNumber:   goodsInvoiceNumber,
@@ -290,8 +275,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
                 : null,
           }));
 
-          const fullTotalAmount = allItems.reduce((sum: number, item: any) =>
-            sum + item.quantity * item.unitPrice * (1 - (item.discountPercent ?? 0) / 100), 0);
+          const fullTotalAmount = allItems.reduce(
+            (sum, item) => sum + item.quantity * item.unitPrice * (1 - item.discountPercent / 100),
+            0
+          );
           await tx.invoice.create({
             data: {
               invoiceNumber:   fullInvoiceNumber,

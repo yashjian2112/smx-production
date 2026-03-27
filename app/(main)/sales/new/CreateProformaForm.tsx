@@ -154,7 +154,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   // ─── Totals ──────────────────────────────────────────────────────
   const subtotal       = items.reduce((s, i) => s + calcAmount(i), 0);
   const shipping       = parseFloat(shippingCharges) || 0;
-  const isExport       = currency === 'USD';
+  // isExport: client-based when selected, currency-based when no client chosen yet
+  const isExport       = selectedClient ? isGlobal : currency === 'USD';
   const sellerState    = 'gujarat';
   const buyerState     = (selectedClient?.state ?? '').toLowerCase();
   const isIntra        = !isExport && !!buyerState && buyerState === sellerState;
@@ -420,8 +421,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
         <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 30" />
       </div>
 
-      {/* ── Split Invoice — export/USD only ── */}
-      {isExport && <div className="rounded-xl p-4 space-y-3" style={{ border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(139,92,246,0.03)' }}>
+      {/* ── Split Invoice — global/export clients only ── */}
+      {isGlobal && <div className="rounded-xl p-4 space-y-3" style={{ border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(139,92,246,0.03)' }}>
         <label className="flex items-center gap-3 cursor-pointer select-none">
           <div
             className="relative w-10 h-5 rounded-full transition-colors shrink-0"
