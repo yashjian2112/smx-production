@@ -68,6 +68,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
 
   const [exchangeRate,     setExchangeRate]     = useState<number | ''>('');
   const [rateLoading,      setRateLoading]      = useState(false);
+  const [dualCurrency,     setDualCurrency]     = useState(false); // USD-INR mode
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
@@ -92,16 +93,28 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
     setClientId(id);
     const c = clients.find((x) => x.id === id);
     if (c) {
-      const newCurrency = c.globalOrIndian === 'Global' ? 'USD' : 'INR';
-      setCurrency(newCurrency);
-      if (newCurrency === 'USD' && !exchangeRate) fetchLiveRate();
+      if (c.globalOrIndian === 'Global') {
+        setCurrency('USD');
+        setDualCurrency(true);
+        if (!exchangeRate) fetchLiveRate();
+      } else {
+        setCurrency('INR');
+        setDualCurrency(false);
+        setExchangeRate('');
+      }
     }
   }
 
-  function handleCurrencyChange(c: 'INR' | 'USD') {
-    setCurrency(c);
-    if (c === 'USD' && !exchangeRate) fetchLiveRate();
-    if (c === 'INR') setExchangeRate('');
+  function handleCurrencyChange(c: 'INR' | 'USD' | 'USD-INR') {
+    if (c === 'USD-INR') {
+      setCurrency('USD');
+      setDualCurrency(true);
+      if (!exchangeRate) fetchLiveRate();
+    } else {
+      setCurrency(c);
+      setDualCurrency(false);
+      if (c === 'INR') { setExchangeRate(''); }
+    }
   }
 
   // ─── Line Item helpers ────────────────────────────────────────────
@@ -322,21 +335,27 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       <div className="space-y-3">
         <div>
           <label className={lCls}>Currency</label>
-          <div className="flex gap-2 max-w-[160px]">
-            {(['INR', 'USD'] as const).map((c) => (
-              <button key={c} type="button" onClick={() => handleCurrencyChange(c)}
-                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
-                style={currency === c
-                  ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
-                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-                {c}
-              </button>
-            ))}
+          <div className="flex gap-2">
+            {(['INR', 'USD', 'USD-INR'] as const).map((c) => {
+              const isActive = c === 'USD-INR' ? dualCurrency : (currency === c && !dualCurrency);
+              return (
+                <button key={c} type="button" onClick={() => handleCurrencyChange(c)}
+                  className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
+                  style={isActive
+                    ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                    : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+                  {c}
+                </button>
+              );
+            })}
           </div>
+          {dualCurrency && (
+            <p className="text-[10px] text-zinc-600 mt-1">Enter prices in USD — INR equivalent shown for reference</p>
+          )}
         </div>
 
-        {/* Exchange rate — only when USD selected */}
-        {currency === 'USD' && (
+        {/* Exchange rate — only in USD-INR dual mode */}
+        {dualCurrency && (
           <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.15)' }}>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-sky-400">USD → INR Rate</span>
@@ -539,7 +558,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                   <label className={lCls}>Amount</label>
                   <div className="input-field text-sm text-zinc-400 select-none space-y-0.5" style={{ background: 'rgba(255,255,255,0.02)' }}>
                     <div>{currency === 'USD' ? '$' : '₹'}{calcAmount(item).toLocaleString(currency === 'USD' ? 'en-US' : 'en-IN', { minimumFractionDigits: 2 })}</div>
-                    {currency === 'USD' && fmtInr(calcAmount(item)) && (
+                    {dualCurrency && fmtInr(calcAmount(item)) && (
                       <div className="text-[10px] text-zinc-600">{fmtInr(calcAmount(item))}</div>
                     )}
                   </div>
@@ -569,7 +588,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       {items.length > 0 && (
         <div className="rounded-xl border border-zinc-800 p-4 space-y-2" style={{ background: 'rgba(255,255,255,0.02)' }}>
           {/* Column headers when dual currency */}
-          {isExport && rate > 0 && (
+          {dualCurrency && rate > 0 && (
             <div className="flex justify-between text-[10px] text-zinc-600 pb-1 border-b border-zinc-800">
               <span></span>
               <div className="flex gap-6">
@@ -582,8 +601,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           <div className="flex justify-between text-sm">
             <span className="text-zinc-500">Sub Total</span>
             <div className="flex gap-6">
-              <span className={isExport && rate > 0 ? 'w-24 text-right' : ''}>{fmtAmt(subtotal)}</span>
-              {isExport && rate > 0 && <span className="w-24 text-right text-zinc-600">{fmtInr(subtotal)}</span>}
+              <span className={dualCurrency && rate > 0 ? 'w-24 text-right' : ''}>{fmtAmt(subtotal)}</span>
+              {dualCurrency && rate > 0 && <span className="w-24 text-right text-zinc-600">{fmtInr(subtotal)}</span>}
             </div>
           </div>
           {!isExport && isIntra && (
@@ -599,8 +618,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
             <div className="flex justify-between text-sm text-zinc-500">
               <span>Shipping</span>
               <div className="flex gap-6">
-                <span className={isExport && rate > 0 ? 'w-24 text-right' : ''}>{fmtAmt(shipping)}</span>
-                {isExport && rate > 0 && <span className="w-24 text-right text-zinc-600">{fmtInr(shipping)}</span>}
+                <span className={dualCurrency && rate > 0 ? 'w-24 text-right' : ''}>{fmtAmt(shipping)}</span>
+                {dualCurrency && rate > 0 && <span className="w-24 text-right text-zinc-600">{fmtInr(shipping)}</span>}
               </div>
             </div>
           )}
@@ -608,7 +627,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
             <span>Total</span>
             <div className="flex gap-6 items-baseline">
               <span className={`text-sky-400${isExport && rate > 0 ? ' w-24 text-right' : ''}`}>{fmtAmt(total)}</span>
-              {isExport && rate > 0 && (
+              {dualCurrency && rate > 0 && (
                 <span className="w-24 text-right text-emerald-400 text-xs font-semibold">{fmtInr(total)}</span>
               )}
             </div>
