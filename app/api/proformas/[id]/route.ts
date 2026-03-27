@@ -81,6 +81,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (session.role === 'SALES' && parsed.data.status !== undefined && parsed.data.status !== 'PENDING_APPROVAL')
       return NextResponse.json({ error: 'Forbidden: SALES can only submit for approval' }, { status: 403 });
 
+    // Mandatory signed PI (PDF) upload before sending for approval
+    if (parsed.data.status === 'PENDING_APPROVAL' && !existing.paymentReceiptUrl)
+      return NextResponse.json({ error: 'Please upload the signed PI (PDF) before sending for approval' }, { status: 400 });
+
     const { items, rejectedReason, ...rest } = parsed.data;
 
     const proforma = await prisma.proformaInvoice.update({

@@ -213,6 +213,29 @@ export async function generateNextMaterialCode(): Promise<string> {
 
 
 /**
+ * Generates the next IG (Implementation Goods) number: IG/YY-YY/001
+ */
+export async function generateNextIGNumber(): Promise<string> {
+  const fy     = getFiscalYear();
+  const prefix = `IG/${fy}/`;
+
+  const latest = await prisma.implementationGood.findFirst({
+    where: { igNumber: { startsWith: prefix } },
+    orderBy: { igNumber: 'desc' },
+    select: { igNumber: true },
+  });
+
+  let next = 1;
+  if (latest) {
+    const parts = latest.igNumber.split('/');
+    const seq   = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+
+  return `${prefix}${String(next).padStart(3, '0')}`;
+}
+
+/**
  * Generates the next Invoice number from the invoices table (NOT proforma_invoices).
  * Export:   TSM/ES/YY-YY/0001
  * Domestic: TSM/DS/YY-YY/0001

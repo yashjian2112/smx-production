@@ -1,70 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getFiscalYear } from '@/lib/invoice-number';
+import { generateNextIGNumber } from '@/lib/invoice-number';
 
-async function generateIGNumber(): Promise<string> {
-  const fy = getFiscalYear();
-  const prefix = `IG/${fy}/`;
-
-  const latest = await prisma.implementationGood.findFirst({
-    where: { igNumber: { startsWith: prefix } },
-    orderBy: { igNumber: 'desc' },
-    select: { igNumber: true },
-  });
-
-  let next = 1;
-  if (latest) {
-    const parts = latest.igNumber.split('/');
-    const seq = parseInt(parts[parts.length - 1], 10);
-    if (!isNaN(seq)) next = seq + 1;
-  }
-
-  return `${prefix}${String(next).padStart(3, '0')}`;
-}
+const IG_SELECT = {
+  id: true,
+  igNumber: true,
+  status: true,
+  description: true,
+  items: true,
+  purpose: true,
+  notes: true,
+  expectedArrival: true,
+  expectedReturn: true,
+  ganDate: true,
+  ganNotes: true,
+  courierDetails: true,
+  grnDate: true,
+  grnNotes: true,
+  warehouseLocation: true,
+  returnInitiatedAt: true,
+  dnNumber: true,
+  boxCount: true,
+  dispatchedAt: true,
+  dispatchCourier: true,
+  trackingNumber: true,
+  closedAt: true,
+  rejectedAt: true,
+  rejectionReason: true,
+  createdAt: true,
+  updatedAt: true,
+  client: { select: { id: true, code: true, customerName: true } },
+  createdBy: { select: { id: true, name: true } },
+  ganBy: { select: { id: true, name: true } },
+  grnBy: { select: { id: true, name: true } },
+};
 
 export async function GET() {
   try {
     const session = await requireSession();
 
-    if (!['ADMIN', 'SALES'].includes(session.role)) {
+    const allowed = ['ADMIN', 'SALES', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'ACCOUNTS', 'PACKING', 'PRODUCTION_EMPLOYEE'];
+    if (!allowed.includes(session.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const where = session.role === 'SALES'
-      ? { createdById: session.id }
-      : {};
+    // SALES sees only their own; others see all
+    const where = session.role === 'SALES' ? { createdById: session.id } : {};
 
     const goods = await prisma.implementationGood.findMany({
       where,
-      select: {
-        id: true,
-        igNumber: true,
-        status: true,
-        description: true,
-        items: true,
-        receivedDate: true,
-        expectedReturn: true,
-        returnedDate: true,
-        purpose: true,
-        notes: true,
-        createdAt: true,
-        client: { select: { id: true, code: true, customerName: true } },
-        createdBy: { select: { id: true, name: true } },
-      },
+      select: IG_SELECT,
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
 
-    const serialized = goods.map((g) => ({
-      ...g,
-      receivedDate:   g.receivedDate.toISOString(),
-      expectedReturn: g.expectedReturn?.toISOString() ?? null,
-      returnedDate:   g.returnedDate?.toISOString()   ?? null,
-      createdAt:      g.createdAt.toISOString(),
-    }));
-
-    return NextResponse.json(serialized);
+    return NextResponse.json(goods);
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -82,22 +73,16 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { clientId, description, items, receivedDate, expectedReturn, purpose, notes } = body;
+    const { clientId, description, items, expectedArrival, expectedReturn, purpose, notes } = body;
 
-    if (!clientId || typeof clientId !== 'string') {
+    if (!clientId || typeof clientId !== 'string')
       return NextResponse.json({ error: 'clientId is required' }, { status: 400 });
-    }
-    if (!description || typeof description !== 'string') {
+    if (!description || typeof description !== 'string')
       return NextResponse.json({ error: 'description is required' }, { status: 400 });
-    }
-    if (!items || !Array.isArray(items) || items.length === 0) {
+    if (!items || !Array.isArray(items) || items.length === 0)
       return NextResponse.json({ error: 'items must be a non-empty array' }, { status: 400 });
-    }
-    if (!receivedDate || typeof receivedDate !== 'string') {
-      return NextResponse.json({ error: 'receivedDate is required' }, { status: 400 });
-    }
 
-    const igNumber = await generateIGNumber();
+    const igNumber = await generateNextIGNumber();
 
     const ig = await prisma.implementationGood.create({
       data: {
@@ -105,36 +90,28 @@ export async function POST(req: NextRequest) {
         clientId,
         description,
         items: JSON.stringify(items),
-        receivedDate: new Date(receivedDate),
+        expectedArrival: expectedArrival ? new Date(expectedArrival) : null,
         expectedReturn: expectedReturn ? new Date(expectedReturn) : null,
         purpose: purpose || null,
         notes: notes || null,
+        status: 'REQUESTED',
         createdById: session.id,
       },
-      select: {
-        id: true,
-        igNumber: true,
-        status: true,
-        description: true,
-        items: true,
-        receivedDate: true,
-        expectedReturn: true,
-        returnedDate: true,
-        purpose: true,
-        notes: true,
-        createdAt: true,
-        client: { select: { id: true, code: true, customerName: true } },
-        createdBy: { select: { id: true, name: true } },
+      select: IG_SELECT,
+    });
+
+    // Create timeline entry
+    await prisma.iGTimeline.create({
+      data: {
+        igId: ig.id,
+        status: 'REQUESTED',
+        action: 'Created IG request',
+        notes: purpose || null,
+        userId: session.id,
       },
     });
 
-    return NextResponse.json({
-      ...ig,
-      receivedDate:   ig.receivedDate.toISOString(),
-      expectedReturn: ig.expectedReturn?.toISOString() ?? null,
-      returnedDate:   ig.returnedDate?.toISOString()   ?? null,
-      createdAt:      ig.createdAt.toISOString(),
-    }, { status: 201 });
+    return NextResponse.json(ig, { status: 201 });
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -117,11 +117,16 @@ export default async function SalesPage({
             status: true,
             description: true,
             items: true,
-            receivedDate: true,
+            expectedArrival: true,
             expectedReturn: true,
-            returnedDate: true,
             purpose: true,
             notes: true,
+            ganDate: true,
+            grnDate: true,
+            dispatchedAt: true,
+            closedAt: true,
+            trackingNumber: true,
+            dnNumber: true,
             createdAt: true,
             client:    { select: { id: true, code: true, customerName: true } },
             createdBy: { select: { id: true, name: true } },
@@ -178,10 +183,13 @@ export default async function SalesPage({
 
   const serializedImplGoods = implGoods.map((g) => ({
     ...g,
-    receivedDate:   g.receivedDate.toISOString(),
-    expectedReturn: g.expectedReturn?.toISOString() ?? null,
-    returnedDate:   g.returnedDate?.toISOString()   ?? null,
-    createdAt:      g.createdAt.toISOString(),
+    expectedArrival: g.expectedArrival?.toISOString() ?? null,
+    expectedReturn:  g.expectedReturn?.toISOString()  ?? null,
+    ganDate:         g.ganDate?.toISOString()          ?? null,
+    grnDate:         g.grnDate?.toISOString()          ?? null,
+    dispatchedAt:    g.dispatchedAt?.toISOString()     ?? null,
+    closedAt:        g.closedAt?.toISOString()         ?? null,
+    createdAt:       g.createdAt.toISOString(),
   }));
 
   const canCreate = session.role === 'ADMIN' || session.role === 'SALES';

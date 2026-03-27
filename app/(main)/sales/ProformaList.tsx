@@ -108,8 +108,11 @@ type SampleRow = {
 
 type IGRow = {
   id: string; igNumber: string; status: string; description: string;
-  items: string; receivedDate: string; expectedReturn: string | null;
-  returnedDate: string | null; purpose: string | null; notes: string | null;
+  items: string; purpose: string | null; notes: string | null;
+  expectedArrival: string | null; expectedReturn: string | null;
+  ganDate: string | null; grnDate: string | null;
+  dispatchedAt: string | null; closedAt: string | null;
+  trackingNumber: string | null; dnNumber: string | null;
   createdAt: string;
   client: { id: string; code: string; customerName: string };
   createdBy: { id: string; name: string };
@@ -123,11 +126,18 @@ const SAMPLE_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   CLOSED:     { bg: 'rgba(113,113,122,0.1)', color: '#a1a1aa' },
 };
 
-const IG_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  RECEIVED: { bg: 'rgba(56,189,248,0.1)',   color: '#38bdf8' },
-  IN_USE:   { bg: 'rgba(251,191,36,0.1)',   color: '#fbbf24' },
-  RETURNED: { bg: 'rgba(34,197,94,0.1)',    color: '#4ade80' },
-  RETAINED: { bg: 'rgba(113,113,122,0.1)', color: '#a1a1aa' },
+const IG_STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+  REQUESTED:        { bg: 'rgba(251,191,36,0.1)',  color: '#fbbf24', label: 'Requested' },
+  GAN_CREATED:      { bg: 'rgba(56,189,248,0.1)',  color: '#38bdf8', label: 'GAN Created' },
+  RECEIVED:         { bg: 'rgba(34,197,94,0.1)',   color: '#4ade80', label: 'Received (GRN)' },
+  IN_USE:           { bg: 'rgba(245,158,11,0.1)',  color: '#f59e0b', label: 'In Use' },
+  IN_STORE:         { bg: 'rgba(139,92,246,0.1)',  color: '#a78bfa', label: 'In Store' },
+  RETURN_INITIATED: { bg: 'rgba(236,72,153,0.1)',  color: '#ec4899', label: 'Return Initiated' },
+  PACKING:          { bg: 'rgba(6,182,212,0.1)',   color: '#06b6d4', label: 'Packing' },
+  PACKED:           { bg: 'rgba(16,185,129,0.1)',  color: '#10b981', label: 'Packed' },
+  DISPATCHED:       { bg: 'rgba(59,130,246,0.1)',  color: '#3b82f6', label: 'Dispatched' },
+  CLOSED:           { bg: 'rgba(113,113,122,0.1)', color: '#a1a1aa', label: 'Closed' },
+  REJECTED:         { bg: 'rgba(239,68,68,0.1)',   color: '#f87171', label: 'Rejected' },
 };
 
 const RETURN_TYPE_STYLE: Record<string, { bg: string; color: string; label: string }> = {
@@ -723,18 +733,17 @@ function ImplGoodsTab({
   role,
   search,
   onSearchChange,
-  onStatusChange,
+  onAction,
 }: {
   implGoods: IGRow[];
   role: string;
   search: string;
   onSearchChange: (v: string) => void;
-  onStatusChange: (id: string, status: string) => Promise<void>;
+  onAction: (id: string, action: string, extra?: Record<string, unknown>) => Promise<void>;
 }) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [expandedId, setExpandedId]       = useState<string | null>(null);
 
-  const isAdmin = role === 'ADMIN';
   const now = new Date();
 
   const filtered = implGoods.filter((g) => {
@@ -748,40 +757,62 @@ function ImplGoodsTab({
     );
   });
 
-  async function doAction(id: string, status: string) {
-    setActionLoading(`${id}:${status}`);
+  async function doAction(id: string, action: string, extra?: Record<string, unknown>) {
+    setActionLoading(`${id}:${action}`);
     try {
-      await onStatusChange(id, status);
+      await onAction(id, action, extra);
     } finally {
       setActionLoading(null);
     }
+  }
+
+  function btn(id: string, action: string, label: string, bg: string, color: string, extra?: Record<string, unknown>) {
+    return (
+      <button
+        type="button"
+        disabled={!!actionLoading}
+        onClick={() => doAction(id, action, extra)}
+        className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+        style={{ background: bg, color, border: `1px solid ${color}33` }}
+      >
+        {actionLoading === `${id}:${action}` ? '...' : label}
+      </button>
+    );
+  }
+
+  // Status-based progress bar
+  const STATUS_ORDER = ['REQUESTED','GAN_CREATED','RECEIVED','IN_USE','IN_STORE','RETURN_INITIATED','PACKING','PACKED','DISPATCHED','CLOSED'];
+  function getProgress(status: string) {
+    const idx = STATUS_ORDER.indexOf(status);
+    if (status === 'REJECTED') return 0;
+    if (status === 'CLOSED') return 100;
+    return idx >= 0 ? Math.round(((idx + 1) / STATUS_ORDER.length) * 100) : 10;
   }
 
   return (
     <div className="space-y-3">
       <input
         className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500"
-        placeholder="Search by client, description, or IG no…"
+        placeholder="Search by client, description, or IG no..."
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
       />
       {filtered.length === 0 ? (
         <div className="card p-8 text-center">
-          <p className="text-zinc-500 text-sm">{search ? 'No results found.' : 'No implementation goods recorded yet.'}</p>
+          <p className="text-zinc-500 text-sm">{search ? 'No results found.' : 'No implementation goods yet.'}</p>
         </div>
       ) : (
         filtered.map((g) => {
-          const st = IG_STATUS_STYLE[g.status] ?? IG_STATUS_STYLE.RECEIVED;
+          const st = IG_STATUS_STYLE[g.status] ?? IG_STATUS_STYLE.REQUESTED;
           const open = expandedId === g.id;
+          const pct = getProgress(g.status);
 
           let parsedItems: Array<{ name: string; qty: number; unit: string; condition: string }> = [];
           try { parsedItems = JSON.parse(g.items); } catch { /* ignore */ }
 
           const isOverdue =
             g.expectedReturn &&
-            !g.returnedDate &&
-            g.status !== 'RETURNED' &&
-            g.status !== 'RETAINED' &&
+            !['DISPATCHED', 'CLOSED', 'REJECTED'].includes(g.status) &&
             new Date(g.expectedReturn) < now;
 
           return (
@@ -800,47 +831,49 @@ function ImplGoodsTab({
                         className="text-[10px] font-bold px-1.5 py-0.5 rounded"
                         style={{ background: st.bg, color: st.color }}
                       >
-                        {g.status.replace('_', ' ')}
+                        {st.label}
                       </span>
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded"
-                        style={{ background: 'rgba(255,255,255,0.05)', color: '#71717a' }}
-                      >
-                        {parsedItems.length} item{parsedItems.length !== 1 ? 's' : ''}
-                      </span>
+                      {g.dnNumber && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)', color: '#71717a' }}>
+                          {g.dnNumber}
+                        </span>
+                      )}
                     </div>
                     <p className="text-zinc-300 text-sm mt-0.5 font-medium">{g.client.customerName}</p>
                     <p className="text-zinc-500 text-xs mt-0.5 line-clamp-1">{g.description}</p>
                     <div className="flex items-center gap-2 flex-wrap mt-1">
-                      <span className="text-zinc-600 text-xs">Received {fmtDate(g.receivedDate)}</span>
+                      <span className="text-zinc-600 text-xs">
+                        {parsedItems.length} item{parsedItems.length !== 1 ? 's' : ''}
+                        {' · '}Created {fmtDate(g.createdAt)}
+                      </span>
                       {g.expectedReturn && (
-                        <span
-                          className="text-xs font-medium"
-                          style={{ color: isOverdue ? '#f87171' : '#a1a1aa' }}
-                        >
+                        <span className="text-xs font-medium" style={{ color: isOverdue ? '#f87171' : '#a1a1aa' }}>
                           {isOverdue && <AlertTriangle className="w-3 h-3 inline mr-0.5" />}
                           Return by {fmtDate(g.expectedReturn)}
                         </span>
                       )}
+                      {g.trackingNumber && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>
+                          {g.trackingNumber}
+                        </span>
+                      )}
                     </div>
+                    {/* Progress bar */}
+                    {g.status !== 'REJECTED' && (
+                      <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: st.color }} />
+                      </div>
+                    )}
                   </div>
-                  <svg
-                    width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                    className="shrink-0 text-zinc-600 mt-1"
-                    style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
-                  >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="shrink-0 text-zinc-600 mt-1" style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                   </svg>
                 </div>
               </button>
 
-              {/* Expanded details */}
               {open && (
-                <div
-                  className="border-t px-4 py-3 space-y-3"
-                  style={{ borderColor: 'rgba(255,255,255,0.06)' }}
-                >
-                  {/* Items list */}
+                <div className="border-t px-4 py-3 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                  {/* Items */}
                   {parsedItems.length > 0 && (
                     <div>
                       <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Items</p>
@@ -850,10 +883,7 @@ function ImplGoodsTab({
                             <span className="text-zinc-600 font-mono w-5 shrink-0">{idx + 1}.</span>
                             <span className="text-zinc-300 flex-1">{item.name}</span>
                             <span className="text-zinc-500">{item.qty} {item.unit}</span>
-                            <span
-                              className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
-                              style={{ background: 'rgba(255,255,255,0.05)', color: '#71717a' }}
-                            >
+                            <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0" style={{ background: 'rgba(255,255,255,0.05)', color: '#71717a' }}>
                               {item.condition}
                             </span>
                           </div>
@@ -862,52 +892,82 @@ function ImplGoodsTab({
                     </div>
                   )}
 
-                  {/* Meta */}
+                  {/* Timeline summary */}
                   <div className="space-y-1 text-xs text-zinc-500">
                     {g.purpose && <p>Purpose: {g.purpose}</p>}
-                    {g.returnedDate && <p>Returned on {fmtDate(g.returnedDate)}</p>}
+                    {g.ganDate && <p>GAN logged on {fmtDate(g.ganDate)}</p>}
+                    {g.grnDate && <p>GRN completed on {fmtDate(g.grnDate)}</p>}
+                    {g.dispatchedAt && <p>Dispatched on {fmtDate(g.dispatchedAt)}</p>}
+                    {g.closedAt && <p>Closed on {fmtDate(g.closedAt)}</p>}
                     {g.notes && <p className="text-zinc-400 whitespace-pre-wrap">{g.notes}</p>}
-                    <p>Logged by {g.createdBy.name} on {fmtDate(g.createdAt)}</p>
+                    <p>Created by {g.createdBy.name} on {fmtDate(g.createdAt)}</p>
                   </div>
 
-                  {/* ADMIN status buttons */}
-                  {isAdmin && (
-                    <div className="flex flex-wrap gap-2">
-                      {g.status === 'RECEIVED' && (
-                        <button
-                          type="button"
-                          disabled={!!actionLoading}
-                          onClick={() => doAction(g.id, 'IN_USE')}
-                          className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                          style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)' }}
-                        >
-                          {actionLoading === `${g.id}:IN_USE` ? '…' : 'Mark In Use'}
-                        </button>
-                      )}
-                      {(g.status === 'RECEIVED' || g.status === 'IN_USE') && (
-                        <>
-                          <button
-                            type="button"
-                            disabled={!!actionLoading}
-                            onClick={() => doAction(g.id, 'RETURNED')}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                            style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }}
-                          >
-                            {actionLoading === `${g.id}:RETURNED` ? '…' : 'Mark Returned'}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!!actionLoading}
-                            onClick={() => doAction(g.id, 'RETAINED')}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                            style={{ background: 'rgba(113,113,122,0.1)', color: '#a1a1aa', border: '1px solid rgba(113,113,122,0.2)' }}
-                          >
-                            {actionLoading === `${g.id}:RETAINED` ? '…' : 'Retained by Client'}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
+                  {/* Role-based action buttons */}
+                  <div className="flex flex-wrap gap-2">
+                    {/* PURCHASE_MANAGER: GAN or Reject on REQUESTED */}
+                    {['PURCHASE_MANAGER', 'ADMIN'].includes(role) && g.status === 'REQUESTED' && (
+                      <>
+                        {btn(g.id, 'gan', 'Log GAN (Goods Arrived)', 'rgba(56,189,248,0.12)', '#38bdf8')}
+                        {btn(g.id, 'reject', 'Reject', 'rgba(239,68,68,0.12)', '#f87171')}
+                      </>
+                    )}
+
+                    {/* STORE_MANAGER: GRN on GAN_CREATED */}
+                    {['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(role) && g.status === 'GAN_CREATED' && (
+                      btn(g.id, 'grn', 'Complete GRN', 'rgba(34,197,94,0.12)', '#4ade80')
+                    )}
+
+                    {/* STORE_MANAGER: Issue on RECEIVED / IN_STORE */}
+                    {['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(role) && ['RECEIVED', 'IN_STORE'].includes(g.status) && (
+                      btn(g.id, 'issue', 'Issue for Use', 'rgba(245,158,11,0.12)', '#f59e0b')
+                    )}
+
+                    {/* STORE_MANAGER: Return to store on IN_USE */}
+                    {['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(role) && g.status === 'IN_USE' && (
+                      btn(g.id, 'return_to_store', 'Return to Store', 'rgba(139,92,246,0.12)', '#a78bfa')
+                    )}
+
+                    {/* SALES: Initiate return on IN_STORE / RECEIVED */}
+                    {['SALES', 'ADMIN'].includes(role) && ['IN_STORE', 'RECEIVED'].includes(g.status) && (
+                      btn(g.id, 'return_initiate', 'Initiate Return', 'rgba(236,72,153,0.12)', '#ec4899')
+                    )}
+
+                    {/* PACKING: Start packing on RETURN_INITIATED */}
+                    {['PACKING', 'PRODUCTION_EMPLOYEE', 'ADMIN'].includes(role) && g.status === 'RETURN_INITIATED' && (
+                      btn(g.id, 'start_packing', 'Start Packing (1 box)', 'rgba(6,182,212,0.12)', '#06b6d4', { boxCount: 1 })
+                    )}
+
+                    {/* PACKING: View packing page link */}
+                    {['PACKING', 'PRODUCTION_EMPLOYEE', 'ADMIN'].includes(role) && g.status === 'PACKING' && (
+                      <a
+                        href={`/sales/impl/${g.id}`}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                        style={{ background: 'rgba(6,182,212,0.12)', color: '#06b6d4', border: '1px solid rgba(6,182,212,0.2)' }}
+                      >
+                        Open Packing
+                      </a>
+                    )}
+
+                    {/* ACCOUNTS: Dispatch on PACKED */}
+                    {['ACCOUNTS', 'ADMIN'].includes(role) && g.status === 'PACKED' && (
+                      btn(g.id, 'dispatch', 'Approve & Dispatch', 'rgba(59,130,246,0.12)', '#3b82f6')
+                    )}
+
+                    {/* SALES: Close on DISPATCHED */}
+                    {['SALES', 'ADMIN'].includes(role) && g.status === 'DISPATCHED' && (
+                      btn(g.id, 'close', 'Confirm Received by Customer', 'rgba(113,113,122,0.12)', '#a1a1aa')
+                    )}
+
+                    {/* View detail link for all */}
+                    <a
+                      href={`/sales/impl/${g.id}`}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                      style={{ background: 'rgba(255,255,255,0.05)', color: '#71717a', border: '1px solid rgba(255,255,255,0.08)' }}
+                    >
+                      View Details
+                    </a>
+                  </div>
                 </div>
               )}
             </div>
@@ -1601,11 +1661,11 @@ export function ProformaList({
             role={role}
             search={igSearch}
             onSearchChange={setIgSearch}
-            onStatusChange={async (id, status) => {
+            onAction={async (id, action, extra) => {
               await fetch(`/api/implementation-goods/${id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status }),
+                body: JSON.stringify({ action, ...extra }),
               });
               router.refresh();
             }}

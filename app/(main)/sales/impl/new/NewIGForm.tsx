@@ -17,12 +17,12 @@ type IGItem = {
 export default function NewIGForm({ clients }: { clients: ClientOption[] }) {
   const router = useRouter();
 
-  const [clientId,      setClientId]      = useState('');
-  const [description,   setDescription]   = useState('');
-  const [receivedDate,  setReceivedDate]  = useState('');
-  const [expectedReturn,setExpectedReturn]= useState('');
-  const [purpose,       setPurpose]       = useState('');
-  const [notes,         setNotes]         = useState('');
+  const [clientId,       setClientId]       = useState('');
+  const [description,    setDescription]    = useState('');
+  const [expectedArrival,setExpectedArrival]= useState('');
+  const [expectedReturn, setExpectedReturn] = useState('');
+  const [purpose,        setPurpose]        = useState('');
+  const [notes,          setNotes]          = useState('');
   const [items,         setItems]         = useState<IGItem[]>([
     { name: '', qty: 1, unit: 'pcs', condition: 'New' },
   ]);
@@ -49,7 +49,6 @@ export default function NewIGForm({ clients }: { clients: ClientOption[] }) {
 
     if (!clientId) { setError('Please select a client.'); return; }
     if (!description.trim()) { setError('Description is required.'); return; }
-    if (!receivedDate) { setError('Received date is required.'); return; }
     if (items.some((item) => !item.name.trim())) {
       setError('All items must have a name.');
       return;
@@ -64,10 +63,10 @@ export default function NewIGForm({ clients }: { clients: ClientOption[] }) {
           clientId,
           description,
           items,
-          receivedDate,
-          expectedReturn: expectedReturn || undefined,
-          purpose:        purpose       || undefined,
-          notes:          notes         || undefined,
+          expectedArrival: expectedArrival || undefined,
+          expectedReturn:  expectedReturn  || undefined,
+          purpose:         purpose         || undefined,
+          notes:           notes           || undefined,
         }),
       });
 
@@ -203,17 +202,16 @@ export default function NewIGForm({ clients }: { clients: ClientOption[] }) {
         </div>
       </div>
 
-      {/* Received date */}
+      {/* Expected arrival date */}
       <div>
         <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-          Received Date <span className="text-red-400">*</span>
+          Expected Arrival Date <span className="text-zinc-600">(optional)</span>
         </label>
         <input
           type="date"
           className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
-          value={receivedDate}
-          onChange={(e) => setReceivedDate(e.target.value)}
-          required
+          value={expectedArrival}
+          onChange={(e) => setExpectedArrival(e.target.value)}
         />
       </div>
 
