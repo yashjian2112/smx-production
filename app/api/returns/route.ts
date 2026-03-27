@@ -42,7 +42,7 @@ const postSchema = z.object({
 
 export async function POST(req: Request) {
   const session = await requireSession();
-  if (!['ADMIN', 'SALES', 'ACCOUNTS'].includes(session.role)) {
+  if (!['ADMIN', 'SALES'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
