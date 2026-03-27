@@ -10,6 +10,9 @@ export function middleware(req: NextRequest) {
   }
   const token = req.cookies.get('smx_session')?.value;
   if (!token && path !== '/login') {
+    if (path.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const login = new URL('/login', req.url);
     login.searchParams.set('from', path);
     return NextResponse.redirect(login);

@@ -5,14 +5,23 @@ import { put } from '@vercel/blob';
 
 // GET: list all checklist items (optionally filtered by productId)
 export async function GET(req: NextRequest) {
-  const session = await requireSession();
-  requireRole(session, 'ADMIN', 'PRODUCTION_EMPLOYEE', 'PACKING');
-  const productId = req.nextUrl.searchParams.get('productId');
-  const items = await prisma.stageChecklistItem.findMany({
-    where: productId ? { productId } : undefined,
-    orderBy: [{ stage: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
-  });
-  return NextResponse.json(items);
+  try {
+    const session = await requireSession();
+    requireRole(session, 'ADMIN', 'PRODUCTION_EMPLOYEE', 'PACKING');
+    const productId = req.nextUrl.searchParams.get('productId');
+    const items = await prisma.stageChecklistItem.findMany({
+      where: productId ? { productId } : undefined,
+      orderBy: [{ stage: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+    return NextResponse.json(items);
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Unauthorized')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (e instanceof Error && e.message === 'Forbidden')
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    console.error(e);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
 }
 
 // POST: create new checklist item (admin only)

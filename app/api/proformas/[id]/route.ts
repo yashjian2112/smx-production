@@ -28,11 +28,12 @@ const patchSchema = z.object({
   status:              z.enum(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CONVERTED']).optional(),
   splitInvoice:        z.boolean().optional(),
   splitServicePercent: z.number().min(0).max(100).optional().nullable(),
+  rejectedReason:      z.string().optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await requireSession();
+    const session = await requireSession();
     const proforma = await prisma.proformaInvoice.findUnique({
       where: { id: params.id },
       include: {
@@ -45,6 +46,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       },
     });
     if (!proforma) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (session.role === 'SALES' && proforma.createdById !== session.id)
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     return NextResponse.json(proforma);
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
@@ -76,7 +79,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (session.role === 'SALES' && parsed.data.status !== undefined && parsed.data.status !== 'PENDING_APPROVAL')
       return NextResponse.json({ error: 'Forbidden: SALES can only submit for approval' }, { status: 403 });
 
-    const { items, ...rest } = parsed.data;
+    const { items, rejectedReason, ...rest } = parsed.data;
 
     const proforma = await prisma.proformaInvoice.update({
       where: { id: params.id },
@@ -89,6 +92,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         ...(rest.termsOfDelivery !== undefined && { termsOfDelivery: rest.termsOfDelivery || null }),
         ...(rest.notes                !== undefined && { notes: rest.notes || null }),
         ...(rest.status               !== undefined && { status: rest.status }),
+        ...(rest.status === 'APPROVED' && { approvedById: session.id, approvedAt: new Date() }),
+        ...(rest.status === 'REJECTED' && rejectedReason !== undefined && { rejectedReason }),
         ...(rest.splitInvoice         !== undefined && { splitInvoice: rest.splitInvoice }),
         ...(rest.splitServicePercent  !== undefined && { splitServicePercent: rest.splitServicePercent }),
         ...(items !== undefined && {

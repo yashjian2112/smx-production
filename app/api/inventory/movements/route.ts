@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;
+const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'] as const;
 
 export async function GET(req: Request) {
   const session = await requireSession();

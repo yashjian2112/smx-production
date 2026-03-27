@@ -35,6 +35,7 @@ const createSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS');
     const { searchParams } = new URL(req.url);
     const status  = searchParams.get('status');
     const mine    = searchParams.get('mine') === 'true';
@@ -42,6 +43,7 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
     if (mine)   where.createdById = session.id;
+    if (session.role === 'SALES') where.createdById = session.id;
 
     const proformas = await prisma.proformaInvoice.findMany({
       where,
@@ -58,6 +60,8 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (e instanceof Error && e.message === 'Forbidden')
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     console.error(e);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
@@ -66,7 +70,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS');
+    requireRole(session, 'ADMIN', 'SALES');
 
     const body = await req.json();
     const parsed = createSchema.safeParse(body);

@@ -30,8 +30,8 @@ export async function GET(
       include: {
         order: { include: { product: true } },
         product: true,
-        assignments: { include: { user: true } },
-        stageLogs: { include: { user: true, approvedBy: true }, orderBy: { createdAt: 'desc' } },
+        assignments: { include: { user: { select: { id: true, name: true, email: true } } } },
+        stageLogs: { include: { user: { select: { id: true, name: true, email: true } }, approvedBy: { select: { id: true, name: true, email: true } } }, orderBy: { createdAt: 'desc' } },
         qcRecords: { include: { issueCategory: true } },
         reworkRecords: { include: { rootCauseCategory: true } },
         timelineLogs: { orderBy: { createdAt: 'desc' }, take: 50 },
@@ -177,7 +177,7 @@ export async function PATCH(
     const updated = await prisma.controllerUnit.update({
       where: { id },
       data: updates,
-      include: { order: true, product: true, assignments: { include: { user: true } } },
+      include: { order: true, product: true, assignments: { include: { user: { select: { id: true, name: true, email: true } } } } },
     });
     return NextResponse.json(updated);
   } catch (e) {
