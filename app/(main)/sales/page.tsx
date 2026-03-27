@@ -14,7 +14,7 @@ export default async function SalesPage({
   const canAccess = ['ADMIN', 'SALES', 'ACCOUNTS'].includes(session.role);
   if (!canAccess) redirect('/dashboard');
 
-  const [proformas, invoices, returns] = await Promise.all([
+  const [proformas, invoices, returns, samples, implGoods] = await Promise.all([
     prisma.proformaInvoice.findMany({
       where: session.role === 'SALES' ? { createdById: session.id } : {},
       include: {
@@ -81,6 +81,55 @@ export default async function SalesPage({
       orderBy: { createdAt: 'desc' },
       take: 200,
     }),
+
+    // Samples — ADMIN sees all, SALES sees own
+    ['ADMIN', 'SALES'].includes(session.role)
+      ? prisma.sampleRequest.findMany({
+          where: session.role === 'SALES' ? { requestedById: session.id } : {},
+          select: {
+            id: true,
+            sampleNumber: true,
+            status: true,
+            quantity: true,
+            description: true,
+            notes: true,
+            createdAt: true,
+            approvedAt: true,
+            dispatchedAt: true,
+            returnedAt: true,
+            client:      { select: { id: true, code: true, customerName: true } },
+            product:     { select: { id: true, code: true, name: true } },
+            requestedBy: { select: { id: true, name: true } },
+            approvedBy:  { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
+        })
+      : Promise.resolve([]),
+
+    // Implementation Goods — ADMIN sees all, SALES sees own
+    ['ADMIN', 'SALES'].includes(session.role)
+      ? prisma.implementationGood.findMany({
+          where: session.role === 'SALES' ? { createdById: session.id } : {},
+          select: {
+            id: true,
+            igNumber: true,
+            status: true,
+            description: true,
+            items: true,
+            receivedDate: true,
+            expectedReturn: true,
+            returnedDate: true,
+            purpose: true,
+            notes: true,
+            createdAt: true,
+            client:    { select: { id: true, code: true, customerName: true } },
+            createdBy: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
+        })
+      : Promise.resolve([]),
   ]);
 
   const serialized = proformas.map((p) => ({
@@ -119,13 +168,31 @@ export default async function SalesPage({
     updatedAt: r.updatedAt.toISOString(),
   }));
 
+  const serializedSamples = samples.map((s) => ({
+    ...s,
+    createdAt:    s.createdAt.toISOString(),
+    approvedAt:   s.approvedAt?.toISOString()   ?? null,
+    dispatchedAt: s.dispatchedAt?.toISOString() ?? null,
+    returnedAt:   s.returnedAt?.toISOString()   ?? null,
+  }));
+
+  const serializedImplGoods = implGoods.map((g) => ({
+    ...g,
+    receivedDate:   g.receivedDate.toISOString(),
+    expectedReturn: g.expectedReturn?.toISOString() ?? null,
+    returnedDate:   g.returnedDate?.toISOString()   ?? null,
+    createdAt:      g.createdAt.toISOString(),
+  }));
+
   const canCreate = session.role === 'ADMIN' || session.role === 'SALES';
 
   const rawTab = searchParams?.tab;
   const initialTab =
-    rawTab === 'invoice' ? 'invoice' :
-    rawTab === 'returns' ? 'returns' :
-    rawTab === 'status'  ? 'status'  :
+    rawTab === 'invoice'  ? 'invoice'  :
+    rawTab === 'returns'  ? 'returns'  :
+    rawTab === 'status'   ? 'status'   :
+    rawTab === 'samples'  ? 'samples'  :
+    rawTab === 'impl'     ? 'impl'     :
     'pi';
 
   return (
@@ -138,6 +205,8 @@ export default async function SalesPage({
         invoices={serializedInvoices as any}
         returnRequests={serializedReturns as any}
         canCreate={canCreate}
+        samples={serializedSamples as any}
+        implGoods={serializedImplGoods as any}
       />
     </div>
   );

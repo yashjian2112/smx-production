@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useCallback } from 'react';
 import { useState } from 'react';
-import { AlertTriangle, Check, X, Plane, Truck } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { AlertTriangle, Check, X, Plane, Truck, Package, ArrowLeftRight, Clock } from 'lucide-react';
 
 type OrderUnit = {
   currentStage:     string;
@@ -95,6 +96,40 @@ const RETURN_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   CLOSED:        { bg: 'rgba(113,113,122,0.1)', color: '#a1a1aa' },
 };
 
+type SampleRow = {
+  id: string; sampleNumber: string; status: string; quantity: number;
+  description: string | null; notes: string | null; createdAt: string;
+  client: { id: string; code: string; customerName: string };
+  product: { id: string; code: string; name: string } | null;
+  requestedBy: { id: string; name: string };
+  approvedBy: { id: string; name: string } | null;
+  approvedAt: string | null; dispatchedAt: string | null; returnedAt: string | null;
+};
+
+type IGRow = {
+  id: string; igNumber: string; status: string; description: string;
+  items: string; receivedDate: string; expectedReturn: string | null;
+  returnedDate: string | null; purpose: string | null; notes: string | null;
+  createdAt: string;
+  client: { id: string; code: string; customerName: string };
+  createdBy: { id: string; name: string };
+};
+
+const SAMPLE_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
+  PENDING:    { bg: 'rgba(251,191,36,0.1)',  color: '#fbbf24' },
+  APPROVED:   { bg: 'rgba(34,197,94,0.1)',   color: '#4ade80' },
+  DISPATCHED: { bg: 'rgba(56,189,248,0.1)',  color: '#38bdf8' },
+  RETURNED:   { bg: 'rgba(139,92,246,0.1)',  color: '#a78bfa' },
+  CLOSED:     { bg: 'rgba(113,113,122,0.1)', color: '#a1a1aa' },
+};
+
+const IG_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
+  RECEIVED: { bg: 'rgba(56,189,248,0.1)',   color: '#38bdf8' },
+  IN_USE:   { bg: 'rgba(251,191,36,0.1)',   color: '#fbbf24' },
+  RETURNED: { bg: 'rgba(34,197,94,0.1)',    color: '#4ade80' },
+  RETAINED: { bg: 'rgba(113,113,122,0.1)', color: '#a1a1aa' },
+};
+
 const RETURN_TYPE_STYLE: Record<string, { bg: string; color: string; label: string }> = {
   WARRANTY:   { bg: 'rgba(139,92,246,0.1)', color: '#a78bfa', label: 'Warranty'   },
   DAMAGE:     { bg: 'rgba(239,68,68,0.1)',  color: '#f87171', label: 'Damage'     },
@@ -102,7 +137,7 @@ const RETURN_TYPE_STYLE: Record<string, { bg: string; color: string; label: stri
   OTHER:      { bg: 'rgba(113,113,122,0.1)',color: '#a1a1aa', label: 'Other'      },
 };
 
-type TabKey = 'pi' | 'invoice' | 'returns' | 'status';
+type TabKey = 'pi' | 'invoice' | 'returns' | 'status' | 'samples' | 'impl';
 
 const ORDER_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   ACTIVE:     { bg: 'rgba(34,197,94,0.1)',   color: '#4ade80' },
@@ -445,6 +480,444 @@ function InvoiceDOFolder({
   );
 }
 
+// ── Samples tab ──────────────────────────────────────────────────────────────
+function SamplesTab({
+  samples,
+  role,
+  hasActiveSample,
+  search,
+  onSearchChange,
+  onStatusChange,
+}: {
+  samples: SampleRow[];
+  role: string;
+  hasActiveSample: boolean;
+  search: string;
+  onSearchChange: (v: string) => void;
+  onStatusChange: (id: string, status: string) => Promise<void>;
+}) {
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [expandedId, setExpandedId]       = useState<string | null>(null);
+
+  const isAdmin = role === 'ADMIN';
+
+  const filtered = samples.filter((s) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      s.sampleNumber.toLowerCase().includes(q) ||
+      s.client.customerName.toLowerCase().includes(q) ||
+      (s.product?.name ?? '').toLowerCase().includes(q) ||
+      (s.description ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  async function doAction(id: string, status: string) {
+    setActionLoading(`${id}:${status}`);
+    try {
+      await onStatusChange(id, status);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <input
+        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500"
+        placeholder="Search by client, product, or sample no…"
+        value={search}
+        onChange={(e) => onSearchChange(e.target.value)}
+      />
+      {!isAdmin && hasActiveSample && (
+        <div
+          className="px-3 py-2 rounded-xl text-xs"
+          style={{ background: 'rgba(251,191,36,0.07)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}
+        >
+          <Clock className="w-3.5 h-3.5 inline mr-1" />
+          You have an active sample. Close or return it before requesting a new one.
+        </div>
+      )}
+      {filtered.length === 0 ? (
+        <div className="card p-8 text-center">
+          <p className="text-zinc-500 text-sm">{search ? 'No results found.' : 'No sample requests yet.'}</p>
+        </div>
+      ) : (
+        filtered.map((s) => {
+          const st = SAMPLE_STATUS_STYLE[s.status] ?? SAMPLE_STATUS_STYLE.PENDING;
+          const open = expandedId === s.id;
+          return (
+            <div key={s.id} className="card overflow-hidden">
+              {/* Card header */}
+              <button
+                type="button"
+                className="w-full p-4 text-left hover:bg-white/[0.02] transition-colors"
+                onClick={() => setExpandedId(open ? null : s.id)}
+              >
+                <div className="flex items-start gap-3">
+                  <Package className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold text-sm text-white">{s.sampleNumber}</span>
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: st.bg, color: st.color }}
+                      >
+                        {s.status}
+                      </span>
+                      <span
+                        className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(56,189,248,0.1)', color: '#38bdf8' }}
+                      >
+                        Qty: {s.quantity}
+                      </span>
+                    </div>
+                    <p className="text-zinc-300 text-sm mt-0.5 font-medium">{s.client.customerName}</p>
+                    {s.product && (
+                      <p className="text-zinc-500 text-xs mt-0.5">{s.product.name}</p>
+                    )}
+                    {s.description && (
+                      <p className="text-zinc-600 text-xs mt-0.5 line-clamp-1">{s.description}</p>
+                    )}
+                    <p className="text-zinc-600 text-xs mt-1">{fmtDate(s.createdAt)} · {s.requestedBy.name}</p>
+                  </div>
+                  <svg
+                    width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                    className="shrink-0 text-zinc-600 mt-1"
+                    style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+
+                {/* Timeline dots */}
+                <div className="flex items-center gap-1.5 mt-3 pl-7">
+                  {(['Requested', 'Approved', 'Dispatched', 'Returned'] as const).map((step, idx) => {
+                    const reached =
+                      idx === 0 ? true
+                      : idx === 1 ? !!s.approvedAt
+                      : idx === 2 ? !!s.dispatchedAt
+                      : !!s.returnedAt;
+                    return (
+                      <div key={step} className="flex items-center gap-1">
+                        {idx > 0 && (
+                          <div
+                            className="w-4 h-px"
+                            style={{ background: reached ? '#4ade80' : 'rgba(255,255,255,0.08)' }}
+                          />
+                        )}
+                        <div
+                          className="flex flex-col items-center gap-0.5"
+                        >
+                          <div
+                            className="w-2 h-2 rounded-full"
+                            style={{ background: reached ? '#4ade80' : 'rgba(255,255,255,0.1)' }}
+                          />
+                          <span className="text-[9px]" style={{ color: reached ? '#4ade80' : '#52525b' }}>
+                            {step}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </button>
+
+              {/* Expanded details + admin actions */}
+              {open && (
+                <div
+                  className="border-t px-4 py-3 space-y-3"
+                  style={{ borderColor: 'rgba(255,255,255,0.06)' }}
+                >
+                  {/* Full detail */}
+                  <div className="space-y-1.5 text-xs">
+                    {s.approvedAt && s.approvedBy && (
+                      <p className="text-zinc-500">
+                        Approved by {s.approvedBy.name} on {fmtDate(s.approvedAt)}
+                      </p>
+                    )}
+                    {s.dispatchedAt && (
+                      <p className="text-zinc-500">Dispatched on {fmtDate(s.dispatchedAt)}</p>
+                    )}
+                    {s.returnedAt && (
+                      <p className="text-zinc-500">Returned on {fmtDate(s.returnedAt)}</p>
+                    )}
+                    {s.notes && (
+                      <p className="text-zinc-400 whitespace-pre-wrap">{s.notes}</p>
+                    )}
+                  </div>
+
+                  {/* ADMIN status action buttons */}
+                  {isAdmin && (
+                    <div className="flex flex-wrap gap-2">
+                      {s.status === 'PENDING' && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={!!actionLoading}
+                            onClick={() => doAction(s.id, 'APPROVED')}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                            style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }}
+                          >
+                            {actionLoading === `${s.id}:APPROVED` ? '…' : 'Approve'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!!actionLoading}
+                            onClick={() => doAction(s.id, 'CLOSED')}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                            style={{ background: 'rgba(113,113,122,0.1)', color: '#a1a1aa', border: '1px solid rgba(113,113,122,0.2)' }}
+                          >
+                            {actionLoading === `${s.id}:CLOSED` ? '…' : 'Close'}
+                          </button>
+                        </>
+                      )}
+                      {s.status === 'APPROVED' && (
+                        <button
+                          type="button"
+                          disabled={!!actionLoading}
+                          onClick={() => doAction(s.id, 'DISPATCHED')}
+                          className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                          style={{ background: 'rgba(56,189,248,0.12)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.25)' }}
+                        >
+                          {actionLoading === `${s.id}:DISPATCHED` ? '…' : 'Mark Dispatched'}
+                        </button>
+                      )}
+                      {s.status === 'DISPATCHED' && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={!!actionLoading}
+                            onClick={() => doAction(s.id, 'RETURNED')}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                            style={{ background: 'rgba(139,92,246,0.12)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.25)' }}
+                          >
+                            {actionLoading === `${s.id}:RETURNED` ? '…' : 'Mark Returned'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!!actionLoading}
+                            onClick={() => doAction(s.id, 'CLOSED')}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                            style={{ background: 'rgba(113,113,122,0.1)', color: '#a1a1aa', border: '1px solid rgba(113,113,122,0.2)' }}
+                          >
+                            {actionLoading === `${s.id}:CLOSED` ? '…' : 'Close'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+// ── Implementation Goods tab ──────────────────────────────────────────────────
+function ImplGoodsTab({
+  implGoods,
+  role,
+  search,
+  onSearchChange,
+  onStatusChange,
+}: {
+  implGoods: IGRow[];
+  role: string;
+  search: string;
+  onSearchChange: (v: string) => void;
+  onStatusChange: (id: string, status: string) => Promise<void>;
+}) {
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [expandedId, setExpandedId]       = useState<string | null>(null);
+
+  const isAdmin = role === 'ADMIN';
+  const now = new Date();
+
+  const filtered = implGoods.filter((g) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      g.igNumber.toLowerCase().includes(q) ||
+      g.client.customerName.toLowerCase().includes(q) ||
+      g.description.toLowerCase().includes(q) ||
+      (g.purpose ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  async function doAction(id: string, status: string) {
+    setActionLoading(`${id}:${status}`);
+    try {
+      await onStatusChange(id, status);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <input
+        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500"
+        placeholder="Search by client, description, or IG no…"
+        value={search}
+        onChange={(e) => onSearchChange(e.target.value)}
+      />
+      {filtered.length === 0 ? (
+        <div className="card p-8 text-center">
+          <p className="text-zinc-500 text-sm">{search ? 'No results found.' : 'No implementation goods recorded yet.'}</p>
+        </div>
+      ) : (
+        filtered.map((g) => {
+          const st = IG_STATUS_STYLE[g.status] ?? IG_STATUS_STYLE.RECEIVED;
+          const open = expandedId === g.id;
+
+          let parsedItems: Array<{ name: string; qty: number; unit: string; condition: string }> = [];
+          try { parsedItems = JSON.parse(g.items); } catch { /* ignore */ }
+
+          const isOverdue =
+            g.expectedReturn &&
+            !g.returnedDate &&
+            g.status !== 'RETURNED' &&
+            g.status !== 'RETAINED' &&
+            new Date(g.expectedReturn) < now;
+
+          return (
+            <div key={g.id} className="card overflow-hidden">
+              <button
+                type="button"
+                className="w-full p-4 text-left hover:bg-white/[0.02] transition-colors"
+                onClick={() => setExpandedId(open ? null : g.id)}
+              >
+                <div className="flex items-start gap-3">
+                  <ArrowLeftRight className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold text-sm text-white">{g.igNumber}</span>
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: st.bg, color: st.color }}
+                      >
+                        {g.status.replace('_', ' ')}
+                      </span>
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(255,255,255,0.05)', color: '#71717a' }}
+                      >
+                        {parsedItems.length} item{parsedItems.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <p className="text-zinc-300 text-sm mt-0.5 font-medium">{g.client.customerName}</p>
+                    <p className="text-zinc-500 text-xs mt-0.5 line-clamp-1">{g.description}</p>
+                    <div className="flex items-center gap-2 flex-wrap mt-1">
+                      <span className="text-zinc-600 text-xs">Received {fmtDate(g.receivedDate)}</span>
+                      {g.expectedReturn && (
+                        <span
+                          className="text-xs font-medium"
+                          style={{ color: isOverdue ? '#f87171' : '#a1a1aa' }}
+                        >
+                          {isOverdue && <AlertTriangle className="w-3 h-3 inline mr-0.5" />}
+                          Return by {fmtDate(g.expectedReturn)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <svg
+                    width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                    className="shrink-0 text-zinc-600 mt-1"
+                    style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
+
+              {/* Expanded details */}
+              {open && (
+                <div
+                  className="border-t px-4 py-3 space-y-3"
+                  style={{ borderColor: 'rgba(255,255,255,0.06)' }}
+                >
+                  {/* Items list */}
+                  {parsedItems.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Items</p>
+                      <div className="space-y-1">
+                        {parsedItems.map((item, idx) => (
+                          <div key={idx} className="flex items-center gap-2 text-xs">
+                            <span className="text-zinc-600 font-mono w-5 shrink-0">{idx + 1}.</span>
+                            <span className="text-zinc-300 flex-1">{item.name}</span>
+                            <span className="text-zinc-500">{item.qty} {item.unit}</span>
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
+                              style={{ background: 'rgba(255,255,255,0.05)', color: '#71717a' }}
+                            >
+                              {item.condition}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Meta */}
+                  <div className="space-y-1 text-xs text-zinc-500">
+                    {g.purpose && <p>Purpose: {g.purpose}</p>}
+                    {g.returnedDate && <p>Returned on {fmtDate(g.returnedDate)}</p>}
+                    {g.notes && <p className="text-zinc-400 whitespace-pre-wrap">{g.notes}</p>}
+                    <p>Logged by {g.createdBy.name} on {fmtDate(g.createdAt)}</p>
+                  </div>
+
+                  {/* ADMIN status buttons */}
+                  {isAdmin && (
+                    <div className="flex flex-wrap gap-2">
+                      {g.status === 'RECEIVED' && (
+                        <button
+                          type="button"
+                          disabled={!!actionLoading}
+                          onClick={() => doAction(g.id, 'IN_USE')}
+                          className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                          style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)' }}
+                        >
+                          {actionLoading === `${g.id}:IN_USE` ? '…' : 'Mark In Use'}
+                        </button>
+                      )}
+                      {(g.status === 'RECEIVED' || g.status === 'IN_USE') && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={!!actionLoading}
+                            onClick={() => doAction(g.id, 'RETURNED')}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                            style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }}
+                          >
+                            {actionLoading === `${g.id}:RETURNED` ? '…' : 'Mark Returned'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!!actionLoading}
+                            onClick={() => doAction(g.id, 'RETAINED')}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                            style={{ background: 'rgba(113,113,122,0.1)', color: '#a1a1aa', border: '1px solid rgba(113,113,122,0.2)' }}
+                          >
+                            {actionLoading === `${g.id}:RETAINED` ? '…' : 'Retained by Client'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 // ── Processing order card ─────────────────────────────────────────────────────
 function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
   const order = p.order!;
@@ -635,6 +1108,8 @@ export function ProformaList({
   invoices = [],
   returnRequests = [],
   canCreate = false,
+  samples = [],
+  implGoods = [],
 }: {
   proformas: ProformaRow[];
   role: string;
@@ -642,7 +1117,10 @@ export function ProformaList({
   invoices?: InvoiceRow[];
   returnRequests?: ReturnRequestRow[];
   canCreate?: boolean;
+  samples?: SampleRow[];
+  implGoods?: IGRow[];
 }) {
+  const router = useRouter();
   const [tab, setTab]               = useState<TabKey>(initialTab ?? 'pi');
   const [search, setSearch]         = useState('');
   const [invSubTab, setInvSubTab]   = useState<'current' | 'history'>('current');
@@ -671,7 +1149,21 @@ export function ProformaList({
     { key: 'pi',      label: 'Proforma', count: piList.length         },
     { key: 'invoice', label: 'Invoice',  count: invoices.length       },
     { key: 'returns', label: 'Returns',  count: returnRequests.length },
+    ...(['ADMIN', 'SALES'].includes(role)
+      ? [
+          { key: 'samples' as TabKey, label: 'Samples',     count: samples.length    },
+          { key: 'impl'    as TabKey, label: 'Impl. Goods', count: implGoods.length  },
+        ]
+      : []),
   ];
+
+  // Samples state
+  const [sampleSearch, setSampleSearch] = useState('');
+  const [igSearch, setIgSearch] = useState('');
+
+  const hasActiveSample = samples.some(
+    (s) => !['CLOSED', 'RETURNED'].includes(s.status)
+  );
 
   const filteredPI = piList.filter((p) => {
     if (!search) return true;
@@ -770,11 +1262,30 @@ export function ProformaList({
               + New Return
             </Link>
           )}
+          {tab === 'samples' && ['ADMIN', 'SALES'].includes(role) && !hasActiveSample && (
+            <Link href="/sales/samples/new" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
+              style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
+              + New Sample
+            </Link>
+          )}
+          {tab === 'samples' && ['ADMIN', 'SALES'].includes(role) && hasActiveSample && (
+            <span className="shrink-0 text-xs font-medium px-3 py-2 rounded-xl text-zinc-500 cursor-not-allowed"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+              title="Close or return your active sample first">
+              + New Sample
+            </span>
+          )}
+          {tab === 'impl' && role === 'ADMIN' && (
+            <Link href="/sales/impl/new" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
+              style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
+              + New Entry
+            </Link>
+          )}
         </div>
       )}
 
-      {/* Search bar — hidden on Invoice/Current (shows all), visible on History & other tabs */}
-      {!(tab === 'invoice' && invSubTab === 'current') && (
+      {/* Search bar — hidden on Invoice/Current, Samples, Impl (have own search), visible elsewhere */}
+      {!(tab === 'invoice' && invSubTab === 'current') && tab !== 'samples' && tab !== 'impl' && (
         <input
           className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500 mb-3"
           placeholder={
@@ -1062,6 +1573,43 @@ export function ProformaList({
               )
             )}
           </div>
+        )}
+
+        {/* ── Samples tab ── */}
+        {tab === 'samples' && (
+          <SamplesTab
+            samples={samples}
+            role={role}
+            hasActiveSample={hasActiveSample}
+            search={sampleSearch}
+            onSearchChange={setSampleSearch}
+            onStatusChange={async (id, status) => {
+              await fetch(`/api/samples/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status }),
+              });
+              router.refresh();
+            }}
+          />
+        )}
+
+        {/* ── Impl. Goods tab ── */}
+        {tab === 'impl' && (
+          <ImplGoodsTab
+            implGoods={implGoods}
+            role={role}
+            search={igSearch}
+            onSearchChange={setIgSearch}
+            onStatusChange={async (id, status) => {
+              await fetch(`/api/implementation-goods/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status }),
+              });
+              router.refresh();
+            }}
+          />
         )}
 
         {/* ── Returns tab ── */}
