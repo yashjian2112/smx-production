@@ -46,6 +46,9 @@ function fmt(amount: number, currency: string) {
   if (currency === 'USD') return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return `\u20b9${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+function fmtInr(usd: number, rate: number) {
+  return `\u20b9${(usd * rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -68,6 +71,8 @@ function parseReplacementNotes(notes: string | null) {
 export function PrintProforma({ proforma, settings }: { proforma: Proforma; settings: Settings }) {
   const isExport = proforma.client.globalOrIndian === 'Global';
   const currency = proforma.currency as 'INR' | 'USD';
+  const isDual   = currency === 'USD' && !isExport && !!proforma.exchangeRate;
+  const rate     = proforma.exchangeRate ?? 1;
 
   const sellerState  = (settings.company_state ?? 'Gujarat').toLowerCase();
   const buyerState   = (proforma.client.state ?? '').toLowerCase();
@@ -82,9 +87,10 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
 
   const subtotal  = productItems.reduce((s, item) => s + calcItem(item), 0);
   const shipping  = shippingItem ? calcItem(shippingItem) : 0;
-  const gstAmount = isExport ? 0 : subtotal * 0.18;
+  const hasGst    = !isExport && !!proforma.client.gstNumber;
+  const gstAmount = hasGst ? subtotal * 0.18 : 0;
   const total     = subtotal + gstAmount + shipping;
-  const totalINR  = currency === 'INR' ? total : (total * (proforma.exchangeRate ?? 1));
+  const totalINR  = isDual ? total * rate : (currency === 'INR' ? total : total * rate);
 
   const fy     = getFiscalYear(new Date(proforma.invoiceDate));
   const s      = (k: string) => settings[k] ?? '';
@@ -181,15 +187,26 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
         tbody td { padding: 5px 7px; font-size: 9px; color: #111; vertical-align: top; }
         tbody td.c { text-align: center; }
         tbody td.r { text-align: right; }
+        .inr-sub { font-size: 7.5px; color: #5a7a3a; margin-top: 1px; }
         .empty-row td { height: 14px; background: #fff !important; }
 
         /* ── TOTALS ── */
         .totals-wrap { display: flex; justify-content: flex-end; border-top: 1.5px solid #1a3a6b; background: #f0f5ff; padding: 8px 10px; }
         .totals-box { width: 240px; }
+        .totals-box-dual { width: 340px; }
         .t-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; }
+        .t-row-dual { display: grid; grid-template-columns: 1fr 100px 100px; gap: 4px; padding: 2px 0; font-size: 9px; align-items: center; }
         .t-lbl { color: #444; }
+        .t-val { text-align: right; }
+        .t-val-inr { text-align: right; color: #555; }
         .t-sep { border-top: 1px solid #b0c0e0; margin: 4px 0; }
         .t-total { font-weight: 800; font-size: 11.5px; color: #1a3a6b; display: flex; justify-content: space-between; padding: 3px 0; }
+        .t-total-dual { display: grid; grid-template-columns: 1fr 100px 100px; gap: 4px; font-weight: 800; font-size: 11px; color: #1a3a6b; padding: 3px 0; align-items: center; }
+        .t-total-dual .t-val { color: #1a3a6b; }
+        .t-total-dual .t-val-inr { color: #1a5c1a; font-size: 10.5px; }
+        .t-dual-head { display: grid; grid-template-columns: 1fr 100px 100px; gap: 4px; font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #1a3a6b; letter-spacing: 0.5px; padding: 2px 0 4px; border-bottom: 1px solid #b0c0e0; margin-bottom: 3px; }
+        .t-dual-head span { text-align: right; }
+        .t-dual-head span:first-child { text-align: left; }
 
         /* ── AMOUNT WORDS ── */
         .words-bar { padding: 5px 10px; background: #f0f5ff; border-top: 1px solid #c8d8f0; font-size: 8.5px; line-height: 1.5; display: flex; justify-content: space-between; }
@@ -265,7 +282,12 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
           </div>
           <div className="info-cell">
             <div className="info-label">Currency</div>
-            <div className="info-value">{currency}{isExport && proforma.exchangeRate ? ` @ ₹${proforma.exchangeRate}` : ''}</div>
+            <div className="info-value">
+              {isDual ? 'USD & INR' : currency}
+              {(isDual || (isExport && proforma.exchangeRate)) && (
+                <span style={{ fontSize: 8, color: '#555', fontWeight: 400, marginLeft: 4 }}>@ ₹{proforma.exchangeRate}/$</span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -299,7 +321,7 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
         </div>
 
         {/* ── TERMS ── */}
-        <div className={`terms-row ${isExport ? 'terms-2col' : 'terms-3col'}`}>
+        <div className={`terms-row ${hasGst ? 'terms-3col' : 'terms-2col'}`}>
           <div className="term-cell">
             <div className="term-label">Mode / Terms of Payment</div>
             <div className="term-value">{proforma.termsOfPayment || '—'}</div>
@@ -308,7 +330,7 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
             <div className="term-label">Delivery Schedule</div>
             <div className="term-value">{proforma.deliveryDays ? `Within ${proforma.deliveryDays} days of payment` : '—'}</div>
           </div>
-          {!isExport && (
+          {hasGst && (
             <div className="term-cell">
               <div className="term-label">Tax</div>
               <div className="term-value">{isIntraState ? 'CGST 9% + SGST 9%' : 'IGST 18%'}</div>
@@ -335,13 +357,13 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
           <thead>
             <tr>
               <th style={{ width: '4%' }} className="c">#</th>
-              <th style={{ width: '42%' }}>Description of Goods</th>
+              <th style={{ width: isDual ? '36%' : '42%' }}>Description of Goods</th>
               <th style={{ width: '9%' }} className="c">HSN / SAC</th>
               <th style={{ width: '7%' }} className="c">Qty</th>
               <th style={{ width: '6%' }} className="c">UOM</th>
-              <th style={{ width: '13%' }} className="r">Rate ({currency})</th>
-              <th style={{ width: '7%' }} className="c">Disc %</th>
-              <th style={{ width: '12%' }} className="r">Amount ({currency})</th>
+              <th style={{ width: isDual ? '14%' : '13%' }} className="r">Rate {isDual ? '(USD / ₹)' : `(${currency})`}</th>
+              <th style={{ width: isDual ? '6%' : '7%' }} className="c">Disc %</th>
+              <th style={{ width: isDual ? '18%' : '12%' }} className="r">Amount {isDual ? '(USD / ₹)' : `(${currency})`}</th>
             </tr>
           </thead>
           <tbody>
@@ -352,9 +374,15 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
                 <td className="c" style={{ fontFamily: 'monospace', fontSize: 8 }}>{item.hsnCode}</td>
                 <td className="c">{item.quantity}</td>
                 <td className="c" style={{ color: '#888' }}>PCS</td>
-                <td className="r">{fmt(item.unitPrice, currency)}</td>
+                <td className="r">
+                  {fmt(item.unitPrice, currency)}
+                  {isDual && <div className="inr-sub">{fmtInr(item.unitPrice, rate)}</div>}
+                </td>
                 <td className="c">{item.discountPercent ? `${item.discountPercent}%` : '—'}</td>
-                <td className="r" style={{ fontWeight: 600 }}>{fmt(calcItem(item), currency)}</td>
+                <td className="r" style={{ fontWeight: 600 }}>
+                  {fmt(calcItem(item), currency)}
+                  {isDual && <div className="inr-sub">{fmtInr(calcItem(item), rate)}</div>}
+                </td>
               </tr>
             ))}
             {productItems.length < 6 && Array.from({ length: 6 - productItems.length }).map((_, i) => (
@@ -365,25 +393,85 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
 
         {/* ── TOTALS ── */}
         <div className="totals-wrap">
-          <div className="totals-box">
-            <div className="t-row"><span className="t-lbl">Sub Total</span><span>{fmt(subtotal, currency)}</span></div>
-            {!isExport && isIntraState && (
+          <div className={isDual ? 'totals-box-dual' : 'totals-box'}>
+            {isDual && (
+              <div className="t-dual-head">
+                <span>Description</span>
+                <span>USD ($)</span>
+                <span>INR (₹)</span>
+              </div>
+            )}
+            {isDual ? (
+              <div className="t-row-dual">
+                <span className="t-lbl">Sub Total</span>
+                <span className="t-val">{fmt(subtotal, 'USD')}</span>
+                <span className="t-val-inr">{fmtInr(subtotal, rate)}</span>
+              </div>
+            ) : (
+              <div className="t-row"><span className="t-lbl">Sub Total</span><span>{fmt(subtotal, currency)}</span></div>
+            )}
+            {hasGst && isIntraState && (
               <>
-                <div className="t-row"><span className="t-lbl">CGST @ 9%</span><span>{fmt(subtotal * 0.09, currency)}</span></div>
-                <div className="t-row"><span className="t-lbl">SGST @ 9%</span><span>{fmt(subtotal * 0.09, currency)}</span></div>
+                {isDual ? (
+                  <>
+                    <div className="t-row-dual">
+                      <span className="t-lbl">CGST @ 9%</span>
+                      <span className="t-val">{fmt(subtotal * 0.09, 'USD')}</span>
+                      <span className="t-val-inr">{fmtInr(subtotal * 0.09, rate)}</span>
+                    </div>
+                    <div className="t-row-dual">
+                      <span className="t-lbl">SGST @ 9%</span>
+                      <span className="t-val">{fmt(subtotal * 0.09, 'USD')}</span>
+                      <span className="t-val-inr">{fmtInr(subtotal * 0.09, rate)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="t-row"><span className="t-lbl">CGST @ 9%</span><span>{fmt(subtotal * 0.09, currency)}</span></div>
+                    <div className="t-row"><span className="t-lbl">SGST @ 9%</span><span>{fmt(subtotal * 0.09, currency)}</span></div>
+                  </>
+                )}
               </>
             )}
-            {!isExport && !isIntraState && (
-              <div className="t-row"><span className="t-lbl">IGST @ 18%</span><span>{fmt(gstAmount, currency)}</span></div>
+            {hasGst && !isIntraState && (
+              isDual ? (
+                <div className="t-row-dual">
+                  <span className="t-lbl">IGST @ 18%</span>
+                  <span className="t-val">{fmt(gstAmount, 'USD')}</span>
+                  <span className="t-val-inr">{fmtInr(gstAmount, rate)}</span>
+                </div>
+              ) : (
+                <div className="t-row"><span className="t-lbl">IGST @ 18%</span><span>{fmt(gstAmount, currency)}</span></div>
+              )
             )}
-            {shipping > 0 && <div className="t-row"><span className="t-lbl">Freight &amp; Forwarding</span><span>{fmt(shipping, currency)}</span></div>}
+            {shipping > 0 && (
+              isDual ? (
+                <div className="t-row-dual">
+                  <span className="t-lbl">Freight &amp; Forwarding</span>
+                  <span className="t-val">{fmt(shipping, 'USD')}</span>
+                  <span className="t-val-inr">{fmtInr(shipping, rate)}</span>
+                </div>
+              ) : (
+                <div className="t-row"><span className="t-lbl">Freight &amp; Forwarding</span><span>{fmt(shipping, currency)}</span></div>
+              )
+            )}
             <div className="t-sep" />
-            <div className="t-total"><span>TOTAL</span><span>{fmt(total, currency)}</span></div>
-            {currency === 'USD' && proforma.exchangeRate && (
-              <div className="t-row" style={{ fontSize: 8, color: '#888', marginTop: 3 }}>
-                <span>≈ INR equivalent @ ₹{proforma.exchangeRate}/$</span>
-                <span>₹{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            {isDual ? (
+              <div className="t-total-dual">
+                <span>TOTAL</span>
+                <span className="t-val">{fmt(total, 'USD')}</span>
+                <span className="t-val-inr">{fmtInr(total, rate)}</span>
               </div>
+            ) : (
+              <>
+                <div className="t-total"><span>TOTAL</span><span>{fmt(total, currency)}</span></div>
+                {currency === 'USD' && proforma.exchangeRate && (
+                  <div className="t-row" style={{ fontSize: 8, color: '#888', marginTop: 3 }}>
+                    <span>≈ INR equivalent @ ₹{proforma.exchangeRate}/$</span>
+                    <span>₹{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+              </>
             )}
             <div style={{ marginTop: 4, fontSize: 7.5, color: '#888', display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #c8d8f0', paddingTop: 3 }}>
               <span>Total Quantity</span>
@@ -394,8 +482,12 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
 
         {/* ── AMOUNT IN WORDS ── */}
         <div className="words-bar">
-          <span><strong style={{ color: '#1a3a6b' }}>Amount Chargeable (in words):</strong>&nbsp;
-            {currency === 'USD' ? amountToWords(total, 'USD') : amountToWords(total, 'INR')}
+          <span>
+            <strong style={{ color: '#1a3a6b' }}>Amount Chargeable (in words):</strong>&nbsp;
+            {isDual
+              ? <>{amountToWords(total, 'USD')}<span style={{ color: '#5a7a3a', marginLeft: 6 }}>/ {amountToWords(totalINR, 'INR')}</span></>
+              : (currency === 'USD' ? amountToWords(total, 'USD') : amountToWords(total, 'INR'))
+            }
           </span>
           <span style={{ color: '#999', fontStyle: 'italic', fontSize: 8 }}>E. &amp; O.E.</span>
         </div>
