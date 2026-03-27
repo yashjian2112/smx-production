@@ -199,11 +199,10 @@ const shippingNav: NavItem[] = [
   { href: '/dashboard',   label: 'Dashboard', icon: 'Dashboard' },
 ];
 
-// PURCHASE_MANAGER: procurement + IG/GAN
+// PURCHASE_MANAGER: procurement flow
 const purchaseNav: NavItem[] = [
-  { href: '/dashboard',       label: 'Dashboard',   icon: 'Dashboard'  },
-  { href: '/purchase',        label: 'Procurement', icon: 'Purchase'   },
-  { href: '/sales?tab=impl',  label: 'Impl. Goods', icon: 'Pack'       },
+  { href: '/dashboard', label: 'Dashboard',   icon: 'Dashboard'  },
+  { href: '/purchase',  label: 'Procurement', icon: 'Purchase'   },
 ];
 
 // INVENTORY_MANAGER / STORE_MANAGER

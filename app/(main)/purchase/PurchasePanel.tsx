@@ -76,10 +76,10 @@ type PaymentRequestRow = {
 };
 
 // Tabs are role-driven — PM sees procurement flow, IM sees approval queue
-const PM_TABS   = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments'] as const;
+const PM_TABS   = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments', 'IG / GAN'] as const;
 const IM_TABS   = ['Req. Orders'] as const;
-const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments'] as const;
-type Tab = 'Req. Orders' | 'RFQ' | 'Samples' | 'Purchase Orders' | 'Vendors' | 'Payments';
+const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments', 'IG / GAN'] as const;
+type Tab = 'Req. Orders' | 'RFQ' | 'Samples' | 'Purchase Orders' | 'Vendors' | 'Payments' | 'IG / GAN';
 
 const STATUS_COLOR: Record<string, string> = {
   PENDING: 'bg-amber-900/40 text-amber-300 border border-amber-700/50',
@@ -137,6 +137,7 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
       {tab === 'Purchase Orders' && <POTab isPM={isPM} isIM={isIM} />}
       {tab === 'Vendors'        && <VendorsTab isAdmin={isAdmin} isPM={isPM} />}
       {tab === 'Payments'       && <PaymentsTab isPM={isPM} />}
+      {tab === 'IG / GAN'       && <IGGanTab isPM={isPM} />}
     </div>
   );
 }
@@ -2114,6 +2115,195 @@ function PortalAccessModal({ vendor, vendorCategories, onClose, onSaved }: {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   IG / GAN TAB  — Purchase Manager logs GAN for IG requests
+══════════════════════════════════════════════════════════════*/
+type IGRow = {
+  id: string; igNumber: string; status: string; description: string;
+  items: string; purpose: string | null; notes: string | null;
+  expectedArrival: string | null; expectedReturn: string | null;
+  ganDate: string | null; ganNotes: string | null; courierDetails: string | null;
+  grnDate: string | null; createdAt: string;
+  client: { id: string; code: string; customerName: string };
+  createdBy: { id: string; name: string };
+  ganBy?: { id: string; name: string } | null;
+};
+
+function IGGanTab({ isPM }: { isPM: boolean }) {
+  const [igList, setIgList] = useState<IGRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [ganModal, setGanModal] = useState<IGRow | null>(null);
+  const [rejectModal, setRejectModal] = useState<IGRow | null>(null);
+  const [ganNotes, setGanNotes] = useState('');
+  const [courier, setCourier] = useState('');
+  const [rejectReason, setRejectReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/implementation-goods');
+      if (res.ok) setIgList(await res.json());
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function submitGAN() {
+    if (!ganModal) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/implementation-goods/${ganModal.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'gan', ganNotes, courierDetails: courier }),
+      });
+      if (res.ok) { setGanModal(null); setGanNotes(''); setCourier(''); load(); }
+    } finally { setSaving(false); }
+  }
+
+  async function submitReject() {
+    if (!rejectModal) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/implementation-goods/${rejectModal.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reject', reason: rejectReason }),
+      });
+      if (res.ok) { setRejectModal(null); setRejectReason(''); load(); }
+    } finally { setSaving(false); }
+  }
+
+  const pending = igList.filter(ig => ig.status === 'REQUESTED');
+  const processed = igList.filter(ig => ig.status !== 'REQUESTED');
+
+  if (loading) return <div className="text-center text-zinc-500 py-12">Loading...</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* ── Pending GAN ── */}
+      <div>
+        <h3 className="text-sm font-semibold text-amber-400 mb-3">Awaiting GAN ({pending.length})</h3>
+        {pending.length === 0 && <p className="text-zinc-500 text-sm">No pending IG requests.</p>}
+        <div className="space-y-3">
+          {pending.map(ig => {
+            let parsedItems: Array<{ name: string; qty?: number }> = [];
+            try { parsedItems = JSON.parse(ig.items); } catch { /* empty */ }
+            return (
+              <div key={ig.id} className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-semibold text-sm">{ig.igNumber}</span>
+                    <Badge label={ig.status} />
+                  </div>
+                  <span className="text-xs text-zinc-500">{new Date(ig.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                </div>
+                <div className="text-xs text-zinc-400 mb-1">
+                  <span className="text-zinc-300 font-medium">{ig.client.customerName}</span>
+                  <span className="mx-1.5 text-zinc-600">|</span>
+                  Requested by {ig.createdBy.name}
+                </div>
+                <p className="text-xs text-zinc-400 mb-1">{ig.description}</p>
+                {ig.purpose && <p className="text-xs text-zinc-500">Purpose: {ig.purpose}</p>}
+                {parsedItems.length > 0 && (
+                  <div className="text-xs text-zinc-500 mt-1">
+                    Items: {parsedItems.map(it => `${it.name}${it.qty ? ` (${it.qty})` : ''}`).join(', ')}
+                  </div>
+                )}
+                {ig.expectedArrival && <p className="text-xs text-zinc-500">Expected arrival: {new Date(ig.expectedArrival).toLocaleDateString('en-IN')}</p>}
+                {ig.expectedReturn && <p className="text-xs text-zinc-500">Return by: {new Date(ig.expectedReturn).toLocaleDateString('en-IN')}</p>}
+
+                {isPM && (
+                  <div className="flex gap-2 mt-3">
+                    <button onClick={() => { setGanModal(ig); setGanNotes(''); setCourier(''); }}
+                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium">
+                      Log GAN
+                    </button>
+                    <button onClick={() => { setRejectModal(ig); setRejectReason(''); }}
+                      className="px-3 py-1.5 rounded-xl bg-red-900/40 hover:bg-red-900/60 text-red-300 text-xs font-medium border border-red-800/50">
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Processed ── */}
+      {processed.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-400 mb-3">Processed ({processed.length})</h3>
+          <div className="space-y-2">
+            {processed.map(ig => (
+              <div key={ig.id} className="bg-zinc-900/40 border border-zinc-800/50 rounded-xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-white text-sm font-medium">{ig.igNumber}</span>
+                  <Badge label={ig.status} />
+                  <span className="text-xs text-zinc-500">{ig.client.customerName}</span>
+                </div>
+                <div className="text-right text-xs text-zinc-500">
+                  {ig.ganDate && <div>GAN: {new Date(ig.ganDate).toLocaleDateString('en-IN')}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── GAN Modal ── */}
+      {ganModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-5 w-full max-w-md space-y-4">
+            <h3 className="text-white font-semibold">Log GAN — {ganModal.igNumber}</h3>
+            <p className="text-xs text-zinc-400">{ganModal.client.customerName} — {ganModal.description}</p>
+            <div>
+              <label className="block text-xs text-zinc-400 mb-1">GAN Notes</label>
+              <textarea rows={3} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white"
+                value={ganNotes} onChange={e => setGanNotes(e.target.value)} placeholder="Arrival condition, qty verified..." />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400 mb-1">Courier / Carrier Details</label>
+              <input className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white"
+                value={courier} onChange={e => setCourier(e.target.value)} placeholder="BlueDart AWB#, hand-delivered..." />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setGanModal(null)} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+              <button onClick={submitGAN} disabled={saving}
+                className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
+                {saving ? 'Saving...' : 'Confirm GAN'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reject Modal ── */}
+      {rejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-5 w-full max-w-md space-y-4">
+            <h3 className="text-white font-semibold">Reject IG — {rejectModal.igNumber}</h3>
+            <div>
+              <label className="block text-xs text-zinc-400 mb-1">Reason for rejection</label>
+              <textarea rows={3} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white"
+                value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Why is this IG being rejected?" />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setRejectModal(null)} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+              <button onClick={submitReject} disabled={saving || !rejectReason.trim()}
+                className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-medium disabled:opacity-50">
+                {saving ? 'Rejecting...' : 'Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
