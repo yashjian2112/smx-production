@@ -167,7 +167,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
         // Scale qty to dispatched units (not full order qty)
         // Shipping lines (HSN 9965) keep their original qty (lump sum)
-        const totalOrderUnits = allOrderUnits.length;
+        const totalOrderUnits = dispatchOrder.order.units.length;
         const dispatchedUnits = packedUnitIds.length;
         const scaleQty = (item: { quantity: number; hsnCode: string }) =>
           item.hsnCode === '9965' || totalOrderUnits === 0
