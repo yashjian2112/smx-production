@@ -1275,7 +1275,7 @@ export function ProformaList({
               + New Sample
             </span>
           )}
-          {tab === 'impl' && role === 'ADMIN' && (
+          {tab === 'impl' && ['ADMIN', 'SALES'].includes(role) && (
             <Link href="/sales/impl/new" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
               style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
               + New Entry

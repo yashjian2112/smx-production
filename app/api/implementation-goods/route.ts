@@ -77,8 +77,7 @@ export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
 
-    // Only ADMIN can create IG entries
-    if (session.role !== 'ADMIN') {
+    if (!['ADMIN', 'SALES'].includes(session.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

@@ -6,7 +6,7 @@ import NewIGForm from './NewIGForm';
 export default async function NewIGPage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (session.role !== 'ADMIN') redirect('/dashboard');
+  if (!['ADMIN', 'SALES'].includes(session.role)) redirect('/dashboard');
 
   const clients = await prisma.client.findMany({
     where: { active: true },
