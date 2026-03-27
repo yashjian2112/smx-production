@@ -173,6 +173,7 @@ const employeeNav: NavItem[] = [
 
 const packingNav: NavItem[] = [
   { href: '/shipping',    label: 'Packing',   icon: 'Pack'      },
+  { href: '/my-dispatch', label: 'Dispatch',  icon: 'Dispatch'  },
   { href: '/dashboard',   label: 'Dashboard', icon: 'Dashboard' },
 ];
 
@@ -200,8 +201,9 @@ const shippingNav: NavItem[] = [
 
 // PURCHASE_MANAGER: full procurement flow
 const purchaseNav: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
-  { href: '/purchase',  label: 'Procurement', icon: 'Purchase' },
+  { href: '/dashboard', label: 'Dashboard',   icon: 'Dashboard'  },
+  { href: '/purchase',  label: 'Procurement', icon: 'Purchase'   },
+  { href: '/inventory', label: 'Inventory',   icon: 'Inventory'  },
 ];
 
 // INVENTORY_MANAGER / STORE_MANAGER
@@ -233,10 +235,11 @@ export function BottomNav({ role }: { role: string }) {
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 pb-safe md:relative md:pb-0"
       style={{
-        background: 'rgba(9, 9, 11, 0.92)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+        background: 'rgba(12, 12, 16, 0.65)',
+        backdropFilter: 'blur(24px) saturate(160%)',
+        WebkitBackdropFilter: 'blur(24px) saturate(160%)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+        boxShadow: '0 -1px 24px rgba(0,0,0,0.4)',
       }}
     >
       <div className="flex justify-around items-center h-16 md:gap-2">

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN:               'Admin',
+  PRODUCTION_MANAGER:  'Manager',
   PRODUCTION_EMPLOYEE: 'Employee',
   PACKING:             'Packing',
   SALES:               'Sales',
@@ -25,10 +26,11 @@ export function Header({ title, user }: { title: string; user: { name: string; r
     <header
       className="sticky top-0 z-40 px-4 py-3 flex items-center justify-between"
       style={{
-        background: 'rgba(9, 9, 11, 0.85)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+        background: 'rgba(12, 12, 16, 0.65)',
+        backdropFilter: 'blur(20px) saturate(160%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+        boxShadow: '0 1px 24px rgba(0,0,0,0.4)',
       }}
     >
       {/* Brand icon + title */}
