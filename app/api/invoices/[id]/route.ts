@@ -7,8 +7,12 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const session = await requireSession();
     requireRole(session, 'ADMIN', 'ACCOUNTS', 'SALES');
 
-    const invoice = await prisma.invoice.findUnique({
-      where: { id: params.id },
+    const salesFilter = session.role === 'SALES'
+      ? { proforma: { createdById: session.id } }
+      : {};
+
+    const invoice = await prisma.invoice.findFirst({
+      where: { id: params.id, ...salesFilter },
       include: {
         items: { orderBy: { sortOrder: 'asc' } },
         client: true,
@@ -31,7 +35,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       },
     });
 
-    if (!invoice) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (!invoice) return NextResponse.json({ error: session.role === 'SALES' ? 'Forbidden' : 'Not found' }, { status: session.role === 'SALES' ? 403 : 404 });
     return NextResponse.json(invoice);
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
