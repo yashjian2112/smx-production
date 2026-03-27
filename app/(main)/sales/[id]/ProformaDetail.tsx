@@ -122,6 +122,7 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   }
 
   async function sendForApproval() {
+    if (!receiptUrl) { setError('Please upload the signed PI (PDF) before sending for approval.'); return; }
     setLoading(true); setError('');
     try {
       const res = await fetch(`/api/proformas/${proforma.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'PENDING_APPROVAL' }) });
@@ -320,11 +321,20 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
         )}
 
         {canSendApproval && (
-          <button onClick={sendForApproval} disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-sm text-white font-medium transition-colors disabled:opacity-50">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" /></svg>
-            Send for Approval
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <button onClick={sendForApproval} disabled={loading || !receiptUrl}
+              title={!receiptUrl ? 'Upload signed PI (PDF) first' : undefined}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-sm text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" /></svg>
+              Send for Approval
+            </button>
+            {!receiptUrl && (
+              <span className="text-xs text-amber-400 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
+                Upload signed PDF first
+              </span>
+            )}
+          </div>
         )}
 
         {canApprove && (
