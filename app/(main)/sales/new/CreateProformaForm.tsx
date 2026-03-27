@@ -159,7 +159,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   const sellerState    = 'gujarat';
   const buyerState     = (selectedClient?.state ?? '').toLowerCase();
   const isIntra        = !isExport && !!buyerState && buyerState === sellerState;
-  const gst            = isExport ? 0 : subtotal * 0.18;
+  const hasGst         = !isExport && !!selectedClient?.gstNumber;
+  const gst            = hasGst ? subtotal * 0.18 : 0;
   const total          = subtotal + gst + shipping;
 
   const fmtAmt = (n: number) => currency === 'USD'
@@ -613,13 +614,13 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
               {dualCurrency && rate > 0 && <span className="w-24 text-right text-zinc-600">{fmtInr(subtotal)}</span>}
             </div>
           </div>
-          {!isExport && isIntra && (
+          {hasGst && isIntra && (
             <>
               <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{fmtAmt(subtotal * 0.09)}</span></div>
               <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{fmtAmt(subtotal * 0.09)}</span></div>
             </>
           )}
-          {!isExport && !isIntra && (
+          {hasGst && !isIntra && (
             <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{fmtAmt(gst)}</span></div>
           )}
           {shipping > 0 && (

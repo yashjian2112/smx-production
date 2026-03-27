@@ -30,6 +30,8 @@ type InitialProforma = {
   deliveryDays: number | null;
   termsOfDelivery: string | null;
   notes: string | null;
+  splitInvoice: boolean;
+  splitServicePercent: number | null;
   items: InitialItem[];
 };
 
@@ -158,6 +160,9 @@ export function EditProformaForm({
   const [unitSerial,  setUnitSerial]  = useState(() => isReplacement ? parseReplacementNotes(proforma.notes, 'serial') : '');
   const [problemDesc, setProblemDesc] = useState(() => isReplacement ? parseReplacementNotes(proforma.notes, 'problem') : '');
 
+  const [splitInvoice, setSplitInvoice] = useState(proforma.splitInvoice ?? false);
+  const [splitServicePercent, setSplitServicePercent] = useState(proforma.splitServicePercent?.toString() ?? '');
+
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
 
@@ -241,8 +246,9 @@ export function EditProformaForm({
       ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
       : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
-  const fmtInr = (usd: number) =>
-    `₹${(usd * rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+  const fmtInr = (usd: number) => rate > 0
+    ? `₹${(usd * rate).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+    : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -302,6 +308,8 @@ export function EditProformaForm({
           clientId,
           currency,
           exchangeRate:    currency === 'USD' && rate > 0 ? rate : null,
+          splitInvoice:    splitInvoice || undefined,
+          splitServicePercent: splitInvoice && splitServicePercent ? parseFloat(splitServicePercent) : undefined,
           termsOfPayment:  termsOfPayment  || undefined,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : null,
           notes:           finalNotes    || undefined,
@@ -402,6 +410,50 @@ export function EditProformaForm({
             </button>
           </div>
           <input type="number" min={0} step="0.01" value={exchangeRate} onChange={(e) => setExchangeRate(parseFloat(e.target.value) || '')} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 84.50" />
+        </div>
+      )}
+
+      {/* Split Invoice (global clients only) */}
+      {isGlobal && (
+        <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(139,92,246,0.04)', border: '1px solid rgba(139,92,246,0.15)' }}>
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <div onClick={() => setSplitInvoice(!splitInvoice)} className="relative w-11 h-6 rounded-full transition-colors"
+              style={{ background: splitInvoice ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.1)' }}>
+              <div className="absolute top-1 w-4 h-4 rounded-full bg-white transition-transform"
+                style={{ transform: splitInvoice ? 'translateX(22px)' : 'translateX(2px)' }} />
+            </div>
+            <span className="text-sm text-zinc-300">
+              {splitInvoice ? 'Split into Goods + Service invoices' : 'Split Invoice (off)'}
+            </span>
+          </label>
+          {splitInvoice && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-zinc-500 w-28 shrink-0">Service %</label>
+                <input type="number" min={1} max={99} step={1} value={splitServicePercent}
+                  onChange={(e) => setSplitServicePercent(e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className={iCls + ' !w-20'} placeholder="e.g. 30" />
+                <span className="text-xs text-zinc-500">%</span>
+              </div>
+              {(() => {
+                const svcPct = parseFloat(splitServicePercent);
+                if (!svcPct || svcPct <= 0 || svcPct >= 100) return null;
+                const goodsPct = 100 - svcPct;
+                const goodsAmt = total * (goodsPct / 100);
+                const serviceAmt = total * (svcPct / 100);
+                return (
+                  <div className="space-y-1">
+                    <div className="flex gap-4 text-xs">
+                      <span style={{ color: '#4ade80' }}>Goods {goodsPct.toFixed(0)}% = {fmtAmt(goodsAmt)}</span>
+                      <span style={{ color: '#fbbf24' }}>Service {svcPct.toFixed(0)}% = {fmtAmt(serviceAmt)}</span>
+                    </div>
+                    <p className="text-[10px] text-zinc-600">Split calculated on total ({fmtAmt(total)}) incl. GST + shipping</p>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
         </div>
       )}
 

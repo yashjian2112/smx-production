@@ -44,6 +44,8 @@ export default async function EditProformaPage({ params }: { params: { id: strin
     deliveryDays:    proforma.deliveryDays,
     termsOfDelivery: proforma.termsOfDelivery,
     notes:           proforma.notes,
+    splitInvoice:    proforma.splitInvoice,
+    splitServicePercent: proforma.splitServicePercent,
     items:           proforma.items.map((item) => ({
       id:              item.id,
       description:     item.description,
