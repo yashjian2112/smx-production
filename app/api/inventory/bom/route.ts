@@ -27,27 +27,43 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireSession();
-  if (!['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN'].includes(session.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  try {
+    const session = await requireSession();
+    if (!['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN'].includes(session.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const { productId, rawMaterialId, voltage, stage, quantityRequired, unit, notes } = body;
+
+    if (!productId || !rawMaterialId || quantityRequired === undefined || !unit) {
+      return NextResponse.json(
+        { error: 'Missing required fields: productId, rawMaterialId, quantityRequired, unit' },
+        { status: 400 }
+      );
+    }
+
+    const item = await prisma.bOMItem.create({
+      data: {
+        productId,
+        rawMaterialId,
+        voltage: voltage || null,
+        stage: stage ? (stage as StageType) : null,
+        quantityRequired,
+        unit,
+        notes: notes || null,
+      },
+      include: { rawMaterial: { select: { id: true, name: true, code: true, unit: true } } },
+    });
+    return NextResponse.json(item, { status: 201 });
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Unauthorized')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (e instanceof Error && e.message === 'Forbidden')
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    console.error(e);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
-
-  const body = await req.json();
-  const { productId, rawMaterialId, voltage, stage, quantityRequired, unit, notes } = body;
-
-  const item = await prisma.bOMItem.create({
-    data: {
-      productId,
-      rawMaterialId,
-      voltage: voltage || null,
-      stage: stage ? (stage as StageType) : null,
-      quantityRequired,
-      unit,
-      notes: notes || null,
-    },
-    include: { rawMaterial: { select: { id: true, name: true, code: true, unit: true } } },
-  });
-  return NextResponse.json(item);
 }
 
 export async function PATCH(req: NextRequest) {
