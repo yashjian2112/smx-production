@@ -74,10 +74,14 @@ model User {
   paymentsProcessed        PaymentRequest[] @relation("PaymentProcessedBy")
   vendorPaymentsProcessed  VendorPayment[]  @relation("VendorPaymentProcessedBy")
   priceBreakdownFactors    PriceBreakdownFactor[]
+  samplesRequested         SampleRequest[]  @relation("SampleRequestedBy")
+  samplesApproved          SampleRequest[]  @relation("SampleApprovedBy")
+  implementationGoodsCreated ImplementationGood[] @relation("IGCreatedBy")
 }
 
 enum Role {
   ADMIN
+  PRODUCTION_MANAGER
   PRODUCTION_EMPLOYEE
   SALES
   ACCOUNTS
@@ -97,12 +101,13 @@ model Product {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now()) @map("created_at")
 
-  orders         Order[]
-  units          ControllerUnit[]
-  components     ProductComponent[]
-  checklistItems StageChecklistItem[]
-  proformaItems  ProformaInvoiceItem[]
-  bomItems       BOMItem[]
+  orders          Order[]
+  units           ControllerUnit[]
+  components      ProductComponent[]
+  checklistItems  StageChecklistItem[]
+  proformaItems   ProformaInvoiceItem[]
+  bomItems        BOMItem[]
+  sampleRequests  SampleRequest[]
 }
 
 // ----- Product Components (BOM per model) -----
@@ -162,10 +167,12 @@ model Client {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  orders           Order[]
-  proformaInvoices ProformaInvoice[]
-  invoices         Invoice[]
-  returnRequests   ReturnRequest[]
+  orders              Order[]
+  proformaInvoices    ProformaInvoice[]
+  invoices            Invoice[]
+  returnRequests      ReturnRequest[]
+  sampleRequests      SampleRequest[]
+  implementationGoods ImplementationGood[]
 
   @@map("clients")
 }
@@ -934,7 +941,6 @@ model RawMaterial {
   preferredVendorId String?  @map("preferred_vendor_id")
   active            Boolean  @default(true)
   barcode           String?  @unique
-  productionStage   String?  @map("production_stage")  // "PS" | "BB" | null — for individual serial tracking at GRN
   batchTracking     Boolean  @default(false) @map("batch_tracking")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -953,7 +959,6 @@ model RawMaterial {
   rfqItems         RFQItem[]
   quoteItems       VendorQuoteItem[]
   ganItems         GANItem[]
-  materialSerials  MaterialSerial[]
   damageReports    DamageReport[]
 
   @@map("raw_materials")
@@ -1204,7 +1209,6 @@ model GoodsReceipt {
   receivedBy    User               @relation(fields: [receivedById], references: [id])
   items         GoodsReceiptItem[]
   batches       InventoryBatch[]
-  materialSerials MaterialSerial[]
 
   @@map("goods_receipts")
 }
@@ -1615,25 +1619,6 @@ model GANItem {
   @@map("gan_items")
 }
 
-// Material Serials — individual barcodes generated at GRN for traceable components
-model MaterialSerial {
-  id          String    @id @default(cuid())
-  materialId  String    @map("material_id")
-  grnId       String    @map("grn_id")
-  stageType   String    @map("stage_type")            // "PS" | "BB"
-  barcode     String    @unique
-  status      String    @default("PRINTED")            // PRINTED | CONFIRMED | ALLOCATED | CONSUMED
-  confirmedAt DateTime? @map("confirmed_at")
-  allocatedToOrderId String? @map("allocated_to_order_id")
-  allocatedToUnitId  String? @map("allocated_to_unit_id")
-  createdAt   DateTime  @default(now()) @map("created_at")
-
-  material RawMaterial    @relation(fields: [materialId], references: [id])
-  grn      GoodsReceipt   @relation(fields: [grnId], references: [id])
-
-  @@map("material_serials")
-}
-
 // Vendor Performance — recorded per PO after GRN
 model VendorPerformance {
   id              String   @id @default(cuid())
@@ -1776,4 +1761,68 @@ model PaymentRequest {
   vendorPayments  VendorPayment[]
 
   @@map("payment_requests")
+}
+
+// ----- Samples -----
+enum SampleStatus {
+  PENDING
+  APPROVED
+  DISPATCHED
+  RETURNED
+  CLOSED
+}
+
+model SampleRequest {
+  id           String       @id @default(cuid())
+  sampleNumber String       @unique @map("sample_number")  // SAMP/26-27/001
+  clientId     String       @map("client_id")
+  productId    String?      @map("product_id")
+  description  String?
+  quantity     Int          @default(1)
+  status       SampleStatus @default(PENDING)
+  notes        String?
+  requestedById  String     @map("requested_by_id")
+  approvedById   String?    @map("approved_by_id")
+  approvedAt     DateTime?  @map("approved_at")
+  dispatchedAt   DateTime?  @map("dispatched_at")
+  returnedAt     DateTime?  @map("returned_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  client      Client   @relation(fields: [clientId], references: [id])
+  product     Product? @relation(fields: [productId], references: [id])
+  requestedBy User     @relation("SampleRequestedBy", fields: [requestedById], references: [id])
+  approvedBy  User?    @relation("SampleApprovedBy", fields: [approvedById], references: [id])
+
+  @@map("sample_requests")
+}
+
+// ----- Implementation Goods -----
+enum IGStatus {
+  RECEIVED
+  IN_USE
+  RETURNED
+  RETAINED
+}
+
+model ImplementationGood {
+  id              String   @id @default(cuid())
+  igNumber        String   @unique @map("ig_number")  // IG/26-27/001
+  clientId        String   @map("client_id")
+  description     String
+  items           String   @map("items")  // JSON: [{name, qty, unit, condition}]
+  receivedDate    DateTime @map("received_date")
+  expectedReturn  DateTime? @map("expected_return")
+  returnedDate    DateTime? @map("returned_date")
+  status          IGStatus  @default(RECEIVED)
+  purpose         String?   // research purpose / notes
+  notes           String?
+  createdById     String    @map("created_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  client    Client @relation(fields: [clientId], references: [id])
+  createdBy User   @relation("IGCreatedBy", fields: [createdById], references: [id])
+
+  @@map("implementation_goods")
 }

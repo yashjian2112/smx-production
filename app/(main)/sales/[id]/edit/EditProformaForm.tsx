@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 type Client  = { id: string; code: string; customerName: string; globalOrIndian: string | null; gstNumber: string | null; state: string | null };
@@ -141,8 +141,15 @@ export function EditProformaForm({
 
   const isReplacement = proforma.invoiceType === 'REPLACEMENT';
 
+  const initClient = clients.find((c) => c.id === proforma.clientId);
+  const initIsGlobal = initClient?.globalOrIndian === 'Global';
+  const initDual = proforma.currency === 'USD' && !initIsGlobal;
+
   const [clientId,       setClientId]       = useState(proforma.clientId);
   const [currency,       setCurrency]       = useState<'INR' | 'USD'>(proforma.currency as 'INR' | 'USD');
+  const [dualCurrency,   setDualCurrency]   = useState(initDual);
+  const [exchangeRate,   setExchangeRate]   = useState<number | ''>(proforma.exchangeRate ?? '');
+  const [rateLoading,    setRateLoading]    = useState(false);
   const [termsOfPayment, setTermsOfPayment] = useState(proforma.termsOfPayment ?? '');
   const [deliveryDays,   setDeliveryDays]   = useState(proforma.deliveryDays?.toString() ?? '');
   const [notes,          setNotes]          = useState(() => isReplacement ? stripReplacementHeader(proforma.notes) : (proforma.notes ?? ''));
@@ -154,13 +161,42 @@ export function EditProformaForm({
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
 
+  // Live rate fetch
+  const fetchLiveRate = useCallback(async () => {
+    setRateLoading(true);
+    try {
+      const res = await fetch('https://open.er-api.com/v6/latest/USD');
+      const data = await res.json();
+      if (data?.rates?.INR) setExchangeRate(Math.round(data.rates.INR * 100) / 100);
+    } catch { /* leave blank */ }
+    finally { setRateLoading(false); }
+  }, []);
+
   // Derived
   const selectedClient = clients.find((c) => c.id === clientId);
+  const isGlobal = selectedClient?.globalOrIndian === 'Global';
+  const rate = typeof exchangeRate === 'number' ? exchangeRate : 0;
 
   function handleClientChange(id: string) {
     setClientId(id);
     const c = clients.find((x) => x.id === id);
-    if (c) setCurrency(c.globalOrIndian === 'Global' ? 'USD' : 'INR');
+    if (c) {
+      if (c.globalOrIndian === 'Global') {
+        setCurrency('USD'); setDualCurrency(false); setExchangeRate('');
+      } else {
+        setCurrency('INR'); setDualCurrency(false); setExchangeRate('');
+      }
+    }
+  }
+
+  function handleCurrencyChange(c: 'INR' | 'USD' | 'USD-INR') {
+    if (c === 'USD-INR') {
+      setCurrency('USD'); setDualCurrency(true);
+      if (!exchangeRate) fetchLiveRate();
+    } else {
+      setCurrency(c); setDualCurrency(false);
+      if (c === 'INR') setExchangeRate('');
+    }
   }
 
   // Line item helpers
@@ -192,17 +228,21 @@ export function EditProformaForm({
   // Totals
   const subtotal    = items.reduce((s, i) => s + calcAmount(i), 0);
   const shipping    = parseFloat(shippingCharges) || 0;
-  const isExport    = currency === 'USD';
+  const isExport    = selectedClient ? isGlobal : currency === 'USD';
+  const hasGst      = !isExport && !!selectedClient?.gstNumber;
   const sellerState = 'gujarat';
   const buyerState  = (selectedClient?.state ?? '').toLowerCase();
-  const isIntra     = !isExport && !!buyerState && buyerState === sellerState;
-  const gst         = isExport ? 0 : subtotal * 0.18;
+  const isIntra     = hasGst && !!buyerState && buyerState === sellerState;
+  const gst         = hasGst ? subtotal * 0.18 : 0;
   const total       = subtotal + gst + shipping;
 
   const fmtAmt = (n: number) =>
     currency === 'USD'
       ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
       : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+
+  const fmtInr = (usd: number) =>
+    `₹${(usd * rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -261,6 +301,7 @@ export function EditProformaForm({
         body: JSON.stringify({
           clientId,
           currency,
+          exchangeRate:    currency === 'USD' && rate > 0 ? rate : null,
           termsOfPayment:  termsOfPayment  || undefined,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : null,
           notes:           finalNotes    || undefined,
@@ -334,18 +375,35 @@ export function EditProformaForm({
       {/* Currency */}
       <div>
         <label className={lCls}>Currency</label>
-        <div className="flex gap-2 max-w-[160px]">
-          {(['INR', 'USD'] as const).map((c) => (
-            <button key={c} type="button" onClick={() => setCurrency(c)}
-              className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
-              style={currency === c
-                ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
-                : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-              {c}
-            </button>
-          ))}
+        <div className="flex gap-2" style={{ maxWidth: isGlobal ? '80px' : '200px' }}>
+          {(isGlobal ? ['USD'] : ['INR', 'USD-INR']).map((c) => {
+            const isActive = c === 'USD-INR' ? dualCurrency : currency === (c as 'INR' | 'USD') && !dualCurrency;
+            return (
+              <button key={c} type="button" onClick={() => handleCurrencyChange(c as 'INR' | 'USD' | 'USD-INR')}
+                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
+                style={isActive
+                  ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+                {c}
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      {/* Exchange Rate (USD-INR only) */}
+      {dualCurrency && (
+        <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
+          <div className="flex items-center justify-between">
+            <label className={lCls} style={{ marginBottom: 0 }}>Exchange Rate (1 USD = ₹ ?)</label>
+            <button type="button" onClick={fetchLiveRate} disabled={rateLoading}
+              className="text-[11px] px-2.5 py-1 rounded-lg text-sky-400 border border-sky-500/30 hover:bg-sky-500/10 transition-colors disabled:opacity-50">
+              {rateLoading ? 'Fetching…' : 'Refresh live rate'}
+            </button>
+          </div>
+          <input type="number" min={0} step="0.01" value={exchangeRate} onChange={(e) => setExchangeRate(parseFloat(e.target.value) || '')} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 84.50" />
+        </div>
+      )}
 
       {/* Terms of Payment */}
       <div>
@@ -365,7 +423,7 @@ export function EditProformaForm({
       {/* Delivery Days */}
       <div>
         <label className={lCls}>Delivery Days <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
-        <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} className={iCls} placeholder="e.g. 30" />
+        <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 30" />
       </div>
 
       {/* ── Line Items ── */}
@@ -430,7 +488,7 @@ export function EditProformaForm({
                 </div>
                 <div>
                   <label className={lCls}>Qty (PCS) <span className="text-red-400">*</span></label>
-                  <input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.key, { quantity: parseInt(e.target.value, 10) || 1 })} className={iCls} />
+                  <input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(item.key, { quantity: parseInt(e.target.value, 10) || 1 })} onWheel={(e) => e.currentTarget.blur()} className={iCls} />
                 </div>
               </div>
 
@@ -438,9 +496,9 @@ export function EditProformaForm({
               <div>
                 <label className={lCls}>Voltage Range <span className="text-red-400">*</span></label>
                 <div className="flex items-center gap-2">
-                  <input type="number" min={0} value={item.voltageFrom} onChange={(e) => updateItem(item.key, { voltageFrom: e.target.value })} className={iCls} placeholder="From (e.g. 48)" required />
+                  <input type="number" min={0} value={item.voltageFrom} onChange={(e) => updateItem(item.key, { voltageFrom: e.target.value })} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="From (e.g. 48)" required />
                   <span className="text-zinc-500 text-sm shrink-0">to</span>
-                  <input type="number" min={0} value={item.voltageTo} onChange={(e) => updateItem(item.key, { voltageTo: e.target.value })} className={iCls} placeholder="To (e.g. 120)" required />
+                  <input type="number" min={0} value={item.voltageTo} onChange={(e) => updateItem(item.key, { voltageTo: e.target.value })} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="To (e.g. 120)" required />
                   <span className="text-zinc-500 text-xs shrink-0">V</span>
                 </div>
               </div>
@@ -449,16 +507,19 @@ export function EditProformaForm({
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className={lCls}>Unit Price ({currency === 'USD' ? '$' : '₹'}) <span className="text-red-400">*</span></label>
-                  <input type="number" min={0} step="0.01" value={item.unitPrice || ''} onChange={(e) => updateItem(item.key, { unitPrice: parseFloat(e.target.value) || 0 })} className={iCls} placeholder="0.00" required />
+                  <input type="number" min={0} step="0.01" value={item.unitPrice || ''} onChange={(e) => updateItem(item.key, { unitPrice: parseFloat(e.target.value) || 0 })} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="0.00" required />
                 </div>
                 <div>
                   <label className={lCls}>Discount %</label>
-                  <input type="number" min={0} max={100} step="0.01" value={item.discountPercent || ''} onChange={(e) => updateItem(item.key, { discountPercent: parseFloat(e.target.value) || 0 })} className={iCls} placeholder="0" />
+                  <input type="number" min={0} max={100} step="0.01" value={item.discountPercent || ''} onChange={(e) => updateItem(item.key, { discountPercent: parseFloat(e.target.value) || 0 })} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="0" />
                 </div>
                 <div>
                   <label className={lCls}>Amount</label>
                   <div className="input-field text-sm text-zinc-400 select-none" style={{ background: 'rgba(255,255,255,0.02)' }}>
                     {currency === 'USD' ? '$' : '₹'}{calcAmount(item).toLocaleString(currency === 'USD' ? 'en-US' : 'en-IN', { minimumFractionDigits: 2 })}
+                    {dualCurrency && rate > 0 && (
+                      <div className="text-[11px] text-zinc-500 mt-0.5">{fmtInr(calcAmount(item))}</div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -476,6 +537,7 @@ export function EditProformaForm({
           step="0.01"
           value={shippingCharges}
           onChange={(e) => setShippingCharges(e.target.value)}
+          onWheel={(e) => e.currentTarget.blur()}
           className={iCls}
           placeholder="0.00"
         />
@@ -486,23 +548,23 @@ export function EditProformaForm({
         <div className="rounded-xl border border-zinc-800 p-4 space-y-2" style={{ background: 'rgba(255,255,255,0.02)' }}>
           <div className="flex justify-between text-sm">
             <span className="text-zinc-500">Sub Total</span>
-            <span>{fmtAmt(subtotal)}</span>
+            <span>{fmtAmt(subtotal)}{dualCurrency && rate > 0 && <span className="text-[11px] text-zinc-500 ml-2">{fmtInr(subtotal)}</span>}</span>
           </div>
-          {!isExport && isIntra && (
+          {hasGst && isIntra && (
             <>
-              <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{fmtAmt(subtotal * 0.09)}</span></div>
-              <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{fmtAmt(subtotal * 0.09)}</span></div>
+              <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{fmtAmt(subtotal * 0.09)}{dualCurrency && rate > 0 && <span className="text-[11px] ml-2">{fmtInr(subtotal * 0.09)}</span>}</span></div>
+              <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{fmtAmt(subtotal * 0.09)}{dualCurrency && rate > 0 && <span className="text-[11px] ml-2">{fmtInr(subtotal * 0.09)}</span>}</span></div>
             </>
           )}
-          {!isExport && !isIntra && (
-            <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{fmtAmt(gst)}</span></div>
+          {hasGst && !isIntra && (
+            <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{fmtAmt(gst)}{dualCurrency && rate > 0 && <span className="text-[11px] ml-2">{fmtInr(gst)}</span>}</span></div>
           )}
           {shipping > 0 && (
-            <div className="flex justify-between text-sm text-zinc-500"><span>Shipping</span><span>{fmtAmt(shipping)}</span></div>
+            <div className="flex justify-between text-sm text-zinc-500"><span>Shipping</span><span>{fmtAmt(shipping)}{dualCurrency && rate > 0 && <span className="text-[11px] ml-2">{fmtInr(shipping)}</span>}</span></div>
           )}
           <div className="flex justify-between text-sm font-semibold border-t border-zinc-800 pt-2">
             <span>Total</span>
-            <span className="text-sky-400">{fmtAmt(total)}</span>
+            <span className="text-sky-400">{fmtAmt(total)}{dualCurrency && rate > 0 && <span className="text-[11px] text-zinc-400 ml-2">{fmtInr(total)}</span>}</span>
           </div>
         </div>
       )}
