@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 /* ── SVG Icon set — stroke-based, 1.5 weight, minimal ── */
 const Icons = {
@@ -217,6 +218,24 @@ export function BottomNav({ role }: { role: string }) {
   const pathname     = usePathname();
   const searchParams = useSearchParams();
   const currentTab   = searchParams.get('tab') ?? '';
+  const [badges, setBadges] = useState<Record<string, number>>({});
+
+  // Fetch notification counts
+  useEffect(() => {
+    let mounted = true;
+    async function fetchBadges() {
+      try {
+        const r = await fetch('/api/notifications/counts');
+        if (r.ok && mounted) {
+          const data = await r.json();
+          setBadges(data);
+        }
+      } catch {}
+    }
+    fetchBadges();
+    const interval = setInterval(fetchBadges, 30000); // refresh every 30s
+    return () => { mounted = false; clearInterval(interval); };
+  }, []);
 
   const items =
     role === 'PRODUCTION_EMPLOYEE' ? employeeNav  :
@@ -229,6 +248,11 @@ export function BottomNav({ role }: { role: string }) {
     role === 'INVENTORY_MANAGER'   ? inventoryNav  :
     role === 'STORE_MANAGER'       ? inventoryNav  :
     managerNav;
+
+  // Map nav href to badge key
+  function getBadge(href: string): number {
+    return badges[href] ?? 0;
+  }
 
   return (
     <nav
@@ -259,6 +283,8 @@ export function BottomNav({ role }: { role: string }) {
 
           const IconComponent = Icons[item.icon];
 
+          const badgeCount = getBadge(item.href);
+
           return (
             <Link
               key={item.href}
@@ -268,7 +294,14 @@ export function BottomNav({ role }: { role: string }) {
               }`}
               style={active ? { background: 'rgba(14, 165, 233, 0.08)' } : undefined}
             >
-              <IconComponent />
+              <div className="relative">
+                <IconComponent />
+                {badgeCount > 0 && (
+                  <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 flex items-center justify-center text-[9px] font-bold text-white bg-red-500 rounded-full px-1 leading-none">
+                    {badgeCount > 99 ? '99+' : badgeCount}
+                  </span>
+                )}
+              </div>
               <span className="text-[10px] font-medium tracking-wide">{item.label}</span>
               {active && (
                 <span

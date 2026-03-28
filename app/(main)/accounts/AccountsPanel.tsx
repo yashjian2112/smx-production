@@ -153,8 +153,6 @@ export function AccountsPanel({
   dispatches: DispatchRow[];
   doDispatches: DORow[];
 }) {
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'approvals' | 'payables'>('approvals');
   const [approvalSub, setApprovalSub] = useState<'pending' | 'completed'>('pending');
 
   // ── Pending ──────────────────────────────────────────────────────────────
@@ -173,21 +171,6 @@ export function AccountsPanel({
   return (
     <div className="space-y-4">
 
-      {/* ── TABS ─────────────────────────────────────────────────────────── */}
-      <div className="flex gap-1 bg-zinc-900 rounded-xl p-1">
-        <button onClick={() => setActiveTab('approvals')}
-          className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'approvals' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
-          Approvals
-        </button>
-        <button onClick={() => setActiveTab('payables')}
-          className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'payables' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
-          AP / Payables
-        </button>
-      </div>
-
-      {activeTab === 'payables' && <APPayablesTab onRouterRefresh={() => router.refresh()} />}
-
-      {activeTab === 'approvals' && <>
       {/* ── Sub-tabs: Pending | Completed ──────────────────────────────── */}
       <div className="flex gap-1 bg-zinc-900/60 rounded-xl p-1">
         <button onClick={() => setApprovalSub('pending')}
@@ -400,7 +383,6 @@ export function AccountsPanel({
           )}
         </div>
       )}
-      </>}
     </div>
   );
 }
