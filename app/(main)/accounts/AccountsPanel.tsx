@@ -154,8 +154,8 @@ export function AccountsPanel({
   doDispatches: DORow[];
 }) {
   const router = useRouter();
-  const [showHistory, setShowHistory] = useState(false);
   const [activeTab, setActiveTab] = useState<'approvals' | 'payables'>('approvals');
+  const [approvalSub, setApprovalSub] = useState<'pending' | 'completed'>('pending');
 
   // ── Pending ──────────────────────────────────────────────────────────────
   const pendingProformas  = proformas.filter((p) => p.status === 'PENDING_APPROVAL');
@@ -188,222 +188,218 @@ export function AccountsPanel({
       {activeTab === 'payables' && <APPayablesTab onRouterRefresh={() => router.refresh()} />}
 
       {activeTab === 'approvals' && <>
-      {/* ── PENDING section ─────────────────────────────────────────────── */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-sm font-semibold text-white">Pending</span>
+      {/* ── Sub-tabs: Pending | Completed ──────────────────────────────── */}
+      <div className="flex gap-1 bg-zinc-900/60 rounded-xl p-1">
+        <button onClick={() => setApprovalSub('pending')}
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
+            approvalSub === 'pending' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+          }`}>
+          Pending
           {totalPending > 0 && (
-            <span
-              className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}
-            >
-              {totalPending}
-            </span>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              approvalSub === 'pending' ? 'bg-white/20 text-white' : 'bg-amber-500/15 text-amber-400'
+            }`}>{totalPending}</span>
+          )}
+        </button>
+        <button onClick={() => setApprovalSub('completed')}
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
+            approvalSub === 'completed' ? 'bg-zinc-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+          }`}>
+          Completed
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+            approvalSub === 'completed' ? 'bg-white/20 text-white' : 'bg-zinc-500/15 text-zinc-500'
+          }`}>{historyDOs.length + completedProformas.length}</span>
+        </button>
+      </div>
+
+      {/* ── PENDING tab ────────────────────────────────────────────────── */}
+      {approvalSub === 'pending' && (
+        <div className="space-y-3">
+          {totalPending === 0 && (
+            <div className="card p-6 text-center">
+              <p className="text-zinc-500 text-sm">No pending approvals.</p>
+            </div>
+          )}
+
+          {/* Submitted Dispatch Orders */}
+          {submittedDOs.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-violet-400 uppercase tracking-wide mb-2">
+                Dispatch Orders ({submittedDOs.length})
+              </p>
+              <DOApprovals dispatches={submittedDOs as any} />
+            </div>
+          )}
+
+          {/* Legacy dispatch approvals */}
+          {pendingDispatches > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-sky-400 uppercase tracking-wide mb-2">
+                Dispatches ({pendingDispatches})
+              </p>
+              <DispatchApprovals dispatches={dispatches as any} />
+            </div>
+          )}
+
+          {/* Proforma approvals */}
+          {pendingProformas.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide mb-2">
+                Proforma Invoices ({pendingProformas.length})
+              </p>
+              <div className="space-y-2">
+                {pendingProformas.map((p) => (
+                  <div key={p.id} className="card p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono font-semibold text-sm">{p.invoiceNumber}</span>
+                          <span
+                            className="text-[10px] font-medium px-1.5 py-0.5 rounded border"
+                            style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.3)' }}
+                          >
+                            Pending Approval
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.currency}</span>
+                        </div>
+                        <p className="text-zinc-400 text-sm mt-0.5">{p.client.customerName}</p>
+                        <p className="text-zinc-600 text-xs mt-0.5">
+                          {fmtDate(p.invoiceDate)}
+                          {' · '}{p._count.items} item{p._count.items !== 1 ? 's' : ''}
+                          {' · '}by {p.createdBy.name}
+                        </p>
+                      </div>
+                      <Link
+                        href={`/sales/${p.id}`}
+                        className="shrink-0 text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
+                        style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}
+                      >
+                        Review
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
+      )}
 
-        {totalPending === 0 && (
-          <div className="card p-6 text-center">
-            <p className="text-zinc-500 text-sm">No pending approvals.</p>
-          </div>
-        )}
-
-        {/* Submitted Dispatch Orders */}
-        {submittedDOs.length > 0 && (
-          <div className="mb-3">
-            <p className="text-[10px] font-semibold text-violet-400 uppercase tracking-wide mb-2">
-              Dispatch Orders ({submittedDOs.length})
-            </p>
-            <DOApprovals dispatches={submittedDOs as any} />
-          </div>
-        )}
-
-        {/* Legacy dispatch approvals */}
-        {pendingDispatches > 0 && (
-          <div className="mb-3">
-            <p className="text-[10px] font-semibold text-sky-400 uppercase tracking-wide mb-2">
-              Dispatches ({pendingDispatches})
-            </p>
-            <DispatchApprovals dispatches={dispatches as any} />
-          </div>
-        )}
-
-        {/* Proforma approvals */}
-        {pendingProformas.length > 0 && (
-          <div>
-            <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide mb-2">
-              Proforma Invoices ({pendingProformas.length})
-            </p>
-            <div className="space-y-2">
-              {pendingProformas.map((p) => (
-                <div key={p.id} className="card p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono font-semibold text-sm">{p.invoiceNumber}</span>
-                        <span
-                          className="text-[10px] font-medium px-1.5 py-0.5 rounded border"
-                          style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.3)' }}
-                        >
-                          Pending Approval
-                        </span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.currency}</span>
-                      </div>
-                      <p className="text-zinc-400 text-sm mt-0.5">{p.client.customerName}</p>
-                      <p className="text-zinc-600 text-xs mt-0.5">
-                        {fmtDate(p.invoiceDate)}
-                        {' · '}{p._count.items} item{p._count.items !== 1 ? 's' : ''}
-                        {' · '}by {p.createdBy.name}
-                      </p>
-                    </div>
-                    <Link
-                      href={`/sales/${p.id}`}
-                      className="shrink-0 text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
-                      style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}
-                    >
-                      Review
-                    </Link>
-                  </div>
-                </div>
-              ))}
+      {/* ── COMPLETED tab ──────────────────────────────────────────────── */}
+      {approvalSub === 'completed' && (
+        <div className="space-y-4">
+          {historyDOs.length === 0 && completedProformas.length === 0 && (
+            <div className="card p-6 text-center">
+              <p className="text-zinc-500 text-sm">No completed approvals yet.</p>
             </div>
-          </div>
-        )}
-      </div>
+          )}
 
-      {/* ── COMPLETE / HISTORY section ───────────────────────────────────── */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setShowHistory((v) => !v)}
-          className="flex items-center gap-2 mb-3 w-full text-left"
-        >
-          <svg
-            width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
-            className="shrink-0 text-zinc-500 transition-transform"
-            style={{ transform: showHistory ? 'rotate(90deg)' : 'rotate(0deg)' }}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-          <span className="text-sm font-semibold text-zinc-400">Complete</span>
-          <span
-            className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-            style={{ background: 'rgba(113,113,122,0.15)', color: '#71717a' }}
-          >
-            {historyDOs.length + completedProformas.length}
-          </span>
-        </button>
-
-        {showHistory && (
-          <div className="space-y-4">
-
-            {/* Approved / Rejected DOs */}
-            {historyDOs.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide mb-2">
-                  Dispatch Orders ({historyDOs.length})
-                </p>
-                <div className="space-y-2">
-                  {historyDOs.map((d) => {
-                    const allUnits  = d.boxes.flatMap((b) => b.items).length;
-                    const isApproved = d.status === 'APPROVED';
-                    return (
-                      <div key={d.id} className="card p-4">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono font-semibold text-sm">{d.doNumber}</span>
-                              <span
-                                className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                                style={
-                                  isApproved
-                                    ? { background: 'rgba(34,197,94,0.1)',  color: '#4ade80' }
-                                    : { background: 'rgba(239,68,68,0.1)',  color: '#f87171' }
-                                }
-                              >
-                                {isApproved ? 'Approved' : 'Rejected'}
-                              </span>
-                            </div>
-                            <p className="text-zinc-400 text-sm mt-0.5">
-                              {d.order.client?.customerName ?? '—'} · Order #{d.order.orderNumber}
-                            </p>
-                            <p className="text-zinc-500 text-xs mt-0.5">
-                              {d.order.product.name} · {allUnits} unit{allUnits !== 1 ? 's' : ''} · {d.boxes.length} box{d.boxes.length !== 1 ? 'es' : ''}
-                            </p>
-                            <p className="text-zinc-600 text-xs mt-0.5">
-                              {isApproved
-                                ? `Approved ${fmtDate(d.approvedAt)}${d.approvedBy ? ` by ${d.approvedBy.name}` : ''}`
-                                : `Rejected ${fmtDate(d.approvedAt ?? d.updatedAt)}`}
-                            </p>
+          {/* Approved / Rejected DOs */}
+          {historyDOs.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide mb-2">
+                Dispatch Orders ({historyDOs.length})
+              </p>
+              <div className="space-y-2">
+                {historyDOs.map((d) => {
+                  const allUnits  = d.boxes.flatMap((b) => b.items).length;
+                  const isApproved = d.status === 'APPROVED';
+                  return (
+                    <div key={d.id} className="card p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-semibold text-sm">{d.doNumber}</span>
+                            <span
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                              style={
+                                isApproved
+                                  ? { background: 'rgba(34,197,94,0.1)',  color: '#4ade80' }
+                                  : { background: 'rgba(239,68,68,0.1)',  color: '#f87171' }
+                              }
+                            >
+                              {isApproved ? 'Approved' : 'Rejected'}
+                            </span>
                           </div>
-                          <a
-                            href={`/print/dispatch-order/${d.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="View DO"
-                            className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 hover:text-sky-400 transition-colors"
-                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-                          >
-                            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V8m0 8l-3-3m3 3l3-3M4 20h16" />
-                            </svg>
-                          </a>
+                          <p className="text-zinc-400 text-sm mt-0.5">
+                            {d.order.client?.customerName ?? '—'} · Order #{d.order.orderNumber}
+                          </p>
+                          <p className="text-zinc-500 text-xs mt-0.5">
+                            {d.order.product.name} · {allUnits} unit{allUnits !== 1 ? 's' : ''} · {d.boxes.length} box{d.boxes.length !== 1 ? 'es' : ''}
+                          </p>
+                          <p className="text-zinc-600 text-xs mt-0.5">
+                            {isApproved
+                              ? `Approved ${fmtDate(d.approvedAt)}${d.approvedBy ? ` by ${d.approvedBy.name}` : ''}`
+                              : `Rejected ${fmtDate(d.approvedAt ?? d.updatedAt)}`}
+                          </p>
                         </div>
+                        <a
+                          href={`/print/dispatch-order/${d.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="View DO"
+                          className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 hover:text-sky-400 transition-colors"
+                          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                        >
+                          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V8m0 8l-3-3m3 3l3-3M4 20h16" />
+                          </svg>
+                        </a>
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Approved / Converted / Rejected proformas */}
-            {completedProformas.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide mb-2">
-                  Proforma Invoices ({completedProformas.length})
-                </p>
-                <div className="space-y-2">
-                  {completedProformas.map((p) => {
-                    const st = STATUS_STYLE[p.status] ?? STATUS_STYLE.APPROVED;
-                    return (
-                      <div key={p.id} className="card p-4">
-                        <div className="flex items-start justify-between gap-2">
-                          <Link href={`/sales/${p.id}`} className="flex-1 min-w-0 block">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono font-semibold text-sm">{p.invoiceNumber}</span>
-                              <span
-                                className="text-[10px] font-medium px-1.5 py-0.5 rounded border"
-                                style={{ background: st.bg, color: st.color, borderColor: st.border }}
-                              >
-                                {p.status.replace('_', ' ')}
-                              </span>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.currency}</span>
-                            </div>
-                            <p className="text-zinc-400 text-sm mt-0.5">{p.client.customerName}</p>
-                            <p className="text-zinc-600 text-xs mt-0.5">
-                              {fmtDate(p.invoiceDate)}
-                              {' · '}{p._count.items} item{p._count.items !== 1 ? 's' : ''}
-                            </p>
-                          </Link>
-                          <Link
-                            href={`/sales/${p.id}`}
-                            className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 hover:text-sky-400 transition-colors"
-                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                            </svg>
-                          </Link>
-                        </div>
+          {/* Approved / Converted / Rejected proformas */}
+          {completedProformas.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide mb-2">
+                Proforma Invoices ({completedProformas.length})
+              </p>
+              <div className="space-y-2">
+                {completedProformas.map((p) => {
+                  const st = STATUS_STYLE[p.status] ?? STATUS_STYLE.APPROVED;
+                  return (
+                    <div key={p.id} className="card p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <Link href={`/sales/${p.id}`} className="flex-1 min-w-0 block">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-semibold text-sm">{p.invoiceNumber}</span>
+                            <span
+                              className="text-[10px] font-medium px-1.5 py-0.5 rounded border"
+                              style={{ background: st.bg, color: st.color, borderColor: st.border }}
+                            >
+                              {p.status.replace('_', ' ')}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.currency}</span>
+                          </div>
+                          <p className="text-zinc-400 text-sm mt-0.5">{p.client.customerName}</p>
+                          <p className="text-zinc-600 text-xs mt-0.5">
+                            {fmtDate(p.invoiceDate)}
+                            {' · '}{p._count.items} item{p._count.items !== 1 ? 's' : ''}
+                          </p>
+                        </Link>
+                        <Link
+                          href={`/sales/${p.id}`}
+                          className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 hover:text-sky-400 transition-colors"
+                          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                          </svg>
+                        </Link>
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+      )}
       </>}
     </div>
   );
