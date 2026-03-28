@@ -16,13 +16,17 @@ const schema = z.object({
 async function generateNextOrderNumber(): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `WO-${year}-`;
-  const last = await prisma.order.findFirst({
+  const existing = await prisma.order.findMany({
     where: { orderNumber: { startsWith: prefix } },
-    orderBy: { orderNumber: 'desc' },
     select: { orderNumber: true },
   });
-  const seq = last ? parseInt(last.orderNumber.replace(prefix, ''), 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(3, '0')}`;
+  let maxSeq = 0;
+  for (const o of existing) {
+    const numPart = o.orderNumber.slice(prefix.length);
+    const n = parseInt(numPart, 10);
+    if (!isNaN(n) && n > maxSeq) maxSeq = n;
+  }
+  return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
