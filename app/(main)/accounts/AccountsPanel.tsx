@@ -232,7 +232,7 @@ export function AccountsPanel({
         {pendingProformas.length > 0 && (
           <div>
             <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide mb-2">
-              Invoices ({pendingProformas.length})
+              Proforma Invoices ({pendingProformas.length})
             </p>
             <div className="space-y-2">
               {pendingProformas.map((p) => (
@@ -360,7 +360,7 @@ export function AccountsPanel({
             {completedProformas.length > 0 && (
               <div>
                 <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide mb-2">
-                  Invoices ({completedProformas.length})
+                  Proforma Invoices ({completedProformas.length})
                 </p>
                 <div className="space-y-2">
                   {completedProformas.map((p) => {
