@@ -28,6 +28,7 @@ const patchSchema = z.object({
   status:              z.enum(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CONVERTED']).optional(),
   splitInvoice:        z.boolean().optional(),
   splitServicePercent: z.number().min(0).max(100).optional().nullable(),
+  shippingRoute:       z.enum(['AIR', 'LAND']).optional().nullable(),
   rejectedReason:      z.string().optional(),
   declaredAmount:      z.number().min(0).optional().nullable(),
 });

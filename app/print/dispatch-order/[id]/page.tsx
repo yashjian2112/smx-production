@@ -9,6 +9,7 @@ export default async function PrintDispatchOrderPage({ params }: { params: { id:
       order: {
         include: {
           product: { select: { code: true, name: true } },
+          proformaInvoice: { select: { shippingRoute: true } },
           // Fetch ready units on the order so we can show them before packing starts
           units: {
             where: {

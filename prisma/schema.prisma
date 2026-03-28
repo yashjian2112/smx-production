@@ -541,6 +541,7 @@ model ProformaInvoice {
 
   splitInvoice        Boolean  @default(false) @map("split_invoice")
   splitServicePercent Float?   @map("split_service_percent")
+  shippingRoute       String?  @map("shipping_route")  // "AIR" | "LAND" — domestic only
 
   client         Client               @relation(fields: [clientId], references: [id])
   createdBy      User                 @relation("PICreatedBy", fields: [createdById], references: [id])

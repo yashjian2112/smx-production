@@ -31,6 +31,7 @@ type Proforma = {
   termsOfPayment: string | null;
   deliveryDays: number | null;
   termsOfDelivery: string | null;
+  shippingRoute: string | null;
 } | null;
 
 type RelatedInvoice = {
@@ -172,6 +173,10 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         /* LUT BAR — bold black text */
         .lut-bar { padding: 3px 10px; background: #f8fff8; border-bottom: 1px solid #b3d9b3; font-size: 8px; color: #000; font-weight: 700; line-height: 1.5; }
 
+        .shipping-banner { text-align: center; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; padding: 7px 10px; border-bottom: 2px solid; }
+        .shipping-banner.air { background: #e0f2fe; color: #0c4a6e; border-color: #7dd3fc; }
+        .shipping-banner.land { background: #f0fdf4; color: #14532d; border-color: #86efac; }
+
         /* INFO BAR — 2 rows */
         .info-bar { border-bottom: 1px solid #c8d8f0; background: #f0f5ff; }
         .info-row { display: grid; grid-template-columns: 1fr 1fr 1fr; }
@@ -310,6 +315,13 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
             </div>
           </div>
         </div>
+
+        {/* SHIPPING ROUTE BANNER */}
+        {!isExport && invoice.proforma?.shippingRoute && (
+          <div className={`shipping-banner ${invoice.proforma.shippingRoute === 'AIR' ? 'air' : 'land'}`}>
+            DISPATCH BY {invoice.proforma.shippingRoute}
+          </div>
+        )}
 
         {/* PARTIES */}
         <div className="parties">

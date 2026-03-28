@@ -35,6 +35,7 @@ type DispatchOrder = {
     orderNumber: string;
     quantity: number;
     product: { code: string; name: string };
+    proformaInvoice?: { shippingRoute: string | null } | null;
     units: OrderUnit[];   // ready units on the order (fallback for OPEN status)
   };
   boxes: Box[];
@@ -155,6 +156,10 @@ export function PrintDispatchOrder({
         .info-value { font-size: 10px; color: #111; font-weight: 600; }
         .info-bar-2 { background: #fafbfd; }
 
+        .shipping-banner { text-align: center; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; padding: 7px 10px; border-bottom: 2px solid; }
+        .shipping-banner.air { background: #e0f2fe; color: #0c4a6e; border-color: #7dd3fc; }
+        .shipping-banner.land { background: #f0fdf4; color: #14532d; border-color: #86efac; }
+
         .status-badge { display: inline-block; font-size: 7.5px; font-weight: 700; padding: 2px 7px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #fff; }
 
         /* Tables */
@@ -259,6 +264,13 @@ export function PrintDispatchOrder({
             </div>
           </div>
         </div>
+
+        {/* ── SHIPPING ROUTE BANNER ── */}
+        {dispatchOrder.order.proformaInvoice?.shippingRoute && (
+          <div className={`shipping-banner ${dispatchOrder.order.proformaInvoice.shippingRoute === 'AIR' ? 'air' : 'land'}`}>
+            DISPATCH BY {dispatchOrder.order.proformaInvoice.shippingRoute}
+          </div>
+        )}
 
         {/* ── UNITS ── */}
         {displayUnits.length === 0 ? (

@@ -36,6 +36,7 @@ type Proforma = {
   deliveryDays: number | null;
   termsOfDelivery: string | null;
   notes: string | null;
+  shippingRoute: string | null;
   client: Client;
   items: Item[];
 };
@@ -153,6 +154,11 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
 
         /* ── LUT BAR (export) ── */
         .lut-bar { padding: 4px 10px; background: #f8fff8; border-bottom: 1px solid #b3d9b3; font-size: 8.5px; color: #1a5c1a; line-height: 1.6; }
+
+        /* ── SHIPPING ROUTE BANNER ── */
+        .shipping-banner { text-align: center; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; padding: 7px 10px; border-bottom: 2px solid; }
+        .shipping-banner.air { background: #e0f2fe; color: #0c4a6e; border-color: #7dd3fc; }
+        .shipping-banner.land { background: #f0fdf4; color: #14532d; border-color: #86efac; }
 
         /* ── PARTIES ── */
         .parties { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #c8d8f0; }
@@ -296,6 +302,13 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
           <div className="lut-bar">
             Supply under Bond/LUT without payment of IGST — LUT No.: <strong>{s('lut_number')}</strong>
             &nbsp; Valid: <strong>{s('lut_from')}</strong> to <strong>{s('lut_to')}</strong>
+          </div>
+        )}
+
+        {/* ── SHIPPING ROUTE BANNER (domestic only) ── */}
+        {!isExport && proforma.shippingRoute && (
+          <div className={`shipping-banner ${proforma.shippingRoute === 'AIR' ? 'air' : 'land'}`}>
+            DISPATCH BY {proforma.shippingRoute}
           </div>
         )}
 

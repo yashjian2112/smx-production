@@ -57,6 +57,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   // Split invoice
   const [splitInvoice,        setSplitInvoice]        = useState(false);
   const [splitServicePercent, setSplitServicePercent] = useState('');
+  // Shipping route (domestic only)
+  const [shippingRoute,       setShippingRoute]       = useState<'AIR' | 'LAND'>('LAND');
   // Replacement-specific fields
   const [unitSerial,       setUnitSerial]       = useState('');
   const [problemDesc,      setProblemDesc]      = useState('');
@@ -238,6 +240,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           items:           submitItems,
           splitInvoice:    splitInvoice || undefined,
           splitServicePercent: splitInvoice && splitServicePercent ? parseFloat(splitServicePercent) : undefined,
+          shippingRoute:   !isGlobal ? shippingRoute : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -400,6 +403,26 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           </div>
         )}
       </div>
+
+      {/* Shipping Route — domestic only */}
+      {!isGlobal && (
+        <div>
+          <label className={lCls}>Shipping Route</label>
+          <div className="flex gap-2">
+            {(['LAND', 'AIR'] as const).map((r) => (
+              <button key={r} type="button" onClick={() => setShippingRoute(r)}
+                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
+                style={shippingRoute === r
+                  ? r === 'AIR'
+                    ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                    : { background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.4)', color: '#4ade80' }
+                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+                {r === 'AIR' ? 'By Air' : 'By Land'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Terms of Payment */}
       <div>

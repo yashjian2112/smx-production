@@ -29,6 +29,7 @@ export default async function PrintInvoicePage({ params }: { params: { id: strin
           termsOfPayment: true,
           deliveryDays: true,
           termsOfDelivery: true,
+          shippingRoute: true,
         },
       },
       relatedInvoice: {

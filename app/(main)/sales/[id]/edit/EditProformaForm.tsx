@@ -32,6 +32,7 @@ type InitialProforma = {
   notes: string | null;
   splitInvoice: boolean;
   splitServicePercent: number | null;
+  shippingRoute: string | null;
   items: InitialItem[];
 };
 
@@ -162,6 +163,7 @@ export function EditProformaForm({
 
   const [splitInvoice, setSplitInvoice] = useState(proforma.splitInvoice ?? false);
   const [splitServicePercent, setSplitServicePercent] = useState(proforma.splitServicePercent?.toString() ?? '');
+  const [shippingRoute, setShippingRoute] = useState<'AIR' | 'LAND'>((proforma.shippingRoute as 'AIR' | 'LAND') ?? 'LAND');
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
@@ -310,6 +312,7 @@ export function EditProformaForm({
           exchangeRate:    currency === 'USD' && rate > 0 ? rate : null,
           splitInvoice:    splitInvoice || undefined,
           splitServicePercent: splitInvoice && splitServicePercent ? parseFloat(splitServicePercent) : undefined,
+          shippingRoute:   !isGlobal ? shippingRoute : null,
           termsOfPayment:  termsOfPayment  || undefined,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : null,
           notes:           finalNotes    || undefined,
@@ -454,6 +457,26 @@ export function EditProformaForm({
               })()}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Shipping Route — domestic only */}
+      {!isGlobal && (
+        <div>
+          <label className={lCls}>Shipping Route</label>
+          <div className="flex gap-2">
+            {(['LAND', 'AIR'] as const).map((r) => (
+              <button key={r} type="button" onClick={() => setShippingRoute(r)}
+                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
+                style={shippingRoute === r
+                  ? r === 'AIR'
+                    ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                    : { background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.4)', color: '#4ade80' }
+                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+                {r === 'AIR' ? 'By Air' : 'By Land'}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
