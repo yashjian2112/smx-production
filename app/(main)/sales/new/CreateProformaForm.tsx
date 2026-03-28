@@ -185,6 +185,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       setError('Please enter voltage range (From and To) for all line items');
       return;
     }
+    if (!termsOfPayment.trim()) { setError('Terms of Payment is required'); return; }
+    if (!deliveryDays.trim()) { setError('Delivery Days is required'); return; }
     if (invoiceType === 'REPLACEMENT' && (!unitSerial.trim() || !problemDesc.trim())) {
       setError('Please fill in Unit Serial Number and Problem Description for replacement');
       return;
@@ -426,8 +428,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
 
       {/* Terms of Payment */}
       <div>
-        <label className={lCls}>Terms of Payment</label>
-        <input value={termsOfPayment} onChange={(e) => setTermsOfPayment(e.target.value)} className={iCls} placeholder="e.g. 100% ADVANCE" />
+        <label className={lCls}>Terms of Payment <span className="text-red-400">*</span></label>
+        <input value={termsOfPayment} onChange={(e) => setTermsOfPayment(e.target.value)} className={iCls} placeholder="e.g. 100% ADVANCE" required />
         <div className="flex gap-1.5 mt-1.5 flex-wrap">
           {PAYMENT_PRESETS.map((p) => (
             <button key={p} type="button" onClick={() => setTermsOfPayment(p)}
@@ -441,8 +443,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
 
       {/* Delivery Days */}
       <div>
-        <label className={lCls}>Delivery Days <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
-        <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 30" />
+        <label className={lCls}>Delivery Days <span className="text-red-400">*</span> <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
+        <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 30" required />
       </div>
 
       {/* ── Split Invoice — global/export clients only ── */}
