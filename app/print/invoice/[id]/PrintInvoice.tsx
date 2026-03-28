@@ -216,6 +216,9 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         /* AMOUNT WORDS */
         .words-bar { padding: 4px 10px; background: #f0f5ff; border-top: 1px solid #c8d8f0; font-size: 8px; line-height: 1.4; display: flex; justify-content: space-between; }
 
+        /* BOTTOM GROUP — totals+words+footer pushed to bottom */
+        .bottom-group { margin-top: auto; }
+
         /* FOOTER — compact, no extra lines at bottom */
         .footer { display: grid; grid-template-columns: 1fr 1fr; border-top: 1.5px solid #1a3a6b; }
         .footer-col { padding: 4px 10px; }
@@ -383,6 +386,9 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
           </tbody>
         </table>
 
+        {/* BOTTOM GROUP */}
+        <div className="bottom-group">
+
         {/* TOTALS */}
         <div className="totals-wrap">
           <div className="totals-box">
@@ -470,6 +476,8 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         </div>
 
         <div className="comp-gen">This is a Computer Generated Tax Invoice</div>
+
+        </div>{/* end bottom-group */}
 
       </div>
     </>
