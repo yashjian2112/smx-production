@@ -156,9 +156,7 @@ export function PrintDispatchOrder({
         .info-value { font-size: 10px; color: #111; font-weight: 600; }
         .info-bar-2 { background: #fafbfd; }
 
-        .shipping-banner { text-align: center; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; padding: 7px 10px; border-bottom: 2px solid; }
-        .shipping-banner.air { background: #e0f2fe; color: #0c4a6e; border-color: #7dd3fc; }
-        .shipping-banner.land { background: #f0fdf4; color: #14532d; border-color: #86efac; }
+        .shipping-banner { text-align: center; font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; padding: 8px 10px; border-bottom: 2px solid #1a3a6b; color: #000; }
 
         .status-badge { display: inline-block; font-size: 7.5px; font-weight: 700; padding: 2px 7px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #fff; }
 
@@ -267,7 +265,7 @@ export function PrintDispatchOrder({
 
         {/* ── SHIPPING ROUTE BANNER ── */}
         {dispatchOrder.order.proformaInvoice?.shippingRoute && (
-          <div className={`shipping-banner ${dispatchOrder.order.proformaInvoice.shippingRoute === 'AIR' ? 'air' : 'land'}`}>
+          <div className="shipping-banner">
             DISPATCH BY {dispatchOrder.order.proformaInvoice.shippingRoute}
           </div>
         )}

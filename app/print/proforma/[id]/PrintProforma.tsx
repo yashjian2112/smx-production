@@ -156,9 +156,7 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
         .lut-bar { padding: 4px 10px; background: #f8fff8; border-bottom: 1px solid #b3d9b3; font-size: 8.5px; color: #1a5c1a; line-height: 1.6; }
 
         /* ── SHIPPING ROUTE BANNER ── */
-        .shipping-banner { text-align: center; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; padding: 7px 10px; border-bottom: 2px solid; }
-        .shipping-banner.air { background: #e0f2fe; color: #0c4a6e; border-color: #7dd3fc; }
-        .shipping-banner.land { background: #f0fdf4; color: #14532d; border-color: #86efac; }
+        .shipping-banner { text-align: center; font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; padding: 8px 10px; border-bottom: 2px solid #1a3a6b; color: #000; }
 
         /* ── PARTIES ── */
         .parties { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #c8d8f0; }
@@ -217,15 +215,18 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
         /* ── AMOUNT WORDS ── */
         .words-bar { padding: 5px 10px; background: #f0f5ff; border-top: 1px solid #c8d8f0; font-size: 8.5px; line-height: 1.5; display: flex; justify-content: space-between; }
 
+        /* ── BOTTOM GROUP — totals+words+footer pushed to bottom ── */
+        .bottom-group { margin-top: auto; }
+
         /* ── FOOTER ── */
-        .footer { display: grid; grid-template-columns: 1fr 1fr; border-top: 1.5px solid #1a3a6b; flex: 1; }
-        .footer-col { padding: 8px 10px; }
+        .footer { display: grid; grid-template-columns: 1fr 1fr; border-top: 1.5px solid #1a3a6b; }
+        .footer-col { padding: 4px 10px; }
         .footer-col:first-child { border-right: 1px solid #c8d8f0; }
-        .f-label { font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #1a3a6b; margin-bottom: 4px; }
-        .bank-row { font-size: 8.5px; color: #222; line-height: 1.7; }
-        .sign-wrap { display: flex; flex-direction: column; justify-content: space-between; height: 100%; }
-        .sign-line { border-top: 1px solid #1a3a6b; padding-top: 3px; font-size: 8.5px; font-weight: 700; color: #1a3a6b; }
-        .declaration { margin-top: 8px; font-size: 8px; color: #666; border-top: 1px solid #e8edf5; padding-top: 5px; line-height: 1.5; }
+        .f-label { font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #1a3a6b; margin-bottom: 3px; }
+        .bank-row { font-size: 8px; color: #222; line-height: 1.6; }
+        .sign-wrap { display: flex; flex-direction: column; justify-content: flex-end; min-height: 50px; }
+        .sign-line { border-top: 1px solid #1a3a6b; padding-top: 2px; font-size: 8px; font-weight: 700; color: #1a3a6b; }
+        .declaration { margin-top: 4px; font-size: 7.5px; color: #666; border-top: 1px solid #e8edf5; padding-top: 3px; line-height: 1.4; }
 
         /* ── NOTES / FOOTER TEXT ── */
         .notes-bar { padding: 5px 10px; font-size: 8.5px; color: #333; border-top: 1px solid #c8d8f0; }
@@ -305,9 +306,27 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
           </div>
         )}
 
+        {/* ── TERMS (below info bar) ── */}
+        <div className={`terms-row ${hasGst ? 'terms-3col' : 'terms-2col'}`}>
+          <div className="term-cell">
+            <div className="term-label">Mode / Terms of Payment</div>
+            <div className="term-value">{proforma.termsOfPayment || '—'}</div>
+          </div>
+          <div className="term-cell">
+            <div className="term-label">Delivery Schedule</div>
+            <div className="term-value">{proforma.deliveryDays ? `Within ${proforma.deliveryDays} days of payment` : '—'}</div>
+          </div>
+          {hasGst && (
+            <div className="term-cell">
+              <div className="term-label">Tax</div>
+              <div className="term-value">{isIntraState ? 'CGST 9% + SGST 9%' : 'IGST 18%'}</div>
+            </div>
+          )}
+        </div>
+
         {/* ── SHIPPING ROUTE BANNER (domestic only) ── */}
         {!isExport && proforma.shippingRoute && (
-          <div className={`shipping-banner ${proforma.shippingRoute === 'AIR' ? 'air' : 'land'}`}>
+          <div className="shipping-banner">
             DISPATCH BY {proforma.shippingRoute}
           </div>
         )}
@@ -331,24 +350,6 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
             {proforma.client.phone     && <div className="party-line">Ph: {proforma.client.phone}</div>}
             {proforma.client.email     && <div className="party-line">Email: {proforma.client.email}</div>}
           </div>
-        </div>
-
-        {/* ── TERMS ── */}
-        <div className={`terms-row ${hasGst ? 'terms-3col' : 'terms-2col'}`}>
-          <div className="term-cell">
-            <div className="term-label">Mode / Terms of Payment</div>
-            <div className="term-value">{proforma.termsOfPayment || '—'}</div>
-          </div>
-          <div className="term-cell">
-            <div className="term-label">Delivery Schedule</div>
-            <div className="term-value">{proforma.deliveryDays ? `Within ${proforma.deliveryDays} days of payment` : '—'}</div>
-          </div>
-          {hasGst && (
-            <div className="term-cell">
-              <div className="term-label">Tax</div>
-              <div className="term-value">{isIntraState ? 'CGST 9% + SGST 9%' : 'IGST 18%'}</div>
-            </div>
-          )}
         </div>
 
         {/* ── REPLACEMENT INFO ── */}
@@ -398,11 +399,11 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
                 </td>
               </tr>
             ))}
-            {productItems.length < 6 && Array.from({ length: 6 - productItems.length }).map((_, i) => (
-              <tr key={`emp${i}`} className="empty-row"><td /><td /><td /><td /><td /><td /><td /><td /></tr>
-            ))}
           </tbody>
         </table>
+
+        {/* ── BOTTOM GROUP: totals + words + footer pushed to bottom ── */}
+        <div className="bottom-group">
 
         {/* ── TOTALS ── */}
         <div className="totals-wrap">
@@ -513,7 +514,7 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
         )}
 
         {/* ── FOOTER ── */}
-        <div className="footer" style={{ marginTop: 'auto' }}>
+        <div className="footer">
           <div className="footer-col">
             <div className="f-label">Company Bank Details</div>
             <div className="bank-row">
@@ -531,7 +532,7 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
             <div className="sign-wrap">
               <div>
                 <div className="f-label">For {coName}</div>
-                <div style={{ fontSize: 8, color: '#888', marginBottom: 32 }}>Authorised Signatory</div>
+                <div style={{ fontSize: 7.5, color: '#888', marginBottom: 24 }}>Authorised Signatory</div>
               </div>
               <div className="sign-line">Authorised Signatory</div>
             </div>
@@ -539,6 +540,8 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
         </div>
 
         <div className="comp-gen">This is a Computer Generated {isFinalInvoice ? 'Invoice' : 'Proforma Invoice'}</div>
+
+        </div>{/* end bottom-group */}
 
       </div>
     </>
