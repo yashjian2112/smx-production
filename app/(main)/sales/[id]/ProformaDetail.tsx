@@ -13,6 +13,7 @@ type Proforma = {
   termsOfPayment: string | null; deliveryDays: number | null; termsOfDelivery: string | null;
   notes: string | null; status: string; rejectedReason: string | null;
   paymentReceiptUrl: string | null;
+  declaredAmount: number | null;
   splitInvoice: boolean; splitServicePercent: number | null;
   createdBy: { id: string; name: string }; approvedBy: { id: string; name: string } | null;
   approvedAt: string | null; client: Client; items: Item[];
@@ -56,6 +57,11 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   const [splitSaving, setSplitSaving]   = useState(false);
   const [splitError,  setSplitError]    = useState('');
   const [splitSaved,  setSplitSaved]    = useState(false);
+
+  // Submit for approval modal
+  const [approvalModal,      setApprovalModal]      = useState(false);
+  const [approvalAmount,     setApprovalAmount]     = useState('');
+  const [approvalAmountError, setApprovalAmountError] = useState('');
 
   const isOwner          = proforma.createdBy.id === userId;
   const canEdit          = (role === 'ADMIN' || (role === 'SALES' && isOwner)) && proforma.status === 'DRAFT';
@@ -121,12 +127,27 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
     }
   }
 
-  async function sendForApproval() {
+  function openApprovalModal() {
     if (!receiptUrl) { setError('Please upload the signed PI (PDF) before sending for approval.'); return; }
-    setLoading(true); setError('');
+    setApprovalAmount('');
+    setApprovalAmountError('');
+    setApprovalModal(true);
+  }
+
+  async function sendForApproval() {
+    if (!approvalAmount || parseFloat(approvalAmount) <= 0) {
+      setApprovalAmountError('Enter the total amount');
+      return;
+    }
+    setLoading(true); setError(''); setApprovalAmountError('');
     try {
-      const res = await fetch(`/api/proformas/${proforma.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'PENDING_APPROVAL' }) });
-      if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed'); } else router.refresh();
+      const res = await fetch(`/api/proformas/${proforma.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'PENDING_APPROVAL', declaredAmount: parseFloat(approvalAmount) }),
+      });
+      if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed'); }
+      else { setApprovalModal(false); router.refresh(); }
     } catch { setError('Network error'); } finally { setLoading(false); }
   }
 
@@ -325,7 +346,7 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
 
         {canSendApproval && (
           <div className="flex flex-col items-end gap-1">
-            <button onClick={sendForApproval} disabled={loading || !receiptUrl}
+            <button onClick={openApprovalModal} disabled={loading || !receiptUrl}
               title={!receiptUrl ? 'Upload signed PI (PDF) first' : undefined}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-sm text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" /></svg>
@@ -555,10 +576,43 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
               <span>₹{(total * proforma.exchangeRate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
           )}
+          {proforma.declaredAmount != null && (
+            <div className="flex justify-between text-xs mt-2 pt-2 border-t border-zinc-800">
+              <span className="text-amber-400 font-medium">Declared by Sales</span>
+              <span className="text-amber-400 font-semibold">{fmtAmt(proforma.declaredAmount, proforma.currency)}</span>
+            </div>
+          )}
         </div>
       </div>
 
       {proforma.notes && <div className="card p-4"><p className="text-xs text-zinc-600 mb-1">Notes</p><p className="text-sm text-zinc-300">{proforma.notes}</p></div>}
+
+      {approvalModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={() => setApprovalModal(false)}>
+          <div className="w-full max-w-sm bg-zinc-900 border border-zinc-700 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold mb-1">Submit for Approval</h3>
+            <p className="text-xs text-zinc-500 mb-3">Enter the total invoice amount for accounts verification.</p>
+            <label className="block text-xs text-zinc-400 mb-1">Total Amount ({proforma.currency}) <span className="text-red-400">*</span></label>
+            <input
+              type="number"
+              value={approvalAmount}
+              onChange={(e) => { setApprovalAmount(e.target.value); setApprovalAmountError(''); }}
+              onWheel={(e) => e.currentTarget.blur()}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 mb-1"
+              placeholder="e.g. 50000"
+              min={0}
+              step="0.01"
+              autoFocus
+            />
+            {approvalAmountError && <p className="text-xs text-red-400 mb-2">{approvalAmountError}</p>}
+            {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => setApprovalModal(false)} className="flex-1 py-2 rounded-lg border border-zinc-600 text-sm text-zinc-400">Cancel</button>
+              <button onClick={sendForApproval} disabled={loading} className="flex-1 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-sm text-white font-medium">{loading ? 'Submitting…' : 'Submit'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {rejectModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={() => setRejectModal(false)}>

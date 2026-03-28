@@ -525,6 +525,7 @@ model ProformaInvoice {
   termsOfDelivery  String?        @map("terms_of_delivery")
   notes            String?
   paymentReceiptUrl  String?      @map("payment_receipt_url")
+  declaredAmount     Float?       @map("declared_amount")      // amount SALES declares at submit-for-approval (ACCOUNTS verifies)
   status             ProformaStatus @default(DRAFT)
   rejectedReason     String?      @map("rejected_reason")
   clientPONumber     String?      @map("client_po_number")   // client's PO reference

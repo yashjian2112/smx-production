@@ -29,6 +29,7 @@ const patchSchema = z.object({
   splitInvoice:        z.boolean().optional(),
   splitServicePercent: z.number().min(0).max(100).optional().nullable(),
   rejectedReason:      z.string().optional(),
+  declaredAmount:      z.number().min(0).optional().nullable(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -85,6 +86,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (parsed.data.status === 'PENDING_APPROVAL' && !existing.paymentReceiptUrl)
       return NextResponse.json({ error: 'Please upload the signed PI (PDF) before sending for approval' }, { status: 400 });
 
+    // Mandatory declared amount when submitting for approval
+    if (parsed.data.status === 'PENDING_APPROVAL' && (parsed.data.declaredAmount == null || parsed.data.declaredAmount <= 0))
+      return NextResponse.json({ error: 'Total amount is required when submitting for approval' }, { status: 400 });
+
     const { items, rejectedReason, ...rest } = parsed.data;
 
     const proforma = await prisma.proformaInvoice.update({
@@ -102,6 +107,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         ...(rest.status === 'REJECTED' && rejectedReason !== undefined && { rejectedReason }),
         ...(rest.splitInvoice         !== undefined && { splitInvoice: rest.splitInvoice }),
         ...(rest.splitServicePercent  !== undefined && { splitServicePercent: rest.splitServicePercent }),
+        ...(rest.declaredAmount       !== undefined && { declaredAmount: rest.declaredAmount }),
         ...(items !== undefined && {
           items: {
             deleteMany: {},
