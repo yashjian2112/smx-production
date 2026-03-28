@@ -230,6 +230,7 @@ export function AccountsPanel({
               <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide mb-2">
                 Proforma Invoices ({pendingProformas.length})
               </p>
+
               <div className="space-y-2">
                 {pendingProformas.map((p) => (
                   <div key={p.id} className="card p-4">

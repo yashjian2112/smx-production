@@ -8,9 +8,22 @@ import { StageType } from '@prisma/client';
 import { z } from 'zod';
 
 const schema = z.object({
-  orderNumber: z.string().min(1),   // e.g. WO-2026-001
-  itemIndex:   z.number().int().min(0).default(0), // which PI line item to convert (default: first product item)
+  orderNumber: z.string().optional(),   // auto-generated if not provided
+  notes:       z.string().optional(),
+  itemIndex:   z.number().int().min(0).default(0),
 });
+
+async function generateNextOrderNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `WO-${year}-`;
+  const last = await prisma.order.findFirst({
+    where: { orderNumber: { startsWith: prefix } },
+    orderBy: { orderNumber: 'desc' },
+    select: { orderNumber: true },
+  });
+  const seq = last ? parseInt(last.orderNumber.replace(prefix, ''), 10) + 1 : 1;
+  return `${prefix}${String(seq).padStart(3, '0')}`;
+}
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -40,15 +53,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const targetItem = productItems[Math.min(parsed.data.itemIndex, productItems.length - 1)];
     const product    = targetItem.product!;
 
+    // Auto-generate or use provided order number
+    const orderNumber = parsed.data.orderNumber?.trim() || await generateNextOrderNumber();
+
     // Check for duplicate order number
-    const existingOrder = await prisma.order.findFirst({ where: { orderNumber: parsed.data.orderNumber } });
+    const existingOrder = await prisma.order.findFirst({ where: { orderNumber } });
     if (existingOrder)
-      return NextResponse.json({ error: `Order number "${parsed.data.orderNumber}" already exists` }, { status: 400 });
+      return NextResponse.json({ error: `Order number "${orderNumber}" already exists` }, { status: 400 });
 
     // Create the production order
     const order = await prisma.order.create({
       data: {
-        orderNumber:  parsed.data.orderNumber,
+        orderNumber,
         productId:    product.id,
         clientId:     proforma.clientId,
         quantity:     targetItem.quantity,
@@ -59,11 +75,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       include: { product: true },
     });
 
+    const notesText = parsed.data.notes?.trim();
     await appendTimeline({
       orderId: order.id,
       userId:  session.id,
       action:  'order_created',
-      remarks: `Converted from Proforma Invoice ${proforma.invoiceNumber}`,
+      remarks: `Converted from Proforma Invoice ${proforma.invoiceNumber}${notesText ? ` — Notes: ${notesText}` : ''}`,
     });
 
     // Try to allocate PS and BB barcodes from MaterialSerial inventory (Option A).

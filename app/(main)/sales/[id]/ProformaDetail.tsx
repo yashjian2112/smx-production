@@ -43,7 +43,7 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   const [rejectModal,      setRejectModal]      = useState(false);
   const [rejectReason,     setRejectReason]     = useState('');
   const [convertModal,     setConvertModal]     = useState(false);
-  const [orderNumber,      setOrderNumber]      = useState('');
+  const [convertNotes,     setConvertNotes]     = useState('');
   const [receiptUrl,       setReceiptUrl]       = useState<string | null>(proforma.paymentReceiptUrl);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [receiptError,     setReceiptError]     = useState('');
@@ -158,10 +158,13 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   }
 
   async function convertToOrder() {
-    if (!orderNumber.trim()) { setError('Enter a work order number'); return; }
     setLoading(true); setError('');
     try {
-      const res = await fetch(`/api/proformas/${proforma.id}/convert`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNumber: orderNumber.trim() }) });
+      const res = await fetch(`/api/proformas/${proforma.id}/convert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: convertNotes.trim() || undefined }),
+      });
       const d = await res.json();
       if (!res.ok) { setError(d.error || 'Failed'); setLoading(false); return; }
       setConvertModal(false); router.refresh();
@@ -576,9 +579,9 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={() => setConvertModal(false)}>
           <div className="w-full max-w-sm bg-zinc-900 border border-zinc-700 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold mb-1">Convert to Production Order</h3>
-            <p className="text-xs text-zinc-500 mb-3">This will create a new production order and generate all unit serials.</p>
-            <label className="block text-xs text-zinc-400 mb-1">Work Order Number</label>
-            <input value={orderNumber} onChange={(e) => setOrderNumber(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500 mb-3" placeholder="e.g. WO-2026-042" />
+            <p className="text-xs text-zinc-500 mb-3">Work order number will be auto-assigned. This will create a new production order and generate all unit serials.</p>
+            <label className="block text-xs text-zinc-400 mb-1">Notes (optional)</label>
+            <textarea value={convertNotes} onChange={(e) => setConvertNotes(e.target.value)} rows={3} className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500 mb-3 resize-none" placeholder="Any notes for production team..." />
             {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
             <div className="flex gap-2">
               <button onClick={() => setConvertModal(false)} className="flex-1 py-2 rounded-lg border border-zinc-600 text-sm text-zinc-400">Cancel</button>

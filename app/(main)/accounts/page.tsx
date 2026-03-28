@@ -186,7 +186,7 @@ export default async function AccountsPage() {
           <div className="flex gap-3 mt-0.5">
             {pendingProformas > 0 && (
               <p className="text-xs text-amber-400">
-                {pendingProformas} invoice{pendingProformas !== 1 ? 's' : ''} pending
+                {pendingProformas} proforma{pendingProformas !== 1 ? 's' : ''} pending
               </p>
             )}
             {pendingDOs > 0 && (
