@@ -355,7 +355,10 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
         setJobCard(data);
         setStep('jc_waiting');
       } else {
-        setJcError(data?.error ?? 'Failed to create job card');
+        const msg = data?.error ?? 'Failed to create job card';
+        setJcError(msg.includes('BOM') || msg.includes('not found')
+          ? msg
+          : msg + '. Please contact Admin if the issue persists.');
       }
     } catch {
       setJcError('Network error');
@@ -725,12 +728,22 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
               <p className="text-zinc-400 text-xs">Create a job card so the Inventory Manager can issue components for this stage</p>
             </div>
           </div>
-          {jcError && <p className="text-red-400 text-xs mb-2">{jcError}</p>}
-          <button onClick={createJobCard} disabled={jcCreating}
+          {jcError && (
+            <div className="rounded-xl p-3 mb-3" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+              <p className="text-red-400 text-xs font-medium">{jcError}</p>
+            </div>
+          )}
+          <button onClick={createJobCard} disabled={jcCreating || !!jcError}
             className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50"
-            style={{ background: jcCreating ? 'rgba(14,165,233,0.3)' : 'rgba(14,165,233,0.8)' }}>
-            {jcCreating ? 'Creating…' : '+ Create Job Card'}
+            style={{ background: jcCreating ? 'rgba(14,165,233,0.3)' : jcError ? 'rgba(113,113,122,0.3)' : 'rgba(14,165,233,0.8)' }}>
+            {jcCreating ? 'Creating…' : jcError ? 'Cannot Create Job Card' : '+ Create Job Card'}
           </button>
+          {jcError && (
+            <button onClick={() => setJcError('')}
+              className="w-full py-2 rounded-xl text-xs text-zinc-400 hover:text-white transition-colors mt-2">
+              Retry
+            </button>
+          )}
         </div>
       </div>
     );
