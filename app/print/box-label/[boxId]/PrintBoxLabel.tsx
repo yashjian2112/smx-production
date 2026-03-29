@@ -23,6 +23,7 @@ type DispatchOrder = {
       phone: string | null;
     } | null;
     product: { code: string; name: string };
+    proformaInvoice?: { shippingRoute: string | null } | null;
   };
 };
 
@@ -93,6 +94,7 @@ export function PrintBoxLabel({ box, settings }: { box: Box; settings: Settings 
         }
         .lbl-co { font-size: 9px; font-weight: 700; letter-spacing: 0.3px; }
         .lbl-do { font-size: 8px; opacity: 0.85; }
+        .lbl-shipping { text-align: center; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; padding: 4px 8px; border-bottom: 2px solid #1a3a6b; color: #000; }
 
         .lbl-box-number {
           text-align: center;
@@ -145,6 +147,11 @@ export function PrintBoxLabel({ box, settings }: { box: Box; settings: Settings 
           <div className="lbl-co">{coName}</div>
           <div className="lbl-do">DO: {box.dispatchOrder.doNumber}</div>
         </div>
+
+        {/* Shipping route banner */}
+        {order.proformaInvoice?.shippingRoute && (
+          <div className="lbl-shipping">DISPATCH BY {order.proformaInvoice.shippingRoute}</div>
+        )}
 
         {/* Box number */}
         <div className="lbl-box-number">
