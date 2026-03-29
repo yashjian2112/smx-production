@@ -314,8 +314,7 @@ export function PrintDispatchOrder({
                   <th style={{ width: '22%' }}>Box Label</th>
                   <th style={{ width: '22%' }}>Size</th>
                   <th style={{ width: '10%' }} className="c">Weight</th>
-                  <th style={{ width: '6%'  }} className="c">Units</th>
-                  <th style={{ width: '9%'  }} className="c">Sealed</th>
+                  <th style={{ width: '8%'  }} className="c">Units</th>
                   <th>Serial Numbers</th>
                 </tr>
               </thead>
@@ -333,11 +332,6 @@ export function PrintDispatchOrder({
                       {box.weightKg != null ? `${box.weightKg} kg` : <span style={{ color: '#aaa' }}>—</span>}
                     </td>
                     <td className="c">{box.items.length}</td>
-                    <td className="c">
-                      <span className="status-badge" style={{ background: box.isSealed ? '#166534' : '#92400e' }}>
-                        {box.isSealed ? 'Sealed' : 'Open'}
-                      </span>
-                    </td>
                     <td style={{ fontSize: 7.5, color: '#444', lineHeight: 1.6 }}>
                       {box.items.map((i) => i.unit.serialNumber).join(', ')}
                     </td>
