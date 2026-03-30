@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle, Clock, Wrench, Package, Truck, XCircle, ChevronRight } from 'lucide-react';
+import { CheckCircle, Clock, Wrench, Package, XCircle, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -246,6 +246,21 @@ export default function ReturnDetail({
   const isEmployee = role === 'PRODUCTION_EMPLOYEE';
   const isSales = role === 'SALES';
 
+  const LOCKED_STATUSES = ['IN_REPAIR', 'REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED'];
+  const canEditDelete = ['ADMIN', 'SALES'].includes(role) && !LOCKED_STATUSES.includes(data.status);
+
+  // Edit form state
+  const [showEdit,       setShowEdit]       = useState(false);
+  const [editSerial,     setEditSerial]     = useState(data.serialNumber ?? '');
+  const [editIssue,      setEditIssue]      = useState(data.reportedIssue);
+  const [editLoading,    setEditLoading]    = useState(false);
+  const [editError,      setEditError]      = useState('');
+
+  // Delete state
+  const [confirmDelete,  setConfirmDelete]  = useState(false);
+  const [deleteLoading,  setDeleteLoading]  = useState(false);
+  const [deleteError,    setDeleteError]    = useState('');
+
   const openLog = data.repairLogs.find(l => !l.completedAt);
   const nextActions = getNextActions(data.status, role);
 
@@ -348,6 +363,51 @@ export default function ReturnDetail({
     }
   }
 
+  async function saveEdit() {
+    if (!editSerial.trim() || !editIssue.trim()) return;
+    setEditLoading(true);
+    setEditError('');
+    try {
+      const res = await fetch(`/api/returns/${data.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serialNumber:  editSerial.trim(),
+          reportedIssue: editIssue.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json();
+        setEditError(j.error ?? 'Failed to save');
+      } else {
+        setShowEdit(false);
+        router.refresh();
+      }
+    } catch {
+      setEditError('Network error');
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function deleteReturn() {
+    setDeleteLoading(true);
+    setDeleteError('');
+    try {
+      const res = await fetch(`/api/returns/${data.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const j = await res.json();
+        setDeleteError(j.error ?? 'Failed to delete');
+        setDeleteLoading(false);
+      } else {
+        router.push('/rework');
+      }
+    } catch {
+      setDeleteError('Network error');
+      setDeleteLoading(false);
+    }
+  }
+
   // ── Render ──
 
   const date = new Date(data.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
@@ -378,6 +438,98 @@ export default function ReturnDetail({
           ← Back
         </button>
       </div>
+
+      {/* Edit / Delete actions — only before IN_REPAIR */}
+      {canEditDelete && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setShowEdit(v => !v); setEditError(''); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+            style={{ background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)', color: '#38bdf8' }}
+          >
+            <Pencil className="w-3 h-3" />
+            Edit
+          </button>
+          <button
+            onClick={() => { setConfirmDelete(true); setDeleteError(''); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}
+          >
+            <Trash2 className="w-3 h-3" />
+            Delete
+          </button>
+        </div>
+      )}
+
+      {/* Edit form */}
+      {showEdit && canEditDelete && (
+        <div className="card p-4 space-y-3">
+          <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Edit Request</p>
+          <div>
+            <label className="text-[10px] text-zinc-400 mb-1 block">Serial Number</label>
+            <input
+              type="text"
+              value={editSerial}
+              onChange={e => setEditSerial(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 text-xs text-white font-mono placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              style={{ background: '#18181b', border: '1px solid #27272a' }}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-zinc-400 mb-1 block">Reported Issue</label>
+            <textarea
+              value={editIssue}
+              onChange={e => setEditIssue(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-sky-500"
+              style={{ background: '#18181b', border: '1px solid #27272a', minHeight: 72 }}
+            />
+          </div>
+          {editError && <p className="text-xs text-red-400">{editError}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={saveEdit}
+              disabled={editLoading || !editSerial.trim() || !editIssue.trim()}
+              className="flex-1 py-2 rounded-lg text-xs font-medium text-white transition-opacity disabled:opacity-40"
+              style={{ background: '#0ea5e9' }}
+            >
+              {editLoading ? 'Saving…' : 'Save Changes'}
+            </button>
+            <button
+              onClick={() => setShowEdit(false)}
+              className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-400 transition-colors hover:text-white"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #27272a' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="card p-4 space-y-3" style={{ border: '1px solid rgba(239,68,68,0.3)' }}>
+          <p className="text-sm font-medium text-red-400">Delete this replacement request?</p>
+          <p className="text-xs text-zinc-500">This cannot be undone. All associated data will be removed.</p>
+          {deleteError && <p className="text-xs text-red-400">{deleteError}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={deleteReturn}
+              disabled={deleteLoading}
+              className="flex-1 py-2 rounded-lg text-xs font-medium text-white transition-opacity disabled:opacity-40"
+              style={{ background: '#ef4444' }}
+            >
+              {deleteLoading ? 'Deleting…' : 'Yes, Delete'}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-400 transition-colors hover:text-white"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #27272a' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Status Bar */}
       <div className="card p-4">

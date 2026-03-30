@@ -34,8 +34,42 @@ export async function GET(
   });
 }
 
+// DELETE — remove return request (only before IN_REPAIR)
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await requireSession();
+    if (!['ADMIN', 'SALES'].includes(session.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const { id } = await params;
+
+    const ret = await prisma.returnRequest.findUnique({ where: { id } });
+    if (!ret) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    const locked = ['IN_REPAIR', 'REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED'];
+    if (locked.includes(ret.status)) {
+      return NextResponse.json({ error: 'Cannot delete after inspection has started' }, { status: 400 });
+    }
+
+    await prisma.returnRequest.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Unauthorized')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    console.error('[returns/[id] DELETE]', e);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
+
 // PATCH — evaluate or update status
 const patchSchema = z.object({
+  // Edit fields (before IN_REPAIR)
+  serialNumber:    z.string().min(1).optional(),
+  reportedIssue:   z.string().min(1).optional(),
+  clientId:        z.string().min(1).optional(),
   // Evaluation fields
   evaluationNotes: z.string().optional(),
   resolution:      z.enum(['REPAIR', 'REPLACE', 'REFUND', 'CREDIT_NOTE']).optional(),
@@ -44,7 +78,7 @@ const patchSchema = z.object({
     'REPORTED', 'EVALUATED', 'APPROVED', 'UNIT_RECEIVED',
     'IN_REPAIR', 'REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED', 'REJECTED',
   ]).optional(),
-}).refine(d => d.evaluationNotes || d.resolution || d.status, {
+}).refine(d => d.serialNumber || d.reportedIssue || d.clientId || d.evaluationNotes || d.resolution || d.status, {
   message: 'At least one field required',
 });
 
@@ -79,6 +113,20 @@ export async function PATCH(
 
     const data = parsed.data;
     const updateData: Record<string, unknown> = {};
+
+    // Edit base fields (only before IN_REPAIR)
+    const locked = ['IN_REPAIR', 'REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED'];
+    if (data.serialNumber || data.reportedIssue || data.clientId) {
+      if (locked.includes(ret.status)) {
+        return NextResponse.json({ error: 'Cannot edit after inspection has started' }, { status: 400 });
+      }
+      if (!['ADMIN', 'SALES'].includes(session.role)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      if (data.serialNumber)  updateData.serialNumber  = data.serialNumber;
+      if (data.reportedIssue) updateData.reportedIssue = data.reportedIssue;
+      if (data.clientId)      updateData.clientId      = data.clientId;
+    }
 
     // Evaluation (by admin/manager/employee)
     if (data.evaluationNotes !== undefined) {
