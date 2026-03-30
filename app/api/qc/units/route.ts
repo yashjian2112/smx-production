@@ -77,8 +77,8 @@ export async function GET() {
       orderBy: [{ currentStatus: 'asc' }, { updatedAt: 'asc' }],
     });
 
-    // ── Recently completed QC units (pass AND fail, last 30 days) ────────────
-    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    // ── Completed QC units (pass AND fail, last 1 year) ────────────────────
+    const since = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
     const recentQC = await prisma.qCRecord.findMany({
       where: { createdAt: { gte: since } },
       orderBy: { createdAt: 'desc' },

@@ -84,6 +84,11 @@ export async function POST(
           currentStatus: UnitStatus.PENDING,
         },
       });
+      // Close any open ReworkRecords for this unit
+      await prisma.reworkRecord.updateMany({
+        where: { unitId: id, status: { in: ['OPEN', 'IN_PROGRESS', 'SENT_TO_QC'] } },
+        data: { status: 'COMPLETED' },
+      });
       await prisma.stageLog.create({
         data: {
           unitId: id,
