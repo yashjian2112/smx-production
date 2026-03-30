@@ -57,7 +57,7 @@ type OrderGroup = {
   dos: DispatchOrder[];
 };
 
-type Tab = 'topack' | 'processing' | 'completed';
+type Tab = 'topack' | 'completed';
 
 /* ── Helpers ── */
 const STATUS_STYLE: Record<DOStatus, string> = {
@@ -506,16 +506,13 @@ export default function MyDispatchPage() {
 
   /* Derived groups */
   const topackDOs     = allDOs.filter(d => ['OPEN', 'PACKING'].includes(d.status));
-  const processingDOs = allDOs.filter(d => d.status === 'SUBMITTED');
-  const completedDOs  = allDOs.filter(d => ['APPROVED', 'REJECTED'].includes(d.status));
+  const completedDOs  = allDOs.filter(d => ['SUBMITTED', 'APPROVED', 'REJECTED'].includes(d.status));
 
   const topackGroups     = groupByOrder(topackDOs);
-  const processingGroups = groupByOrder(processingDOs);
   const completedGroups  = groupByOrder(completedDOs);
 
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: 'topack',     label: 'To Pack',    count: readyOrders.length + topackGroups.length },
-    { key: 'processing', label: 'Processing', count: processingGroups.length },
     { key: 'completed',  label: 'Completed',  count: completedGroups.length },
   ];
 
@@ -600,19 +597,6 @@ export default function MyDispatchPage() {
                 ))}
               </>
             )}
-          </div>
-        )
-      ) : tab === 'processing' ? (
-        processingGroups.length === 0 ? (
-          <EmptyState
-            message="No orders pending approval"
-            sub="Submitted dispatch orders awaiting accounts review will appear here"
-          />
-        ) : (
-          <div className="space-y-3">
-            {processingGroups.map((g) => (
-              <OrderGroupCard key={g.orderId} group={g} />
-            ))}
           </div>
         )
       ) : (
