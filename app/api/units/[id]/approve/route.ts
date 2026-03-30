@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
+import { notify } from '@/lib/notify';
 import { generateNextAssemblyBarcode, generateNextBrainboardBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
 import { StageType, UnitStatus } from '@prisma/client';
 
@@ -57,6 +58,21 @@ export async function POST(
         statusFrom: 'WAITING_APPROVAL',
         statusTo: 'REJECTED_BACK',
       });
+      // Notify the assigned employee their work was rejected
+      const rejectAssignment = await prisma.stageAssignment.findUnique({
+        where: { unitId_stage: { unitId: id, stage: unit.currentStage } },
+        select: { userId: true },
+      });
+      if (rejectAssignment) {
+        await notify({
+          userId: rejectAssignment.userId,
+          type: 'WORK_REJECTED',
+          title: 'Work Rejected',
+          message: `Your work on ${unit.currentStage.replace(/_/g, ' ')} was rejected. Please check and redo.`,
+          relatedModel: 'unit',
+          relatedId: id,
+        });
+      }
       const updated = await prisma.controllerUnit.findUnique({
         where: { id },
         include: { order: true, product: true },
@@ -90,6 +106,21 @@ export async function POST(
         statusTo: 'APPROVED',
         metadata: { readyForDispatch: true },
       });
+      // Notify the assigned employee their work was approved
+      const faAssignment = await prisma.stageAssignment.findUnique({
+        where: { unitId_stage: { unitId: id, stage: unit.currentStage } },
+        select: { userId: true },
+      });
+      if (faAssignment) {
+        await notify({
+          userId: faAssignment.userId,
+          type: 'WORK_APPROVED',
+          title: 'Work Approved',
+          message: `Your ${unit.currentStage.replace(/_/g, ' ')} work was approved. Unit is ready for dispatch.`,
+          relatedModel: 'unit',
+          relatedId: id,
+        });
+      }
       const updated = await prisma.controllerUnit.findUnique({
         where: { id },
         include: { order: true, product: true, assignments: { include: { user: true } } },
@@ -141,6 +172,21 @@ export async function POST(
       statusTo: 'APPROVED',
       metadata: { nextStage: next },
     });
+    // Notify the assigned employee their work was approved and unit advanced
+    const midAssignment = await prisma.stageAssignment.findUnique({
+      where: { unitId_stage: { unitId: id, stage: unit.currentStage } },
+      select: { userId: true },
+    });
+    if (midAssignment) {
+      await notify({
+        userId: midAssignment.userId,
+        type: 'WORK_APPROVED',
+        title: 'Work Approved',
+        message: `Your ${unit.currentStage.replace(/_/g, ' ')} work was approved. Unit advanced to ${next.replace(/_/g, ' ')}.`,
+        relatedModel: 'unit',
+        relatedId: id,
+      });
+    }
 
     const updated = await prisma.controllerUnit.findUnique({
       where: { id },

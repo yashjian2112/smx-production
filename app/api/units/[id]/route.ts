@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, isManager } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
+import { notify, notifyMany } from '@/lib/notify';
 import { StageType, UnitStatus } from '@prisma/client';
 import { z } from 'zod';
 
@@ -140,6 +141,31 @@ export async function PATCH(
         statusTo: updates.currentStatus ?? statusTo,
         remarks: remarks ?? undefined,
       });
+
+      // Notify when unit is blocked
+      if (statusTo === 'BLOCKED') {
+        const assignment = await prisma.stageAssignment.findUnique({
+          where: { unitId_stage: { unitId: id, stage: unit.currentStage } },
+          select: { userId: true },
+        });
+        const managers = await prisma.user.findMany({
+          where: { role: { in: ['ADMIN', 'PRODUCTION_MANAGER'] }, active: true },
+          select: { id: true },
+        });
+        const toNotify = [...managers.map(m => m.id)];
+        if (assignment) toNotify.push(assignment.userId);
+        const seen = new Set<string>();
+        const uniqueIds = toNotify.filter(uid => { if (seen.has(uid)) return false; seen.add(uid); return true; }).filter(uid => uid !== session.id);
+        if (uniqueIds.length > 0) {
+          await notifyMany(uniqueIds, {
+            type: 'UNIT_BLOCKED',
+            title: 'Unit Blocked',
+            message: `A unit at ${unit.currentStage.replace(/_/g, ' ')} was blocked.${remarks ? ` Reason: ${remarks}` : ''}`,
+            relatedModel: 'unit',
+            relatedId: id,
+          });
+        }
+      }
 
       // Auto-advance to next stage when current stage is COMPLETED
       // REWORK stage is handled separately via /rework route — skip here

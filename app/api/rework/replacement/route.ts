@@ -2,15 +2,14 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { generateNextInvoiceNumber } from '@/lib/invoice-number';
+import { getFiscalYear } from '@/lib/invoice-number';
 
 const schema = z.object({
   clientId:     z.string().min(1),
-  notes:        z.string().min(1),  // pre-formatted [REPLACEMENT]\nSerial:...\nProblem:...
   serialNumber: z.string().nullable().optional(),
   productId:    z.string().nullable().optional(),
-  quantity:     z.number().int().min(1).default(1),
   voltage:      z.string().nullable().optional(),
+  issue:        z.string().min(1),
 });
 
 export async function POST(req: Request) {
@@ -27,60 +26,50 @@ export async function POST(req: Request) {
 
   const data = parsed.data;
 
-  // Determine product — look up from serial if provided
-  let resolvedProductId: string | null = data.productId ?? null;
-  if (data.serialNumber && !resolvedProductId) {
+  // Generate return number RTN/YY-YY/NNN
+  const fy     = getFiscalYear();
+  const prefix = `RTN/${fy}/`;
+  const latest = await prisma.returnRequest.findFirst({
+    where:   { returnNumber: { startsWith: prefix } },
+    orderBy: { returnNumber: 'desc' },
+    select:  { returnNumber: true },
+  });
+
+  let next = 1;
+  if (latest) {
+    const parts = latest.returnNumber.split('/');
+    const seq   = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+  const returnNumber = `${prefix}${String(next).padStart(3, '0')}`;
+
+  // Look up unit/order from serial number if provided
+  let unitId:  string | undefined;
+  let orderId: string | undefined;
+
+  if (data.serialNumber) {
     const unit = await prisma.controllerUnit.findFirst({
       where:  { serialNumber: data.serialNumber },
-      select: { order: { select: { productId: true } } },
+      select: { id: true, orderId: true },
     });
-    if (unit?.order?.productId) resolvedProductId = unit.order.productId;
+    if (unit) {
+      unitId  = unit.id;
+      orderId = unit.orderId ?? undefined;
+    }
   }
 
-  // Need at least one product to create a meaningful PI
-  if (!resolvedProductId) {
-    // Use first active product as fallback — replacement PI can be edited later
-    const firstProduct = await prisma.product.findFirst({
-      where: { active: true },
-      select: { id: true },
-      orderBy: { code: 'asc' },
-    });
-    if (!firstProduct) return NextResponse.json({ error: 'No products found' }, { status: 400 });
-    resolvedProductId = firstProduct.id;
-  }
-
-  const product = await prisma.product.findUnique({
-    where: { id: resolvedProductId },
-    select: { id: true, name: true },
-  });
-  if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
-
-  const invoiceNumber = await generateNextInvoiceNumber();
-
-  // REPLACEMENT uses a special notes format the rework page parses
-  const pi = await prisma.proformaInvoice.create({
+  const returnRequest = await prisma.returnRequest.create({
     data: {
-      invoiceNumber,
-      invoiceDate:  new Date(),
+      returnNumber,
       clientId:     data.clientId,
-      invoiceType:  'REPLACEMENT',
-      currency:     'INR',
-      notes:        data.notes,
-      status:       'DRAFT',
-      createdById:  session.id,
-      items: {
-        create: [{
-          productId:       resolvedProductId,
-          hsnCode:         '85371000',
-          description:     '',
-          quantity:        data.quantity ?? 1,
-          unitPrice:       0,
-          discountPercent: 0,
-          sortOrder:       0,
-        }],
-      },
+      serialNumber: data.serialNumber ?? null,
+      unitId:       unitId ?? null,
+      orderId:      orderId ?? null,
+      type:         'WARRANTY',
+      reportedIssue: data.issue,
+      reportedById: session.id,
     },
   });
 
-  return NextResponse.json(pi, { status: 201 });
+  return NextResponse.json(returnRequest, { status: 201 });
 }

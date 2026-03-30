@@ -1,0 +1,122 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { requireSession } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+
+// GET — list repair logs for this return
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  await requireSession();
+  const { id } = await params;
+
+  const logs = await prisma.repairLog.findMany({
+    where: { returnRequestId: id },
+    include: { employee: { select: { id: true, name: true } } },
+    orderBy: { startedAt: 'desc' },
+  });
+
+  return NextResponse.json(logs);
+}
+
+const createSchema = z.object({
+  issue: z.string().min(1),
+});
+
+// POST — start a repair (employee logs what they found)
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await requireSession();
+    const { id } = await params;
+
+    const ret = await prisma.returnRequest.findUnique({ where: { id } });
+    if (!ret) return NextResponse.json({ error: 'Return not found' }, { status: 404 });
+
+    const body = await req.json();
+    const parsed = createSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Issue description required' }, { status: 400 });
+    }
+
+    const log = await prisma.repairLog.create({
+      data: {
+        returnRequestId: id,
+        unitId:          ret.unitId ?? null,
+        issue:           parsed.data.issue,
+        employeeId:      session.id,
+      },
+      include: { employee: { select: { id: true, name: true } } },
+    });
+
+    // Auto-transition to IN_REPAIR if currently at APPROVED or UNIT_RECEIVED
+    if (['APPROVED', 'UNIT_RECEIVED', 'EVALUATED'].includes(ret.status)) {
+      await prisma.returnRequest.update({
+        where: { id },
+        data: { status: 'IN_REPAIR' },
+      });
+    }
+
+    return NextResponse.json(log, { status: 201 });
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Unauthorized')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    console.error('[repair POST]', e);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
+
+const patchSchema = z.object({
+  repairLogId: z.string().min(1),
+  workDone:    z.string().min(1),
+});
+
+// PATCH — complete a repair (employee logs what they fixed)
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await requireSession();
+    const { id } = await params;
+
+    const body = await req.json();
+    const parsed = patchSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'repairLogId and workDone required' }, { status: 400 });
+    }
+
+    const log = await prisma.repairLog.findFirst({
+      where: { id: parsed.data.repairLogId, returnRequestId: id },
+    });
+    if (!log) return NextResponse.json({ error: 'Repair log not found' }, { status: 404 });
+
+    const updated = await prisma.repairLog.update({
+      where: { id: log.id },
+      data: {
+        workDone:    parsed.data.workDone,
+        completedAt: new Date(),
+      },
+      include: { employee: { select: { id: true, name: true } } },
+    });
+
+    // Auto-transition to REPAIRED if return is IN_REPAIR
+    const ret = await prisma.returnRequest.findUnique({ where: { id } });
+    if (ret && ret.status === 'IN_REPAIR') {
+      await prisma.returnRequest.update({
+        where: { id },
+        data: { status: 'REPAIRED' },
+      });
+    }
+
+    return NextResponse.json(updated);
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Unauthorized')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    console.error('[repair PATCH]', e);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}

@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
+import { notify, notifyMany } from '@/lib/notify';
 import { generateNextAssemblyBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
 import { put } from '@vercel/blob';
 import { StageType, UnitStatus } from '@prisma/client';
@@ -349,6 +350,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       { error: 'Photo saved but stage completion failed. Please contact your manager.' },
       { status: 500 },
     );
+  }
+
+  // Notify managers that work was submitted (they may need to check or approve)
+  const managers = await prisma.user.findMany({
+    where: { role: { in: ['ADMIN', 'PRODUCTION_MANAGER'] }, active: true },
+    select: { id: true },
+  });
+  const managerIds = managers.map(m => m.id).filter(mid => mid !== session.id);
+  if (managerIds.length > 0) {
+    await notifyMany(managerIds, {
+      type: 'STAGE_COMPLETED',
+      title: 'Stage Work Completed',
+      message: `Work submitted on ${unit.currentStage.replace(/_/g, ' ')} stage.`,
+      relatedModel: 'unit',
+      relatedId: id,
+    });
   }
 
   return NextResponse.json({ submission: updated, result: 'PASS', issues: [], summary: updated.analysisSummary });

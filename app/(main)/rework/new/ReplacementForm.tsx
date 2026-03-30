@@ -19,7 +19,6 @@ export default function ReplacementForm({
   const [serialNumber, setSerialNumber] = useState('');
   const [useManual,    setUseManual]    = useState(false);
   const [productId,    setProductId]    = useState('');
-  const [quantity,     setQuantity]     = useState('1');
   const [voltage,      setVoltage]      = useState('');
   const [issue,        setIssue]        = useState('');
   const [saving,       setSaving]       = useState(false);
@@ -35,15 +34,12 @@ export default function ReplacementForm({
 
     setSaving(true);
     try {
-      const notes = `[REPLACEMENT]\nSerial: ${useManual ? '(manual)' : serialNumber.trim()}\nProduct: ${useManual ? productId : ''}\nProblem: ${issue.trim()}`;
-
       const body = {
         clientId,
-        notes,
         serialNumber: useManual ? null : serialNumber.trim(),
         productId:    useManual ? productId : null,
-        quantity:     useManual ? parseInt(quantity, 10) : 1,
         voltage:      useManual ? voltage : null,
+        issue:        issue.trim(),
       };
 
       const res = await fetch('/api/rework/replacement', {
@@ -54,7 +50,7 @@ export default function ReplacementForm({
 
       if (!res.ok) {
         const d = await res.json();
-        throw new Error(d.error || 'Failed to create replacement');
+        throw new Error(d.error || 'Failed to create return request');
       }
 
       router.push('/rework');
@@ -102,7 +98,6 @@ export default function ReplacementForm({
       </div>
 
       {!useManual ? (
-        /* Serial Number input */
         <div>
           <label className="text-xs font-medium text-zinc-400 mb-1.5 block">Serial Number *</label>
           <input
@@ -115,9 +110,8 @@ export default function ReplacementForm({
           <p className="text-xs text-zinc-600 mt-1">Scan or type the unit serial number from the controller</p>
         </div>
       ) : (
-        /* Manual product details */
         <div className="space-y-3 rounded-xl border border-zinc-800 p-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
-          <p className="text-xs font-medium text-zinc-400">Product Details</p>
+          <p className="text-xs font-medium text-zinc-400">Product Details (older controller)</p>
           <div>
             <label className="text-xs text-zinc-500 mb-1 block">Product *</label>
             <select
@@ -131,28 +125,15 @@ export default function ReplacementForm({
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-zinc-500 mb-1 block">Quantity</label>
-              <input
-                type="number"
-                min="1"
-                value={quantity}
-                onChange={e => setQuantity(e.target.value)}
-                onWheel={e => (e.target as HTMLElement).blur()}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-500 mb-1 block">Voltage (optional)</label>
-              <input
-                type="text"
-                value={voltage}
-                onChange={e => setVoltage(e.target.value)}
-                placeholder="e.g. 48V"
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
-              />
-            </div>
+          <div>
+            <label className="text-xs text-zinc-500 mb-1 block">Voltage (optional)</label>
+            <input
+              type="text"
+              value={voltage}
+              onChange={e => setVoltage(e.target.value)}
+              placeholder="e.g. 48V"
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
+            />
           </div>
         </div>
       )}
@@ -181,7 +162,7 @@ export default function ReplacementForm({
         disabled={saving}
         className="w-full py-3 rounded-xl text-sm font-semibold bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white transition-colors"
       >
-        {saving ? 'Creating…' : 'Create Replacement Job'}
+        {saving ? 'Creating…' : 'Create Return Request'}
       </button>
     </form>
   );

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
+import { notify } from '@/lib/notify';
 import { generateNextQCBarcode } from '@/lib/barcode';
 import { StageType, UnitStatus } from '@prisma/client';
 
@@ -99,6 +100,15 @@ export async function POST(
         stage: StageType.QC_AND_SOFTWARE,
         remarks,
       });
+      // Notify the QC employee of pass result
+      await notify({
+        userId: session.id,
+        type: 'QC_PASSED',
+        title: 'QC Passed',
+        message: `Unit passed QC and advanced to Final Assembly.`,
+        relatedModel: 'unit',
+        relatedId: id,
+      });
     } else {
       // ── REJECT: find Assembly employee and assign rework to them ──────────
       const assemblyAssignment = await prisma.stageAssignment.findUnique({
@@ -140,6 +150,17 @@ export async function POST(
           assignedBackTo: assemblyAssignment?.userId ?? null,
         },
       });
+      // Notify rework assignee (assembly employee) about QC failure
+      if (assemblyAssignment?.userId) {
+        await notify({
+          userId: assemblyAssignment.userId,
+          type: 'QC_FAILED',
+          title: 'QC Failed — Rework Assigned',
+          message: `A unit failed QC and has been assigned to you for rework.${remarks ? ` Issue: ${remarks}` : ''}`,
+          relatedModel: 'unit',
+          relatedId: id,
+        });
+      }
     }
 
     const updated = await prisma.controllerUnit.findUnique({

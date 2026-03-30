@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
+import { notify } from '@/lib/notify';
 import { StageType } from '@prisma/client';
 
 export async function GET(
@@ -80,6 +81,22 @@ export async function PATCH(
         stage: StageType.REWORK,
         remarks: correctiveAction,
       });
+      // Notify managers that rework is done
+      const managers = await prisma.user.findMany({
+        where: { role: { in: ['ADMIN', 'PRODUCTION_MANAGER'] }, active: true },
+        select: { id: true },
+      });
+      const managerIds = managers.map(m => m.id).filter(mid => mid !== session.id);
+      if (managerIds.length > 0) {
+        await notify({
+          userId: managerIds[0],
+          type: 'REWORK_COMPLETED',
+          title: 'Rework Completed',
+          message: `Rework finished${status === 'SENT_TO_QC' ? ' — unit sent back to QC for retest.' : '.'}`,
+          relatedModel: 'unit',
+          relatedId: id,
+        });
+      }
       if (status === 'SENT_TO_QC') {
         await prisma.controllerUnit.update({
           where: { id },

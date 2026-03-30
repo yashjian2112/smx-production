@@ -24,8 +24,8 @@ export default async function NewReplacementPage() {
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-24">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-white">New Replacement</h1>
-        <p className="text-zinc-400 text-sm mt-1">Create a replacement job for a faulty unit</p>
+        <h1 className="text-xl font-bold text-white">New Return Request</h1>
+        <p className="text-zinc-400 text-sm mt-1">Log a customer return for diagnosis and repair</p>
       </div>
       <ReplacementForm clients={clients} products={products} />
     </div>
