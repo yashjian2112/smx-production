@@ -298,7 +298,7 @@ function DORow({ d }: { d: DispatchOrder }) {
       style={{ background: 'rgba(15,23,42,0.6)', borderColor: 'rgba(148,163,184,0.08)' }}>
       {/* DO number */}
       <div className="flex-1 min-w-0">
-        <p className="font-mono text-xs font-bold text-sky-400">{d.doNumber}</p>
+        <a href={`/shipping/do/${d.id}`} className="font-mono text-xs font-bold text-sky-400 hover:underline">{d.doNumber}</a>
         <p className="text-[10px] text-slate-500 mt-0.5">
           {fmt(d.createdAt)} · {d.createdBy.name}
           {d.approvedAt && d.approvedBy && (
