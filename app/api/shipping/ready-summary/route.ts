@@ -39,15 +39,59 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     });
 
-    const result = orders.map((o) => ({
-      id: o.id,
-      orderNumber: o.orderNumber,
-      quantity: o.quantity,
-      readyCount: o.units.length,
-      client: o.client ? { customerName: o.client.customerName } : null,
-      product: { code: o.product.code, name: o.product.name },
-      units: o.units.map((u) => ({ id: u.id, serialNumber: u.serialNumber })),
-    }));
+    // For each order, also fetch dispatch history (DOs that already handled some units)
+    const orderIds = orders.map((o) => o.id);
+    const dispatchOrders = orderIds.length > 0
+      ? await prisma.dispatchOrder.findMany({
+          where: { orderId: { in: orderIds } },
+          select: {
+            id: true,
+            doNumber: true,
+            status: true,
+            dispatchQty: true,
+            orderId: true,
+            approvedAt: true,
+            boxes: {
+              select: { _count: { select: { items: true } } },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
+
+    // Group DOs by orderId
+    const dosByOrder = new Map<string, typeof dispatchOrders>();
+    for (const d of dispatchOrders) {
+      const arr = dosByOrder.get(d.orderId) ?? [];
+      arr.push(d);
+      dosByOrder.set(d.orderId, arr);
+    }
+
+    const result = orders.map((o) => {
+      const dos = dosByOrder.get(o.id) ?? [];
+      // Count units already packed/dispatched through other DOs
+      const packedCount = dos.reduce((sum, d) =>
+        sum + d.boxes.reduce((bs, b) => bs + b._count.items, 0), 0);
+
+      return {
+        id: o.id,
+        orderNumber: o.orderNumber,
+        quantity: o.quantity,
+        readyCount: o.units.length,
+        packedCount,
+        client: o.client ? { customerName: o.client.customerName } : null,
+        product: { code: o.product.code, name: o.product.name },
+        units: o.units.map((u) => ({ id: u.id, serialNumber: u.serialNumber })),
+        dispatchHistory: dos.map((d) => ({
+          id: d.id,
+          doNumber: d.doNumber,
+          status: d.status,
+          dispatchQty: d.dispatchQty,
+          packedUnits: d.boxes.reduce((s, b) => s + b._count.items, 0),
+          approvedAt: d.approvedAt?.toISOString() ?? null,
+        })),
+      };
+    });
 
     return NextResponse.json(result);
   } catch (e) {

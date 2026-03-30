@@ -27,14 +27,25 @@ type DispatchOrder = {
   boxes: { _count: { items: number } }[];
 };
 
+type DispatchHistoryItem = {
+  id: string;
+  doNumber: string;
+  status: string;
+  dispatchQty: number;
+  packedUnits: number;
+  approvedAt: string | null;
+};
+
 type ReadyOrder = {
   id: string;
   orderNumber: string;
   quantity: number;
   readyCount: number;
+  packedCount: number;
   client: { customerName: string } | null;
   product: { code: string; name: string };
   units: { id: string; serialNumber: string }[];
+  dispatchHistory: DispatchHistoryItem[];
 };
 
 type OrderGroup = {
@@ -94,9 +105,14 @@ function ReadyCard({ order, onCreateDO, creating }: {
   creating: string | null;
 }) {
   const [expanded,    setExpanded]    = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [showQtyForm, setShowQtyForm] = useState(false);
   const [qtyInput,    setQtyInput]    = useState(String(order.readyCount));
   const [qtyError,    setQtyError]    = useState('');
+
+  const hasDOHistory = order.dispatchHistory.length > 0;
+  const totalDone = order.packedCount + order.readyCount;
+  const progressPct = Math.min(100, (totalDone / order.quantity) * 100);
 
   function handleConfirmCreate() {
     const qty = parseInt(qtyInput, 10);
@@ -123,28 +139,55 @@ function ReadyCard({ order, onCreateDO, creating }: {
         </span>
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-slate-400">
-        <span>{order.readyCount} unit{order.readyCount !== 1 ? 's' : ''} ready</span>
-        {order.readyCount >= order.quantity && (
-          <span className="text-emerald-400">● All units ready</span>
+      {/* Status breakdown */}
+      <div className="flex items-center gap-2 text-xs flex-wrap">
+        {order.packedCount > 0 && (
+          <span className="text-sky-400">{order.packedCount} of {order.quantity} packed</span>
         )}
+        {order.packedCount > 0 && <span className="text-slate-600">·</span>}
+        <span className="text-emerald-400 font-medium">{order.readyCount} ready</span>
+        {order.readyCount + order.packedCount >= order.quantity && (
+          <>
+            <span className="text-slate-600">·</span>
+            <span className="text-emerald-400">● All units accounted</span>
+          </>
+        )}
+      </div>
+
+      {/* Progress bar — green for ready, blue for packed */}
+      <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden flex">
+        {order.packedCount > 0 && (
+          <div
+            className="h-full bg-sky-500 transition-all"
+            style={{ width: `${(order.packedCount / order.quantity) * 100}%` }}
+          />
+        )}
+        <div
+          className="h-full bg-emerald-500 transition-all"
+          style={{ width: `${(order.readyCount / order.quantity) * 100}%` }}
+        />
+      </div>
+
+      {/* Action buttons row */}
+      <div className="flex items-center gap-3 text-xs text-slate-400">
         {order.units.length > 0 && (
           <button
             type="button"
             onClick={() => setExpanded(v => !v)}
-            className="text-sky-400 hover:text-sky-300 transition-colors ml-auto"
+            className="text-sky-400 hover:text-sky-300 transition-colors"
           >
             {expanded ? '▲ Hide units' : `▼ Show ${order.units.length} units`}
           </button>
         )}
-      </div>
-
-      {/* Progress bar */}
-      <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-emerald-500 transition-all"
-          style={{ width: `${Math.min(100, (order.readyCount / order.quantity) * 100)}%` }}
-        />
+        {hasDOHistory && (
+          <button
+            type="button"
+            onClick={() => setShowHistory(v => !v)}
+            className="text-violet-400 hover:text-violet-300 transition-colors ml-auto"
+          >
+            {showHistory ? '▲ Hide dispatch log' : `▼ ${order.dispatchHistory.length} dispatch order${order.dispatchHistory.length !== 1 ? 's' : ''}`}
+          </button>
+        )}
       </div>
 
       {/* Unit serial list */}
@@ -155,6 +198,44 @@ function ReadyCard({ order, onCreateDO, creating }: {
               {u.serialNumber}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* Dispatch history — existing DOs for this order */}
+      {showHistory && hasDOHistory && (
+        <div className="space-y-1.5 pt-1">
+          <p className="text-[10px] text-slate-600 uppercase tracking-wide px-1">Dispatch Log</p>
+          {order.dispatchHistory.map((dh) => {
+            const statusStyle: Record<string, string> = {
+              OPEN:      'bg-amber-500/20 text-amber-400 border-amber-500/30',
+              PACKING:   'bg-blue-500/20 text-blue-400 border-blue-500/30',
+              SUBMITTED: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+              APPROVED:  'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+              REJECTED:  'bg-red-500/20 text-red-400 border-red-500/30',
+            };
+            const statusLabel: Record<string, string> = {
+              OPEN: 'Open', PACKING: 'Packing', SUBMITTED: 'Pending',
+              APPROVED: 'Dispatched', REJECTED: 'Rejected',
+            };
+            return (
+              <div key={dh.id} className="flex items-center gap-3 rounded-lg px-3 py-2"
+                style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.08)' }}>
+                <div className="flex-1 min-w-0">
+                  <p className="font-mono text-xs font-bold text-sky-400">{dh.doNumber}</p>
+                  {dh.approvedAt && (
+                    <p className="text-[10px] text-slate-500 mt-0.5">{fmt(dh.approvedAt)}</p>
+                  )}
+                </div>
+                <div className="text-center px-2">
+                  <p className="text-xs font-semibold text-white">{dh.packedUnits}<span className="text-slate-500 font-normal">/{dh.dispatchQty}</span></p>
+                  <p className="text-[10px] text-slate-500">units</p>
+                </div>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap border ${statusStyle[dh.status] ?? ''}`}>
+                  {statusLabel[dh.status] ?? dh.status}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
