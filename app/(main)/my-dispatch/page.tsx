@@ -124,8 +124,8 @@ function ReadyCard({ order, onCreateDO, creating }: {
       </div>
 
       <div className="flex items-center gap-3 text-xs text-slate-400">
-        <span>{order.readyCount} of {order.quantity} units ready</span>
-        {order.readyCount === order.quantity && (
+        <span>{order.readyCount} unit{order.readyCount !== 1 ? 's' : ''} ready</span>
+        {order.readyCount >= order.quantity && (
           <span className="text-emerald-400">● All units ready</span>
         )}
         {order.units.length > 0 && (
