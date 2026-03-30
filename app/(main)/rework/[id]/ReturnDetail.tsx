@@ -172,7 +172,7 @@ function getNextActions(status: string, role: string): { label: string; value: s
       ];
       break;
     case 'QC_CHECKED':
-      if (isAdminOrManager || role === 'QC_USER') return [
+      if (isAdminOrManager || role === 'QC_USER' || isEmployee) return [
         { label: 'QC Pass — Ready to Dispatch', value: 'DISPATCHED', color: '#6366f1' },
         { label: 'QC Fail — Send Back to Repair', value: 'IN_REPAIR', color: '#ef4444' },
       ];
