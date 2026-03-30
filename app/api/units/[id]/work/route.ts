@@ -137,6 +137,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!unit) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
 
+  // Role-stage gate: PRODUCTION_EMPLOYEE cannot work QC stage; QC_USER cannot work other stages
+  if (session.role === 'PRODUCTION_EMPLOYEE' && unit.currentStage === StageType.QC_AND_SOFTWARE) {
+    return NextResponse.json({ error: 'QC stage is restricted to QC users only' }, { status: 403 });
+  }
+  if (session.role === 'QC_USER' && unit.currentStage !== StageType.QC_AND_SOFTWARE) {
+    return NextResponse.json({ error: 'QC users can only work on QC & Software stage' }, { status: 403 });
+  }
+
   // Block work on non-workable statuses
   if (unit.currentStatus === UnitStatus.COMPLETED) {
     return NextResponse.json({ error: 'Stage already completed' }, { status: 409 });
@@ -217,6 +225,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     },
   });
   if (!unit) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
+
+  // Role-stage gate (same as POST)
+  if (session.role === 'PRODUCTION_EMPLOYEE' && unit.currentStage === StageType.QC_AND_SOFTWARE) {
+    return NextResponse.json({ error: 'QC stage is restricted to QC users only' }, { status: 403 });
+  }
+  if (session.role === 'QC_USER' && unit.currentStage !== StageType.QC_AND_SOFTWARE) {
+    return NextResponse.json({ error: 'QC users can only work on QC & Software stage' }, { status: 403 });
+  }
 
   // Find submission to update
   const submission = submissionId

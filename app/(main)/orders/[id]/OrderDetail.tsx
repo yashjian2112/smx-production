@@ -319,8 +319,22 @@ type Props = {
   orderId: string;
   stages: StageGroup[];
   isEmployee: boolean;
+  role: string;
   totalUnits: number;
 };
+
+/** Returns true if the given role can interact with (scan/tap) the given stage. */
+function canRoleWorkStage(role: string, stageKey: string): boolean {
+  if (role === 'PRODUCTION_EMPLOYEE') {
+    // Production employees work every stage EXCEPT QC — that belongs to QC_USER
+    return stageKey !== 'QC_AND_SOFTWARE';
+  }
+  if (role === 'QC_USER') {
+    // QC users work only QC stage
+    return stageKey === 'QC_AND_SOFTWARE';
+  }
+  return true;
+}
 
 const STATUS_STYLES: Record<string, { dot: string; text: string; label: string }> = {
   PENDING:          { dot: 'bg-zinc-600',    text: 'text-zinc-500',    label: 'Pending'      },
@@ -576,7 +590,7 @@ function StageCard({
   );
 }
 
-export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) {
+export function OrderDetail({ orderId, stages, isEmployee, role, totalUnits }: Props) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [scanning, setScanning] = useState<{ stageKey: string; stageLabel: string } | null>(null);
@@ -808,8 +822,8 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
                   isExpanded={expanded === psStage.key}
                   onToggle={() => toggle(psStage.key)}
                   onScanStart={() => setScanning({ stageKey: psStage.key, stageLabel: psStage.label })}
-                  onUnitTap={isEmployee ? (u) => handleUnitTap(u, psStage.key) : undefined}
-                  isEmployee={isEmployee}
+                  onUnitTap={isEmployee && canRoleWorkStage(role, psStage.key) ? (u) => handleUnitTap(u, psStage.key) : undefined}
+                  isEmployee={isEmployee && canRoleWorkStage(role, psStage.key)}
                   isAccessible={isStageAccessible(psStage.key, allUnits)}
                   accent="blue"
                 />
@@ -820,8 +834,8 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
                   isExpanded={expanded === bbStage.key}
                   onToggle={() => toggle(bbStage.key)}
                   onScanStart={() => setScanning({ stageKey: bbStage.key, stageLabel: bbStage.label })}
-                  onUnitTap={isEmployee ? (u) => handleUnitTap(u, bbStage.key) : undefined}
-                  isEmployee={isEmployee}
+                  onUnitTap={isEmployee && canRoleWorkStage(role, bbStage.key) ? (u) => handleUnitTap(u, bbStage.key) : undefined}
+                  isEmployee={isEmployee && canRoleWorkStage(role, bbStage.key)}
                   isAccessible={isStageAccessible(bbStage.key, allUnits)}
                   accent="blue"
                 />
@@ -838,24 +852,27 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
               <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
             </div>
             <div className="space-y-2">
-              {sequential.map(({ stage, accent }) => (
-                <StageCard
-                  key={stage.key}
-                  stage={stage}
-                  isExpanded={expanded === stage.key}
-                  onToggle={() => toggle(stage.key)}
-                  onScanStart={
-                    stage.key === 'CONTROLLER_ASSEMBLY'
-                      ? () => setAssemblySelect(true)
-                      : () => setScanning({ stageKey: stage.key, stageLabel: stage.label })
-                  }
-                  onUnitTap={isEmployee ? (u) => handleUnitTap(u, stage.key) : undefined}
-                  isEmployee={isEmployee}
-                  isAccessible={isStageAccessible(stage.key, allUnits)}
-                  accent={accent}
-                  scanLabel={stage.key === 'CONTROLLER_ASSEMBLY' ? 'Select' : 'Scan'}
-                />
-              ))}
+              {sequential.map(({ stage, accent }) => {
+                const roleCanWork = canRoleWorkStage(role, stage.key);
+                return (
+                  <StageCard
+                    key={stage.key}
+                    stage={stage}
+                    isExpanded={expanded === stage.key}
+                    onToggle={() => toggle(stage.key)}
+                    onScanStart={
+                      stage.key === 'CONTROLLER_ASSEMBLY'
+                        ? () => setAssemblySelect(true)
+                        : () => setScanning({ stageKey: stage.key, stageLabel: stage.label })
+                    }
+                    onUnitTap={isEmployee && roleCanWork ? (u) => handleUnitTap(u, stage.key) : undefined}
+                    isEmployee={isEmployee && roleCanWork}
+                    isAccessible={isStageAccessible(stage.key, allUnits)}
+                    accent={accent}
+                    scanLabel={stage.key === 'CONTROLLER_ASSEMBLY' ? 'Select' : 'Scan'}
+                  />
+                );
+              })}
             </div>
           </div>
         )}
