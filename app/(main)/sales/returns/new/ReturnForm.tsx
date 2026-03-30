@@ -169,6 +169,9 @@ export default function ReturnForm({ clients, products }: { clients: ClientOptio
 
     setLoading(true);
     try {
+      // Generate one batchId for the whole submission so multi-unit batches can be grouped
+      const batchId = qty > 1 ? crypto.randomUUID() : undefined;
+
       const submits = useManual
         ? manualSerials.map(s => ({
             clientId,
@@ -176,6 +179,7 @@ export default function ReturnForm({ clients, products }: { clients: ClientOptio
             productId: productId || undefined,
             type,
             reportedIssue: reportedIssue.trim(),
+            batchId,
           }))
         : units.map(u => {
             const lu = u.lookupState as LookupResult;
@@ -184,6 +188,7 @@ export default function ReturnForm({ clients, products }: { clients: ClientOptio
               clientId:     lu.client?.id,
               type,
               reportedIssue: reportedIssue.trim(),
+              batchId,
             };
           });
 

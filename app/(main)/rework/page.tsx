@@ -17,6 +17,7 @@ type ReturnItem = {
   createdByName: string;
   evaluatedByName: string | null;
   createdAt: string;
+  batchId: string | null;
 };
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; text: string }> = {
@@ -42,6 +43,33 @@ function StatusBadge({ status }: { status: string }) {
       {st.text}
     </span>
   );
+}
+
+// Build display groups: batch items grouped together, solo items as-is
+type DisplayGroup =
+  | { kind: 'single'; item: ReturnItem }
+  | { kind: 'batch';  items: ReturnItem[] };
+
+function buildGroups(items: ReturnItem[]): DisplayGroup[] {
+  const batches = new Map<string, ReturnItem[]>();
+  const groups: DisplayGroup[] = [];
+
+  for (const item of items) {
+    if (!item.batchId) {
+      groups.push({ kind: 'single', item });
+    } else {
+      const existing = batches.get(item.batchId);
+      if (existing) {
+        existing.push(item);
+      } else {
+        const arr: ReturnItem[] = [item];
+        batches.set(item.batchId, arr);
+        groups.push({ kind: 'batch', items: arr });
+      }
+    }
+  }
+
+  return groups;
 }
 
 export default async function ReworkPage() {
@@ -71,12 +99,17 @@ export default async function ReworkPage() {
     createdByName:   r.reportedBy.name,
     evaluatedByName: r.evaluatedBy?.name ?? null,
     createdAt:       r.createdAt.toISOString(),
+    batchId:         r.batchId,
   }));
 
   const active    = items.filter((i) => !['CLOSED', 'REJECTED', 'DISPATCHED'].includes(i.status));
   const inRepair  = items.filter((i) => i.status === 'IN_REPAIR');
   const completed = items.filter((i) => ['CLOSED', 'REJECTED', 'DISPATCHED', 'REPAIRED', 'QC_CHECKED'].includes(i.status));
   const pending   = items.filter((i) => ['REPORTED', 'EVALUATED', 'APPROVED', 'UNIT_RECEIVED'].includes(i.status));
+
+  const pendingGroups   = buildGroups(pending);
+  const inRepairGroups  = buildGroups(inRepair);
+  const completedGroups = buildGroups(completed);
 
   return (
     <div className="space-y-6 pb-24">
@@ -120,21 +153,26 @@ export default async function ReworkPage() {
       ) : (
         <>
           {[
-            { title: 'Awaiting Action', list: pending, accent: '#fbbf24' },
-            { title: 'In Repair', list: inRepair, accent: '#f97316' },
-            { title: 'Completed / Closed', list: completed, accent: '#71717a' },
-          ].map(({ title, list, accent }) =>
-            list.length > 0 ? (
+            { title: 'Awaiting Action',    groups: pendingGroups,   accent: '#fbbf24' },
+            { title: 'In Repair',          groups: inRepairGroups,  accent: '#f97316' },
+            { title: 'Completed / Closed', groups: completedGroups, accent: '#71717a' },
+          ].map(({ title, groups, accent }) =>
+            groups.length > 0 ? (
               <div key={title}>
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-2 h-2 rounded-full" style={{ background: accent }} />
                   <h3 className="text-sm font-semibold text-white">{title}</h3>
-                  <span className="text-xs text-slate-600">({list.length})</span>
+                  {/* Count individual units, not groups */}
+                  <span className="text-xs text-slate-600">
+                    ({groups.reduce((n, g) => n + (g.kind === 'batch' ? g.items.length : 1), 0)})
+                  </span>
                 </div>
                 <div className="space-y-3">
-                  {list.map((item) => (
-                    <ReturnCard key={item.id} item={item} />
-                  ))}
+                  {groups.map((g) =>
+                    g.kind === 'single'
+                      ? <ReturnCard key={g.item.id} item={g.item} />
+                      : <BatchCard key={g.items[0].batchId} items={g.items} />
+                  )}
                 </div>
               </div>
             ) : null
@@ -200,5 +238,68 @@ function ReturnCard({ item }: { item: ReturnItem }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+// STATUS_ORDER for picking the "most active" status in a batch
+const STATUS_ORDER = ['IN_REPAIR', 'REPORTED', 'UNIT_RECEIVED', 'APPROVED', 'EVALUATED', 'REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED', 'REJECTED'];
+
+function BatchCard({ items }: { items: ReturnItem[] }) {
+  const first    = items[0];
+  const date     = new Date(first.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+  // Representative status: most active
+  const repStatus = items
+    .map(i => i.status)
+    .sort((a, b) => STATUS_ORDER.indexOf(a) - STATUS_ORDER.indexOf(b))[0] ?? first.status;
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+      {/* Batch header */}
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}>
+              Batch · {items.length} units
+            </span>
+            <StatusBadge status={repStatus} />
+            <span className="text-[10px] text-slate-600">{date}</span>
+          </div>
+
+          {/* Client */}
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-6 h-6 rounded-full bg-sky-900/50 border border-sky-700/30 flex items-center justify-center text-[9px] font-semibold text-sky-300">
+              {first.clientName.slice(0, 2).toUpperCase()}
+            </div>
+            <span className="text-sm font-medium text-white">{first.clientName}</span>
+            <span className="text-[10px] text-slate-600 font-mono">{first.clientCode}</span>
+          </div>
+
+          {/* Reported issue (shared) */}
+          <div className="p-2 rounded-lg mb-3" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.15)' }}>
+            <p className="text-[9px] font-semibold text-amber-500 uppercase tracking-wider mb-0.5">Reported Issue</p>
+            <p className="text-xs text-amber-200 line-clamp-2">{first.reportedIssue}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Individual units */}
+      <div className="space-y-1.5">
+        {items.map((item) => (
+          <Link key={item.id} href={`/rework/${item.id}`}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:border-zinc-600"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <svg className="w-3 h-3 text-sky-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+            </svg>
+            <span className="text-xs font-mono text-sky-300 flex-1">{item.serialNumber ?? '—'}</span>
+            <span className="text-[10px] font-mono text-zinc-500">{item.returnNumber}</span>
+            <StatusBadge status={item.status} />
+            <svg className="text-zinc-600 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
+          </Link>
+        ))}
+      </div>
+
+      <p className="text-[10px] text-slate-600 mt-2">Logged by {first.createdByName}</p>
+    </div>
   );
 }

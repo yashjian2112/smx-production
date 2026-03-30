@@ -870,6 +870,7 @@ model ReturnRequest {
   evaluationNotes String?      @map("evaluation_notes")
   resolution      String?      // REPAIR, REPLACE, REFUND, CREDIT_NOTE
   proformaId      String?      @map("proforma_id")  // linked replacement/return PI
+  batchId         String?      @map("batch_id")     // groups multiple units submitted together
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 

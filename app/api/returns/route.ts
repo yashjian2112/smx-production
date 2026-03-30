@@ -36,6 +36,7 @@ const postSchema = z.object({
   serialNumber:  z.string().optional(),
   type:          z.enum(['WARRANTY', 'DAMAGE', 'WRONG_ITEM', 'OTHER']),
   reportedIssue: z.string().min(1),
+  batchId:       z.string().optional(),
 }).refine((d) => d.clientId || d.serialNumber, {
   message: 'Either clientId or serialNumber is required',
 });
@@ -106,6 +107,7 @@ export async function POST(req: Request) {
       type:          data.type,
       reportedIssue: data.reportedIssue,
       reportedById:  session.id,
+      batchId:       data.batchId ?? null,
     },
   });
 
