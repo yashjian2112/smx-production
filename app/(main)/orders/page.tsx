@@ -8,6 +8,7 @@ export default async function OrdersPage() {
   const session = await getSession();
   if (!session) redirect('/login');
   if (session.role === 'ACCOUNTS') redirect('/accounts');
+  if (session.role === 'QC_USER') redirect('/qc');
 
   const isManager = session.role === 'ADMIN';
   const isAdmin   = session.role === 'ADMIN';

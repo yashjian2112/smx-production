@@ -72,6 +72,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const session = await getSession();
   if (!session) redirect('/login');
   if (session.role === 'ACCOUNTS') redirect('/accounts');
+  if (session.role === 'QC_USER') redirect('/qc');
 
   const { id } = await params;
   const isEmployee = session.role === 'PRODUCTION_EMPLOYEE';
