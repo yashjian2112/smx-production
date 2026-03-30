@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 export async function GET() {
   const session = await requireSession();
-  if (!['ADMIN', 'SALES', 'ACCOUNTS'].includes(session.role)) {
+  if (!['ADMIN', 'SALES', 'ACCOUNTS', 'QC_USER', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

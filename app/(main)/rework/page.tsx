@@ -80,7 +80,7 @@ export default async function ReworkPage({
 }) {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (!['ADMIN', 'PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER', 'SALES'].includes(session.role)) redirect('/dashboard');
+  if (!['ADMIN', 'PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER', 'SALES', 'QC_USER'].includes(session.role)) redirect('/dashboard');
 
   const { tab: rawTab } = await searchParams;
   const tab = rawTab === 'in_repair' ? 'in_repair' : rawTab === 'completed' ? 'completed' : 'pending';
