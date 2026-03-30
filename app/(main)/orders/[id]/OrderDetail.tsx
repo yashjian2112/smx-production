@@ -392,6 +392,7 @@ function StageCard({
   isExpanded,
   onToggle,
   onScanStart,
+  onUnitTap,
   isEmployee,
   isAccessible,
   accent = 'blue',
@@ -401,6 +402,7 @@ function StageCard({
   isExpanded: boolean;
   onToggle: () => void;
   onScanStart: () => void;
+  onUnitTap?: (unit: UnitData) => void;
   isEmployee: boolean;
   isAccessible: boolean;
   accent?: 'blue' | 'amber' | 'green' | 'red';
@@ -508,50 +510,61 @@ function StageCard({
       </div>
 
       {/* Expanded unit list — colour-coded serial numbers
-          Grey = not started · Yellow = in progress · Green = passed · Red = failed */}
+          Grey = not started · Yellow = in progress · Green = passed · Red = failed
+          Employee tapping a PENDING unit triggers scan-to-verify flow */}
       {isExpanded && total > 0 && (() => {
-        // Employees only see non-PENDING units (units they've started working on)
         const visibleUnits = isEmployee && isAccessible
-          ? stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) !== 'PENDING')
+          ? stage.units
           : !isEmployee ? stage.units : [];
 
-        if (isEmployee && isAccessible && visibleUnits.length === 0) {
-          return (
-            <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-              <p className="px-3 py-3 text-xs text-zinc-600">No units assigned yet — scan a barcode to start.</p>
-            </div>
-          );
-        }
         if (visibleUnits.length === 0) return null;
+
+        // Colour mapping: grey=pending, amber=in-progress, green=passed, red=failed
+        const colorMap: Record<string, { bg: string; text: string; border: string }> = {
+          PENDING:          { bg: 'rgba(113,113,122,0.08)', text: 'text-zinc-500',  border: 'rgba(113,113,122,0.15)' },
+          IN_PROGRESS:      { bg: 'rgba(251,191,36,0.10)', text: 'text-amber-400',  border: 'rgba(251,191,36,0.25)' },
+          WAITING_APPROVAL: { bg: 'rgba(56,189,248,0.10)', text: 'text-sky-400',    border: 'rgba(56,189,248,0.25)' },
+          COMPLETED:        { bg: 'rgba(34,197,94,0.10)',  text: 'text-green-400',  border: 'rgba(34,197,94,0.25)' },
+          APPROVED:         { bg: 'rgba(34,197,94,0.10)',  text: 'text-green-400',  border: 'rgba(34,197,94,0.25)' },
+          BLOCKED:          { bg: 'rgba(239,68,68,0.10)',  text: 'text-red-400',    border: 'rgba(239,68,68,0.25)' },
+          REJECTED_BACK:    { bg: 'rgba(239,68,68,0.10)',  text: 'text-red-400',    border: 'rgba(239,68,68,0.25)' },
+          REWORK:           { bg: 'rgba(249,115,22,0.10)', text: 'text-orange-400', border: 'rgba(249,115,22,0.25)' },
+        };
 
         return (
           <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-px p-2">
               {visibleUnits.map((u) => {
                 const status = effectiveStatus(u);
-                // Colour mapping: grey=pending, amber=in-progress, green=passed, red=failed
-                const colorMap: Record<string, { bg: string; text: string; border: string }> = {
-                  PENDING:          { bg: 'rgba(113,113,122,0.08)', text: 'text-zinc-500',  border: 'rgba(113,113,122,0.15)' },
-                  IN_PROGRESS:      { bg: 'rgba(251,191,36,0.10)', text: 'text-amber-400',  border: 'rgba(251,191,36,0.25)' },
-                  WAITING_APPROVAL: { bg: 'rgba(56,189,248,0.10)', text: 'text-sky-400',    border: 'rgba(56,189,248,0.25)' },
-                  COMPLETED:        { bg: 'rgba(34,197,94,0.10)',  text: 'text-green-400',  border: 'rgba(34,197,94,0.25)' },
-                  APPROVED:         { bg: 'rgba(34,197,94,0.10)',  text: 'text-green-400',  border: 'rgba(34,197,94,0.25)' },
-                  BLOCKED:          { bg: 'rgba(239,68,68,0.10)',  text: 'text-red-400',    border: 'rgba(239,68,68,0.25)' },
-                  REJECTED_BACK:    { bg: 'rgba(239,68,68,0.10)',  text: 'text-red-400',    border: 'rgba(239,68,68,0.25)' },
-                  REWORK:           { bg: 'rgba(249,115,22,0.10)', text: 'text-orange-400', border: 'rgba(249,115,22,0.25)' },
-                };
                 const c = colorMap[status] ?? colorMap.PENDING;
+                const isPending = status === 'PENDING';
+                const isPassed = status === 'COMPLETED' || status === 'APPROVED';
+
+                // Employee tapping a PENDING unit → scan-to-verify before starting
+                // Employee tapping active/done unit → go to unit page
+                // Manager → always go to unit page
+                const handleClick = (e: React.MouseEvent) => {
+                  if (isEmployee && isPending && onUnitTap) {
+                    e.preventDefault();
+                    onUnitTap(u);
+                  }
+                };
 
                 return (
                   <a
                     key={u.id}
                     href={`/units/${u.id}`}
+                    onClick={handleClick}
                     className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg font-mono text-xs transition-colors hover:brightness-125 ${c.text}`}
                     style={{ background: c.bg, border: `1px solid ${c.border}` }}
                   >
                     <span className="truncate">{u.barcodeForStage ?? u.serialNumber}</span>
-                    {(status === 'COMPLETED' || status === 'APPROVED') && (
-                      <Check className="w-3 h-3 shrink-0" />
+                    {isPassed && <Check className="w-3 h-3 shrink-0" />}
+                    {isEmployee && isPending && (
+                      <svg className="w-3 h-3 shrink-0 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
                     )}
                   </a>
                 );
@@ -567,6 +580,7 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
   const router = useRouter();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [scanning, setScanning] = useState<{ stageKey: string; stageLabel: string } | null>(null);
+  const [verifyUnit, setVerifyUnit] = useState<{ unit: UnitData; stageKey: string } | null>(null);
   const [assemblySelect, setAssemblySelect] = useState(false);
   const [scanStatus, setScanStatus] = useState<{ msg: string; type: 'error' | 'info' } | null>(null);
   async function handleAssemblySelect(psUnitId: string, psBarcode: string, bbBarcode: string) {
@@ -682,6 +696,46 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
     }
   }
 
+  // Scan-to-verify: employee tapped a PENDING unit, must scan its barcode to confirm
+  async function handleVerifyScan(scannedCode: string) {
+    if (!verifyUnit) return;
+    const { unit } = verifyUnit;
+    setVerifyUnit(null);
+
+    const expectedBarcode = unit.barcodeForStage ?? unit.serialNumber;
+    // Match scanned code against expected barcode or serial number (case-insensitive)
+    const match =
+      scannedCode.toLowerCase() === expectedBarcode.toLowerCase() ||
+      scannedCode.toLowerCase() === unit.serialNumber.toLowerCase();
+
+    if (!match) {
+      setScanStatus({
+        msg: `Scanned "${scannedCode}" does not match expected "${expectedBarcode}". Pick the correct unit.`,
+        type: 'error',
+      });
+      return;
+    }
+
+    // Matched — auto-start the unit and navigate
+    setScanStatus({ msg: 'Starting manufacturing...', type: 'info' });
+    try {
+      await fetch(`/api/units/${unit.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'IN_PROGRESS' }),
+      });
+      setScanStatus(null);
+      router.push(`/units/${unit.id}`);
+    } catch {
+      setScanStatus({ msg: 'Network error. Please try again.', type: 'error' });
+    }
+  }
+
+  // Helper: called when employee taps a PENDING unit chip in a stage card
+  function handleUnitTap(unit: UnitData, stageKey: string) {
+    setVerifyUnit({ unit, stageKey });
+  }
+
   const sequential = [
     asmStage && { stage: asmStage, accent: 'blue'  as const },
     qcStage  && { stage: qcStage,  accent: 'amber' as const },
@@ -690,13 +744,23 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
 
   return (
     <>
-      {/* Camera scanner modal */}
+      {/* Camera scanner modal — stage scan (any unit) */}
       {scanning && (
         <BarcodeScanner
           title={`Scan — ${scanning.stageLabel}`}
           hint="Point camera at unit barcode. Work starts automatically."
           onScan={handleScan}
           onClose={() => setScanning(null)}
+        />
+      )}
+
+      {/* Camera scanner modal — verify specific unit before starting */}
+      {verifyUnit && (
+        <BarcodeScanner
+          title="Scan to Verify"
+          hint={`Scan barcode for ${verifyUnit.unit.barcodeForStage ?? verifyUnit.unit.serialNumber} to start manufacturing.`}
+          onScan={handleVerifyScan}
+          onClose={() => setVerifyUnit(null)}
         />
       )}
 
@@ -744,6 +808,7 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
                   isExpanded={expanded === psStage.key}
                   onToggle={() => toggle(psStage.key)}
                   onScanStart={() => setScanning({ stageKey: psStage.key, stageLabel: psStage.label })}
+                  onUnitTap={isEmployee ? (u) => handleUnitTap(u, psStage.key) : undefined}
                   isEmployee={isEmployee}
                   isAccessible={isStageAccessible(psStage.key, allUnits)}
                   accent="blue"
@@ -755,6 +820,7 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
                   isExpanded={expanded === bbStage.key}
                   onToggle={() => toggle(bbStage.key)}
                   onScanStart={() => setScanning({ stageKey: bbStage.key, stageLabel: bbStage.label })}
+                  onUnitTap={isEmployee ? (u) => handleUnitTap(u, bbStage.key) : undefined}
                   isEmployee={isEmployee}
                   isAccessible={isStageAccessible(bbStage.key, allUnits)}
                   accent="blue"
@@ -783,6 +849,7 @@ export function OrderDetail({ orderId, stages, isEmployee, totalUnits }: Props) 
                       ? () => setAssemblySelect(true)
                       : () => setScanning({ stageKey: stage.key, stageLabel: stage.label })
                   }
+                  onUnitTap={isEmployee ? (u) => handleUnitTap(u, stage.key) : undefined}
                   isEmployee={isEmployee}
                   isAccessible={isStageAccessible(stage.key, allUnits)}
                   accent={accent}
