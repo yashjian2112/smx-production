@@ -88,13 +88,15 @@ export default async function ReworkPage() {
           <h2 className="text-lg font-semibold text-white">Customer Returns</h2>
           <p className="text-xs text-slate-500 mt-0.5">Replacement requests — units requiring rework / servicing</p>
         </div>
-        <Link
-          href="/rework/new"
-          className="px-3 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-          style={{ background: '#0ea5e9' }}
-        >
-          + New Replacement
-        </Link>
+        {['ADMIN', 'SALES'].includes(session.role) && (
+          <Link
+            href="/rework/new"
+            className="px-3 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+            style={{ background: '#0ea5e9' }}
+          >
+            + New Replacement
+          </Link>
+        )}
       </div>
 
       {/* Stats */}

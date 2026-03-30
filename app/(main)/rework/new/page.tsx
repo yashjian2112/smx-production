@@ -6,7 +6,7 @@ import ReplacementForm from './ReplacementForm';
 export default async function NewReplacementPage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (!['ADMIN', 'PRODUCTION_EMPLOYEE'].includes(session.role)) redirect('/dashboard');
+  if (!['ADMIN', 'SALES'].includes(session.role)) redirect('/dashboard');
 
   const [clients, products] = await Promise.all([
     prisma.client.findMany({
