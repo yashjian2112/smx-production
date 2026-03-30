@@ -57,8 +57,6 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   // Split invoice
   const [splitInvoice,        setSplitInvoice]        = useState(false);
   const [splitServicePercent, setSplitServicePercent] = useState('');
-  // Shipping route (domestic only)
-  const [shippingRoute,       setShippingRoute]       = useState<'AIR' | 'LAND'>('LAND');
   // Replacement-specific fields
   const [unitSerial,       setUnitSerial]       = useState('');
   const [problemDesc,      setProblemDesc]      = useState('');
@@ -161,8 +159,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   const sellerState    = 'gujarat';
   const buyerState     = (selectedClient?.state ?? '').toLowerCase();
   const isIntra        = !isExport && !!buyerState && buyerState === sellerState;
-  const hasGst         = !isExport && !!selectedClient?.gstNumber;
-  const gst            = hasGst ? subtotal * 0.18 : 0;
+  const gst            = isExport ? 0 : subtotal * 0.18;
   const total          = subtotal + gst + shipping;
 
   const fmtAmt = (n: number) => currency === 'USD'
@@ -185,8 +182,6 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       setError('Please enter voltage range (From and To) for all line items');
       return;
     }
-    if (!termsOfPayment.trim()) { setError('Terms of Payment is required'); return; }
-    if (!deliveryDays.trim()) { setError('Delivery Days is required'); return; }
     if (invoiceType === 'REPLACEMENT' && (!unitSerial.trim() || !problemDesc.trim())) {
       setError('Please fill in Unit Serial Number and Problem Description for replacement');
       return;
@@ -242,7 +237,6 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           items:           submitItems,
           splitInvoice:    splitInvoice || undefined,
           splitServicePercent: splitInvoice && splitServicePercent ? parseFloat(splitServicePercent) : undefined,
-          shippingRoute:   !isGlobal ? shippingRoute : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -406,30 +400,10 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
         )}
       </div>
 
-      {/* Shipping Route — domestic only */}
-      {!isGlobal && (
-        <div>
-          <label className={lCls}>Shipping Route</label>
-          <div className="flex gap-2">
-            {(['LAND', 'AIR'] as const).map((r) => (
-              <button key={r} type="button" onClick={() => setShippingRoute(r)}
-                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
-                style={shippingRoute === r
-                  ? r === 'AIR'
-                    ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
-                    : { background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.4)', color: '#4ade80' }
-                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-                {r === 'AIR' ? 'By Air' : 'By Land'}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Terms of Payment */}
       <div>
-        <label className={lCls}>Terms of Payment <span className="text-red-400">*</span></label>
-        <input value={termsOfPayment} onChange={(e) => setTermsOfPayment(e.target.value)} className={iCls} placeholder="e.g. 100% ADVANCE" required />
+        <label className={lCls}>Terms of Payment</label>
+        <input value={termsOfPayment} onChange={(e) => setTermsOfPayment(e.target.value)} className={iCls} placeholder="e.g. 100% ADVANCE" />
         <div className="flex gap-1.5 mt-1.5 flex-wrap">
           {PAYMENT_PRESETS.map((p) => (
             <button key={p} type="button" onClick={() => setTermsOfPayment(p)}
@@ -443,8 +417,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
 
       {/* Delivery Days */}
       <div>
-        <label className={lCls}>Delivery Days <span className="text-red-400">*</span> <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
-        <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 30" required />
+        <label className={lCls}>Delivery Days <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
+        <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 30" />
       </div>
 
       {/* ── Split Invoice — global/export clients only ── */}
@@ -639,13 +613,13 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
               {dualCurrency && rate > 0 && <span className="w-24 text-right text-zinc-600">{fmtInr(subtotal)}</span>}
             </div>
           </div>
-          {hasGst && isIntra && (
+          {!isExport && isIntra && (
             <>
               <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{fmtAmt(subtotal * 0.09)}</span></div>
               <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{fmtAmt(subtotal * 0.09)}</span></div>
             </>
           )}
-          {hasGst && !isIntra && (
+          {!isExport && !isIntra && (
             <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{fmtAmt(gst)}</span></div>
           )}
           {shipping > 0 && (

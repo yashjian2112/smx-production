@@ -30,9 +30,6 @@ type InitialProforma = {
   deliveryDays: number | null;
   termsOfDelivery: string | null;
   notes: string | null;
-  splitInvoice: boolean;
-  splitServicePercent: number | null;
-  shippingRoute: string | null;
   items: InitialItem[];
 };
 
@@ -161,10 +158,6 @@ export function EditProformaForm({
   const [unitSerial,  setUnitSerial]  = useState(() => isReplacement ? parseReplacementNotes(proforma.notes, 'serial') : '');
   const [problemDesc, setProblemDesc] = useState(() => isReplacement ? parseReplacementNotes(proforma.notes, 'problem') : '');
 
-  const [splitInvoice, setSplitInvoice] = useState(proforma.splitInvoice ?? false);
-  const [splitServicePercent, setSplitServicePercent] = useState(proforma.splitServicePercent?.toString() ?? '');
-  const [shippingRoute, setShippingRoute] = useState<'AIR' | 'LAND'>((proforma.shippingRoute as 'AIR' | 'LAND') ?? 'LAND');
-
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
 
@@ -248,9 +241,8 @@ export function EditProformaForm({
       ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
       : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
-  const fmtInr = (usd: number) => rate > 0
-    ? `₹${(usd * rate).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
-    : null;
+  const fmtInr = (usd: number) =>
+    `₹${(usd * rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -263,8 +255,6 @@ export function EditProformaForm({
       setError('Please enter voltage range (From and To) for all line items');
       return;
     }
-    if (!termsOfPayment.trim()) { setError('Terms of Payment is required'); return; }
-    if (!deliveryDays.trim()) { setError('Delivery Days is required'); return; }
     if (isReplacement && (!unitSerial.trim() || !problemDesc.trim())) {
       setError('Please fill in Unit Serial Number and Problem Description for replacement');
       return;
@@ -312,9 +302,6 @@ export function EditProformaForm({
           clientId,
           currency,
           exchangeRate:    currency === 'USD' && rate > 0 ? rate : null,
-          splitInvoice:    splitInvoice || undefined,
-          splitServicePercent: splitInvoice && splitServicePercent ? parseFloat(splitServicePercent) : undefined,
-          shippingRoute:   !isGlobal ? shippingRoute : null,
           termsOfPayment:  termsOfPayment  || undefined,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : null,
           notes:           finalNotes    || undefined,
@@ -418,74 +405,10 @@ export function EditProformaForm({
         </div>
       )}
 
-      {/* Split Invoice (global clients only) */}
-      {isGlobal && (
-        <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(139,92,246,0.04)', border: '1px solid rgba(139,92,246,0.15)' }}>
-          <label className="flex items-center gap-3 cursor-pointer select-none">
-            <div onClick={() => setSplitInvoice(!splitInvoice)} className="relative w-11 h-6 rounded-full transition-colors"
-              style={{ background: splitInvoice ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.1)' }}>
-              <div className="absolute top-1 w-4 h-4 rounded-full bg-white transition-transform"
-                style={{ transform: splitInvoice ? 'translateX(22px)' : 'translateX(2px)' }} />
-            </div>
-            <span className="text-sm text-zinc-300">
-              {splitInvoice ? 'Split into Goods + Service invoices' : 'Split Invoice (off)'}
-            </span>
-          </label>
-          {splitInvoice && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-zinc-500 w-28 shrink-0">Service %</label>
-                <input type="number" min={1} max={99} step={1} value={splitServicePercent}
-                  onChange={(e) => setSplitServicePercent(e.target.value)}
-                  onWheel={(e) => e.currentTarget.blur()}
-                  className={iCls + ' !w-20'} placeholder="e.g. 30" />
-                <span className="text-xs text-zinc-500">%</span>
-              </div>
-              {(() => {
-                const svcPct = parseFloat(splitServicePercent);
-                if (!svcPct || svcPct <= 0 || svcPct >= 100) return null;
-                const goodsPct = 100 - svcPct;
-                const goodsAmt = total * (goodsPct / 100);
-                const serviceAmt = total * (svcPct / 100);
-                return (
-                  <div className="space-y-1">
-                    <div className="flex gap-4 text-xs">
-                      <span style={{ color: '#4ade80' }}>Goods {goodsPct.toFixed(0)}% = {fmtAmt(goodsAmt)}</span>
-                      <span style={{ color: '#fbbf24' }}>Service {svcPct.toFixed(0)}% = {fmtAmt(serviceAmt)}</span>
-                    </div>
-                    <p className="text-[10px] text-zinc-600">Split calculated on total ({fmtAmt(total)}) incl. GST + shipping</p>
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Shipping Route — domestic only */}
-      {!isGlobal && (
-        <div>
-          <label className={lCls}>Shipping Route</label>
-          <div className="flex gap-2">
-            {(['LAND', 'AIR'] as const).map((r) => (
-              <button key={r} type="button" onClick={() => setShippingRoute(r)}
-                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all"
-                style={shippingRoute === r
-                  ? r === 'AIR'
-                    ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
-                    : { background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.4)', color: '#4ade80' }
-                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-                {r === 'AIR' ? 'By Air' : 'By Land'}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Terms of Payment */}
       <div>
-        <label className={lCls}>Terms of Payment <span className="text-red-400">*</span></label>
-        <input value={termsOfPayment} onChange={(e) => setTermsOfPayment(e.target.value)} className={iCls} placeholder="e.g. 100% ADVANCE" required />
+        <label className={lCls}>Terms of Payment</label>
+        <input value={termsOfPayment} onChange={(e) => setTermsOfPayment(e.target.value)} className={iCls} placeholder="e.g. 100% ADVANCE" />
         <div className="flex gap-1.5 mt-1.5 flex-wrap">
           {PAYMENT_PRESETS.map((p) => (
             <button key={p} type="button" onClick={() => setTermsOfPayment(p)}
@@ -499,8 +422,8 @@ export function EditProformaForm({
 
       {/* Delivery Days */}
       <div>
-        <label className={lCls}>Delivery Days <span className="text-red-400">*</span> <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
-        <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 30" required />
+        <label className={lCls}>Delivery Days <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
+        <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 30" />
       </div>
 
       {/* ── Line Items ── */}

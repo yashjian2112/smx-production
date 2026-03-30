@@ -107,7 +107,7 @@ async function getDashboardData(role: string, userId: string) {
     }
 
     // ── STORE MANAGER ─────────────────────────────────────────
-    if (role === 'INVENTORY_MANAGER') {
+    if (role === 'STORE_MANAGER') {
       const [allMaterials, pendingROs] = await Promise.all([
         prisma.rawMaterial.findMany({ select: { currentStock: true, minimumStock: true } }),
         prisma.requirementOrder.count({ where: { status: 'PENDING' } }),
@@ -151,7 +151,7 @@ async function getDashboardData(role: string, userId: string) {
     if (role === 'SALES') return { role: 'sales', draftPIs: 0, pendingPIs: 0, approvedPIs: 0, monthlyInvoiceCount: 0, monthlyRevenue: 0 };
     if (role === 'ACCOUNTS') return { role: 'accounts', pendingPIs: 0, submittedDOs: 0, overdueCount: 0, overdueAmount: 0, outstandingCount: 0, outstandingAmount: 0 };
     if (role === 'PURCHASE_MANAGER') return { role: 'purchase', pendingROs: 0, openRFQs: 0, activePOs: 0, pendingPayments: 0 };
-    if (role === 'INVENTORY_MANAGER') return { role: 'store', lowStockCount: 0, totalMaterials: 0, pendingROs: 0 };
+    if (role === 'STORE_MANAGER') return { role: 'store', lowStockCount: 0, totalMaterials: 0, pendingROs: 0 };
     return {
       role: 'manager',
       activeOrders: 0,
@@ -430,7 +430,7 @@ export default async function DashboardPage() {
   }
 
   // ── STORE MANAGER ─────────────────────────────────────────
-  if (session.role === 'INVENTORY_MANAGER') {
+  if (session.role === 'STORE_MANAGER') {
     const sm = data as { lowStockCount: number; totalMaterials: number; pendingROs: number };
     return (
       <div className="space-y-6">

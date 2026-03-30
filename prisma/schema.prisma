@@ -77,9 +77,6 @@ model User {
   samplesRequested         SampleRequest[]  @relation("SampleRequestedBy")
   samplesApproved          SampleRequest[]  @relation("SampleApprovedBy")
   implementationGoodsCreated ImplementationGood[] @relation("IGCreatedBy")
-  igGanActions               ImplementationGood[] @relation("IGGanBy")
-  igGrnActions               ImplementationGood[] @relation("IGGrnBy")
-  igTimelineEntries          IGTimeline[]         @relation("IGTimelineUser")
 }
 
 enum Role {
@@ -525,7 +522,6 @@ model ProformaInvoice {
   termsOfDelivery  String?        @map("terms_of_delivery")
   notes            String?
   paymentReceiptUrl  String?      @map("payment_receipt_url")
-  declaredAmount     Float?       @map("declared_amount")      // amount SALES declares at submit-for-approval (ACCOUNTS verifies)
   status             ProformaStatus @default(DRAFT)
   rejectedReason     String?      @map("rejected_reason")
   clientPONumber     String?      @map("client_po_number")   // client's PO reference
@@ -541,7 +537,6 @@ model ProformaInvoice {
 
   splitInvoice        Boolean  @default(false) @map("split_invoice")
   splitServicePercent Float?   @map("split_service_percent")
-  shippingRoute       String?  @map("shipping_route")  // "AIR" | "LAND" — domestic only
 
   client         Client               @relation(fields: [clientId], references: [id])
   createdBy      User                 @relation("PICreatedBy", fields: [createdById], references: [id])
@@ -946,7 +941,6 @@ model RawMaterial {
   preferredVendorId String?  @map("preferred_vendor_id")
   active            Boolean  @default(true)
   barcode           String?  @unique
-  productionStage   String?  @map("production_stage")  // "PS" | "BB" | null — for individual serial tracking at GRN
   batchTracking     Boolean  @default(false) @map("batch_tracking")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -966,7 +960,6 @@ model RawMaterial {
   quoteItems       VendorQuoteItem[]
   ganItems         GANItem[]
   damageReports    DamageReport[]
-  materialSerials  MaterialSerial[]
 
   @@map("raw_materials")
 }
@@ -1214,9 +1207,8 @@ model GoodsReceipt {
   purchaseOrder PurchaseOrder     @relation(fields: [purchaseOrderId], references: [id])
   gan           GoodsArrivalNote? @relation(fields: [ganId], references: [id])
   receivedBy    User               @relation(fields: [receivedById], references: [id])
-  items           GoodsReceiptItem[]
-  batches         InventoryBatch[]
-  materialSerials MaterialSerial[]
+  items         GoodsReceiptItem[]
+  batches       InventoryBatch[]
 
   @@map("goods_receipts")
 }
@@ -1627,25 +1619,6 @@ model GANItem {
   @@map("gan_items")
 }
 
-// Material Serials — individual barcodes generated at GRN for traceable components
-model MaterialSerial {
-  id          String    @id @default(cuid())
-  materialId  String    @map("material_id")
-  grnId       String    @map("grn_id")
-  stageType   String    @map("stage_type")            // "PS" | "BB"
-  barcode     String    @unique
-  status      String    @default("PRINTED")            // PRINTED | CONFIRMED | ALLOCATED | CONSUMED
-  confirmedAt DateTime? @map("confirmed_at")
-  allocatedToOrderId String? @map("allocated_to_order_id")
-  allocatedToUnitId  String? @map("allocated_to_unit_id")
-  createdAt   DateTime  @default(now()) @map("created_at")
-
-  material RawMaterial    @relation(fields: [materialId], references: [id])
-  grn      GoodsReceipt   @relation(fields: [grnId], references: [id])
-
-  @@map("material_serials")
-}
-
 // Vendor Performance — recorded per PO after GRN
 model VendorPerformance {
   id              String   @id @default(cuid())
@@ -1826,17 +1799,10 @@ model SampleRequest {
 
 // ----- Implementation Goods -----
 enum IGStatus {
-  REQUESTED
-  GAN_CREATED
   RECEIVED
   IN_USE
-  IN_STORE
-  RETURN_INITIATED
-  PACKING
-  PACKED
-  DISPATCHED
-  CLOSED
-  REJECTED
+  RETURNED
+  RETAINED
 }
 
 model ImplementationGood {
@@ -1845,78 +1811,18 @@ model ImplementationGood {
   clientId        String   @map("client_id")
   description     String
   items           String   @map("items")  // JSON: [{name, qty, unit, condition}]
+  receivedDate    DateTime @map("received_date")
+  expectedReturn  DateTime? @map("expected_return")
+  returnedDate    DateTime? @map("returned_date")
+  status          IGStatus  @default(RECEIVED)
   purpose         String?   // research purpose / notes
   notes           String?
-  expectedArrival DateTime? @map("expected_arrival")
-  expectedReturn  DateTime? @map("expected_return")
-  status          IGStatus  @default(REQUESTED)
-
-  // GAN phase
-  ganId           String?   @map("gan_id")
-  ganDate         DateTime? @map("gan_date")
-  ganNotes        String?   @map("gan_notes")
-  courierDetails  String?   @map("courier_details")  // inbound courier/carrier
-  ganById         String?   @map("gan_by_id")
-
-  // GRN phase
-  grnDate         DateTime? @map("grn_date")
-  grnNotes        String?   @map("grn_notes")
-  warehouseLocation String? @map("warehouse_location") // bin/rack location
-  grnById         String?   @map("grn_by_id")
-
-  // Return dispatch phase
-  returnInitiatedAt DateTime? @map("return_initiated_at")
-  dnNumber        String?    @map("dn_number")  // Delivery Note: DN/IG/YY-YY/NNN
-  boxCount        Int?       @map("box_count")
-  dispatchedAt    DateTime?  @map("dispatched_at")
-  dispatchCourier String?    @map("dispatch_courier")
-  trackingNumber  String?    @map("tracking_number")
-  closedAt        DateTime?  @map("closed_at")
-
-  // Rejection
-  rejectedAt      DateTime?  @map("rejected_at")
-  rejectionReason String?    @map("rejection_reason")
-
   createdById     String    @map("created_by_id")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  client    Client  @relation(fields: [clientId], references: [id])
-  createdBy User    @relation("IGCreatedBy", fields: [createdById], references: [id])
-  ganBy     User?   @relation("IGGanBy", fields: [ganById], references: [id])
-  grnBy     User?   @relation("IGGrnBy", fields: [grnById], references: [id])
-  timeline  IGTimeline[]
-  boxes     IGPackingBox[]
+  client    Client @relation(fields: [clientId], references: [id])
+  createdBy User   @relation("IGCreatedBy", fields: [createdById], references: [id])
 
   @@map("implementation_goods")
-}
-
-model IGTimeline {
-  id     String   @id @default(cuid())
-  igId   String   @map("ig_id")
-  status String                      // status at this point
-  action String                      // human-readable: "Created request", "GAN logged", etc.
-  notes  String?
-  userId String   @map("user_id")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  ig   ImplementationGood @relation(fields: [igId], references: [id])
-  user User               @relation("IGTimelineUser", fields: [userId], references: [id])
-
-  @@map("ig_timeline")
-}
-
-model IGPackingBox {
-  id       String  @id @default(cuid())
-  igId     String  @map("ig_id")
-  boxNumber Int    @map("box_number")
-  label    String                       // DN/IG/26-27/001-BOX-1of2
-  items    String? @map("items")        // JSON: [{name, qty}] — what's in this box
-  isSealed Boolean @default(false) @map("is_sealed")
-  photoUrl String? @map("photo_url")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  ig ImplementationGood @relation(fields: [igId], references: [id])
-
-  @@map("ig_packing_boxes")
 }

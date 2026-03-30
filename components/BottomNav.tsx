@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
 
 /* ── SVG Icon set — stroke-based, 1.5 weight, minimal ── */
 const Icons = {
@@ -138,6 +137,13 @@ const Icons = {
       <polyline points="12 6 12 12 16 14" />
     </svg>
   ),
+  GRN: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+      <rect x="9" y="3" width="6" height="4" rx="1" />
+      <path d="M9 14l2 2 4-4" />
+    </svg>
+  ),
   JobCards: () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
@@ -200,16 +206,17 @@ const shippingNav: NavItem[] = [
   { href: '/dashboard',   label: 'Dashboard', icon: 'Dashboard' },
 ];
 
-// PURCHASE_MANAGER: procurement flow
+// PURCHASE_MANAGER: full procurement flow
 const purchaseNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard',   icon: 'Dashboard'  },
   { href: '/purchase',  label: 'Procurement', icon: 'Purchase'   },
+  { href: '/inventory', label: 'Inventory',   icon: 'Inventory'  },
 ];
 
-// INVENTORY_MANAGER
+// INVENTORY_MANAGER / STORE_MANAGER
 const inventoryNav: NavItem[] = [
   { href: '/inventory',  label: 'Inventory',  icon: 'Inventory'  },
-  { href: '/grn',        label: 'GRN',        icon: 'Pack'       },
+  { href: '/grn',        label: 'GRN',        icon: 'GRN'        },
   { href: '/job-cards',  label: 'Job Cards',  icon: 'JobCards'   },
   { href: '/purchase',   label: 'Req. Order', icon: 'Purchase'   },
 ];
@@ -218,24 +225,6 @@ export function BottomNav({ role }: { role: string }) {
   const pathname     = usePathname();
   const searchParams = useSearchParams();
   const currentTab   = searchParams.get('tab') ?? '';
-  const [badges, setBadges] = useState<Record<string, number>>({});
-
-  // Fetch notification counts
-  useEffect(() => {
-    let mounted = true;
-    async function fetchBadges() {
-      try {
-        const r = await fetch('/api/notifications/counts');
-        if (r.ok && mounted) {
-          const data = await r.json();
-          setBadges(data);
-        }
-      } catch {}
-    }
-    fetchBadges();
-    const interval = setInterval(fetchBadges, 30000); // refresh every 30s
-    return () => { mounted = false; clearInterval(interval); };
-  }, []);
 
   const items =
     role === 'PRODUCTION_EMPLOYEE' ? employeeNav  :
@@ -246,13 +235,8 @@ export function BottomNav({ role }: { role: string }) {
     role === 'SHIPPING'            ? shippingNav  :
     role === 'PURCHASE_MANAGER'    ? purchaseNav   :
     role === 'INVENTORY_MANAGER'   ? inventoryNav  :
-    role === 'INVENTORY_MANAGER'       ? inventoryNav  :
+    role === 'STORE_MANAGER'       ? inventoryNav  :
     managerNav;
-
-  // Map nav href to badge key
-  function getBadge(href: string): number {
-    return badges[href] ?? 0;
-  }
 
   return (
     <nav
@@ -283,8 +267,6 @@ export function BottomNav({ role }: { role: string }) {
 
           const IconComponent = Icons[item.icon];
 
-          const badgeCount = getBadge(item.href);
-
           return (
             <Link
               key={item.href}
@@ -294,14 +276,7 @@ export function BottomNav({ role }: { role: string }) {
               }`}
               style={active ? { background: 'rgba(14, 165, 233, 0.08)' } : undefined}
             >
-              <div className="relative">
-                <IconComponent />
-                {badgeCount > 0 && (
-                  <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 flex items-center justify-center text-[9px] font-bold text-white bg-red-500 rounded-full px-1 leading-none">
-                    {badgeCount > 99 ? '99+' : badgeCount}
-                  </span>
-                )}
-              </div>
+              <IconComponent />
               <span className="text-[10px] font-medium tracking-wide">{item.label}</span>
               {active && (
                 <span
