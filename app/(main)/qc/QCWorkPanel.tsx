@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, X, ChevronRight, Clock, Printer } from 'lucide-react';
+import { Check, X, ChevronRight, Clock, Printer, ChevronDown } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -398,42 +398,133 @@ function UnitCard({ unit, onSelect }: { unit: QCUnit; onSelect: (u: QCUnit) => v
   );
 }
 
-// ─── Completed Card — clicks open QC report in new tab ───────────────────────
+// ─── Completed Card — expandable with full test results + print PDF ──────────
 
 function CompletedCard({ unit }: { unit: CompletedUnit }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const passCount = unit.checklistData
+    ? QC_ITEMS.filter((i) => unit.checklistData![i.key]?.status === 'PASS').length
+    : null;
+
   return (
-    <a href={`/print/qc/${unit.id}`} target="_blank" rel="noopener noreferrer"
-      className="block rounded-xl p-3 hover:opacity-90 transition-opacity cursor-pointer"
+    <div className="rounded-xl overflow-hidden"
       style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.18)' }}>
-      <div className="flex items-start gap-3">
-        <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: '#4ade80' }} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-mono text-sm font-semibold text-white leading-tight">{unit.serialNumber}</p>
-            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-              style={{ color: '#4ade80', background: 'rgba(34,197,94,0.12)' }}>QC Pass</span>
-            {unit.hadRework && (
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest"
-                style={{ color: '#f87171', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)' }}>
-                Rework
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-zinc-400 mt-0.5">
-            {unit.order?.product.name ?? '—'} · <span className="text-zinc-500">{unit.order?.orderNumber ?? '—'}</span>
-          </p>
-          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-            {unit.qcPassedBy && <p className="text-[10px] text-zinc-500">By {unit.qcPassedBy.name}</p>}
-            {unit.firmwareVersion && <p className="text-[10px] text-zinc-600">FW {unit.firmwareVersion}</p>}
-            {unit.softwareVersion && <p className="text-[10px] text-zinc-600">SW {unit.softwareVersion}</p>}
-            <div className="flex items-center gap-1 text-[10px] text-zinc-600 ml-auto">
-              <Clock className="w-2.5 h-2.5" />{elapsed(unit.updatedAt)}
-              <Printer className="w-3 h-3 ml-1.5 opacity-40" />
+
+      {/* ── Summary row (always visible) ── */}
+      <button type="button" onClick={() => setExpanded((v) => !v)}
+        className="w-full text-left p-4 hover:bg-white/[0.02] transition-colors">
+        <div className="flex items-start gap-3">
+          <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: '#4ade80' }} />
+          <div className="flex-1 min-w-0">
+
+            {/* Serial + badges */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-mono text-sm font-semibold text-white leading-tight">{unit.serialNumber}</p>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                style={{ color: '#4ade80', background: 'rgba(34,197,94,0.15)' }}>QC Pass</span>
+              {unit.hadRework && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest"
+                  style={{ color: '#f87171', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                  Rework
+                </span>
+              )}
+            </div>
+
+            {/* Product / order */}
+            <p className="text-xs text-zinc-400 mt-0.5">
+              {unit.order?.product.name ?? '—'} · <span className="text-zinc-500">{unit.order?.orderNumber ?? '—'}</span>
+            </p>
+
+            {/* Meta row */}
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+              {unit.qcPassedBy && <p className="text-[10px] text-zinc-500">By {unit.qcPassedBy.name}</p>}
+              {unit.firmwareVersion && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                  style={{ color: '#94a3b8', background: 'rgba(148,163,184,0.08)' }}>
+                  FW {unit.firmwareVersion}
+                </span>
+              )}
+              {unit.softwareVersion && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                  style={{ color: '#94a3b8', background: 'rgba(148,163,184,0.08)' }}>
+                  SW {unit.softwareVersion}
+                </span>
+              )}
+              {passCount !== null && (
+                <span className="text-[10px] text-zinc-500">{passCount}/{QC_ITEMS.length} passed</span>
+              )}
+              <div className="ml-auto flex items-center gap-1.5 text-[10px] text-zinc-600">
+                <Clock className="w-2.5 h-2.5" />{elapsed(unit.updatedAt)}
+                <ChevronDown className={`w-3.5 h-3.5 ml-0.5 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </a>
+      </button>
+
+      {/* ── Expanded: full test results + print ── */}
+      {expanded && (
+        <div className="border-t" style={{ borderColor: 'rgba(34,197,94,0.15)' }}>
+
+          {/* Print PDF button */}
+          <div className="px-4 pt-3 pb-2">
+            <a href={`/print/qc/${unit.id}`} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
+              style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
+              <Printer className="w-3.5 h-3.5" /> Print PDF Report
+            </a>
+          </div>
+
+          {/* Checklist results table */}
+          {unit.checklistData ? (
+            <div className="mx-4 mb-4 rounded-xl overflow-hidden"
+              style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+              {/* Header */}
+              <div className="grid grid-cols-3 px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500"
+                style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <span>Test Item</span>
+                <span className="text-center">Result</span>
+                <span className="text-right">Value</span>
+              </div>
+              {/* Rows */}
+              {QC_ITEMS.map((item, idx) => {
+                const r      = unit.checklistData![item.key];
+                const isPass = r?.status === 'PASS';
+                const isNA   = r?.status === 'NA' || r?.value === 'N/A';
+                return (
+                  <div key={item.key}
+                    className={`grid grid-cols-3 items-center px-3 py-2 text-xs ${idx > 0 ? 'border-t' : ''}`}
+                    style={idx > 0 ? { borderColor: 'rgba(255,255,255,0.04)' } : undefined}>
+                    <span className="text-zinc-300 font-medium">{item.label}</span>
+                    <span className="text-center">
+                      {isNA ? (
+                        <span className="text-zinc-600 text-[10px]">N/A</span>
+                      ) : isPass ? (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                          style={{ color: '#4ade80', background: 'rgba(34,197,94,0.12)' }}>
+                          <Check className="w-2.5 h-2.5" /> PASS
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                          style={{ color: '#f87171', background: 'rgba(239,68,68,0.12)' }}>
+                          <X className="w-2.5 h-2.5" /> FAIL
+                        </span>
+                      )}
+                    </span>
+                    <span className={`text-right font-mono text-xs ${isNA ? 'text-zinc-600' : isPass ? 'text-green-400' : 'text-red-400'}`}>
+                      {r?.value ?? '—'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-zinc-600 text-xs italic px-4 pb-4">No checklist data recorded for this test</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
