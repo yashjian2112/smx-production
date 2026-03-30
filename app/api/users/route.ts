@@ -8,7 +8,7 @@ const createSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   name: z.string().min(1),
-  role: z.enum(['ADMIN', 'PRODUCTION_EMPLOYEE', 'PACKING', 'SALES', 'ACCOUNTS', 'SHIPPING', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER']),
+  role: z.enum(['ADMIN', 'PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER', 'QC_USER', 'PACKING', 'SALES', 'ACCOUNTS', 'SHIPPING', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER']),
 });
 
 export async function GET() {
