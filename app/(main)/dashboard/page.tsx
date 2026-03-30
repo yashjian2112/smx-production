@@ -262,19 +262,6 @@ export default async function DashboardPage() {
           <StatCard label="In Progress" value={myActive.length} color="text-amber-400" />
           <StatCard label="Completed Today" value={completedToday} color="text-green-400" />
         </div>
-        <Link href="/serial" className="flex items-center gap-3 p-4 rounded-xl tap-target" style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.25)' }}>
-          <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center shrink-0">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
-              <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
-              <rect x="3" y="14" width="7" height="7" /><path d="M14 14h.01M18 14h.01M14 18h.01M18 18h.01M21 14v4M14 21h4" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-sky-400">Scan Barcode to Start Work</p>
-            <p className="text-xs text-zinc-500 mt-0.5">Scan any unit barcode to open its work page</p>
-          </div>
-          <svg className="ml-auto text-zinc-600" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
-        </Link>
         {orderGroups.length > 0 ? (
           <div className="space-y-4">
             <h3 className="font-medium text-sm text-zinc-400">Open Work</h3>
