@@ -507,93 +507,56 @@ function StageCard({
         )}
       </div>
 
-      {/* Expanded unit list — managers/admins see full row with print button */}
-      {isExpanded && !isEmployee && total > 0 && (
-        <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-          <ul>
-            {stage.units.map((u) => {
-              const status = effectiveStatus(u);
-              const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
-              return (
-                <li key={u.id} className="flex items-center border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                  {/* Unit detail link */}
-                  <a
-                    href={`/units/${u.id}`}
-                    className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/5 transition-colors flex-1 min-w-0"
-                  >
-                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-                    <span className="font-mono text-sky-400 text-sm">{u.barcodeForStage ?? u.serialNumber}</span>
-                    {u.barcodeForStage && (
-                      <span className="font-mono text-[10px] text-zinc-600 shrink-0 hidden sm:block">{u.serialNumber}</span>
-                    )}
-                    <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 ${s.text}`}>
-                      {s.label}
-                    </span>
-                    <svg className="text-zinc-700 shrink-0 ml-auto" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M9 18l6-6-6-6" />
-                    </svg>
-                  </a>
-                  {/* Print unit label — admin only */}
-                  <a
-                    href={`/print/unit/${u.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Print unit barcode labels"
-                    className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 mr-2 rounded text-[10px] font-medium transition-colors"
-                    style={{ background: 'rgba(14,165,233,0.08)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.15)' }}
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <polyline points="6 9 6 2 18 2 18 9" />
-                      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                      <rect x="6" y="14" width="12" height="8" />
-                    </svg>
-                    Print
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      {/* Expanded unit list — colour-coded serial numbers
+          Grey = not started · Yellow = in progress · Green = passed · Red = failed */}
+      {isExpanded && total > 0 && (() => {
+        // Employees only see non-PENDING units (units they've started working on)
+        const visibleUnits = isEmployee && isAccessible
+          ? stage.units.filter((u) => (u.derivedStatus ?? u.currentStatus) !== 'PENDING')
+          : !isEmployee ? stage.units : [];
 
-      {/* Expanded unit list — employees see serial + status on their accessible stages.
-          Only shows assigned (IN_PROGRESS / COMPLETED) units — PENDING = unassigned, hidden. */}
-      {isExpanded && isEmployee && isAccessible && total > 0 && (() => {
-        const assignedUnits = stage.units.filter(
-          (u) => (u.derivedStatus ?? u.currentStatus) !== 'PENDING',
-        );
+        if (isEmployee && isAccessible && visibleUnits.length === 0) {
+          return (
+            <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              <p className="px-3 py-3 text-xs text-zinc-600">No units assigned yet — scan a barcode to start.</p>
+            </div>
+          );
+        }
+        if (visibleUnits.length === 0) return null;
+
         return (
           <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-            {assignedUnits.length === 0 ? (
-              <p className="px-3 py-3 text-xs text-zinc-600">No units assigned yet — scan a barcode to start.</p>
-            ) : (
-              <ul>
-                {assignedUnits.map((u) => {
-                  const status = effectiveStatus(u);
-                  const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
-                  const isCompleted = status === 'COMPLETED' || status === 'APPROVED';
-                  return (
-                    <li key={u.id} className="border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                      {/* All assigned units are tappable:
-                          IN_PROGRESS → open work page
-                          COMPLETED   → open unit page to view history */}
-                      <a href={`/units/${u.id}`} className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/5 transition-colors">
-                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-                        <span className="font-mono text-sky-400 text-sm flex-1 truncate">
-                          {u.barcodeForStage ?? u.serialNumber}
-                        </span>
-                        <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 inline-flex items-center gap-0.5 ${s.text}`}>
-                          {isCompleted ? <>Done <Check className="w-4 h-4 ml-1 inline" /></> : s.label}
-                        </span>
-                        <svg className="text-zinc-600 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M9 18l6-6-6-6" />
-                        </svg>
-                      </a>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-px p-2">
+              {visibleUnits.map((u) => {
+                const status = effectiveStatus(u);
+                // Colour mapping: grey=pending, amber=in-progress, green=passed, red=failed
+                const colorMap: Record<string, { bg: string; text: string; border: string }> = {
+                  PENDING:          { bg: 'rgba(113,113,122,0.08)', text: 'text-zinc-500',  border: 'rgba(113,113,122,0.15)' },
+                  IN_PROGRESS:      { bg: 'rgba(251,191,36,0.10)', text: 'text-amber-400',  border: 'rgba(251,191,36,0.25)' },
+                  WAITING_APPROVAL: { bg: 'rgba(56,189,248,0.10)', text: 'text-sky-400',    border: 'rgba(56,189,248,0.25)' },
+                  COMPLETED:        { bg: 'rgba(34,197,94,0.10)',  text: 'text-green-400',  border: 'rgba(34,197,94,0.25)' },
+                  APPROVED:         { bg: 'rgba(34,197,94,0.10)',  text: 'text-green-400',  border: 'rgba(34,197,94,0.25)' },
+                  BLOCKED:          { bg: 'rgba(239,68,68,0.10)',  text: 'text-red-400',    border: 'rgba(239,68,68,0.25)' },
+                  REJECTED_BACK:    { bg: 'rgba(239,68,68,0.10)',  text: 'text-red-400',    border: 'rgba(239,68,68,0.25)' },
+                  REWORK:           { bg: 'rgba(249,115,22,0.10)', text: 'text-orange-400', border: 'rgba(249,115,22,0.25)' },
+                };
+                const c = colorMap[status] ?? colorMap.PENDING;
+
+                return (
+                  <a
+                    key={u.id}
+                    href={`/units/${u.id}`}
+                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg font-mono text-xs transition-colors hover:brightness-125 ${c.text}`}
+                    style={{ background: c.bg, border: `1px solid ${c.border}` }}
+                  >
+                    <span className="truncate">{u.barcodeForStage ?? u.serialNumber}</span>
+                    {(status === 'COMPLETED' || status === 'APPROVED') && (
+                      <Check className="w-3 h-3 shrink-0" />
+                    )}
+                  </a>
+                );
+              })}
+            </div>
           </div>
         );
       })()}    </div>

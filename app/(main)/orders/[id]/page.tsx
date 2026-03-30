@@ -310,31 +310,19 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   }
 
   /**
-   * Each stage shows units relevant to that stage:
-   *   - Units currently AT this stage (any status)
-   *   - Units that have passed this stage (shown as COMPLETED) — but NOT readyForDispatch
-   *     units, since they've finished production entirely
-   *   - Units not yet at this stage (shown as PENDING)
-   *   - REWORK stage: only shows units currently in rework
+   * Each stage shows ALL units with colour-coded status:
+   *   Grey    → not started at this stage (PENDING)
+   *   Yellow  → in progress (IN_PROGRESS)
+   *   Green   → passed / completed (COMPLETED / APPROVED)
+   *   Red     → failed / blocked (BLOCKED / REJECTED_BACK)
    *
-   * readyForDispatch units are excluded from stages they've already passed through.
-   * They only appear at their current stage (Final Assembly) to avoid
-   * cluttering earlier stages with "Done" for units that finished production.
+   * REWORK stage is the only exception: shows only units currently in rework.
    */
   const stages: StageGroup[] = STAGE_CONFIG.map(({ key, label }) => {
-    const stageIdx = STAGE_PIPELINE.indexOf(key);
     const unitsForStage =
       key === 'REWORK'
         ? order.units.filter((u) => u.currentStage === 'REWORK')
-        : order.units.filter((u) => {
-            // Exclude readyForDispatch units from stages they've already passed
-            if (u.readyForDispatch) {
-              const unitIdx = STAGE_PIPELINE.indexOf(u.currentStage);
-              // Only include at their current stage (FA) or future stages
-              return stageIdx >= unitIdx;
-            }
-            return true;
-          });
+        : order.units;
 
     return {
       key,
