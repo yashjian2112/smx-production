@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useCallback } from 'react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Check, X, Plane, Truck, Package, ArrowLeftRight, Clock } from 'lucide-react';
+import { AlertTriangle, Check, X, Plane, Truck, Package, ArrowLeftRight, Clock, Pencil, Trash2 } from 'lucide-react';
 
 type OrderUnit = {
   currentStage:     string;
@@ -1161,6 +1161,123 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
   );
 }
 
+const LOCKED_FOR_EDIT = ['IN_REPAIR', 'REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED'];
+
+function ReplacementCard({
+  r,
+  role,
+  onDeleted,
+}: {
+  r: ReturnRequestRow;
+  role: string;
+  onDeleted: () => void;
+}) {
+  const router = useRouter();
+  const st  = RETURN_STATUS_STYLE[r.status] ?? RETURN_STATUS_STYLE.REPORTED;
+  const tst = RETURN_TYPE_STYLE[r.type]    ?? RETURN_TYPE_STYLE.OTHER;
+  const canAct = ['ADMIN', 'SALES'].includes(role) && !LOCKED_FOR_EDIT.includes(r.status);
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting,      setDeleting]      = useState(false);
+  const [deleteError,   setDeleteError]   = useState('');
+
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const res = await fetch(`/api/returns/${r.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const j = await res.json();
+        setDeleteError(j.error ?? 'Failed to delete');
+        setDeleting(false);
+      } else {
+        onDeleted();
+      }
+    } catch {
+      setDeleteError('Network error');
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="card p-4 space-y-2">
+      {/* Top row: number + badges + actions */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-mono font-semibold text-sm">{r.returnNumber}</span>
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ background: st.bg, color: st.color }}>
+            {r.status.replace(/_/g, ' ')}
+          </span>
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ background: tst.bg, color: tst.color }}>
+            {tst.label}
+          </span>
+        </div>
+        {canAct ? (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Link
+              href={`/rework/${r.id}`}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors"
+              style={{ background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)', color: '#38bdf8' }}
+            >
+              <Pencil className="w-2.5 h-2.5" />
+              Edit
+            </Link>
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors"
+              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}
+            >
+              <Trash2 className="w-2.5 h-2.5" />
+              Delete
+            </button>
+          </div>
+        ) : (
+          <Link
+            href={`/rework/${r.id}`}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
+          >
+            View →
+          </Link>
+        )}
+      </div>
+
+      {/* Card body */}
+      <p className="text-zinc-300 text-sm">{r.client.customerName}</p>
+      <p className="text-zinc-500 text-xs line-clamp-2">{r.reportedIssue}</p>
+      <p className="text-zinc-600 text-xs">
+        {fmtDate(r.createdAt)}
+        {' · '}by {r.reportedBy.name}
+        {r.serialNumber ? ` · SN: ${r.serialNumber}` : ''}
+      </p>
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="mt-2 p-3 rounded-lg space-y-2" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <p className="text-xs font-medium text-red-400">Delete this replacement request?</p>
+          {deleteError && <p className="text-xs text-red-400">{deleteError}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="flex-1 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-40"
+              style={{ background: '#ef4444' }}
+            >
+              {deleting ? 'Deleting…' : 'Confirm Delete'}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="px-3 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white transition-colors"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #27272a' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProformaList({
   proformas,
   role,
@@ -1688,30 +1805,11 @@ export function ProformaList({
                 <p className="text-zinc-500 text-sm">No replacement requests found.</p>
               </div>
             ) : (
-              filteredReturns.map((r) => {
-                const st  = RETURN_STATUS_STYLE[r.status] ?? RETURN_STATUS_STYLE.REPORTED;
-                const tst = RETURN_TYPE_STYLE[r.type]    ?? RETURN_TYPE_STYLE.OTHER;
-                return (
-                  <div key={r.id} className="card p-4">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-mono font-semibold text-sm">{r.returnNumber}</span>
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ background: st.bg, color: st.color }}>
-                        {r.status.replace(/_/g, ' ')}
-                      </span>
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ background: tst.bg, color: tst.color }}>
-                        {tst.label}
-                      </span>
-                    </div>
-                    <p className="text-zinc-300 text-sm">{r.client.customerName}</p>
-                    <p className="text-zinc-500 text-xs mt-0.5 line-clamp-2">{r.reportedIssue}</p>
-                    <p className="text-zinc-600 text-xs mt-1">
-                      {fmtDate(r.createdAt)}
-                      {' · '}by {r.reportedBy.name}
-                      {r.serialNumber ? ` · SN: ${r.serialNumber}` : ''}
-                    </p>
-                  </div>
-                );
-              })
+              <div className="space-y-3">
+                {filteredReturns.map((r) => (
+                  <ReplacementCard key={r.id} r={r} role={role} onDeleted={() => router.refresh()} />
+                ))}
+              </div>
             )}
           </>
         )}
