@@ -206,7 +206,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
     const entered = scanInput.trim();
     if (!entered) { setScanError('Scan or enter the barcode'); scanRef.current?.focus(); return; }
     if (expectedBarcode && entered !== expectedBarcode) {
-      setScanError(`Barcode mismatch — expected ${expectedBarcode}`);
+      setScanError('Barcode mismatch — please scan the correct unit');
       setScanInput('');
       scanRef.current?.focus();
       return;
@@ -393,14 +393,12 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
             <Check className="w-4 h-4" />
             {phase === 'submitting' ? 'Submitting…' : 'Submit PASS'}
           </button>
-          {failCount > 0 && (
-            <button onClick={() => submitResult('FAIL')} disabled={phase === 'submitting'}
-              className="flex-1 py-3 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5"
-              style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
-              <X className="w-4 h-4" />
-              Submit FAIL
-            </button>
-          )}
+          <button onClick={() => submitResult('FAIL')} disabled={phase === 'submitting'}
+            className="flex-1 py-3 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5"
+            style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
+            <X className="w-4 h-4" />
+            Submit FAIL
+          </button>
         </div>
       </div>
     );
