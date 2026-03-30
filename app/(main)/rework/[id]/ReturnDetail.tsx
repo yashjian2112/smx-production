@@ -163,18 +163,17 @@ function getNextActions(status: string, role: string): { label: string; value: s
       ];
       break;
     case 'REPAIRED':
-      if (isAdminOrManager) return [
-        { label: 'Mark QC Checked', value: 'QC_CHECKED', color: '#38bdf8' },
-        { label: 'Close',           value: 'CLOSED',     color: '#a1a1aa' },
+      if (isAdminOrManager || role === 'QC_USER') return [
+        { label: 'QC Pass', value: 'QC_CHECKED', color: '#38bdf8' },
+        { label: 'QC Fail — Send Back to Repair', value: 'IN_REPAIR', color: '#ef4444' },
       ];
       if (isEmployee) return [
         { label: 'Submit for QC', value: 'QC_CHECKED', color: '#38bdf8' },
       ];
       break;
     case 'QC_CHECKED':
-      if (isAdminOrManager || role === 'QC_USER' || isEmployee) return [
-        { label: 'QC Pass — Ready to Dispatch', value: 'DISPATCHED', color: '#6366f1' },
-        { label: 'QC Fail — Send Back to Repair', value: 'IN_REPAIR', color: '#ef4444' },
+      if (isAdminOrManager) return [
+        { label: 'Mark Dispatched', value: 'DISPATCHED', color: '#6366f1' },
       ];
       break;
     case 'DISPATCHED':
