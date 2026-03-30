@@ -102,6 +102,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
   const [issueCategories, setIssueCategories] = useState<IssueCategory[]>([]);
   const [issueCategoryId, setIssueCategoryId] = useState('');
   const [sourceStage, setSourceStage]         = useState('');
+  const [failRemarks, setFailRemarks]         = useState('');
 
   useEffect(() => {
     fetch('/api/qc/issue-categories')
@@ -170,8 +171,9 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
 
   async function submitResult(result: 'PASS' | 'FAIL') {
     if (result === 'FAIL') {
-      if (!issueCategoryId) { setError('Select an error code before submitting FAIL'); return; }
-      if (!sourceStage)     { setError('Select the defect source stage before submitting FAIL'); return; }
+      if (!issueCategoryId)        { setError('Select an error code before submitting FAIL'); return; }
+      if (!sourceStage)            { setError('Select the defect origin stage before submitting FAIL'); return; }
+      if (!failRemarks.trim())     { setError('Describe the defect before submitting FAIL'); return; }
     }
     setPhase('submitting');
     setError(null);
@@ -184,8 +186,9 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
           checklistData: checks,
           firmwareVersion: firmwareVersion || undefined,
           softwareVersion: softwareVersion || undefined,
-          issueCategoryId: result === 'FAIL' ? issueCategoryId : undefined,
-          sourceStage:     result === 'FAIL' ? sourceStage     : undefined,
+          issueCategoryId: result === 'FAIL' ? issueCategoryId    : undefined,
+          sourceStage:     result === 'FAIL' ? sourceStage        : undefined,
+          remarks:         result === 'FAIL' ? failRemarks.trim() : undefined,
         }),
       });
       if (!res.ok) {
@@ -403,7 +406,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
   if (phase === 'summary' || phase === 'submitting') {
     const failCount = QC_ITEMS.filter((i) => { const r = checks[i.key]; return r?.status === 'FAIL'; }).length;
     const hasFailItems = failCount > 0;
-    const canSubmitFail = issueCategoryId && sourceStage;
+    const canSubmitFail = issueCategoryId && sourceStage && failRemarks.trim();
 
     return (
       <div style={card}>
@@ -465,23 +468,39 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
 
             {/* Defect source stage */}
             <div>
-              <label className="block text-xs mb-1.5" style={{ color: sourceStage ? '#94a3b8' : '#f87171' }}>
+              <label className="block text-xs mb-1" style={{ color: sourceStage ? '#94a3b8' : '#f87171' }}>
                 Defect Origin Stage <span className="text-red-400">*</span>
               </label>
+              <p className="text-[10px] text-zinc-600 mb-1.5">Which stage introduced this defect? (for reporting only — unit always returns to Assembly)</p>
               <select value={sourceStage} onChange={(e) => { setSourceStage(e.target.value); setError(null); }}
                 className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none appearance-none"
                 style={{
                   background: 'rgba(255,255,255,0.05)',
                   border: `1px solid ${sourceStage ? 'rgba(255,255,255,0.12)' : 'rgba(239,68,68,0.4)'}`,
                 }}>
-                <option value="" disabled style={{ background: '#1e293b' }}>Where did the defect originate?</option>
+                <option value="" disabled style={{ background: '#1e293b' }}>Select origin stage…</option>
                 {SOURCE_STAGE_OPTIONS.map((s) => (
                   <option key={s.value} value={s.value} style={{ background: '#1e293b' }}>{s.label}</option>
                 ))}
               </select>
-              <p className="text-[10px] text-zinc-600 mt-1.5">
-                Unit will be sent back to this stage&apos;s team for rework.
-              </p>
+            </div>
+
+            {/* Defect description */}
+            <div>
+              <label className="block text-xs mb-1.5" style={{ color: failRemarks.trim() ? '#94a3b8' : '#f87171' }}>
+                Defect Description <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={failRemarks}
+                onChange={(e) => { setFailRemarks(e.target.value); setError(null); }}
+                placeholder="Describe the defect in detail…"
+                rows={3}
+                className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-zinc-700 outline-none resize-none"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${failRemarks.trim() ? 'rgba(255,255,255,0.12)' : 'rgba(239,68,68,0.4)'}`,
+                }}
+              />
             </div>
           </div>
         )}
