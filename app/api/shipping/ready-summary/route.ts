@@ -72,12 +72,17 @@ export async function GET() {
       // Count units already packed/dispatched through other DOs
       const packedCount = dos.reduce((sum, d) =>
         sum + d.boxes.reduce((bs, b) => bs + b._count.items, 0), 0);
+      // Subtract units claimed by OPEN/PACKING DOs (not yet packed but reserved)
+      const claimedByPendingDOs = dos
+        .filter((d) => d.status === 'OPEN' || d.status === 'PACKING')
+        .reduce((sum, d) => sum + d.dispatchQty, 0);
+      const trueReady = Math.max(0, o.units.length - claimedByPendingDOs);
 
       return {
         id: o.id,
         orderNumber: o.orderNumber,
         quantity: o.quantity,
-        readyCount: o.units.length,
+        readyCount: trueReady,
         packedCount,
         client: o.client ? { customerName: o.client.customerName } : null,
         product: { code: o.product.code, name: o.product.name },

@@ -180,7 +180,6 @@ const employeeNav: NavItem[] = [
 
 const packingNav: NavItem[] = [
   { href: '/shipping',    label: 'Packing',   icon: 'Pack'      },
-  { href: '/my-dispatch', label: 'Dispatch',  icon: 'Dispatch'  },
   { href: '/dashboard',   label: 'Dashboard', icon: 'Dashboard' },
 ];
 

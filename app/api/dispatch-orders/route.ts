@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_EMPLOYEE', 'SHIPPING', 'PACKING');
+    requireRole(session, 'ADMIN', 'PRODUCTION_EMPLOYEE', 'SHIPPING');
 
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
@@ -96,9 +96,22 @@ export async function POST(req: NextRequest) {
         { error: 'Order must have at least 1 unit in FINAL_ASSEMBLY with status APPROVED and not yet dispatched' },
         { status: 400 }
       );
-    if (dispatchQty > order.units.length)
+    // Subtract units already claimed by OPEN/PACKING DOs (not yet packed but reserved)
+    const pendingDOs = await prisma.dispatchOrder.findMany({
+      where: { orderId, status: { in: ['OPEN', 'PACKING'] } },
+      select: { dispatchQty: true },
+    });
+    const claimedQty = pendingDOs.reduce((sum, d) => sum + d.dispatchQty, 0);
+    const trueAvailable = order.units.length - claimedQty;
+
+    if (trueAvailable <= 0)
       return NextResponse.json(
-        { error: `Dispatch quantity (${dispatchQty}) exceeds ready units (${order.units.length})` },
+        { error: 'All available units are already claimed by existing dispatch orders' },
+        { status: 400 }
+      );
+    if (dispatchQty > trueAvailable)
+      return NextResponse.json(
+        { error: `Dispatch quantity (${dispatchQty}) exceeds available units (${trueAvailable})` },
         { status: 400 }
       );
 
