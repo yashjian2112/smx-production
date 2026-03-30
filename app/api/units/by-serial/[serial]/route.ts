@@ -12,7 +12,7 @@ export async function GET(
     const unit = await prisma.controllerUnit.findUnique({
       where: { serialNumber: serial },
       include: {
-        order: { include: { product: true } },
+        order: { include: { product: true, client: { select: { id: true, customerName: true } } } },
         product: true,
         assignments: { include: { user: { select: { id: true, name: true, email: true } } } },
         stageLogs: { include: { user: true, approvedBy: true }, orderBy: { createdAt: 'desc' }, take: 50 },
