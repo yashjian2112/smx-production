@@ -16,6 +16,7 @@ export default async function PrintDispatchOrderPage({ params }: { params: { id:
               currentStage:     'FINAL_ASSEMBLY',
               currentStatus:    { in: ['APPROVED', 'COMPLETED'] },
               readyForDispatch: false,
+              packingBoxItem:   null, // exclude units already packed in other DOs
             },
             select: { serialNumber: true, finalAssemblyBarcode: true },
             orderBy: { serialNumber: 'asc' },

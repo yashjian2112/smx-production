@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
             currentStage:     'FINAL_ASSEMBLY',
             currentStatus:    { in: ['APPROVED', 'COMPLETED'] },
             readyForDispatch: false,
+            packingBoxItem:   null, // exclude units already packed in other DOs
           },
           select: { id: true },
         },
