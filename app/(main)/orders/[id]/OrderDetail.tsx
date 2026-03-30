@@ -411,6 +411,7 @@ function StageCard({
   isAccessible,
   accent = 'blue',
   scanLabel = 'Scan',
+  showStatusLabel = false,
 }: {
   stage: StageGroup;
   isExpanded: boolean;
@@ -421,6 +422,8 @@ function StageCard({
   isAccessible: boolean;
   accent?: 'blue' | 'amber' | 'green' | 'red';
   scanLabel?: string;
+  /** When true, each unit chip shows a small Submitted / Failed / In Progress label */
+  showStatusLabel?: boolean;
 }) {
   const total      = stage.units.length;
   const completed  = stage.units.filter((u) => ['COMPLETED', 'APPROVED'].includes(effectiveStatus(u))).length;
@@ -564,21 +567,39 @@ function StageCard({
                   }
                 };
 
+                // Status label for QC read-only view (production employee watching QC progress)
+                const statusLabelText =
+                  showStatusLabel && (isPassed)
+                    ? 'Submitted'
+                    : showStatusLabel && (status === 'REJECTED_BACK' || status === 'BLOCKED')
+                    ? 'Failed'
+                    : showStatusLabel && (status === 'IN_PROGRESS' || status === 'WAITING_APPROVAL')
+                    ? 'In Progress'
+                    : null;
+
                 return (
                   <a
                     key={u.id}
                     href={`/units/${u.id}`}
                     onClick={handleClick}
-                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg font-mono text-xs transition-colors hover:brightness-125 ${c.text}`}
+                    className={`flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg font-mono text-xs transition-colors hover:brightness-125 ${c.text}`}
                     style={{ background: c.bg, border: `1px solid ${c.border}` }}
                   >
                     <span className="truncate">{u.barcodeForStage ?? u.serialNumber}</span>
-                    {isPassed && <Check className="w-3 h-3 shrink-0" />}
-                    {isEmployee && isPending && (
-                      <svg className="w-3 h-3 shrink-0 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
-                        <circle cx="12" cy="13" r="4" />
-                      </svg>
+                    {statusLabelText ? (
+                      <span className="text-[9px] font-semibold shrink-0 uppercase tracking-wide opacity-80">
+                        {statusLabelText}
+                      </span>
+                    ) : (
+                      <>
+                        {isPassed && <Check className="w-3 h-3 shrink-0" />}
+                        {isEmployee && isPending && (
+                          <svg className="w-3 h-3 shrink-0 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+                            <circle cx="12" cy="13" r="4" />
+                          </svg>
+                        )}
+                      </>
                     )}
                   </a>
                 );
@@ -854,11 +875,13 @@ export function OrderDetail({ orderId, stages, isEmployee, role, totalUnits }: P
             <div className="space-y-2">
               {sequential.map(({ stage, accent }) => {
                 const roleCanWork = canRoleWorkStage(role, stage.key);
+                // Production employee watching QC: show status labels on chips, expand by default
+                const isQcReadOnly = role === 'PRODUCTION_EMPLOYEE' && stage.key === 'QC_AND_SOFTWARE';
                 return (
                   <StageCard
                     key={stage.key}
                     stage={stage}
-                    isExpanded={expanded === stage.key}
+                    isExpanded={isQcReadOnly ? true : expanded === stage.key}
                     onToggle={() => toggle(stage.key)}
                     onScanStart={
                       stage.key === 'CONTROLLER_ASSEMBLY'
@@ -870,6 +893,7 @@ export function OrderDetail({ orderId, stages, isEmployee, role, totalUnits }: P
                     isAccessible={isStageAccessible(stage.key, allUnits)}
                     accent={accent}
                     scanLabel={stage.key === 'CONTROLLER_ASSEMBLY' ? 'Select' : 'Scan'}
+                    showStatusLabel={isQcReadOnly}
                   />
                 );
               })}
