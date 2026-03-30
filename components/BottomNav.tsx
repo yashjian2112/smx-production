@@ -209,6 +209,7 @@ const purchaseNav: NavItem[] = [
 // INVENTORY_MANAGER / STORE_MANAGER
 const inventoryNav: NavItem[] = [
   { href: '/inventory',  label: 'Inventory',  icon: 'Inventory'  },
+  { href: '/grn',        label: 'GRN',        icon: 'Pack'       },
   { href: '/job-cards',  label: 'Job Cards',  icon: 'JobCards'   },
   { href: '/purchase',   label: 'Req. Order', icon: 'Purchase'   },
 ];
