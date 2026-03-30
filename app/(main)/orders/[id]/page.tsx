@@ -48,13 +48,10 @@ type UnitRow = {
 
 /**
  * Derive what status a unit has AT a given stage — even if it has already moved past it.
- *   COMPLETED  → unit has passed through this stage (verified by barcode existence)
+ *   COMPLETED  → unit has passed through this stage
  *   <actual>   → unit is currently at this stage (IN_PROGRESS / PENDING / etc.)
- *   PENDING    → unit hasn't reached this stage yet OR no work was done
+ *   PENDING    → unit hasn't reached this stage yet
  *   BLOCKED    → unit is in REWORK (blocked from all normal stages)
- *
- * Uses actual barcode fields to verify work was done — a stage is only COMPLETED
- * if the unit has a barcode for that stage (generated when work is submitted).
  */
 function derivedStageStatus(unit: UnitRow, stageKey: string): string {
   if (unit.currentStage === 'REWORK') {
@@ -66,16 +63,9 @@ function derivedStageStatus(unit: UnitRow, stageKey: string): string {
   const tarIdx = STAGE_PIPELINE.indexOf(stageKey);
 
   if (curIdx < 0 || tarIdx < 0) return unit.currentStatus;
+  if (tarIdx < curIdx) return 'COMPLETED';          // already passed this stage
   if (tarIdx === curIdx) return unit.currentStatus;  // currently here
-  if (tarIdx > curIdx) return 'PENDING';             // not yet reached
-
-  // Past stage (tarIdx < curIdx) — only mark COMPLETED if barcode exists
-  // proving actual work was done at that stage
-  const barcodeField = STAGE_BARCODE_FIELD[stageKey];
-  if (barcodeField && unit[barcodeField]) return 'COMPLETED';
-
-  // No barcode = no work was done at this stage (e.g. unit skipped or hasn't started)
-  return 'PENDING';
+  return 'PENDING';                                  // not yet reached
 }
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -320,18 +310,31 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   }
 
   /**
-   * Each stage shows ALL units (not just the ones currently there).
-   * Each unit in a stage has:
-   *   barcodeForStage — the physical label/QR value for that station
-   *   derivedStatus   — reflects progress relative to pipeline position
+   * Each stage shows units relevant to that stage:
+   *   - Units currently AT this stage (any status)
+   *   - Units that have passed this stage (shown as COMPLETED) — but NOT readyForDispatch
+   *     units, since they've finished production entirely
+   *   - Units not yet at this stage (shown as PENDING)
+   *   - REWORK stage: only shows units currently in rework
    *
-   * REWORK stage is the only exception: shows only units currently in rework.
+   * readyForDispatch units are excluded from stages they've already passed through.
+   * They only appear at their current stage (Final Assembly) to avoid
+   * cluttering earlier stages with "Done" for units that finished production.
    */
   const stages: StageGroup[] = STAGE_CONFIG.map(({ key, label }) => {
+    const stageIdx = STAGE_PIPELINE.indexOf(key);
     const unitsForStage =
       key === 'REWORK'
         ? order.units.filter((u) => u.currentStage === 'REWORK')
-        : order.units;
+        : order.units.filter((u) => {
+            // Exclude readyForDispatch units from stages they've already passed
+            if (u.readyForDispatch) {
+              const unitIdx = STAGE_PIPELINE.indexOf(u.currentStage);
+              // Only include at their current stage (FA) or future stages
+              return stageIdx >= unitIdx;
+            }
+            return true;
+          });
 
     return {
       key,
@@ -359,7 +362,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   });
 
   const total      = order.units.length;
-  const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED').length;
+  const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED' || u.readyForDispatch).length;
   const inProgress = order.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
   const blocked    = order.units.filter((u) => u.currentStatus === 'BLOCKED').length;
   const pct        = total > 0 ? Math.round((completed / total) * 100) : 0;
