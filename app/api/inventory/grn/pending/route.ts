@@ -39,7 +39,7 @@ export async function GET() {
           poItemId: true,
           materialId: true,
           qtyArrived: true,
-          material: { select: { id: true, name: true, unit: true } },
+          material: { select: { id: true, name: true, unit: true, barcode: true } },
         },
       },
       createdBy: { select: { name: true } },
