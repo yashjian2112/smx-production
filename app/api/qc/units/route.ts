@@ -82,6 +82,7 @@ export async function GET() {
         createdAt: true,
         firmwareVersion: true,
         softwareVersion: true,
+        checklistData: true,
         unit: {
           select: {
             id: true, serialNumber: true, currentStage: true, currentStatus: true, updatedAt: true,
@@ -90,6 +91,12 @@ export async function GET() {
             assignments: {
               where: { stage: 'QC_AND_SOFTWARE' },
               select: { user: { select: { id: true, name: true } } },
+              take: 1,
+            },
+            // Check for any prior FAIL records to flag as rework
+            qcRecords: {
+              where: { result: 'FAIL' },
+              select: { id: true },
               take: 1,
             },
           },
@@ -115,8 +122,10 @@ export async function GET() {
       order:         r.unit.order,
       assignedTo:    r.unit.assignments[0]?.user ?? null,
       qcPassedBy:    r.user,
-      firmwareVersion: r.firmwareVersion,
-      softwareVersion: r.softwareVersion,
+      firmwareVersion:  r.firmwareVersion,
+      softwareVersion:  r.softwareVersion,
+      checklistData:    r.checklistData as Record<string, { status: string; value: string }> | null,
+      hadRework:        r.unit.qcRecords.length > 0,
       _type: 'completed' as const,
     }));
 

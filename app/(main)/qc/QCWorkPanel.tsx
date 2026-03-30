@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, X, ChevronRight, Clock } from 'lucide-react';
+import { Check, X, ChevronRight, Clock, ChevronDown, Printer } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,10 +20,14 @@ type QCUnit = {
   } | null;
 };
 
+type ChecklistData = Record<string, { status: string; value: string }>;
+
 type CompletedUnit = QCUnit & {
-  qcPassedBy: { id: string; name: string } | null;
+  qcPassedBy:     { id: string; name: string } | null;
   firmwareVersion: string | null;
   softwareVersion: string | null;
+  checklistData:   ChecklistData | null;
+  hadRework:       boolean;
 };
 
 // ─── QC Item definitions ──────────────────────────────────────────────────────
@@ -394,39 +398,103 @@ function UnitCard({ unit, onSelect }: { unit: QCUnit; onSelect: (u: QCUnit) => v
   );
 }
 
-// ─── Completed Card ───────────────────────────────────────────────────────────
+// ─── Completed Card (expandable with checklist history + print) ───────────────
 
 function CompletedCard({ unit }: { unit: CompletedUnit }) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
-    <div className="w-full rounded-xl p-3 relative overflow-hidden"
+    <div className="rounded-xl overflow-hidden"
       style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.18)' }}>
-      <div className="flex items-start gap-3">
-        <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: '#4ade80' }} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-mono text-sm font-semibold text-white leading-tight">{unit.serialNumber}</p>
-            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-              style={{ color: '#4ade80', background: 'rgba(34,197,94,0.12)' }}>QC Pass</span>
-          </div>
-          <p className="text-xs text-zinc-400 mt-0.5">
-            {unit.order?.product.name ?? '—'} · <span className="text-zinc-500">{unit.order?.orderNumber ?? '—'}</span>
-          </p>
-          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-            {unit.qcPassedBy && (
-              <p className="text-[10px] text-zinc-500">By {unit.qcPassedBy.name}</p>
-            )}
-            {unit.firmwareVersion && (
-              <p className="text-[10px] text-zinc-600">FW {unit.firmwareVersion}</p>
-            )}
-            {unit.softwareVersion && (
-              <p className="text-[10px] text-zinc-600">SW {unit.softwareVersion}</p>
-            )}
-            <div className="flex items-center gap-1 text-[10px] text-zinc-600 ml-auto">
-              <Clock className="w-2.5 h-2.5" />{elapsed(unit.updatedAt)}
+
+      {/* Main row — always visible */}
+      <button type="button" onClick={() => setExpanded((v) => !v)}
+        className="w-full text-left p-3 hover:bg-white/[0.02] transition-colors">
+        <div className="flex items-start gap-3">
+          <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: '#4ade80' }} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-mono text-sm font-semibold text-white leading-tight">{unit.serialNumber}</p>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                style={{ color: '#4ade80', background: 'rgba(34,197,94,0.12)' }}>QC Pass</span>
+              {unit.hadRework && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest"
+                  style={{ color: '#f87171', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                  Rework
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              {unit.order?.product.name ?? '—'} · <span className="text-zinc-500">{unit.order?.orderNumber ?? '—'}</span>
+            </p>
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+              {unit.qcPassedBy && <p className="text-[10px] text-zinc-500">By {unit.qcPassedBy.name}</p>}
+              {unit.firmwareVersion && <p className="text-[10px] text-zinc-600">FW {unit.firmwareVersion}</p>}
+              {unit.softwareVersion && <p className="text-[10px] text-zinc-600">SW {unit.softwareVersion}</p>}
+              <div className="flex items-center gap-1 text-[10px] text-zinc-600 ml-auto">
+                <Clock className="w-2.5 h-2.5" />{elapsed(unit.updatedAt)}
+                <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+              </div>
             </div>
           </div>
         </div>
+      </button>
+
+      {/* Expanded: checklist data + print button */}
+      {expanded && (
+        <div className="border-t px-3 pb-3 pt-2" style={{ borderColor: 'rgba(34,197,94,0.15)' }}>
+
+          {/* Print button */}
+          <a href={`/print/qc/${unit.id}`} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg mb-3 w-fit"
+            style={{ background: 'rgba(14,165,233,0.10)', border: '1px solid rgba(14,165,233,0.2)', color: '#38bdf8' }}>
+            <Printer className="w-3.5 h-3.5" /> Print QC Report
+          </a>
+
+          {/* Checklist data */}
+          {unit.checklistData ? (
+            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+              <p className="text-[10px] uppercase tracking-widest text-zinc-500 px-3 py-1.5"
+                style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                Test Results
+              </p>
+              {QC_ITEMS.map((item, idx) => {
+                const r = unit.checklistData![item.key];
+                const isPass = r?.status === 'PASS';
+                const isNA   = r?.status === 'NA' || r?.value === 'N/A';
+                return (
+                  <div key={item.key}
+                    className={`flex items-center justify-between px-3 py-1.5 text-xs ${idx > 0 ? 'border-t' : ''}`}
+                    style={idx > 0 ? { borderColor: 'rgba(255,255,255,0.04)' } : undefined}>
+                    <span className="text-zinc-400">{item.label}</span>
+                    <span className={isNA ? 'text-zinc-600' : isPass ? 'text-green-400 font-mono' : 'text-red-400'}>
+                      {r?.value ?? '—'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-zinc-600 text-xs italic">No checklist data recorded</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Empty State ──────────────────────────────────────────────────────────────
+
+function EmptyState({ message, sub }: { message: string; sub: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-dashed border-zinc-700 max-w-md mx-auto"
+      style={{ background: 'rgba(255,255,255,0.02)' }}>
+      <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"
+        style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.15)' }}>
+        <Check className="w-5 h-5 text-emerald-400" />
       </div>
+      <p className="text-zinc-400 text-sm font-medium">{message}</p>
+      <p className="text-zinc-600 text-xs mt-1">{sub}</p>
     </div>
   );
 }
@@ -482,6 +550,13 @@ export function QCWorkPanel({ role }: { role: string }) {
   const tabUnits      = tab === 'pending' ? pending : processing;
   const showCompleted = tab === 'completed';
 
+  // Tab definitions
+  const tabs = [
+    { key: 'pending'    as const, label: 'Pending',    count: pending.length        },
+    { key: 'processing' as const, label: 'Processing', count: processing.length     },
+    { key: 'completed'  as const, label: 'Completed',  count: completedUnits.length },
+  ];
+
   return (
     <div className="w-full px-4 pb-24">
       {/* Header */}
@@ -497,23 +572,19 @@ export function QCWorkPanel({ role }: { role: string }) {
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex rounded-xl overflow-hidden mb-5 max-w-4xl mx-auto"
-        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-        {([
-          { key: 'pending',    label: 'Pending',    count: pending.length,         color: '#94a3b8' },
-          { key: 'processing', label: 'Processing', count: processing.length,      color: '#38bdf8' },
-          { key: 'completed',  label: 'Completed',  count: completedUnits.length,  color: '#4ade80' },
-        ] as const).map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors"
-            style={tab === t.key ? { background: 'rgba(255,255,255,0.08)', color: t.color } : { color: '#52525b' }}>
+      {/* Tabs — full-width style matching orders page */}
+      <div className="flex gap-1 p-1 rounded-xl mb-5 max-w-4xl mx-auto"
+        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        {tabs.map((t) => (
+          <button key={t.key} type="button" onClick={() => setTab(t.key)}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-colors ${tab === t.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+            style={tab === t.key ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
             {t.label}
             {t.count > 0 && (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center"
                 style={{
-                  background: tab === t.key ? `${t.color}20` : 'rgba(255,255,255,0.06)',
-                  color: tab === t.key ? t.color : '#52525b',
+                  background: tab === t.key ? 'rgba(14,165,233,0.2)' : 'rgba(255,255,255,0.06)',
+                  color:      tab === t.key ? '#38bdf8'               : '#52525b',
                 }}>
                 {t.count}
               </span>
@@ -549,20 +620,6 @@ export function QCWorkPanel({ role }: { role: string }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function EmptyState({ message, sub }: { message: string; sub: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-dashed border-zinc-700 max-w-md mx-auto"
-      style={{ background: 'rgba(255,255,255,0.02)' }}>
-      <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"
-        style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.15)' }}>
-        <Check className="w-5 h-5 text-emerald-400" />
-      </div>
-      <p className="text-zinc-400 text-sm font-medium">{message}</p>
-      <p className="text-zinc-600 text-xs mt-1">{sub}</p>
     </div>
   );
 }
