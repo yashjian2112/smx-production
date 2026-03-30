@@ -548,10 +548,24 @@ function StageCard({
           REWORK:           { bg: 'rgba(249,115,22,0.10)', text: 'text-orange-400', border: 'rgba(249,115,22,0.25)' },
         };
 
+        // In status-label mode (QC read-only for production employees),
+        // hide units that haven't been touched yet — only show once QC has been submitted.
+        const displayUnits = showStatusLabel
+          ? visibleUnits.filter((u) => effectiveStatus(u) !== 'PENDING')
+          : visibleUnits;
+
+        if (displayUnits.length === 0 && showStatusLabel) {
+          return (
+            <div className="border-t px-3 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              <p className="text-zinc-600 text-xs text-center">No results submitted yet</p>
+            </div>
+          );
+        }
+
         return (
           <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-px p-2">
-              {visibleUnits.map((u) => {
+              {displayUnits.map((u) => {
                 const status = effectiveStatus(u);
                 const c = colorMap[status] ?? colorMap.PENDING;
                 const isPending = status === 'PENDING';
