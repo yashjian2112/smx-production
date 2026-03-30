@@ -167,6 +167,9 @@ function getNextActions(status: string, role: string): { label: string; value: s
         { label: 'Mark QC Checked', value: 'QC_CHECKED', color: '#38bdf8' },
         { label: 'Close',           value: 'CLOSED',     color: '#a1a1aa' },
       ];
+      if (isEmployee) return [
+        { label: 'Submit for QC', value: 'QC_CHECKED', color: '#38bdf8' },
+      ];
       break;
     case 'QC_CHECKED':
       if (isAdminOrManager) return [
@@ -1291,10 +1294,14 @@ export default function ReturnDetail({
                             <p className="text-[10px] text-zinc-500 font-mono">{b.code}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-[10px] font-semibold" style={{ color: b.currentStock >= b.quantityRequired ? '#22c55e' : '#ef4444' }}>
-                              {b.quantityRequired} {b.unit}
+                            <p className="text-[10px] font-semibold text-zinc-300">
+                              Qty: {b.quantityRequired} {b.unit}
                             </p>
-                            <p className="text-[10px] text-zinc-600">Stock: {b.currentStock}</p>
+                            {!isEmployee && (
+                              <p className="text-[10px]" style={{ color: b.currentStock >= b.quantityRequired ? '#22c55e' : '#ef4444' }}>
+                                Stock: {b.currentStock}
+                              </p>
+                            )}
                           </div>
                           {alreadyRequested && (
                             <span className="text-[10px] text-emerald-400 ml-2 shrink-0">Requested</span>
@@ -1306,13 +1313,15 @@ export default function ReturnDetail({
                   {selectedMat && (
                     <div className="space-y-2 pt-1">
                       <div className="flex items-center gap-2 px-2 py-1.5 rounded-md" style={{
-                        background: selectedMat.currentStock <= selectedMat.minimumStock ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.06)',
-                        border:     selectedMat.currentStock <= selectedMat.minimumStock ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(34,197,94,0.15)',
+                        background: 'rgba(14,165,233,0.06)',
+                        border: '1px solid rgba(14,165,233,0.2)',
                       }}>
                         <span className="text-xs text-white flex-1">{selectedMat.name}</span>
-                        <span className={`text-[10px] font-semibold ${selectedMat.currentStock <= selectedMat.minimumStock ? 'text-red-400' : 'text-emerald-400'}`}>
-                          {selectedMat.currentStock <= selectedMat.minimumStock ? 'Low Stock: ' : 'Stock: '}{selectedMat.currentStock} {selectedMat.unit}
-                        </span>
+                        {!isEmployee && (
+                          <span className={`text-[10px] font-semibold ${selectedMat.currentStock <= selectedMat.minimumStock ? 'text-red-400' : 'text-emerald-400'}`}>
+                            {selectedMat.currentStock <= selectedMat.minimumStock ? 'Low: ' : 'Stock: '}{selectedMat.currentStock} {selectedMat.unit}
+                          </span>
+                        )}
                       </div>
                       <div className="flex gap-2">
                         <input
@@ -1356,7 +1365,7 @@ export default function ReturnDetail({
                     />
                     {matSearchLoading && <span className="absolute right-3 top-2 text-[10px] text-zinc-500">…</span>}
                     {matOptions.length > 0 && !selectedMat && (
-                      <div className="absolute z-10 w-full mt-1 rounded-lg border border-zinc-700 overflow-hidden" style={{ background: '#18181b' }}>
+                      <div className="absolute z-50 w-full mt-1 rounded-lg border border-zinc-700 overflow-y-auto" style={{ background: '#18181b', maxHeight: 220, bottom: 'auto' }}>
                         {matOptions.map(o => (
                           <button key={o.id} type="button"
                             onClick={() => { setSelectedMat(o); setMatSearch(o.name); setMatOptions([]); }}
@@ -1364,9 +1373,11 @@ export default function ReturnDetail({
                           >
                             <div className="flex items-center justify-between">
                               <span className="text-xs text-white">{o.name}</span>
-                              <span className={`text-[10px] font-medium ${o.currentStock <= o.minimumStock ? 'text-red-400' : 'text-emerald-400'}`}>
-                                {o.currentStock} {o.unit}
-                              </span>
+                              {!isEmployee && (
+                                <span className={`text-[10px] font-medium ${o.currentStock <= o.minimumStock ? 'text-red-400' : 'text-emerald-400'}`}>
+                                  {o.currentStock} {o.unit}
+                                </span>
+                              )}
                             </div>
                             <span className="text-[10px] text-zinc-500 font-mono">{o.code}</span>
                           </button>
@@ -1376,13 +1387,15 @@ export default function ReturnDetail({
                   </div>
                   {selectedMat && (
                     <div className="flex items-center gap-2 px-2 py-1.5 rounded-md" style={{
-                      background: selectedMat.currentStock <= selectedMat.minimumStock ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.06)',
-                      border:     selectedMat.currentStock <= selectedMat.minimumStock ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(34,197,94,0.15)',
+                      background: 'rgba(14,165,233,0.06)',
+                      border: '1px solid rgba(14,165,233,0.2)',
                     }}>
                       <span className="text-xs text-white flex-1">{selectedMat.name}</span>
-                      <span className={`text-[10px] font-semibold ${selectedMat.currentStock <= selectedMat.minimumStock ? 'text-red-400' : 'text-emerald-400'}`}>
-                        {selectedMat.currentStock <= selectedMat.minimumStock ? 'Low Stock: ' : 'Stock: '}{selectedMat.currentStock} {selectedMat.unit}
-                      </span>
+                      {!isEmployee && (
+                        <span className={`text-[10px] font-semibold ${selectedMat.currentStock <= selectedMat.minimumStock ? 'text-red-400' : 'text-emerald-400'}`}>
+                          {selectedMat.currentStock <= selectedMat.minimumStock ? 'Low: ' : 'Stock: '}{selectedMat.currentStock} {selectedMat.unit}
+                        </span>
+                      )}
                     </div>
                   )}
                   <div className="flex gap-2">
@@ -1449,7 +1462,7 @@ export default function ReturnDetail({
                             {m.qtyRequested} {m.unit} requested
                             {isIssued && m.qtyIssued > 0 && ` · ${m.qtyIssued} ${m.unit} issued`}
                           </span>
-                          {isPending && <span className="text-[10px] text-zinc-600">Stock: {m.currentStock} {m.unit}</span>}
+                          {isPending && !isEmployee && <span className="text-[10px] text-zinc-600">Stock: {m.currentStock} {m.unit}</span>}
                         </div>
                         {m.notes && <p className="text-[10px] text-zinc-500 mt-0.5">{m.notes}</p>}
                         <p className="text-[9px] text-zinc-600 mt-0.5">
