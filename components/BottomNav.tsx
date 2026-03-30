@@ -104,6 +104,12 @@ const Icons = {
       <line x1="12" y1="22.08" x2="12" y2="12" />
     </svg>
   ),
+  QC: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 11l3 3L22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  ),
   Purchase: () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
@@ -220,6 +226,13 @@ const inventoryNav: NavItem[] = [
   { href: '/purchase',   label: 'Req. Order', icon: 'Purchase'   },
 ];
 
+// QC_USER: dedicated QC & software testing
+const qcUserNav: NavItem[] = [
+  { href: '/qc',         label: 'QC Work',   icon: 'QC'        },
+  { href: '/orders',     label: 'Orders',    icon: 'Orders'    },
+  { href: '/units',      label: 'Units',     icon: 'Serial'    },
+];
+
 export function BottomNav({ role }: { role: string }) {
   const pathname     = usePathname();
   const searchParams = useSearchParams();
@@ -227,6 +240,7 @@ export function BottomNav({ role }: { role: string }) {
 
   const items =
     role === 'PRODUCTION_EMPLOYEE' ? employeeNav  :
+    role === 'QC_USER'             ? qcUserNav    :
     role === 'PACKING'             ? packingNav   :
     role === 'ADMIN'               ? adminNav     :
     role === 'SALES'               ? salesNav     :

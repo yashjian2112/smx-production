@@ -86,6 +86,7 @@ enum Role {
   ADMIN
   PRODUCTION_MANAGER
   PRODUCTION_EMPLOYEE
+  QC_USER            // dedicated QC & software testing role
   SALES
   ACCOUNTS
   SHIPPING           // deprecated — use ACCOUNTS for shipping approval

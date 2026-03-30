@@ -22,7 +22,7 @@ const createSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS', 'PACKING', 'PRODUCTION_EMPLOYEE');
+    requireRole(session, 'ADMIN', 'SALES', 'ACCOUNTS', 'PACKING', 'PRODUCTION_EMPLOYEE', 'QC_USER', 'PRODUCTION_MANAGER');
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
 
