@@ -77,14 +77,15 @@ export async function GET() {
       orderBy: [{ currentStatus: 'asc' }, { updatedAt: 'asc' }],
     });
 
-    // ── Recently completed QC units (passed in last 30 days) ──────────────────
+    // ── Recently completed QC units (pass AND fail, last 30 days) ────────────
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const recentQC = await prisma.qCRecord.findMany({
-      where: { result: 'PASS', createdAt: { gte: since } },
+      where: { createdAt: { gte: since } },
       orderBy: { createdAt: 'desc' },
       take: 50,
       select: {
         id: true,
+        result: true,
         createdAt: true,
         firmwareVersion: true,
         softwareVersion: true,
@@ -120,6 +121,7 @@ export async function GET() {
     }));
 
     const completedList = recentQC.map((r) => ({
+      qcResult:      r.result as 'PASS' | 'FAIL',
       id:            r.unit.id,
       serialNumber:  r.unit.serialNumber,
       currentStatus: r.unit.currentStatus,

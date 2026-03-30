@@ -25,6 +25,7 @@ type QCUnit = {
 type ChecklistData = Record<string, { status: string; value: string }>;
 
 type CompletedUnit = QCUnit & {
+  qcResult:        'PASS' | 'FAIL';
   qcPassedBy:     { id: string; name: string } | null;
   firmwareVersion: string | null;
   softwareVersion: string | null;
@@ -572,27 +573,37 @@ function UnitCard({ unit, onSelect }: { unit: QCUnit; onSelect: (u: QCUnit) => v
 
 function CompletedCard({ unit }: { unit: CompletedUnit }) {
   const [expanded, setExpanded] = useState(false);
+  const isFail = unit.qcResult === 'FAIL';
+
+  const accentColor  = isFail ? '#f87171'              : '#4ade80';
+  const accentBg     = isFail ? 'rgba(239,68,68,0.06)' : 'rgba(34,197,94,0.06)';
+  const accentBorder = isFail ? 'rgba(239,68,68,0.2)'  : 'rgba(34,197,94,0.18)';
+  const dividerColor = isFail ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
 
   const passCount = unit.checklistData
     ? QC_ITEMS.filter((i) => unit.checklistData![i.key]?.status === 'PASS').length
     : null;
+  const failCount = unit.checklistData
+    ? QC_ITEMS.filter((i) => unit.checklistData![i.key]?.status === 'FAIL').length
+    : null;
 
   return (
-    <div className="rounded-xl overflow-hidden"
-      style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.18)' }}>
+    <div className="rounded-xl overflow-hidden" style={{ background: accentBg, border: `1px solid ${accentBorder}` }}>
 
-      {/* ── Summary row (always visible) ── */}
+      {/* ── Summary row ── */}
       <button type="button" onClick={() => setExpanded((v) => !v)}
         className="w-full text-left p-4 hover:bg-white/[0.02] transition-colors">
         <div className="flex items-start gap-3">
-          <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: '#4ade80' }} />
+          <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: accentColor }} />
           <div className="flex-1 min-w-0">
 
             {/* Serial + badges */}
             <div className="flex items-center gap-2 flex-wrap">
               <p className="font-mono text-sm font-semibold text-white leading-tight">{unit.serialNumber}</p>
               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                style={{ color: '#4ade80', background: 'rgba(34,197,94,0.15)' }}>QC Pass</span>
+                style={{ color: accentColor, background: isFail ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)' }}>
+                {isFail ? 'QC Fail' : 'QC Pass'}
+              </span>
               {unit.hadRework && (
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest"
                   style={{ color: '#f87171', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)' }}>
@@ -621,8 +632,10 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
                   SW {unit.softwareVersion}
                 </span>
               )}
-              {passCount !== null && (
-                <span className="text-[10px] text-zinc-500">{passCount}/{QC_ITEMS.length} passed</span>
+              {passCount !== null && failCount !== null && (
+                <span className="text-[10px] text-zinc-500">
+                  {passCount} pass · <span style={{ color: failCount > 0 ? '#f87171' : '#71717a' }}>{failCount} fail</span>
+                </span>
               )}
               <div className="ml-auto flex items-center gap-1.5 text-[10px] text-zinc-600">
                 <Clock className="w-2.5 h-2.5" />{elapsed(unit.updatedAt)}
@@ -635,7 +648,7 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
 
       {/* ── Expanded: full test results + print ── */}
       {expanded && (
-        <div className="border-t" style={{ borderColor: 'rgba(34,197,94,0.15)' }}>
+        <div className="border-t" style={{ borderColor: dividerColor }}>
 
           {/* Print PDF button */}
           <div className="px-4 pt-3 pb-2">
@@ -650,18 +663,17 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
           {unit.checklistData ? (
             <div className="mx-4 mb-4 rounded-xl overflow-hidden"
               style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
-              {/* Header */}
               <div className="grid grid-cols-3 px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500"
                 style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                 <span>Test Item</span>
                 <span className="text-center">Result</span>
                 <span className="text-right">Value</span>
               </div>
-              {/* Rows */}
               {QC_ITEMS.map((item, idx) => {
-                const r      = unit.checklistData![item.key];
-                const isPass = r?.status === 'PASS';
-                const isNA   = r?.status === 'NA' || r?.value === 'N/A';
+                const r       = unit.checklistData![item.key];
+                const isPass  = r?.status === 'PASS';
+                const isNA    = r?.status === 'NA' || r?.value === 'N/A';
+                const isFItem = r?.status === 'FAIL';
                 return (
                   <div key={item.key}
                     className={`grid grid-cols-3 items-center px-3 py-2 text-xs ${idx > 0 ? 'border-t' : ''}`}
@@ -678,12 +690,12 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
                       ) : (
                         <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded"
                           style={{ color: '#f87171', background: 'rgba(239,68,68,0.12)' }}>
-                          <X className="w-2.5 h-2.5" /> FAIL
+                          <X className="w-2.5 h-2.5" /> {isFItem ? 'FAIL' : '—'}
                         </span>
                       )}
                     </span>
                     <span className={`text-right font-mono text-xs ${isNA ? 'text-zinc-600' : isPass ? 'text-green-400' : 'text-red-400'}`}>
-                      {r?.value ?? '—'}
+                      {r?.value || (isFItem ? 'FAIL' : '—')}
                     </span>
                   </div>
                 );
