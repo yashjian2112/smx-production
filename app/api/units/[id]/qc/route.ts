@@ -76,14 +76,35 @@ export async function POST(
     if (softwareVersion !== undefined) updateData.softwareVersion = softwareVersion;
 
     if (result === 'PASS') {
-      await prisma.controllerUnit.update({
-        where: { id },
-        data: {
-          ...updateData,
-          currentStage: StageType.FINAL_ASSEMBLY,
-          currentStatus: UnitStatus.PENDING,
-        },
+      // Check if this is a rework unit (has open rework records)
+      const openRework = await prisma.reworkRecord.findFirst({
+        where: { unitId: id, status: { in: ['OPEN', 'IN_PROGRESS', 'SENT_TO_QC'] } },
       });
+      const isRework = !!openRework;
+
+      if (isRework) {
+        // Rework units skip Final Assembly — go straight to dispatch-ready
+        await prisma.controllerUnit.update({
+          where: { id },
+          data: {
+            ...updateData,
+            currentStage: StageType.FINAL_ASSEMBLY,
+            currentStatus: UnitStatus.APPROVED,
+            readyForDispatch: false,
+          },
+        });
+      } else {
+        // Fresh units proceed to Final Assembly as normal
+        await prisma.controllerUnit.update({
+          where: { id },
+          data: {
+            ...updateData,
+            currentStage: StageType.FINAL_ASSEMBLY,
+            currentStatus: UnitStatus.PENDING,
+          },
+        });
+      }
+
       // Close any open ReworkRecords for this unit
       await prisma.reworkRecord.updateMany({
         where: { unitId: id, status: { in: ['OPEN', 'IN_PROGRESS', 'SENT_TO_QC'] } },
@@ -95,7 +116,7 @@ export async function POST(
           userId: session.id,
           stage: StageType.QC_AND_SOFTWARE,
           statusFrom: UnitStatus.IN_PROGRESS,
-          statusTo: UnitStatus.COMPLETED,
+          statusTo: isRework ? UnitStatus.APPROVED : UnitStatus.COMPLETED,
         },
       });
       await appendTimeline({
@@ -103,14 +124,18 @@ export async function POST(
         userId: session.id,
         action: 'qc_passed',
         stage: StageType.QC_AND_SOFTWARE,
-        remarks,
+        remarks: isRework
+          ? 'Rework unit passed QC — ready for dispatch (Final Assembly skipped)'
+          : remarks,
       });
       // Notify the QC employee of pass result
       await notify({
         userId: session.id,
         type: 'QC_PASSED',
         title: 'QC Passed',
-        message: `Unit passed QC and advanced to Final Assembly.`,
+        message: isRework
+          ? 'Rework unit passed QC and is ready for dispatch.'
+          : 'Unit passed QC and advanced to Final Assembly.',
         relatedModel: 'unit',
         relatedId: id,
       });
