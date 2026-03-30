@@ -33,9 +33,9 @@ interface AvailableOrder {
 }
 
 const STAGE_LABEL: Record<string, string> = {
-  POWERSTAGE_MANUFACTURING: 'Powerstage Mfg',
-  BRAINBOARD_MANUFACTURING: 'Brainboard Mfg',
-  CONTROLLER_ASSEMBLY: 'Controller Assembly',
+  POWERSTAGE_MANUFACTURING: 'Powerstage',
+  BRAINBOARD_MANUFACTURING: 'Brainboard',
+  CONTROLLER_ASSEMBLY: 'Assembly',
   QC_AND_SOFTWARE: 'QC & Software',
   REWORK: 'Rework',
   FINAL_ASSEMBLY: 'Final Assembly',
