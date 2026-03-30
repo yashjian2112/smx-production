@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle, Clock, Wrench, Package, XCircle, ChevronRight, Pencil, Trash2 } from 'lucide-react';
+import { CheckCircle, Clock, Wrench, Package, XCircle, ChevronRight, Pencil, Trash2, Printer } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -10,9 +10,35 @@ type RepairLog = {
   id: string;
   issue: string;
   workDone: string | null;
+  beforePhotoUrl: string | null;
+  afterPhotoUrl: string | null;
   startedAt: string;
   completedAt: string | null;
   employee: { id: string; name: string };
+};
+
+type ReworkMaterial = {
+  id: string;
+  materialName: string;
+  unit: string;
+  qtyRequested: number;
+  qtyIssued: number;
+  currentStock: number;
+  status: string;
+  notes: string | null;
+  requestedBy: { name: string };
+  issuedBy: { name: string } | null;
+  issuedAt: string | null;
+  createdAt: string;
+};
+
+type MaterialOption = {
+  id: string;
+  code: string;
+  name: string;
+  unit: string;
+  currentStock: number;
+  minimumStock: number;
 };
 
 type ReturnData = {
@@ -231,6 +257,28 @@ function RepairLogCard({ log }: { log: RepairLog }) {
         </div>
         <p className="text-xs" style={{ color: isDead ? '#fca5a5' : '#fde68a' }}>{body}</p>
       </div>
+      {/* Photos row */}
+      {(log.beforePhotoUrl || log.afterPhotoUrl) && (
+        <div className="flex gap-2">
+          {log.beforePhotoUrl && (
+            <a href={log.beforePhotoUrl} target="_blank" rel="noreferrer" className="flex-1">
+              <div className="rounded-md overflow-hidden border border-zinc-700" style={{ aspectRatio: '4/3', background: '#18181b' }}>
+                <img src={log.beforePhotoUrl} alt="Before" className="w-full h-full object-cover" />
+              </div>
+              <p className="text-[9px] text-zinc-500 text-center mt-0.5">Before</p>
+            </a>
+          )}
+          {log.afterPhotoUrl && (
+            <a href={log.afterPhotoUrl} target="_blank" rel="noreferrer" className="flex-1">
+              <div className="rounded-md overflow-hidden border border-zinc-700" style={{ aspectRatio: '4/3', background: '#18181b' }}>
+                <img src={log.afterPhotoUrl} alt="After" className="w-full h-full object-cover" />
+              </div>
+              <p className="text-[9px] text-zinc-500 text-center mt-0.5">After</p>
+            </a>
+          )}
+        </div>
+      )}
+
       {log.workDone ? (
         <div className="p-2 rounded-md" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.12)' }}>
           <p className="text-[9px] font-semibold text-emerald-500 uppercase tracking-wider mb-0.5">Work Done</p>
@@ -306,6 +354,105 @@ export default function ReturnDetail({
   const openLog = data.repairLogs.find(l => !l.completedAt);
   const nextActions = getNextActions(data.status, role);
 
+  // ── Materials (loaded client-side) ──
+  const [materials,       setMaterials]      = useState<ReworkMaterial[]>([]);
+  const [matsLoading,     setMatsLoading]    = useState(true);
+  const [showMatForm,     setShowMatForm]    = useState(false);
+  const [matSearch,       setMatSearch]      = useState('');
+  const [matOptions,      setMatOptions]     = useState<MaterialOption[]>([]);
+  const [matSearchLoading, setMatSearchLoading] = useState(false);
+  const [selectedMat,     setSelectedMat]    = useState<MaterialOption | null>(null);
+  const [matQty,          setMatQty]         = useState('');
+  const [matNotes,        setMatNotes]       = useState('');
+  const [matSaving,       setMatSaving]      = useState(false);
+  const [matError,        setMatError]       = useState('');
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    async function loadMats() {
+      setMatsLoading(true);
+      try {
+        const res = await fetch(`/api/returns/${data.id}/materials`);
+        if (res.ok) setMaterials(await res.json());
+      } finally {
+        setMatsLoading(false);
+      }
+    }
+    loadMats();
+  }, [data.id]);
+
+  function onMatSearchChange(val: string) {
+    setMatSearch(val);
+    setSelectedMat(null);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!val.trim()) { setMatOptions([]); return; }
+    setMatSearchLoading(true);
+    searchTimer.current = setTimeout(async () => {
+      const res = await fetch(`/api/inventory/materials/search?q=${encodeURIComponent(val)}`);
+      if (res.ok) setMatOptions(await res.json());
+      setMatSearchLoading(false);
+    }, 400);
+  }
+
+  async function submitMaterialRequest() {
+    if (!selectedMat) { setMatError('Select a material.'); return; }
+    const qty = parseFloat(matQty);
+    if (isNaN(qty) || qty <= 0) { setMatError('Enter a valid quantity.'); return; }
+    setMatSaving(true); setMatError('');
+    try {
+      const res = await fetch(`/api/returns/${data.id}/materials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawMaterialId: selectedMat.id, qtyRequested: qty, notes: matNotes || undefined }),
+      });
+      if (!res.ok) {
+        const j = await res.json();
+        setMatError(j.error ?? 'Failed');
+      } else {
+        const created = await res.json();
+        setMaterials(prev => [...prev, { ...created, currentStock: selectedMat.currentStock }]);
+        setShowMatForm(false); setMatSearch(''); setSelectedMat(null); setMatQty(''); setMatNotes(''); setMatOptions([]);
+      }
+    } catch { setMatError('Network error'); }
+    finally { setMatSaving(false); }
+  }
+
+  async function issueMaterial(mid: string) {
+    const res = await fetch(`/api/returns/${data.id}/materials/${mid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'ISSUE' }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setMaterials(prev => prev.map(m => m.id === mid ? { ...m, ...updated } : m));
+    } else {
+      const j = await res.json();
+      alert(j.error ?? 'Failed to issue material');
+    }
+  }
+
+  async function cancelMaterial(mid: string) {
+    const res = await fetch(`/api/returns/${data.id}/materials/${mid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'CANCEL' }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setMaterials(prev => prev.map(m => m.id === mid ? { ...m, ...updated } : m));
+    }
+  }
+
+  async function deleteMaterial(mid: string) {
+    const res = await fetch(`/api/returns/${data.id}/materials/${mid}`, { method: 'DELETE' });
+    if (res.ok) setMaterials(prev => prev.filter(m => m.id !== mid));
+  }
+
+  // ── Photo upload (before/after) ──
+  const [beforePhotoUrl, setBeforePhotoUrl] = useState('');
+  const [afterPhotoUrl,  setAfterPhotoUrl]  = useState('');
+
   // ── Handlers ──
 
   async function saveEvaluation() {
@@ -368,7 +515,7 @@ export default function ReturnDetail({
       const res = await fetch(`/api/returns/${data.id}/repair`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ issue }),
+        body: JSON.stringify({ issue, beforePhotoUrl: beforePhotoUrl || undefined }),
       });
       if (!res.ok) {
         const j = await res.json();
@@ -377,6 +524,7 @@ export default function ReturnDetail({
         setIssueText('');
         setFaultStage('');
         setDeadReason('');
+        setBeforePhotoUrl('');
         router.refresh();
       }
     } catch {
@@ -395,7 +543,7 @@ export default function ReturnDetail({
       const res = await fetch(`/api/returns/${data.id}/repair`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repairLogId: id, workDone }),
+        body: JSON.stringify({ repairLogId: id, workDone, afterPhotoUrl: afterPhotoUrl || undefined }),
       });
       if (!res.ok) {
         const j = await res.json();
@@ -403,6 +551,7 @@ export default function ReturnDetail({
       } else {
         setCompleteLogId('');
         setWorkDone('');
+        setAfterPhotoUrl('');
         router.refresh();
       }
     } catch {
@@ -480,12 +629,24 @@ export default function ReturnDetail({
           <h1 className="text-lg font-bold text-white mt-1">{data.client.customerName}</h1>
           <p className="text-xs text-zinc-500 font-mono">{data.client.code}</p>
         </div>
-        <button
-          onClick={() => router.back()}
-          className="text-xs text-zinc-500 hover:text-white transition-colors shrink-0 mt-1"
-        >
-          ← Back
-        </button>
+        <div className="flex items-center gap-2 shrink-0 mt-1">
+          <a
+            href={`/print/rework/${data.id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #27272a', color: '#a1a1aa' }}
+          >
+            <Printer className="w-3 h-3" />
+            Print
+          </a>
+          <button
+            onClick={() => router.back()}
+            className="text-xs text-zinc-500 hover:text-white transition-colors"
+          >
+            ← Back
+          </button>
+        </div>
       </div>
 
       {/* Edit / Delete actions — only before IN_REPAIR */}
@@ -788,6 +949,20 @@ export default function ReturnDetail({
             </div>
           )}
 
+          {faultStage && (
+            <div>
+              <label className="text-[10px] text-zinc-400 mb-1 block">Before Photo URL <span className="text-zinc-600">(optional)</span></label>
+              <input
+                type="url"
+                value={beforePhotoUrl}
+                onChange={e => setBeforePhotoUrl(e.target.value)}
+                placeholder="https://… or paste Supabase URL"
+                className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                style={{ background: '#18181b', border: '1px solid #27272a' }}
+              />
+            </div>
+          )}
+
           {repairError && <p className="text-xs text-red-400">{repairError}</p>}
           <button
             onClick={startRepair}
@@ -814,6 +989,17 @@ export default function ReturnDetail({
             value={workDone}
             onChange={e => setWorkDone(e.target.value)}
           />
+          <div>
+            <label className="text-[10px] text-zinc-400 mb-1 block">After Photo URL <span className="text-zinc-600">(optional)</span></label>
+            <input
+              type="url"
+              value={afterPhotoUrl}
+              onChange={e => setAfterPhotoUrl(e.target.value)}
+              placeholder="https://… paste repaired unit photo"
+              className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              style={{ background: '#18181b', border: '1px solid #27272a' }}
+            />
+          </div>
           {completeError && <p className="text-xs text-red-400">{completeError}</p>}
           <button
             onClick={() => completeRepair(openLog.id)}
@@ -908,6 +1094,17 @@ export default function ReturnDetail({
             value={workDone}
             onChange={e => setWorkDone(e.target.value)}
           />
+          <div>
+            <label className="text-[10px] text-zinc-400 mb-1 block">After Photo URL <span className="text-zinc-600">(optional)</span></label>
+            <input
+              type="url"
+              value={afterPhotoUrl}
+              onChange={e => setAfterPhotoUrl(e.target.value)}
+              placeholder="https://…"
+              className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              style={{ background: '#18181b', border: '1px solid #27272a' }}
+            />
+          </div>
           {completeError && <p className="text-xs text-red-400">{completeError}</p>}
           <button
             onClick={() => completeRepair(openLog.id)}
@@ -917,6 +1114,192 @@ export default function ReturnDetail({
           >
             {completeLoading ? 'Completing…' : 'Mark Repair Complete'}
           </button>
+        </div>
+      )}
+
+      {/* ── Materials / Components Section ── */}
+      {!['SALES'].includes(role) && (
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+              Components Required
+              {materials.filter(m => m.status === 'PENDING').length > 0 && (
+                <span className="ml-2 text-amber-400">· {materials.filter(m => m.status === 'PENDING').length} pending</span>
+              )}
+            </p>
+            {!TERMINAL.includes(data.status) && (isEmployee || isAdminOrManager) && (
+              <button
+                onClick={() => setShowMatForm(v => !v)}
+                className="text-[10px] font-semibold px-2 py-1 rounded-md transition-colors"
+                style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.2)', color: '#38bdf8' }}
+              >
+                + Request Component
+              </button>
+            )}
+          </div>
+
+          {/* Request form */}
+          {showMatForm && (
+            <div className="space-y-2 p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #27272a' }}>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={matSearch}
+                  onChange={e => onMatSearchChange(e.target.value)}
+                  placeholder="Search component name…"
+                  className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  style={{ background: '#18181b', border: '1px solid #27272a' }}
+                />
+                {matSearchLoading && <span className="absolute right-3 top-2 text-[10px] text-zinc-500">…</span>}
+                {matOptions.length > 0 && !selectedMat && (
+                  <div className="absolute z-10 w-full mt-1 rounded-lg border border-zinc-700 overflow-hidden" style={{ background: '#18181b' }}>
+                    {matOptions.map(o => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => { setSelectedMat(o); setMatSearch(o.name); setMatOptions([]); }}
+                        className="w-full px-3 py-2 text-left hover:bg-zinc-800 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-white">{o.name}</span>
+                          <span className={`text-[10px] font-medium ${o.currentStock <= o.minimumStock ? 'text-red-400' : 'text-emerald-400'}`}>
+                            {o.currentStock} {o.unit}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-zinc-500 font-mono">{o.code}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {selectedMat && (
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md" style={{
+                  background: selectedMat.currentStock <= selectedMat.minimumStock ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.06)',
+                  border:     selectedMat.currentStock <= selectedMat.minimumStock ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(34,197,94,0.15)',
+                }}>
+                  <span className="text-xs text-white flex-1">{selectedMat.name}</span>
+                  <span className={`text-[10px] font-semibold ${selectedMat.currentStock <= selectedMat.minimumStock ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {selectedMat.currentStock <= selectedMat.minimumStock ? 'Low Stock: ' : 'Stock: '}
+                    {selectedMat.currentStock} {selectedMat.unit}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min="0.001"
+                  step="any"
+                  value={matQty}
+                  onChange={e => setMatQty(e.target.value)}
+                  onWheel={e => e.currentTarget.blur()}
+                  placeholder={`Qty (${selectedMat?.unit ?? 'unit'})`}
+                  className="flex-1 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  style={{ background: '#18181b', border: '1px solid #27272a' }}
+                />
+                <input
+                  type="text"
+                  value={matNotes}
+                  onChange={e => setMatNotes(e.target.value)}
+                  placeholder="Notes (optional)"
+                  className="flex-1 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  style={{ background: '#18181b', border: '1px solid #27272a' }}
+                />
+              </div>
+
+              {matError && <p className="text-xs text-red-400">{matError}</p>}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={submitMaterialRequest}
+                  disabled={matSaving || !selectedMat || !matQty}
+                  className="flex-1 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-40"
+                  style={{ background: '#0ea5e9' }}
+                >
+                  {matSaving ? 'Requesting…' : 'Submit Request'}
+                </button>
+                <button
+                  onClick={() => { setShowMatForm(false); setMatSearch(''); setSelectedMat(null); setMatQty(''); setMatError(''); setMatOptions([]); }}
+                  className="px-4 py-2 rounded-lg text-xs text-zinc-400"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #27272a' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Materials list */}
+          {matsLoading ? (
+            <p className="text-xs text-zinc-500">Loading…</p>
+          ) : materials.length === 0 ? (
+            <p className="text-xs text-zinc-600">No components requested yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {materials.map(m => {
+                const isPending  = m.status === 'PENDING';
+                const isIssued   = m.status === 'ISSUED';
+                const isCancelled = m.status === 'CANCELLED';
+                const isLow = m.currentStock <= 0;
+                return (
+                  <div key={m.id} className="rounded-lg px-3 py-2.5" style={{
+                    background: isIssued ? 'rgba(34,197,94,0.06)' : isCancelled ? 'rgba(113,113,122,0.06)' : isLow ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.02)',
+                    border:     isIssued ? '1px solid rgba(34,197,94,0.2)' : isCancelled ? '1px solid rgba(113,113,122,0.15)' : isLow ? '1px solid rgba(239,68,68,0.2)' : '1px solid #27272a',
+                  }}>
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-medium text-white">{m.materialName}</span>
+                          <span className="text-[10px] font-semibold" style={{ color: isIssued ? '#22c55e' : isCancelled ? '#71717a' : '#fbbf24' }}>
+                            {isIssued ? 'Issued' : isCancelled ? 'Cancelled' : 'Pending'}
+                          </span>
+                          {isPending && isLow && (
+                            <span className="text-[10px] text-red-400 font-medium">Low Stock</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-[10px] text-zinc-400">
+                            {m.qtyRequested} {m.unit} requested
+                            {isIssued && m.qtyIssued > 0 && ` · ${m.qtyIssued} ${m.unit} issued`}
+                          </span>
+                          {isPending && (
+                            <span className="text-[10px] text-zinc-600">Stock: {m.currentStock} {m.unit}</span>
+                          )}
+                        </div>
+                        {m.notes && <p className="text-[10px] text-zinc-500 mt-0.5">{m.notes}</p>}
+                        <p className="text-[9px] text-zinc-600 mt-0.5">
+                          Requested by {m.requestedBy.name}
+                          {isIssued && m.issuedBy && ` · Issued by ${m.issuedBy.name}`}
+                        </p>
+                      </div>
+                      {/* Actions */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isPending && ['ADMIN', 'STORE_MANAGER', 'PRODUCTION_MANAGER'].includes(role) && (
+                          <button
+                            onClick={() => issueMaterial(m.id)}
+                            className="text-[10px] px-2 py-1 rounded font-semibold transition-colors"
+                            style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e' }}
+                          >
+                            Issue
+                          </button>
+                        )}
+                        {isPending && (
+                          <button
+                            onClick={() => deleteMaterial(m.id)}
+                            className="text-[10px] px-2 py-1 rounded font-semibold transition-colors"
+                            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

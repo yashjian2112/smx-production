@@ -21,7 +21,8 @@ export async function GET(
 }
 
 const createSchema = z.object({
-  issue: z.string().min(1),
+  issue:          z.string().min(1),
+  beforePhotoUrl: z.string().optional(),
 });
 
 // POST — start a repair (employee logs what they found)
@@ -47,6 +48,7 @@ export async function POST(
         returnRequestId: id,
         unitId:          ret.unitId ?? null,
         issue:           parsed.data.issue,
+        beforePhotoUrl:  parsed.data.beforePhotoUrl ?? null,
         employeeId:      session.id,
       },
       include: { employee: { select: { id: true, name: true } } },
@@ -70,8 +72,9 @@ export async function POST(
 }
 
 const patchSchema = z.object({
-  repairLogId: z.string().min(1),
-  workDone:    z.string().min(1),
+  repairLogId:   z.string().min(1),
+  workDone:      z.string().min(1),
+  afterPhotoUrl: z.string().optional(),
 });
 
 // PATCH — complete a repair (employee logs what they fixed)
@@ -97,8 +100,9 @@ export async function PATCH(
     const updated = await prisma.repairLog.update({
       where: { id: log.id },
       data: {
-        workDone:    parsed.data.workDone,
-        completedAt: new Date(),
+        workDone:      parsed.data.workDone,
+        afterPhotoUrl: parsed.data.afterPhotoUrl ?? undefined,
+        completedAt:   new Date(),
       },
       include: { employee: { select: { id: true, name: true } } },
     });

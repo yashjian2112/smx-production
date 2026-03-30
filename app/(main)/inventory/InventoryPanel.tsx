@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Check, X, Package } from 'lucide-react';
 
-const TABS = ['Materials', 'GRN', 'Reports', 'Settings'] as const;
+const TABS = ['Materials', 'GRN', 'Rework', 'Reports', 'Settings'] as const;
 type Tab = typeof TABS[number];
 
 interface MaterialVariant { id: string; name: string; barcode: string; currentStock: number; }
@@ -2457,6 +2457,164 @@ function SettingsTab({ isAdmin }: { isAdmin: boolean }) {
 
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
+// ─── Rework Requests Tab ─────────────────────────────────────────────────────
+
+type ReworkMatRow = {
+  id: string;
+  materialName: string;
+  unit: string;
+  qtyRequested: number;
+  qtyIssued: number;
+  currentStock: number;
+  status: string;
+  notes: string | null;
+  requestedBy: { name: string };
+  issuedBy: { name: string } | null;
+  issuedAt: string | null;
+  createdAt: string;
+  returnRequest: {
+    id: string;
+    returnNumber: string;
+    serialNumber: string | null;
+    client: { customerName: string };
+  };
+};
+
+function ReworkTab({ canIssue }: { canIssue: boolean }) {
+  const [rows, setRows] = useState<ReworkMatRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [issuing, setIssuing] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'PENDING' | 'ISSUED' | 'ALL'>('PENDING');
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const res = await fetch('/api/returns/materials/pending');
+      if (res.ok) setRows(await res.json());
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  async function issue(row: ReworkMatRow) {
+    setIssuing(row.id);
+    const res = await fetch(`/api/returns/${row.returnRequest.id}/materials/${row.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'ISSUE' }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setRows(prev => prev.map(r => r.id === row.id ? { ...r, ...updated } : r));
+    } else {
+      const j = await res.json();
+      alert(j.error ?? 'Failed to issue material');
+    }
+    setIssuing(null);
+  }
+
+  const visible = rows.filter(r => filter === 'ALL' || r.status === filter);
+  const pendingCount = rows.filter(r => r.status === 'PENDING').length;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-white">Rework Component Requests</h3>
+          <p className="text-xs text-zinc-500 mt-0.5">Components requested against replacement / repair job cards (RTN)</p>
+        </div>
+        {pendingCount > 0 && (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>
+            {pendingCount} pending
+          </span>
+        )}
+      </div>
+
+      {/* Filter */}
+      <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)' }}>
+        {(['PENDING', 'ISSUED', 'ALL'] as const).map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all ${filter === f ? 'bg-sky-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
+            {f === 'ALL' ? 'All' : f === 'PENDING' ? 'Pending' : 'Issued'}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <p className="text-xs text-zinc-500 text-center py-6">Loading…</p>
+      ) : visible.length === 0 ? (
+        <div className="text-center py-8">
+          <Package className="w-5 h-5 text-zinc-700 mx-auto mb-2" />
+          <p className="text-xs text-zinc-500">No {filter !== 'ALL' ? filter.toLowerCase() : ''} requests.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {visible.map(row => {
+            const isPending = row.status === 'PENDING';
+            const isLow = row.currentStock < row.qtyRequested;
+            return (
+              <div key={row.id} className="rounded-xl p-3" style={{
+                background: isPending ? (isLow ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.02)') : 'rgba(34,197,94,0.04)',
+                border:     isPending ? (isLow ? '1px solid rgba(239,68,68,0.2)' : '1px solid #27272a') : '1px solid rgba(34,197,94,0.15)',
+              }}>
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    {/* RTN reference */}
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <a href={`/rework/${row.returnRequest.id}`} className="text-[10px] font-mono text-sky-400 hover:underline">
+                        {row.returnRequest.returnNumber}
+                      </a>
+                      <span className="text-[10px] text-zinc-500">{row.returnRequest.client.customerName}</span>
+                      {row.returnRequest.serialNumber && (
+                        <span className="text-[10px] font-mono text-zinc-600">{row.returnRequest.serialNumber}</span>
+                      )}
+                    </div>
+                    {/* Material */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-white">{row.materialName}</span>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${isPending ? 'text-amber-400' : 'text-emerald-400'}`}
+                        style={{ background: isPending ? 'rgba(251,191,36,0.1)' : 'rgba(34,197,94,0.1)' }}>
+                        {isPending ? 'Pending' : 'Issued'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5 text-[10px]">
+                      <span className="text-zinc-400">{row.qtyRequested} {row.unit} requested</span>
+                      {isPending && (
+                        <span className={isLow ? 'text-red-400 font-medium' : 'text-zinc-500'}>
+                          {isLow ? 'Low Stock: ' : 'In Stock: '}{row.currentStock} {row.unit}
+                        </span>
+                      )}
+                      {!isPending && row.issuedBy && (
+                        <span className="text-zinc-500">Issued by {row.issuedBy.name}</span>
+                      )}
+                    </div>
+                    {row.notes && <p className="text-[10px] text-zinc-500 mt-0.5">{row.notes}</p>}
+                    <p className="text-[9px] text-zinc-600 mt-0.5">
+                      Requested by {row.requestedBy.name} · {new Date(row.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                    </p>
+                  </div>
+
+                  {isPending && canIssue && (
+                    <button
+                      onClick={() => issue(row)}
+                      disabled={issuing === row.id}
+                      className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors"
+                      style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e' }}
+                    >
+                      {issuing === row.id ? '…' : 'Issue'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InventoryPanel({ sessionRole }: { sessionRole: string }) {
   const [activeTab, setActiveTab] = useState<Tab>('Materials');
 
@@ -2467,8 +2625,14 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
   // Reports & BOM management: ADMIN only (not INVENTORY_MANAGER)
   const isAdmin = sessionRole === 'ADMIN';
 
-  // INVENTORY_MANAGER sees: Materials, GRN, Settings (no Reports)
-  const visibleTabs = TABS.filter(t => t !== 'Reports' || isAdmin);
+  const canSeeRework = ['ADMIN', 'STORE_MANAGER', 'PRODUCTION_MANAGER'].includes(sessionRole);
+
+  // INVENTORY_MANAGER sees: Materials, GRN, Settings (no Reports, no Rework)
+  const visibleTabs = TABS.filter(t => {
+    if (t === 'Reports') return isAdmin;
+    if (t === 'Rework')  return canSeeRework;
+    return true;
+  });
 
   return (
     <div>
@@ -2486,6 +2650,7 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
 
       {activeTab === 'Materials' && <MaterialsTab isAdmin={canManageMaterials} />}
       {activeTab === 'GRN'       && <GRNTab       isAdmin={canManageStock} />}
+      {activeTab === 'Rework'    && canSeeRework && <ReworkTab canIssue={['ADMIN', 'STORE_MANAGER'].includes(sessionRole)} />}
       {activeTab === 'Reports'   && isAdmin && <ReportsTab isAdmin={true} />}
       {activeTab === 'Settings'  && <SettingsTab  isAdmin={canManageMaterials} />}
     </div>
