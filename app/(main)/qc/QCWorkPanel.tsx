@@ -74,6 +74,15 @@ const STATUS_BADGE: Record<string, { label: string; color: string; bg: string }>
 
 // ─── Inline QC Checklist ─────────────────────────────────────────────────────
 
+type IssueCategory = { id: string; code: string; name: string };
+
+const SOURCE_STAGE_OPTIONS = [
+  { value: 'POWERSTAGE_MANUFACTURING', label: 'Powerstage Manufacturing' },
+  { value: 'BRAINBOARD_MANUFACTURING', label: 'Brainboard Manufacturing' },
+  { value: 'CONTROLLER_ASSEMBLY',      label: 'Controller Assembly'      },
+  { value: 'QC_AND_SOFTWARE',          label: 'QC & Software'            },
+];
+
 function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void }) {
   const router   = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -90,6 +99,16 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
   const [firmwareVersion, setFirmwareVersion] = useState('');
   const [softwareVersion, setSoftwareVersion] = useState('');
   const [error, setError]                     = useState<string | null>(null);
+  const [issueCategories, setIssueCategories] = useState<IssueCategory[]>([]);
+  const [issueCategoryId, setIssueCategoryId] = useState('');
+  const [sourceStage, setSourceStage]         = useState('');
+
+  useEffect(() => {
+    fetch('/api/qc/issue-categories')
+      .then((r) => r.ok ? r.json() : [])
+      .then((d: IssueCategory[]) => setIssueCategories(d))
+      .catch(() => {});
+  }, []);
 
   const completedCount = QC_ITEMS.filter((i) => checks[i.key]).length;
   const currentItem    = QC_ITEMS[currentIdx];
@@ -150,6 +169,10 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
   }
 
   async function submitResult(result: 'PASS' | 'FAIL') {
+    if (result === 'FAIL') {
+      if (!issueCategoryId) { setError('Select an error code before submitting FAIL'); return; }
+      if (!sourceStage)     { setError('Select the defect source stage before submitting FAIL'); return; }
+    }
     setPhase('submitting');
     setError(null);
     try {
@@ -161,6 +184,8 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
           checklistData: checks,
           firmwareVersion: firmwareVersion || undefined,
           softwareVersion: softwareVersion || undefined,
+          issueCategoryId: result === 'FAIL' ? issueCategoryId : undefined,
+          sourceStage:     result === 'FAIL' ? sourceStage     : undefined,
         }),
       });
       if (!res.ok) {
@@ -201,7 +226,12 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
   }
 
   // ── Barcode scan verification ─────────────────────────────────────────────
-  const expectedBarcode = unit.assemblyBarcode ?? unit.qcBarcode;
+  // Rework units already have a QC barcode sticker → scan that.
+  // Fresh units have an assembly barcode sticker → scan that.
+  const isReworkUnit = unit.currentStatus === 'REJECTED_BACK';
+  const expectedBarcode = isReworkUnit
+    ? (unit.qcBarcode ?? unit.assemblyBarcode)
+    : (unit.assemblyBarcode ?? unit.qcBarcode);
 
   function handleScanVerify() {
     const entered = scanInput.trim();
@@ -220,17 +250,29 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
     return (
       <div style={card}>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-sky-400 mb-3">Unit Verification</p>
-        <h3 className="text-base font-semibold text-white mb-1">Scan Unit Barcode</h3>
+        <h3 className="text-base font-semibold text-white mb-1">
+          {isReworkUnit ? 'Scan QC Barcode' : 'Scan Assembly Barcode'}
+        </h3>
         <p className="text-zinc-500 text-sm mb-5">
-          Scan the barcode label on the physical unit to confirm you have the correct unit.
+          {isReworkUnit
+            ? 'Scan the QC barcode sticker on the unit from the previous test.'
+            : 'Scan the assembly barcode label on the physical unit to confirm you have the correct unit.'}
         </p>
         <div className="rounded-xl p-3 mb-5"
           style={{ background: 'rgba(14,165,233,0.05)', border: '1px solid rgba(14,165,233,0.15)' }}>
-          <p className="text-[10px] text-zinc-500 mb-0.5">Expected unit</p>
-          <p className="font-mono text-sm text-white font-semibold">{unit.serialNumber}</p>
+          <p className="text-[10px] text-zinc-500 mb-1">Scan this barcode</p>
+          {expectedBarcode ? (
+            <p className="font-mono text-base font-bold mb-0.5"
+              style={{ color: isReworkUnit ? '#34d399' : '#38bdf8' }}>
+              {expectedBarcode}
+            </p>
+          ) : (
+            <p className="font-mono text-xs text-zinc-500 italic mb-0.5">No barcode on record — scan any barcode</p>
+          )}
+          <p className="font-mono text-[10px] text-zinc-500">{unit.serialNumber}</p>
           <p className="text-xs text-zinc-500 mt-0.5">{unit.order?.product.name} · {unit.order?.orderNumber}</p>
         </div>
-        <label className="block text-xs text-zinc-500 mb-1.5">Barcode</label>
+        <label className="block text-xs text-zinc-500 mb-1.5">Scan Result</label>
         <input
           ref={scanRef}
           autoFocus
@@ -238,7 +280,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
           value={scanInput}
           onChange={(e) => { setScanInput(e.target.value); setScanError(null); }}
           onKeyDown={(e) => { if (e.key === 'Enter') handleScanVerify(); }}
-          placeholder={expectedBarcode ? `e.g. ${expectedBarcode}` : 'Scan or type barcode…'}
+          placeholder={expectedBarcode ? `Scan ${expectedBarcode}…` : 'Scan barcode…'}
           className="w-full px-3 py-3 rounded-xl text-sm text-white placeholder-zinc-700 outline-none mb-3 font-mono"
           style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${scanError ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}` }}
         />
@@ -359,7 +401,10 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
   }
 
   if (phase === 'summary' || phase === 'submitting') {
-    const failCount = QC_ITEMS.filter((i) => { const r = checks[i.key]; return !r || r.status !== 'PASS'; }).length;
+    const failCount = QC_ITEMS.filter((i) => { const r = checks[i.key]; return r?.status === 'FAIL'; }).length;
+    const hasFailItems = failCount > 0;
+    const canSubmitFail = issueCategoryId && sourceStage;
+
     return (
       <div style={card}>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-4">Review &amp; Submit</p>
@@ -391,6 +436,56 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
             );
           })}
         </div>
+
+        {/* ── FAIL details — mandatory when any item failed ── */}
+        {hasFailItems && (
+          <div className="rounded-xl p-4 mb-4 space-y-3"
+            style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)' }}>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-red-400 mb-1">
+              Fail Details — Required
+            </p>
+
+            {/* Error code */}
+            <div>
+              <label className="block text-xs mb-1.5" style={{ color: issueCategoryId ? '#94a3b8' : '#f87171' }}>
+                Error Code <span className="text-red-400">*</span>
+              </label>
+              <select value={issueCategoryId} onChange={(e) => { setIssueCategoryId(e.target.value); setError(null); }}
+                className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none appearance-none"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${issueCategoryId ? 'rgba(255,255,255,0.12)' : 'rgba(239,68,68,0.4)'}`,
+                }}>
+                <option value="" disabled style={{ background: '#1e293b' }}>Select error code…</option>
+                {issueCategories.map((c) => (
+                  <option key={c.id} value={c.id} style={{ background: '#1e293b' }}>[{c.code}] {c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Defect source stage */}
+            <div>
+              <label className="block text-xs mb-1.5" style={{ color: sourceStage ? '#94a3b8' : '#f87171' }}>
+                Defect Origin Stage <span className="text-red-400">*</span>
+              </label>
+              <select value={sourceStage} onChange={(e) => { setSourceStage(e.target.value); setError(null); }}
+                className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none appearance-none"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${sourceStage ? 'rgba(255,255,255,0.12)' : 'rgba(239,68,68,0.4)'}`,
+                }}>
+                <option value="" disabled style={{ background: '#1e293b' }}>Where did the defect originate?</option>
+                {SOURCE_STAGE_OPTIONS.map((s) => (
+                  <option key={s.value} value={s.value} style={{ background: '#1e293b' }}>{s.label}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-zinc-600 mt-1.5">
+                Unit will be sent back to this stage&apos;s team for rework.
+              </p>
+            </div>
+          </div>
+        )}
+
         {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
         <div className="flex gap-2">
           <button onClick={() => submitResult('PASS')} disabled={phase === 'submitting'}
@@ -399,8 +494,10 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
             <Check className="w-4 h-4" />
             {phase === 'submitting' ? 'Submitting…' : 'Submit PASS'}
           </button>
-          <button onClick={() => submitResult('FAIL')} disabled={phase === 'submitting'}
-            className="flex-1 py-3 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5"
+          <button
+            onClick={() => submitResult('FAIL')}
+            disabled={phase === 'submitting' || (hasFailItems && !canSubmitFail)}
+            className="flex-1 py-3 rounded-xl text-sm font-semibold disabled:opacity-40 flex items-center justify-center gap-1.5"
             style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
             <X className="w-4 h-4" />
             Submit FAIL

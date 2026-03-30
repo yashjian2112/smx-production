@@ -24,6 +24,7 @@ type Props = {
   currentStage: string;
   currentStatus: string;
   isEmployee: boolean;
+  role?: string;
   orderId: string | null;
   reworkRecords?: ReworkRecord[];
   productName?: string;
@@ -141,7 +142,8 @@ function ReworkTab({ unitId, reworkRecords }: { unitId: string; reworkRecords: R
   );
 }
 
-export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, isEmployee, orderId, reworkRecords = [], productName, orderNumber, qcBarcode, powerstageBarcode, brainboardBarcode }: Props) {
+export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, isEmployee, role, orderId, reworkRecords = [], productName, orderNumber, qcBarcode, powerstageBarcode, brainboardBarcode }: Props) {
+  const canDoQC = ['ADMIN', 'PRODUCTION_MANAGER', 'QC_USER'].includes(role ?? '');
   const isRework = currentStage === 'REWORK';
   const defaultTab = isRework ? 'rework' : isEmployee ? 'work' : 'history';
   const [tab, setTab] = useState<'work' | 'history' | 'rework'>(defaultTab);
@@ -185,7 +187,7 @@ export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, curre
         {tab === 'rework' && (
           <ReworkTab unitId={unitId} reworkRecords={reworkRecords} />
         )}
-        {tab === 'work' && isEmployee && currentStage === 'QC_AND_SOFTWARE' && (
+        {tab === 'work' && currentStage === 'QC_AND_SOFTWARE' && canDoQC && (
           <QcChecklist
             unitId={unitId}
             currentStatus={currentStatus}

@@ -72,6 +72,7 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
   const currentStageBarcode = stageBarcodeMap[unit.currentStage] ?? null;
 
   const isEmployee = session.role === 'PRODUCTION_EMPLOYEE';
+  const canDoQC = ['ADMIN', 'PRODUCTION_MANAGER', 'QC_USER'].includes(session.role);
   const components = unit.product?.components ?? [];
   const initialChecks = unit.componentChecks.map((cc) => ({
     componentId: cc.componentId,
@@ -183,8 +184,8 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
         />
       )}
 
-      {/* QC Checklist — replaces work tabs for employees at QC stage */}
-      {unit.currentStage === 'QC_AND_SOFTWARE' && isEmployee ? (
+      {/* QC Checklist — only for QC_USER / ADMIN / PRODUCTION_MANAGER at QC stage */}
+      {unit.currentStage === 'QC_AND_SOFTWARE' && canDoQC ? (
         <QcChecklist
           unitId={unit.id}
           currentStatus={unit.currentStatus}
@@ -201,6 +202,7 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
           currentStage={unit.currentStage}
           currentStatus={unit.currentStatus}
           isEmployee={isEmployee}
+          role={session.role}
           orderId={unit.order?.id ?? null}
           reworkRecords={unit.reworkRecords.map((r) => ({
             id: r.id,
