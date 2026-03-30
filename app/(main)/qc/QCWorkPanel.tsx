@@ -49,7 +49,7 @@ const QC_ITEMS = [
 ] as const;
 
 type ItemKey = typeof QC_ITEMS[number]['key'];
-type CheckResult = { status: 'PASS' | 'NA'; value: string };
+type CheckResult = { status: 'PASS' | 'FAIL' | 'NA'; value: string };
 type Checks = Partial<Record<ItemKey, CheckResult>>;
 type Phase = 'verify' | 'idle' | 'starting' | 'checklist' | 'summary' | 'submitting' | 'done';
 
@@ -118,7 +118,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
   }
 
   const markCurrent = useCallback(
-    (result: 'PASS' | 'NA') => {
+    (result: 'PASS' | 'FAIL' | 'NA') => {
       const val = result === 'NA' ? 'N/A' : inputValue.trim();
       if (result === 'PASS' && !val) {
         setError('Enter a value before marking pass');
@@ -323,8 +323,13 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
             style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
             <Check className="w-4 h-4" /> Pass
           </button>
+          <button onClick={() => markCurrent('FAIL')}
+            className="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5"
+            style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+            <X className="w-4 h-4" /> Fail
+          </button>
           <button onClick={() => markCurrent('NA')}
-            className="py-3 px-5 rounded-xl text-sm font-semibold"
+            className="py-3 px-4 rounded-xl text-sm font-semibold"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
             N/A
           </button>
@@ -340,7 +345,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
                   style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
                   <span className="text-zinc-400">{item.label}</span>
                   <div className="flex items-center gap-2">
-                    <span className={r?.status === 'NA' ? 'text-zinc-500' : 'text-green-400 font-mono'}>{r?.value ?? '—'}</span>
+                    <span className={r?.status === 'NA' ? 'text-zinc-500' : r?.status === 'FAIL' ? 'text-red-400 font-mono' : 'text-green-400 font-mono'}>{r?.value || (r?.status === 'FAIL' ? 'FAIL' : '—')}</span>
                     <span className="text-[10px] text-zinc-600">edit</span>
                   </div>
                 </button>
@@ -380,7 +385,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
                 className={`flex items-center justify-between px-3 py-2 text-xs ${idx > 0 ? 'border-t' : ''}`}
                 style={idx > 0 ? { borderColor: 'rgba(255,255,255,0.05)' } : undefined}>
                 <button onClick={() => editItem(idx)} className="text-zinc-400 hover:text-white transition-colors text-left">{item.label}</button>
-                <span className={pass ? 'text-green-400 font-mono' : r?.status === 'NA' ? 'text-zinc-500' : 'text-zinc-600'}>{r?.value ?? '—'}</span>
+                <span className={pass ? 'text-green-400 font-mono' : r?.status === 'NA' ? 'text-zinc-500' : r?.status === 'FAIL' ? 'text-red-400 font-mono' : 'text-zinc-600'}>{r?.value || (r?.status === 'FAIL' ? 'FAIL' : '—')}</span>
               </div>
             );
           })}
