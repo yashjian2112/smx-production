@@ -389,6 +389,14 @@ function InlineQCChecklist({
   return null;
 }
 
+// Status badge config
+const STATUS_BADGE: Record<string, { label: string; color: string; bg: string }> = {
+  PENDING:          { label: 'Pending',          color: '#94a3b8', bg: 'rgba(148,163,184,0.10)' },
+  IN_PROGRESS:      { label: 'In Progress',      color: '#38bdf8', bg: 'rgba(56,189,248,0.10)'  },
+  WAITING_APPROVAL: { label: 'Awaiting Approval', color: '#fbbf24', bg: 'rgba(251,191,36,0.10)'  },
+  REJECTED_BACK:    { label: 'Rework',           color: '#f87171', bg: 'rgba(248,113,113,0.10)' },
+};
+
 // ─── Unit Card ────────────────────────────────────────────────────────────────
 
 function UnitCard({
@@ -398,22 +406,25 @@ function UnitCard({
   unit: QCUnit;
   onSelect: (u: QCUnit) => void;
 }) {
-  const isRework   = unit.currentStatus === 'REJECTED_BACK';
-  const isActive   = unit.currentStatus === 'IN_PROGRESS';
-  const isWaiting  = unit.currentStatus === 'WAITING_APPROVAL';
-  const canStart   = ['PENDING', 'IN_PROGRESS', 'REJECTED_BACK'].includes(unit.currentStatus);
+  const isRework  = unit.currentStatus === 'REJECTED_BACK';
+  const isWaiting = unit.currentStatus === 'WAITING_APPROVAL';
 
-  const accentColor = isRework ? '#f87171' : isActive ? '#38bdf8' : isWaiting ? '#fbbf24' : '#94a3b8';
-  const accentBg    = isRework ? 'rgba(248,113,113,0.08)' : isActive ? 'rgba(56,189,248,0.08)' : isWaiting ? 'rgba(251,191,36,0.08)' : 'rgba(148,163,184,0.06)';
-  const accentBorder = isRework ? 'rgba(248,113,113,0.2)' : isActive ? 'rgba(56,189,248,0.2)' : isWaiting ? 'rgba(251,191,36,0.2)' : 'rgba(148,163,184,0.12)';
+  const accentColor  = isRework ? '#f87171' : isWaiting ? '#fbbf24' : unit.currentStatus === 'IN_PROGRESS' ? '#38bdf8' : '#94a3b8';
+  const accentBg     = isRework ? 'rgba(248,113,113,0.06)' : isWaiting ? 'rgba(251,191,36,0.06)' : unit.currentStatus === 'IN_PROGRESS' ? 'rgba(56,189,248,0.06)' : 'rgba(148,163,184,0.04)';
+  const accentBorder = isRework ? 'rgba(248,113,113,0.2)' : isWaiting ? 'rgba(251,191,36,0.18)' : unit.currentStatus === 'IN_PROGRESS' ? 'rgba(56,189,248,0.18)' : 'rgba(148,163,184,0.10)';
+
+  const badge = STATUS_BADGE[unit.currentStatus] ?? STATUS_BADGE.PENDING;
 
   return (
-    <div className="rounded-xl p-3 relative overflow-hidden"
+    <button
+      type="button"
+      onClick={() => onSelect(unit)}
+      className="w-full text-left rounded-xl p-3 relative overflow-hidden transition-opacity hover:opacity-90 active:opacity-75"
       style={{ background: accentBg, border: `1px solid ${accentBorder}` }}>
 
       {/* Rework seal — top-right stamp */}
       {isRework && (
-        <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest"
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest pointer-events-none"
           style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171' }}>
           Rework
         </div>
@@ -423,8 +434,14 @@ function UnitCard({
         {/* Status dot */}
         <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: accentColor }} />
 
-        <div className="flex-1 min-w-0 pr-2">
-          <p className="font-mono text-sm font-semibold text-white leading-tight">{unit.serialNumber}</p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-mono text-sm font-semibold text-white leading-tight">{unit.serialNumber}</p>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+              style={{ color: badge.color, background: badge.bg }}>
+              {badge.label}
+            </span>
+          </div>
           <p className="text-xs text-zinc-400 mt-0.5">
             {unit.order?.product.name ?? '—'} · <span className="text-zinc-500">{unit.order?.orderNumber ?? '—'}</span>
           </p>
@@ -436,27 +453,16 @@ function UnitCard({
               <Clock className="w-2.5 h-2.5" />
               {elapsed(unit.updatedAt)}
             </div>
+            {/* Tap hint */}
+            {!isWaiting && (
+              <div className="ml-auto flex items-center gap-0.5 text-[10px]" style={{ color: accentColor, opacity: 0.7 }}>
+                {isRework ? 'Re-run' : 'Open'} <ChevronRight className="w-3 h-3" />
+              </div>
+            )}
           </div>
         </div>
-
-        {canStart && !isRework && (
-          <button
-            onClick={() => onSelect(unit)}
-            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-semibold flex-shrink-0 self-center"
-            style={{ background: 'rgba(52,211,153,0.10)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399' }}>
-            Start QC <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        )}
-        {isRework && (
-          <button
-            onClick={() => onSelect(unit)}
-            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-semibold flex-shrink-0 self-center mt-5"
-            style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
-            Re-run <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        )}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -485,7 +491,7 @@ export function QCWorkPanel({ role }: { role: string }) {
   const pending    = (units ?? []).filter((u) => u.currentStatus === 'PENDING');
   const processing = (units ?? []).filter((u) => ['IN_PROGRESS', 'WAITING_APPROVAL', 'REJECTED_BACK'].includes(u.currentStatus));
 
-  // If a unit is selected, show the QC checklist
+  // If a unit is selected, show the QC checklist (or awaiting approval screen)
   if (selected) {
     return (
       <div className="max-w-lg mx-auto px-4 pb-24">
@@ -500,10 +506,33 @@ export function QCWorkPanel({ role }: { role: string }) {
             </p>
           </div>
         </div>
-        <InlineQCChecklist
-          unit={selected}
-          onDone={() => { setSelected(null); load(); }}
-        />
+
+        {selected.currentStatus === 'WAITING_APPROVAL' ? (
+          /* Read-only: QC already submitted, waiting for manager approval */
+          <div className="rounded-2xl p-6 text-center"
+            style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.2)' }}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"
+              style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.25)' }}>
+              <Check className="w-6 h-6 text-amber-400" />
+            </div>
+            <p className="text-white font-semibold text-base">QC Submitted</p>
+            <p className="text-amber-400 text-xs font-semibold mt-1 uppercase tracking-widest">Awaiting Manager Approval</p>
+            <p className="text-zinc-500 text-sm mt-2">
+              QC test results have been submitted for this unit.<br />
+              A production manager will review and approve shortly.
+            </p>
+            <button onClick={() => setSelected(null)}
+              className="mt-5 px-5 py-2 rounded-xl text-xs font-semibold"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#a1a1aa' }}>
+              Back to Queue
+            </button>
+          </div>
+        ) : (
+          <InlineQCChecklist
+            unit={selected}
+            onDone={() => { setSelected(null); load(); }}
+          />
+        )}
       </div>
     );
   }
