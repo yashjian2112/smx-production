@@ -44,7 +44,7 @@ export default async function DOPackingPage({ params }: { params: { id: string }
             items: {
               orderBy: { scannedAt: 'asc' },
               include: {
-                unit: { select: { serialNumber: true, finalAssemblyBarcode: true } },
+                unit: { select: { serialNumber: true, finalAssemblyBarcode: true, _count: { select: { reworkRecords: true } } } },
               },
             },
           },

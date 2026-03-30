@@ -305,6 +305,7 @@ export type UnitData = {
   readyForDispatch?: boolean;        // true = unit has been dispatched (FA stage only)
   barcodeForStage?: string | null;   // the physical label barcode for this station
   derivedStatus?: string;            // COMPLETED / IN_PROGRESS / PENDING / BLOCKED / REWORK
+  hasRework?: boolean;               // true = unit has been through rework at least once
   powerstageBarcode?: string | null; // for Assembly multi-barcode select
   brainboardBarcode?: string | null; // for Assembly multi-barcode select
 };
@@ -600,6 +601,12 @@ function StageCard({
                     style={{ background: c.bg, border: `1px solid ${c.border}` }}
                   >
                     <span className="truncate">{u.barcodeForStage ?? u.serialNumber}</span>
+                    {u.hasRework && (
+                      <span className="text-[8px] font-bold px-1 py-0.5 rounded uppercase tracking-widest shrink-0"
+                        style={{ color: '#f87171', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                        RW
+                      </span>
+                    )}
                     {statusLabelText ? (
                       <span className="text-[9px] font-semibold shrink-0 uppercase tracking-wide opacity-80">
                         {statusLabelText}

@@ -22,12 +22,13 @@ export async function POST(
     const formData = await req.formData();
     const outerFile = formData.get('outer') as File | null;
     const boardFile = formData.get('board') as File | null;
+    const afterFile = formData.get('after') as File | null;
 
-    if (!outerFile && !boardFile) {
+    if (!outerFile && !boardFile && !afterFile) {
       return NextResponse.json({ error: 'At least one photo is required' }, { status: 400 });
     }
 
-    const result: { outerUrl?: string; boardUrl?: string } = {};
+    const result: { outerUrl?: string; boardUrl?: string; afterUrl?: string } = {};
 
     if (outerFile) {
       const blob = await put(
@@ -45,6 +46,15 @@ export async function POST(
         { access: 'public' }
       );
       result.boardUrl = blob.url;
+    }
+
+    if (afterFile) {
+      const blob = await put(
+        `returns/${params.id}/after.${getExt(afterFile)}`,
+        afterFile,
+        { access: 'public' }
+      );
+      result.afterUrl = blob.url;
     }
 
     return NextResponse.json(result);

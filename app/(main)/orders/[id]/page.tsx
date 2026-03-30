@@ -44,6 +44,7 @@ type UnitRow = {
   assemblyBarcode: string | null;
   qcBarcode: string | null;
   finalAssemblyBarcode: string | null;
+  hasRework?: boolean;
 };
 
 /**
@@ -95,6 +96,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           finalAssemblyBarcode: true,
           readyForDispatch: true,
           dispatchedAt: true,
+          _count: { select: { reworkRecords: true } },
         },
         orderBy: { serialNumber: 'asc' },
       },
@@ -342,6 +344,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           readyForDispatch: u.readyForDispatch,
           barcodeForStage: field && unitAtOrPastStage ? (u[field] ?? null) : null,
           derivedStatus: derivedStageStatus(u, key),
+          hasRework: (u._count?.reworkRecords ?? 0) > 0,
           // Pass PS + BB barcodes for Assembly multi-select modal
           powerstageBarcode: key === 'CONTROLLER_ASSEMBLY' ? (u.powerstageBarcode ?? null) : undefined,
           brainboardBarcode: key === 'CONTROLLER_ASSEMBLY' ? (u.brainboardBarcode ?? null) : undefined,

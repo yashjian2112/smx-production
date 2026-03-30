@@ -580,11 +580,16 @@ export default function ReturnDetail({
   // ── Photo upload helper ──
   async function uploadPhoto(file: File, field: 'outer' | 'board' | 'after'): Promise<string> {
     const fd = new FormData();
-    const apiField = field === 'after' ? 'outer' : field; // after uses same endpoint with 'outer' key
-    fd.append(field === 'after' ? 'outer' : field, file);
+    fd.append(field, file);
     const res = await fetch(`/api/returns/${data.id}/repair/photos`, { method: 'POST', body: fd });
-    const j = await res.json();
-    return field === 'board' ? (j.boardUrl ?? '') : (j.outerUrl ?? '');
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(j.error ?? 'Photo upload failed');
+    }
+    const j = await res.json() as { outerUrl?: string; boardUrl?: string; afterUrl?: string };
+    if (field === 'board') return j.boardUrl ?? '';
+    if (field === 'after') return j.afterUrl ?? '';
+    return j.outerUrl ?? '';
   }
 
   // ── Handlers ──

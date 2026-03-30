@@ -102,6 +102,12 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
             {stageLabels[unit.currentStage] ?? unit.currentStage}
           </span>
+          {unit.reworkRecords.length > 0 && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest"
+              style={{ color: '#f87171', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)' }}>
+              Rework
+            </span>
+          )}
           {(() => {
             const assigned = unit.assignments.find(a => a.stage === unit.currentStage);
             if (!assigned) return null;
