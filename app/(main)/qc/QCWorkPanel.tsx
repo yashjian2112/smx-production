@@ -11,8 +11,10 @@ type QCUnit = {
   serialNumber: string;
   currentStatus: string;
   updatedAt: string;
+  assemblyBarcode: string | null;
   qcBarcode: string | null;
   assignedTo: { id: string; name: string } | null;
+  reworkRecord: { id: string; cycleCount: number; createdAt: string } | null;
   order: {
     id: string;
     orderNumber: string;
@@ -49,7 +51,7 @@ const QC_ITEMS = [
 type ItemKey = typeof QC_ITEMS[number]['key'];
 type CheckResult = { status: 'PASS' | 'NA'; value: string };
 type Checks = Partial<Record<ItemKey, CheckResult>>;
-type Phase = 'idle' | 'starting' | 'checklist' | 'summary' | 'submitting' | 'done';
+type Phase = 'verify' | 'idle' | 'starting' | 'checklist' | 'summary' | 'submitting' | 'done';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,8 +78,11 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [phase, setPhase]                     = useState<Phase>(
-    unit.currentStatus === 'IN_PROGRESS' ? 'checklist' : 'idle'
+    unit.currentStatus === 'IN_PROGRESS' ? 'checklist' : 'verify'
   );
+  const [scanInput,  setScanInput]  = useState('');
+  const [scanError,  setScanError]  = useState<string | null>(null);
+  const scanRef = useRef<HTMLInputElement>(null);
   const [currentIdx, setCurrentIdx]           = useState(0);
   const [checks, setChecks]                   = useState<Checks>({});
   const [inputValue, setInputValue]           = useState('');
@@ -189,6 +194,58 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
         <button onClick={onDone} className="mt-4 px-5 py-2 rounded-xl text-xs font-semibold"
           style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.2)', color: '#38bdf8' }}>
           Back to Queue
+        </button>
+      </div>
+    );
+  }
+
+  // ── Barcode scan verification ─────────────────────────────────────────────
+  const expectedBarcode = unit.assemblyBarcode ?? unit.qcBarcode;
+
+  function handleScanVerify() {
+    const entered = scanInput.trim();
+    if (!entered) { setScanError('Scan or enter the barcode'); scanRef.current?.focus(); return; }
+    if (expectedBarcode && entered !== expectedBarcode) {
+      setScanError(`Barcode mismatch — expected ${expectedBarcode}`);
+      setScanInput('');
+      scanRef.current?.focus();
+      return;
+    }
+    setScanError(null);
+    setPhase('idle');
+  }
+
+  if (phase === 'verify') {
+    return (
+      <div style={card}>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-sky-400 mb-3">Unit Verification</p>
+        <h3 className="text-base font-semibold text-white mb-1">Scan Unit Barcode</h3>
+        <p className="text-zinc-500 text-sm mb-5">
+          Scan the barcode label on the physical unit to confirm you have the correct unit.
+        </p>
+        <div className="rounded-xl p-3 mb-5"
+          style={{ background: 'rgba(14,165,233,0.05)', border: '1px solid rgba(14,165,233,0.15)' }}>
+          <p className="text-[10px] text-zinc-500 mb-0.5">Expected unit</p>
+          <p className="font-mono text-sm text-white font-semibold">{unit.serialNumber}</p>
+          <p className="text-xs text-zinc-500 mt-0.5">{unit.order?.product.name} · {unit.order?.orderNumber}</p>
+        </div>
+        <label className="block text-xs text-zinc-500 mb-1.5">Barcode</label>
+        <input
+          ref={scanRef}
+          autoFocus
+          type="text"
+          value={scanInput}
+          onChange={(e) => { setScanInput(e.target.value); setScanError(null); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleScanVerify(); }}
+          placeholder={expectedBarcode ? `e.g. ${expectedBarcode}` : 'Scan or type barcode…'}
+          className="w-full px-3 py-3 rounded-xl text-sm text-white placeholder-zinc-700 outline-none mb-3 font-mono"
+          style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${scanError ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}` }}
+        />
+        {scanError && <p className="text-red-400 text-sm mb-3">{scanError}</p>}
+        <button onClick={handleScanVerify}
+          className="w-full py-3 rounded-xl text-sm font-semibold transition-opacity"
+          style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}>
+          Verify &amp; Proceed
         </button>
       </div>
     );
@@ -434,18 +491,31 @@ function UnitRow({ unit, onSelect }: { unit: QCUnit; onSelect: (u: QCUnit) => vo
   const isActive = unit.currentStatus === 'IN_PROGRESS';
   const accentColor = isRework ? '#f87171' : isActive ? '#38bdf8' : '#94a3b8';
   const badge = STATUS_BADGE[unit.currentStatus] ?? STATUS_BADGE.PENDING;
+  // For rework units show the rework record short ID, otherwise show serial
+  const reworkShortId = unit.reworkRecord
+    ? 'RW-' + unit.reworkRecord.id.slice(-6).toUpperCase()
+    : null;
 
   return (
     <button type="button" onClick={() => onSelect(unit)}
       className="w-full text-left flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.025]">
       <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: accentColor }} />
-      <p className="font-mono text-sm font-semibold text-white flex-shrink-0">{unit.serialNumber}</p>
+      <div className="flex flex-col min-w-0">
+        {isRework && reworkShortId ? (
+          <>
+            <p className="font-mono text-sm font-semibold leading-tight" style={{ color: '#f87171' }}>{reworkShortId}</p>
+            <p className="font-mono text-[10px] text-zinc-500 leading-tight">{unit.serialNumber}</p>
+          </>
+        ) : (
+          <p className="font-mono text-sm font-semibold text-white leading-tight">{unit.serialNumber}</p>
+        )}
+      </div>
       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0"
         style={{ color: badge.color, background: badge.bg }}>{badge.label}</span>
       {isRework && (
         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest flex-shrink-0"
           style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
-          Rework
+          Cycle {unit.reworkRecord?.cycleCount ?? 1}
         </span>
       )}
       <div className="flex items-center gap-1 text-[10px] text-zinc-600 ml-auto flex-shrink-0">

@@ -60,13 +60,19 @@ export async function GET() {
       select: {
         id: true, serialNumber: true, currentStatus: true, updatedAt: true,
         readyForDispatch: true,
+        assemblyBarcode: true,
+        qcBarcode: true,
         order: { select: { id: true, orderNumber: true, product: { select: { name: true, code: true } } } },
         assignments: {
           where: { stage: 'QC_AND_SOFTWARE' },
           select: { user: { select: { id: true, name: true } } },
           take: 1,
         },
-        qcBarcode: true,
+        reworkRecords: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true, cycleCount: true, createdAt: true },
+        },
       },
       orderBy: [{ currentStatus: 'asc' }, { updatedAt: 'asc' }],
     });
@@ -107,8 +113,9 @@ export async function GET() {
 
     const activeList = activeUnits.map((u) => ({
       ...u,
-      updatedAt:  u.updatedAt.toISOString(),
-      assignedTo: u.assignments[0]?.user ?? null,
+      updatedAt:   u.updatedAt.toISOString(),
+      assignedTo:  u.assignments[0]?.user ?? null,
+      reworkRecord: u.reworkRecords[0] ?? null,
       _type: 'active' as const,
     }));
 
