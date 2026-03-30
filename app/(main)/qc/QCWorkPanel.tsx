@@ -436,22 +436,17 @@ function groupByOrder(units: QCUnit[]): OrderGroup[] {
 }
 
 function OrderGroupAccordion({ group, onSelect }: { group: OrderGroup; onSelect: (u: QCUnit) => void }) {
-  const [open, setOpen] = useState(true);
   const reworkCount = group.units.filter((u) => u.currentStatus === 'REJECTED_BACK').length;
   const activeCount  = group.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-      {/* Header */}
-      <button type="button" onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.03]"
-        style={{ background: 'rgba(255,255,255,0.03)' }}>
-        <ChevronDown className={`w-4 h-4 text-zinc-500 transition-transform duration-200 flex-shrink-0 ${open ? '' : '-rotate-90'}`} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-white">{group.orderNumber}</span>
-            <span className="text-xs text-zinc-500">{group.productName}</span>
-          </div>
+    <div className="rounded-xl overflow-hidden w-full" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+      {/* Order header */}
+      <div className="w-full flex items-center gap-3 px-4 py-2.5"
+        style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-bold text-white">{group.orderNumber}</span>
+          <span className="text-xs text-zinc-400">{group.productName}</span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {reworkCount > 0 && (
@@ -466,20 +461,18 @@ function OrderGroupAccordion({ group, onSelect }: { group: OrderGroup; onSelect:
               {activeCount} active
             </span>
           )}
-          <span className="text-[10px] font-semibold text-zinc-500">{group.units.length} unit{group.units.length !== 1 ? 's' : ''}</span>
+          <span className="text-[10px] text-zinc-500">{group.units.length} unit{group.units.length !== 1 ? 's' : ''}</span>
         </div>
-      </button>
+      </div>
 
-      {/* Units */}
-      {open && (
-        <div className="divide-y" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.06)' }}>
-          {group.units.map((u) => (
-            <div key={u.id} style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-              <UnitRow unit={u} onSelect={onSelect} />
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Unit rows */}
+      <div>
+        {group.units.map((u, i) => (
+          <div key={u.id} style={i > 0 ? { borderTop: '1px solid rgba(255,255,255,0.05)' } : undefined}>
+            <UnitRow unit={u} onSelect={onSelect} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
