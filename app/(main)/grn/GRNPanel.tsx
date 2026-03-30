@@ -472,7 +472,7 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
                     </div>
 
                     {/* Qty inputs — only enabled after scan */}
-                    <div className={`grid grid-cols-3 gap-2 ${!item.scanned && item.expectedBarcode ? 'opacity-40 pointer-events-none' : ''}`}>
+                    <div className={`grid grid-cols-2 gap-2 ${!item.scanned && item.expectedBarcode ? 'opacity-40 pointer-events-none' : ''}`}>
                       <div>
                         <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Verified Qty</label>
                         <input type="number" min={0} max={item.qtyArrived} step="any" value={item.qtyVerified}
@@ -488,14 +488,6 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
                           onWheel={e => (e.target as HTMLInputElement).blur()}
                           disabled={!item.scanned}
                           className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-red-500 disabled:opacity-50" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Unit Price &#8377;</label>
-                        <input type="number" min={0} step="any" value={item.unitPrice}
-                          onChange={e => { const n = [...items]; n[i].unitPrice = parseFloat(e.target.value) || 0; setItems(n); }}
-                          onWheel={e => (e.target as HTMLInputElement).blur()}
-                          disabled={!item.scanned}
-                          className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-sky-500 disabled:opacity-50" />
                       </div>
                     </div>
                   </div>
