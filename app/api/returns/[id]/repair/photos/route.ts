@@ -11,10 +11,11 @@ function getExt(file: File): string {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await requireSession();
+    const { id } = await params;
     if (!['ADMIN', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE'].includes(session.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -32,7 +33,7 @@ export async function POST(
 
     if (outerFile) {
       const blob = await put(
-        `returns/${params.id}/outer.${getExt(outerFile)}`,
+        `returns/${id}/outer.${getExt(outerFile)}`,
         outerFile,
         { access: 'public' }
       );
@@ -41,7 +42,7 @@ export async function POST(
 
     if (boardFile) {
       const blob = await put(
-        `returns/${params.id}/board.${getExt(boardFile)}`,
+        `returns/${id}/board.${getExt(boardFile)}`,
         boardFile,
         { access: 'public' }
       );
@@ -50,7 +51,7 @@ export async function POST(
 
     if (afterFile) {
       const blob = await put(
-        `returns/${params.id}/after.${getExt(afterFile)}`,
+        `returns/${id}/after.${getExt(afterFile)}`,
         afterFile,
         { access: 'public' }
       );
