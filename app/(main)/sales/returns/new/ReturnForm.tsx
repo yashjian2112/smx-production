@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-type ClientOption = { id: string; code: string; customerName: string };
+type ClientOption  = { id: string; code: string; customerName: string };
+type ProductOption = { id: string; code: string; name: string };
 
 type LookupResult = {
   unitId:       string;
@@ -27,7 +28,7 @@ const TYPE_OPTIONS = [
   { value: 'OTHER',      label: 'Other'      },
 ];
 
-export default function ReturnForm({ clients }: { clients: ClientOption[] }) {
+export default function ReturnForm({ clients, products }: { clients: ClientOption[]; products: ProductOption[] }) {
   const router = useRouter();
 
   const [useManual,     setUseManual]     = useState(false);
@@ -44,6 +45,7 @@ export default function ReturnForm({ clients }: { clients: ClientOption[] }) {
   // Manual mode
   const [clientId,      setClientId]      = useState('');
   const [manualSerial,  setManualSerial]  = useState('');
+  const [productId,     setProductId]     = useState('');
 
   // Common
   const [type,          setType]          = useState('WARRANTY');
@@ -121,6 +123,7 @@ export default function ReturnForm({ clients }: { clients: ClientOption[] }) {
         body = {
           clientId,
           serialNumber: manualSerial.trim() || undefined,
+          productId:    productId || undefined,
           type,
           reportedIssue: reportedIssue.trim(),
         };
@@ -320,6 +323,23 @@ export default function ReturnForm({ clients }: { clients: ClientOption[] }) {
               className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-sky-500"
             />
             <p className="text-xs text-zinc-600 mt-1">Stored for traceability — won&apos;t be looked up in the system</p>
+          </div>
+
+          {/* Product model */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+              Product Model <span className="text-zinc-600 font-normal">(optional)</span>
+            </label>
+            <select
+              value={productId}
+              onChange={(e) => setProductId(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
+            >
+              <option value="">Select model…</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
           </div>
         </div>
       )}

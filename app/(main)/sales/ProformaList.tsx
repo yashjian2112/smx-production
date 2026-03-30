@@ -1302,7 +1302,8 @@ export function ProformaList({
   const [tab, setTab]               = useState<TabKey>(initialTab ?? defaultTab);
   const [search, setSearch]         = useState('');
   const [invSubTab, setInvSubTab]   = useState<'current' | 'history'>('current');
-  const [statusSubTab, setStatusSubTab] = useState<'processing' | 'completed'>('processing');
+  const [statusSubTab,  setStatusSubTab]  = useState<'processing' | 'completed'>('processing');
+  const [returnSubTab,  setReturnSubTab]  = useState<'pending' | 'completed'>('pending');
   const [openDOs,          setOpenDOs]          = useState<Record<string, boolean>>({});
   const [openHistoryMonths, setOpenHistoryMonths] = useState<Record<string, boolean>>({});
 
@@ -1795,24 +1796,51 @@ export function ProformaList({
         )}
 
         {/* ── Returns tab ── */}
-        {tab === 'returns' && (
-          <>
-            <div className="mb-2">
-              <span className="text-xs text-zinc-500">{filteredReturns.length} replacement{filteredReturns.length !== 1 ? 's' : ''}</span>
+        {tab === 'returns' && (() => {
+          const PENDING_STATUSES   = ['REPORTED', 'EVALUATED', 'APPROVED', 'UNIT_RECEIVED', 'IN_REPAIR'];
+          const COMPLETED_STATUSES = ['REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED', 'REJECTED'];
+          const pendingList   = filteredReturns.filter(r => PENDING_STATUSES.includes(r.status));
+          const completedList = filteredReturns.filter(r => COMPLETED_STATUSES.includes(r.status));
+          const activeList    = returnSubTab === 'pending' ? pendingList : completedList;
+
+          return (
+            <div className="space-y-3">
+              {/* Sub-tabs */}
+              <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <button type="button" onClick={() => setReturnSubTab('pending')}
+                  className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${returnSubTab === 'pending' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  style={returnSubTab === 'pending' ? { background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.25)' } : {}}>
+                  Pending
+                  <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                    style={returnSubTab === 'pending' ? { background: 'rgba(251,191,36,0.2)', color: '#fbbf24' } : { background: 'rgba(255,255,255,0.06)', color: '#71717a' }}>
+                    {pendingList.length}
+                  </span>
+                </button>
+                <button type="button" onClick={() => setReturnSubTab('completed')}
+                  className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${returnSubTab === 'completed' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  style={returnSubTab === 'completed' ? { background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)' } : {}}>
+                  Completed
+                  <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                    style={returnSubTab === 'completed' ? { background: 'rgba(34,197,94,0.2)', color: '#4ade80' } : { background: 'rgba(255,255,255,0.06)', color: '#71717a' }}>
+                    {completedList.length}
+                  </span>
+                </button>
+              </div>
+
+              {activeList.length === 0 ? (
+                <div className="card p-8 text-center">
+                  <p className="text-zinc-500 text-sm">No {returnSubTab} replacements.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activeList.map((r) => (
+                    <ReplacementCard key={r.id} r={r} role={role} onDeleted={() => router.refresh()} />
+                  ))}
+                </div>
+              )}
             </div>
-            {filteredReturns.length === 0 ? (
-              <div className="card p-8 text-center">
-                <p className="text-zinc-500 text-sm">No replacement requests found.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredReturns.map((r) => (
-                  <ReplacementCard key={r.id} r={r} role={role} onDeleted={() => router.refresh()} />
-                ))}
-              </div>
-            )}
-          </>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
