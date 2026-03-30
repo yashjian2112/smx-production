@@ -435,7 +435,7 @@ export function QCWorkPanel({ role }: { role: string }) {
   const [completedUnits, setCompletedUnits] = useState<CompletedUnit[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [selected,  setSelected]  = useState<QCUnit | null>(null);
-  const [tab, setTab]             = useState<'pending' | 'processing' | 'rework' | 'completed'>('pending');
+  const [tab, setTab]             = useState<'pending' | 'processing' | 'completed'>('pending');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -453,9 +453,8 @@ export function QCWorkPanel({ role }: { role: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const pending    = activeUnits.filter((u) => u.currentStatus === 'PENDING');
+  const pending    = activeUnits.filter((u) => u.currentStatus === 'PENDING' || u.currentStatus === 'REJECTED_BACK');
   const processing = activeUnits.filter((u) => u.currentStatus === 'IN_PROGRESS');
-  const rework     = activeUnits.filter((u) => u.currentStatus === 'REJECTED_BACK');
 
   // Unit detail view
   if (selected) {
@@ -477,7 +476,7 @@ export function QCWorkPanel({ role }: { role: string }) {
     );
   }
 
-  const tabUnits      = tab === 'pending' ? pending : tab === 'processing' ? processing : rework;
+  const tabUnits      = tab === 'pending' ? pending : processing;
   const showCompleted = tab === 'completed';
 
   return (
@@ -501,7 +500,6 @@ export function QCWorkPanel({ role }: { role: string }) {
         {([
           { key: 'pending',    label: 'Pending',    count: pending.length,         color: '#94a3b8' },
           { key: 'processing', label: 'Processing', count: processing.length,      color: '#38bdf8' },
-          { key: 'rework',     label: 'Rework',     count: rework.length,          color: '#f87171' },
           { key: 'completed',  label: 'Completed',  count: completedUnits.length,  color: '#4ade80' },
         ] as const).map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -538,8 +536,8 @@ export function QCWorkPanel({ role }: { role: string }) {
         )
       ) : tabUnits.length === 0 ? (
         <EmptyState
-          message={tab === 'pending' ? 'No units pending QC' : tab === 'rework' ? 'No rework units' : 'Nothing in progress'}
-          sub={tab === 'pending' ? 'All units have been picked up' : tab === 'rework' ? 'No units sent back from QC' : 'No active QC tests running'}
+          message={tab === 'pending' ? 'No units pending QC' : 'Nothing in progress'}
+          sub={tab === 'pending' ? 'All units have been picked up' : 'No active QC tests running'}
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-6xl mx-auto">
