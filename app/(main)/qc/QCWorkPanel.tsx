@@ -352,6 +352,110 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
   return null;
 }
 
+// ─── Order Group (full-width accordion for pending/processing tabs) ──────────
+
+type OrderGroup = {
+  orderId:     string;
+  orderNumber: string;
+  productName: string;
+  units:       QCUnit[];
+};
+
+function groupByOrder(units: QCUnit[]): OrderGroup[] {
+  const map = new Map<string, OrderGroup>();
+  for (const u of units) {
+    const key = u.order?.id ?? '__unknown__';
+    if (!map.has(key)) {
+      map.set(key, {
+        orderId:     u.order?.id ?? '',
+        orderNumber: u.order?.orderNumber ?? 'Unknown Order',
+        productName: u.order?.product.name ?? '—',
+        units: [],
+      });
+    }
+    map.get(key)!.units.push(u);
+  }
+  return Array.from(map.values());
+}
+
+function OrderGroupAccordion({ group, onSelect }: { group: OrderGroup; onSelect: (u: QCUnit) => void }) {
+  const [open, setOpen] = useState(true);
+  const reworkCount = group.units.filter((u) => u.currentStatus === 'REJECTED_BACK').length;
+  const activeCount  = group.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+      {/* Header */}
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.03]"
+        style={{ background: 'rgba(255,255,255,0.03)' }}>
+        <ChevronDown className={`w-4 h-4 text-zinc-500 transition-transform duration-200 flex-shrink-0 ${open ? '' : '-rotate-90'}`} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-white">{group.orderNumber}</span>
+            <span className="text-xs text-zinc-500">{group.productName}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {reworkCount > 0 && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}>
+              {reworkCount} rework
+            </span>
+          )}
+          {activeCount > 0 && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(56,189,248,0.12)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.2)' }}>
+              {activeCount} active
+            </span>
+          )}
+          <span className="text-[10px] font-semibold text-zinc-500">{group.units.length} unit{group.units.length !== 1 ? 's' : ''}</span>
+        </div>
+      </button>
+
+      {/* Units */}
+      {open && (
+        <div className="divide-y" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.06)' }}>
+          {group.units.map((u) => (
+            <div key={u.id} style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              <UnitRow unit={u} onSelect={onSelect} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Unit Row (inside order accordion) ───────────────────────────────────────
+
+function UnitRow({ unit, onSelect }: { unit: QCUnit; onSelect: (u: QCUnit) => void }) {
+  const isRework = unit.currentStatus === 'REJECTED_BACK';
+  const isActive = unit.currentStatus === 'IN_PROGRESS';
+  const accentColor = isRework ? '#f87171' : isActive ? '#38bdf8' : '#94a3b8';
+  const badge = STATUS_BADGE[unit.currentStatus] ?? STATUS_BADGE.PENDING;
+
+  return (
+    <button type="button" onClick={() => onSelect(unit)}
+      className="w-full text-left flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.025]">
+      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: accentColor }} />
+      <p className="font-mono text-sm font-semibold text-white flex-shrink-0">{unit.serialNumber}</p>
+      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0"
+        style={{ color: badge.color, background: badge.bg }}>{badge.label}</span>
+      {isRework && (
+        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest flex-shrink-0"
+          style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+          Rework
+        </span>
+      )}
+      <div className="flex items-center gap-1 text-[10px] text-zinc-600 ml-auto flex-shrink-0">
+        <Clock className="w-2.5 h-2.5" />{elapsed(unit.updatedAt)}
+        <ChevronRight className="w-3 h-3 ml-1" style={{ color: accentColor, opacity: 0.6 }} />
+      </div>
+    </button>
+  );
+}
+
 // ─── Unit Card (active) ───────────────────────────────────────────────────────
 
 function UnitCard({ unit, onSelect }: { unit: QCUnit; onSelect: (u: QCUnit) => void }) {
@@ -659,9 +763,9 @@ export function QCWorkPanel({ role }: { role: string }) {
           sub={tab === 'pending' ? 'All units have been picked up' : 'No active QC tests running'}
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-6xl mx-auto">
-          {tabUnits.map((u) => (
-            <UnitCard key={u.id} unit={u} onSelect={setSelected} />
+        <div className="flex flex-col gap-2 max-w-4xl mx-auto">
+          {groupByOrder(tabUnits).map((g) => (
+            <OrderGroupAccordion key={g.orderId} group={g} onSelect={setSelected} />
           ))}
         </div>
       )}

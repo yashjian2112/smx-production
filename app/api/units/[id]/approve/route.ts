@@ -140,12 +140,8 @@ export async function POST(
     if (next === StageType.CONTROLLER_ASSEMBLY && product) {
       updateData.assemblyBarcode = await generateNextAssemblyBarcode(product.code);
     }
-    if (next === StageType.QC_AND_SOFTWARE && product) {
-      // Check if QC barcode already exists (may have been pre-generated)
-      if (!unit.qcBarcode) {
-        updateData.qcBarcode = await generateNextQCBarcode(product.code);
-      }
-    }
+    // QC barcode is NOT pre-generated — it is assigned when the QC test actually starts
+    // (POST /api/units/[id]/work when stage = QC_AND_SOFTWARE)
     if (next === StageType.FINAL_ASSEMBLY && product) {
       updateData.finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(product.code);
     }

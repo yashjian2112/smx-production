@@ -133,7 +133,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const unit = await prisma.controllerUnit.findUnique({
     where: { id },
-    select: { currentStage: true, currentStatus: true },
+    select: { currentStage: true, currentStatus: true, qcBarcode: true, product: { select: { code: true } } },
   });
   if (!unit) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
 
@@ -187,6 +187,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     where: { unitId: id, stage: unit.currentStage, employeeId: session.id, analysisStatus: 'IN_PROGRESS' },
   });
   if (existing) return NextResponse.json(existing);
+
+  // Assign QC barcode on first start (not pre-generated — barcode is created here)
+  if (unit.currentStage === StageType.QC_AND_SOFTWARE && !unit.qcBarcode && unit.product?.code) {
+    const qcBarcode = await generateNextQCBarcode(unit.product.code);
+    await prisma.controllerUnit.update({ where: { id }, data: { qcBarcode } });
+  }
 
   // Mark unit IN_PROGRESS if still PENDING
   if (unit.currentStatus === UnitStatus.PENDING) {
@@ -337,9 +343,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         if (next === StageType.CONTROLLER_ASSEMBLY) {
           stageBarcode.assemblyBarcode = await generateNextAssemblyBarcode(productCode);
         }
-        if (next === StageType.QC_AND_SOFTWARE && !unit.qcBarcode) {
-          stageBarcode.qcBarcode = await generateNextQCBarcode(productCode);
-        }
+        // QC barcode is NOT pre-generated here — it is assigned when QC test starts (POST handler)
         if (next === StageType.FINAL_ASSEMBLY && !unit.finalAssemblyBarcode) {
           stageBarcode.finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(productCode);
         }
