@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, X, ChevronRight, Clock, Printer, ChevronDown, Wrench } from 'lucide-react';
+import { Check, X, ChevronRight, Clock, Printer, ChevronDown } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,15 +23,6 @@ type QCUnit = {
 };
 
 type ChecklistData = Record<string, { status: string; value: string }>;
-
-type ReturnPendingQC = {
-  id: string;
-  returnNumber: string;
-  serialNumber: string | null;
-  reportedIssue: string;
-  updatedAt: string;
-  client: { customerName: string; code: string };
-};
 
 type CompletedUnit = QCUnit & {
   qcResult:        'PASS' | 'FAIL';
@@ -856,33 +847,23 @@ function EmptyState({ message, sub }: { message: string; sub: string }) {
 export function QCWorkPanel({ role }: { role: string }) {
   const [activeUnits,    setActiveUnits]    = useState<QCUnit[]>([]);
   const [completedUnits, setCompletedUnits] = useState<CompletedUnit[]>([]);
-  const [returnsPendingQC, setReturnsPendingQC] = useState<ReturnPendingQC[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [selected,  setSelected]  = useState<QCUnit | null>(null);
   const [tab, setTab]             = useState<'pending' | 'processing' | 'completed'>('pending');
 
-  const canSeeReturns = ['ADMIN', 'PRODUCTION_MANAGER', 'QC_USER'].includes(role);
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [unitsRes, returnsRes] = await Promise.all([
-        fetch('/api/qc/units'),
-        canSeeReturns ? fetch('/api/qc/returns') : Promise.resolve(null),
-      ]);
-      if (unitsRes.ok) {
-        const data = await unitsRes.json() as { active: QCUnit[]; completed: CompletedUnit[] };
+      const res = await fetch('/api/qc/units');
+      if (res.ok) {
+        const data = await res.json() as { active: QCUnit[]; completed: CompletedUnit[] };
         setActiveUnits(data.active ?? []);
         setCompletedUnits(data.completed ?? []);
-      }
-      if (returnsRes?.ok) {
-        const data = await returnsRes.json() as ReturnPendingQC[];
-        setReturnsPendingQC(data ?? []);
       }
     } finally {
       setLoading(false);
     }
-  }, [canSeeReturns]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -970,51 +951,16 @@ export function QCWorkPanel({ role }: { role: string }) {
             ))}
           </div>
         )
+      ) : tabUnits.length === 0 ? (
+        <EmptyState
+          message={tab === 'pending' ? 'No units pending QC' : 'Nothing in progress'}
+          sub={tab === 'pending' ? 'All units have been picked up' : 'No active QC tests running'}
+        />
       ) : (
-        <div className="flex flex-col gap-4 max-w-4xl mx-auto">
-          {/* Returns pending QC — only in pending tab for QC_USER/admin/manager */}
-          {tab === 'pending' && canSeeReturns && returnsPendingQC.length > 0 && (
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-500 mb-2 px-1 flex items-center gap-1.5">
-                <Wrench className="w-3 h-3" /> Returns Awaiting QC ({returnsPendingQC.length})
-              </p>
-              <div className="flex flex-col gap-2">
-                {returnsPendingQC.map((r) => (
-                  <a key={r.id} href={`/rework/${r.id}`}
-                    className="flex items-center gap-3 p-3 rounded-xl transition-colors hover:border-zinc-600"
-                    style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.18)' }}>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                        <span className="text-xs font-mono text-amber-400">{r.returnNumber}</span>
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                          style={{ background: 'rgba(56,189,248,0.12)', color: '#38bdf8' }}>QC Checked</span>
-                      </div>
-                      <p className="text-sm font-medium text-white">{r.client.customerName}</p>
-                      {r.serialNumber && (
-                        <p className="text-[11px] font-mono text-zinc-500 mt-0.5">{r.serialNumber}</p>
-                      )}
-                      <p className="text-[11px] text-zinc-600 mt-0.5 line-clamp-1">{r.reportedIssue}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-zinc-600 shrink-0" />
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Manufacturing units */}
-          {tabUnits.length === 0 && (tab !== 'pending' || returnsPendingQC.length === 0) ? (
-            <EmptyState
-              message={tab === 'pending' ? 'No units pending QC' : 'Nothing in progress'}
-              sub={tab === 'pending' ? 'All units have been picked up' : 'No active QC tests running'}
-            />
-          ) : tabUnits.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              {groupByOrder(tabUnits).map((g) => (
-                <OrderGroupAccordion key={g.orderId} group={g} onSelect={setSelected} />
-              ))}
-            </div>
-          ) : null}
+        <div className="flex flex-col gap-2 max-w-4xl mx-auto">
+          {groupByOrder(tabUnits).map((g) => (
+            <OrderGroupAccordion key={g.orderId} group={g} onSelect={setSelected} />
+          ))}
         </div>
       )}
     </div>
