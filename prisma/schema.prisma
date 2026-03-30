@@ -894,6 +894,7 @@ model RepairLog {
   issue           String
   workDone        String?   @map("work_done")
   beforePhotoUrl  String?   @map("before_photo_url")
+  boardPhotoUrl   String?   @map("board_photo_url")
   afterPhotoUrl   String?   @map("after_photo_url")
   employeeId      String    @map("employee_id")
   startedAt       DateTime  @default(now()) @map("started_at")

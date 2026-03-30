@@ -23,6 +23,7 @@ export async function GET(
 const createSchema = z.object({
   issue:          z.string().min(1),
   beforePhotoUrl: z.string().optional(),
+  boardPhotoUrl:  z.string().optional(),
 });
 
 // POST — start a repair (employee logs what they found)
@@ -49,6 +50,7 @@ export async function POST(
         unitId:          ret.unitId ?? null,
         issue:           parsed.data.issue,
         beforePhotoUrl:  parsed.data.beforePhotoUrl ?? null,
+        boardPhotoUrl:   parsed.data.boardPhotoUrl ?? null,
         employeeId:      session.id,
       },
       include: { employee: { select: { id: true, name: true } } },
