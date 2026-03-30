@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, X, ChevronRight, Clock, Printer, ChevronDown } from 'lucide-react';
+import { Check, X, ChevronRight, Clock, Printer, ChevronDown, RotateCcw } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -826,6 +826,116 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
   );
 }
 
+// ─── Return QC Card ─────────────────────────────────────────────────────────
+
+type QCReturn = {
+  id: string;
+  returnNumber: string;
+  serialNumber: string | null;
+  reportedIssue: string;
+  status: string;
+  updatedAt: string;
+  client: { customerName: string; code: string } | null;
+  repairLogs: { issue: string; workDone: string | null; employee: { name: string } }[];
+};
+
+function ReturnQCCard({ ret, onAction }: { ret: QCReturn; onAction: () => void }) {
+  const router = useRouter();
+  const [loading, setLoading] = useState('');
+  const [error, setError]     = useState('');
+
+  async function handleAction(status: 'DISPATCHED' | 'IN_REPAIR') {
+    setLoading(status);
+    setError('');
+    try {
+      const res = await fetch(`/api/returns/${ret.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error ?? 'Failed');
+      }
+      onAction();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error');
+      setLoading('');
+    }
+  }
+
+  const lastLog = ret.repairLogs[0];
+
+  return (
+    <div className="rounded-xl overflow-hidden"
+      style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.15)' }}>
+      <div className="p-4 space-y-3">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-mono text-sm font-bold text-white">{ret.returnNumber}</p>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                style={{ color: '#38bdf8', background: 'rgba(56,189,248,0.12)' }}>
+                Pending QC
+              </span>
+            </div>
+            {ret.serialNumber && (
+              <p className="font-mono text-xs text-zinc-400 mt-0.5">{ret.serialNumber}</p>
+            )}
+            {ret.client && (
+              <p className="text-xs text-zinc-500 mt-0.5">{ret.client.customerName} ({ret.client.code})</p>
+            )}
+          </div>
+          <div className="flex items-center gap-1 text-[10px] text-zinc-600 flex-shrink-0">
+            <Clock className="w-2.5 h-2.5" />{elapsed(ret.updatedAt)}
+          </div>
+        </div>
+
+        {/* Reported Issue */}
+        <div className="rounded-lg p-2.5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Reported Issue</p>
+          <p className="text-xs text-zinc-300 line-clamp-2">{ret.reportedIssue}</p>
+        </div>
+
+        {/* Last Repair Log */}
+        {lastLog && (
+          <div className="rounded-lg p-2.5" style={{ background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.12)' }}>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Repair Summary</p>
+            <p className="text-xs text-zinc-300">{lastLog.issue}</p>
+            {lastLog.workDone && <p className="text-xs text-zinc-400 mt-1">{lastLog.workDone}</p>}
+            <p className="text-[10px] text-zinc-500 mt-1">By {lastLog.employee.name}</p>
+          </div>
+        )}
+
+        {error && <p className="text-xs text-red-400">{error}</p>}
+
+        {/* Actions */}
+        <div className="flex gap-2">
+          <button onClick={() => handleAction('DISPATCHED')} disabled={!!loading}
+            className="flex-1 py-2.5 rounded-xl text-xs font-semibold disabled:opacity-40 flex items-center justify-center gap-1.5"
+            style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#4ade80' }}>
+            <Check className="w-3.5 h-3.5" />
+            {loading === 'DISPATCHED' ? 'Updating…' : 'QC Pass'}
+          </button>
+          <button onClick={() => handleAction('IN_REPAIR')} disabled={!!loading}
+            className="flex-1 py-2.5 rounded-xl text-xs font-semibold disabled:opacity-40 flex items-center justify-center gap-1.5"
+            style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
+            <RotateCcw className="w-3.5 h-3.5" />
+            {loading === 'IN_REPAIR' ? 'Updating…' : 'QC Fail'}
+          </button>
+        </div>
+
+        {/* View Detail link */}
+        <button onClick={() => router.push(`/rework/${ret.id}`)}
+          className="w-full text-center text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors py-1">
+          View full return detail
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
 function EmptyState({ message, sub }: { message: string; sub: string }) {
@@ -847,18 +957,26 @@ function EmptyState({ message, sub }: { message: string; sub: string }) {
 export function QCWorkPanel({ role }: { role: string }) {
   const [activeUnits,    setActiveUnits]    = useState<QCUnit[]>([]);
   const [completedUnits, setCompletedUnits] = useState<CompletedUnit[]>([]);
+  const [qcReturns,      setQcReturns]      = useState<QCReturn[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [selected,  setSelected]  = useState<QCUnit | null>(null);
-  const [tab, setTab]             = useState<'pending' | 'processing' | 'completed'>('pending');
+  const [tab, setTab]             = useState<'pending' | 'processing' | 'completed' | 'returns'>('pending');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/qc/units');
-      if (res.ok) {
-        const data = await res.json() as { active: QCUnit[]; completed: CompletedUnit[] };
+      const [unitsRes, returnsRes] = await Promise.all([
+        fetch('/api/qc/units'),
+        fetch('/api/qc/returns'),
+      ]);
+      if (unitsRes.ok) {
+        const data = await unitsRes.json() as { active: QCUnit[]; completed: CompletedUnit[] };
         setActiveUnits(data.active ?? []);
         setCompletedUnits(data.completed ?? []);
+      }
+      if (returnsRes.ok) {
+        const data = await returnsRes.json() as QCReturn[];
+        setQcReturns(data);
       }
     } finally {
       setLoading(false);
@@ -892,12 +1010,14 @@ export function QCWorkPanel({ role }: { role: string }) {
 
   const tabUnits      = tab === 'pending' ? pending : processing;
   const showCompleted = tab === 'completed';
+  const showReturns   = tab === 'returns';
 
   // Tab definitions
   const tabs = [
     { key: 'pending'    as const, label: 'Pending',    count: pending.length        },
     { key: 'processing' as const, label: 'Processing', count: processing.length     },
     { key: 'completed'  as const, label: 'Completed',  count: completedUnits.length },
+    { key: 'returns'    as const, label: 'Returns',    count: qcReturns.length      },
   ];
 
   return (
@@ -941,6 +1061,16 @@ export function QCWorkPanel({ role }: { role: string }) {
         <div className="flex justify-center py-16">
           <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
         </div>
+      ) : showReturns ? (
+        qcReturns.length === 0 ? (
+          <EmptyState message="No returns pending QC" sub="Repaired returns awaiting QC will appear here" />
+        ) : (
+          <div className="flex flex-col gap-3 max-w-4xl mx-auto">
+            {qcReturns.map((r) => (
+              <ReturnQCCard key={r.id} ret={r} onAction={load} />
+            ))}
+          </div>
+        )
       ) : showCompleted ? (
         completedUnits.length === 0 ? (
           <EmptyState message="No completed QC this month" sub="Passed units will appear here" />

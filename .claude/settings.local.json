@@ -262,7 +262,8 @@
       "Bash(wc -l app/\\\\\\(main\\\\\\)/purchase/PurchasePanel.tsx)",
       "Bash(wc -l /Users/mr.yash/Desktop/production/app/\\\\\\(main\\\\\\)/purchase/PurchasePanel.tsx)",
       "Bash(echo \"exit: $?\")",
-      "Bash(cat /Users/mr.yash/Desktop/production/.claude/worktrees/dreamy-pasteur/app/\\\\\\(main\\\\\\)/layout.tsx)"
+      "Bash(cat /Users/mr.yash/Desktop/production/.claude/worktrees/dreamy-pasteur/app/\\\\\\(main\\\\\\)/layout.tsx)",
+      "Bash(ls \"/Users/mr.yash/Desktop/production/.claude/worktrees/optimistic-black/app/\\(main\\)/\")"
     ]
   }
 }

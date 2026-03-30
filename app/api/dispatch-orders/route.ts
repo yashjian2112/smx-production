@@ -6,8 +6,11 @@ import { DOStatus } from '@prisma/client';
 import { z } from 'zod';
 
 const createSchema = z.object({
-  orderId:     z.string().min(1),
-  dispatchQty: z.number().int().min(1),
+  orderId:          z.string().min(1).optional(),
+  returnRequestId:  z.string().min(1).optional(),
+  dispatchQty:      z.number().int().min(1),
+}).refine(d => d.orderId || d.returnRequestId, {
+  message: 'Either orderId or returnRequestId is required',
 });
 
 export async function GET(req: NextRequest) {
@@ -71,7 +74,47 @@ export async function POST(req: NextRequest) {
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { orderId, dispatchQty } = parsed.data;
+    const { orderId, returnRequestId, dispatchQty } = parsed.data;
+
+    const doNumber = await generateNextDONumber();
+
+    // ── Return-based dispatch order ──
+    if (returnRequestId) {
+      const ret = await prisma.returnRequest.findUnique({
+        where: { id: returnRequestId },
+        select: { id: true, status: true, clientId: true, returnNumber: true },
+      });
+      if (!ret) return NextResponse.json({ error: 'Return request not found' }, { status: 404 });
+      if (!['QC_CHECKED', 'DISPATCHED'].includes(ret.status))
+        return NextResponse.json({ error: 'Return must be QC_CHECKED or DISPATCHED to create a dispatch order' }, { status: 400 });
+
+      // Check no existing open DO for this return
+      const existingDO = await prisma.dispatchOrder.findFirst({
+        where: { returnRequestId, status: { in: ['OPEN', 'PACKING', 'SUBMITTED'] } },
+      });
+      if (existingDO)
+        return NextResponse.json({ error: 'A dispatch order already exists for this return' }, { status: 400 });
+
+      const dispatchOrder = await prisma.dispatchOrder.create({
+        data: {
+          doNumber,
+          returnRequestId,
+          dispatchQty,
+          status: 'OPEN',
+          createdById: session.id,
+        },
+        include: {
+          returnRequest: { select: { returnNumber: true, client: { select: { customerName: true } } } },
+          createdBy: { select: { name: true } },
+          boxes: true,
+        },
+      });
+
+      return NextResponse.json(dispatchOrder, { status: 201 });
+    }
+
+    // ── Order-based dispatch order (existing flow) ──
+    if (!orderId) return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
 
     // Order must exist and be ACTIVE
     const order = await prisma.order.findUnique({
@@ -114,9 +157,6 @@ export async function POST(req: NextRequest) {
         { error: `Dispatch quantity (${dispatchQty}) exceeds available units (${trueAvailable})` },
         { status: 400 }
       );
-
-    // Allow multiple DOs per order (partial dispatch support)
-    const doNumber = await generateNextDONumber();
 
     const dispatchOrder = await prisma.dispatchOrder.create({
       data: {

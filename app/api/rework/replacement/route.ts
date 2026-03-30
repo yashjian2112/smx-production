@@ -26,23 +26,6 @@ export async function POST(req: Request) {
 
   const data = parsed.data;
 
-  // Generate return number RTN/YY-YY/NNN
-  const fy     = getFiscalYear();
-  const prefix = `RTN/${fy}/`;
-  const latest = await prisma.returnRequest.findFirst({
-    where:   { returnNumber: { startsWith: prefix } },
-    orderBy: { returnNumber: 'desc' },
-    select:  { returnNumber: true },
-  });
-
-  let next = 1;
-  if (latest) {
-    const parts = latest.returnNumber.split('/');
-    const seq   = parseInt(parts[parts.length - 1], 10);
-    if (!isNaN(seq)) next = seq + 1;
-  }
-  const returnNumber = `${prefix}${String(next).padStart(3, '0')}`;
-
   // Look up unit/order from serial number if provided
   let unitId:  string | undefined;
   let orderId: string | undefined;
@@ -58,17 +41,36 @@ export async function POST(req: Request) {
     }
   }
 
-  const returnRequest = await prisma.returnRequest.create({
-    data: {
-      returnNumber,
-      clientId:     data.clientId,
-      serialNumber: data.serialNumber ?? null,
-      unitId:       unitId ?? null,
-      orderId:      orderId ?? null,
-      type:         'WARRANTY',
-      reportedIssue: data.issue,
-      reportedById: session.id,
-    },
+  // Generate return number inside transaction to prevent race conditions
+  const returnRequest = await prisma.$transaction(async (tx) => {
+    const fy     = getFiscalYear();
+    const prefix = `RTN/${fy}/`;
+    const latest = await tx.returnRequest.findFirst({
+      where:   { returnNumber: { startsWith: prefix } },
+      orderBy: { returnNumber: 'desc' },
+      select:  { returnNumber: true },
+    });
+
+    let next = 1;
+    if (latest) {
+      const parts = latest.returnNumber.split('/');
+      const seq   = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(seq)) next = seq + 1;
+    }
+    const returnNumber = `${prefix}${String(next).padStart(3, '0')}`;
+
+    return tx.returnRequest.create({
+      data: {
+        returnNumber,
+        clientId:     data.clientId,
+        serialNumber: data.serialNumber ?? null,
+        unitId:       unitId ?? null,
+        orderId:      orderId ?? null,
+        type:         'WARRANTY',
+        reportedIssue: data.issue,
+        reportedById: session.id,
+      },
+    });
   });
 
   return NextResponse.json(returnRequest, { status: 201 });

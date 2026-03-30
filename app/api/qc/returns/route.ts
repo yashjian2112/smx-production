@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-// Returns pending QC check (status = QC_CHECKED, submitted by employee for QC review)
+// Returns pending QC decision (status = QC_CHECKED means "submitted for QC review")
 export async function GET() {
   try {
     const session = await requireSession();
@@ -18,8 +18,14 @@ export async function GET() {
         returnNumber:  true,
         serialNumber:  true,
         reportedIssue: true,
+        status:        true,
         updatedAt:     true,
         client: { select: { customerName: true, code: true } },
+        repairLogs: {
+          orderBy: { startedAt: 'desc' },
+          take: 1,
+          select: { issue: true, workDone: true, employee: { select: { name: true } } },
+        },
       },
     });
 
