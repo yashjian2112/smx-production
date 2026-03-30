@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 // GET /api/inventory/damage-reports?materialId=&jobCardId=
 export async function GET(req: NextRequest) {
   const session = await requireSession();
-  if (!['ADMIN', 'INVENTORY_MANAGER', 'STORE_MANAGER', 'PURCHASE_MANAGER', 'PRODUCTION_EMPLOYEE'].includes(session.role)) {
+  if (!['ADMIN', 'INVENTORY_MANAGER', 'PURCHASE_MANAGER', 'PRODUCTION_EMPLOYEE'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 // Deducts from currentStock and logs a DAMAGE stock movement
 export async function POST(req: NextRequest) {
   const session = await requireSession();
-  if (!['ADMIN', 'INVENTORY_MANAGER', 'STORE_MANAGER', 'PRODUCTION_EMPLOYEE'].includes(session.role)) {
+  if (!['ADMIN', 'INVENTORY_MANAGER', 'PRODUCTION_EMPLOYEE'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

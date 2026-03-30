@@ -6,7 +6,7 @@ import { generateRONumber } from '@/lib/procurement-numbers';
 // GET /api/procurement/requirement-orders — list ROs
 export async function GET(req: NextRequest) {
   const session = await requireSession();
-  if (!['ADMIN', 'INVENTORY_MANAGER', 'PURCHASE_MANAGER', 'STORE_MANAGER'].includes(session.role)) {
+  if (!['ADMIN', 'INVENTORY_MANAGER', 'PURCHASE_MANAGER'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

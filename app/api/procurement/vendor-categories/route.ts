@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET() {
   const session = await requireSession();
-  if (!['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER', 'STORE_MANAGER'].includes(session.role)) {
+  if (!['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const cats = await prisma.vendorCategory.findMany({ orderBy: { name: 'asc' } });

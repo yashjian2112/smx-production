@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'] as const;
+const VIEW_ROLES    = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'] as const;
 const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'] as const;
 
 const updateSchema = z.object({

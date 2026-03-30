@@ -11,7 +11,7 @@ export default async function SalesPage({
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const canAccess = ['ADMIN', 'SALES', 'ACCOUNTS', 'STORE_MANAGER'].includes(session.role);
+  const canAccess = ['ADMIN', 'SALES', 'ACCOUNTS'].includes(session.role);
   if (!canAccess) redirect('/dashboard');
 
   const [proformas, invoices, returns, samples, implGoods] = await Promise.all([
@@ -108,7 +108,7 @@ export default async function SalesPage({
       : Promise.resolve([]),
 
     // Implementation Goods — ADMIN/SM see all, SALES sees own
-    ['ADMIN', 'SALES', 'STORE_MANAGER'].includes(session.role)
+    ['ADMIN', 'SALES'].includes(session.role)
       ? prisma.implementationGood.findMany({
           where: session.role === 'SALES' ? { createdById: session.id } : {},
           select: {

@@ -206,7 +206,7 @@ const purchaseNav: NavItem[] = [
   { href: '/purchase',  label: 'Procurement', icon: 'Purchase'   },
 ];
 
-// INVENTORY_MANAGER / STORE_MANAGER
+// INVENTORY_MANAGER
 const inventoryNav: NavItem[] = [
   { href: '/inventory',  label: 'Inventory',  icon: 'Inventory'  },
   { href: '/grn',        label: 'GRN',        icon: 'Pack'       },
@@ -246,7 +246,7 @@ export function BottomNav({ role }: { role: string }) {
     role === 'SHIPPING'            ? shippingNav  :
     role === 'PURCHASE_MANAGER'    ? purchaseNav   :
     role === 'INVENTORY_MANAGER'   ? inventoryNav  :
-    role === 'STORE_MANAGER'       ? inventoryNav  :
+    role === 'INVENTORY_MANAGER'       ? inventoryNav  :
     managerNav;
 
   // Map nav href to badge key

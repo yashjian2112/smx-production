@@ -21,7 +21,6 @@ const ROLE_OPTIONS = [
   { value: 'SHIPPING',            label: 'Shipping' },
   { value: 'PURCHASE_MANAGER',    label: 'Purchase Manager' },
   { value: 'INVENTORY_MANAGER',   label: 'Inventory Manager' },
-  { value: 'STORE_MANAGER',       label: 'Store Manager' },
   { value: 'ADMIN',               label: 'Admin' },
 ];
 
@@ -34,7 +33,6 @@ const ROLE_BADGE: Record<string, string> = {
   SHIPPING:            'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
   PURCHASE_MANAGER:    'bg-blue-500/20 text-blue-400 border-blue-500/30',
   INVENTORY_MANAGER:   'bg-green-500/20 text-green-400 border-green-500/30',
-  STORE_MANAGER:       'bg-teal-500/20 text-teal-400 border-teal-500/30',
 };
 const ROLE_LABEL: Record<string, string> = {
   ADMIN:               'Admin',
@@ -45,7 +43,6 @@ const ROLE_LABEL: Record<string, string> = {
   SHIPPING:            'Shipping',
   PURCHASE_MANAGER:    'Purchase Mgr',
   INVENTORY_MANAGER:   'Inventory Mgr',
-  STORE_MANAGER:       'Store Mgr',
 };
 
 export function UsersAdmin({ users: initial }: { users: User[] }) {

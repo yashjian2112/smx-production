@@ -292,7 +292,7 @@ export default function IGDetail({ igId, role, userId }: { igId: string; role: s
           </div>
         )}
 
-        {['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(role) && ig.status === 'GAN_CREATED' && (
+        {['INVENTORY_MANAGER', 'ADMIN'].includes(role) && ig.status === 'GAN_CREATED' && (
           <button disabled={actionLoading} onClick={() => doAction('grn')}
             className="w-full py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50"
             style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
@@ -300,7 +300,7 @@ export default function IGDetail({ igId, role, userId }: { igId: string; role: s
           </button>
         )}
 
-        {['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(role) && ['RECEIVED', 'IN_STORE'].includes(ig.status) && (
+        {['INVENTORY_MANAGER', 'ADMIN'].includes(role) && ['RECEIVED', 'IN_STORE'].includes(ig.status) && (
           <button disabled={actionLoading} onClick={() => doAction('issue')}
             className="w-full py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50"
             style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b' }}>
@@ -308,7 +308,7 @@ export default function IGDetail({ igId, role, userId }: { igId: string; role: s
           </button>
         )}
 
-        {['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(role) && ig.status === 'IN_USE' && (
+        {['INVENTORY_MANAGER', 'ADMIN'].includes(role) && ig.status === 'IN_USE' && (
           <button disabled={actionLoading} onClick={() => doAction('return_to_store')}
             className="w-full py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50"
             style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#a78bfa' }}>

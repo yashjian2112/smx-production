@@ -914,17 +914,17 @@ function ImplGoodsTab({
                     )}
 
                     {/* STORE_MANAGER: GRN on GAN_CREATED */}
-                    {['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(role) && g.status === 'GAN_CREATED' && (
+                    {['INVENTORY_MANAGER', 'ADMIN'].includes(role) && g.status === 'GAN_CREATED' && (
                       btn(g.id, 'grn', 'Complete GRN', 'rgba(34,197,94,0.12)', '#4ade80')
                     )}
 
                     {/* STORE_MANAGER: Issue on RECEIVED / IN_STORE */}
-                    {['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(role) && ['RECEIVED', 'IN_STORE'].includes(g.status) && (
+                    {['INVENTORY_MANAGER', 'ADMIN'].includes(role) && ['RECEIVED', 'IN_STORE'].includes(g.status) && (
                       btn(g.id, 'issue', 'Issue for Use', 'rgba(245,158,11,0.12)', '#f59e0b')
                     )}
 
                     {/* STORE_MANAGER: Return to store on IN_USE */}
-                    {['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(role) && g.status === 'IN_USE' && (
+                    {['INVENTORY_MANAGER', 'ADMIN'].includes(role) && g.status === 'IN_USE' && (
                       btn(g.id, 'return_to_store', 'Return to Store', 'rgba(139,92,246,0.12)', '#a78bfa')
                     )}
 
@@ -1181,7 +1181,7 @@ export function ProformaList({
   implGoods?: IGRow[];
 }) {
   const router = useRouter();
-  const defaultTab: TabKey = role === 'STORE_MANAGER' ? 'impl' : 'pi';
+  const defaultTab: TabKey = role === 'INVENTORY_MANAGER' ? 'impl' : 'pi';
   const [tab, setTab]               = useState<TabKey>(initialTab ?? defaultTab);
   const [search, setSearch]         = useState('');
   const [invSubTab, setInvSubTab]   = useState<'current' | 'history'>('current');
@@ -1206,7 +1206,7 @@ export function ProformaList({
   });
 
   // Main tabs — Status is handled separately (no count clutter)
-  const igOnlyRole = ['STORE_MANAGER'].includes(role);
+  const igOnlyRole = ['INVENTORY_MANAGER'].includes(role);
 
   const mainTabs: Array<{ key: TabKey; label: string; count: number }> = [
     ...(!igOnlyRole ? [
@@ -1217,7 +1217,7 @@ export function ProformaList({
     ...(['ADMIN', 'SALES'].includes(role)
       ? [{ key: 'samples' as TabKey, label: 'Samples', count: samples.length }]
       : []),
-    ...(['ADMIN', 'SALES', 'STORE_MANAGER'].includes(role)
+    ...(['ADMIN', 'SALES'].includes(role)
       ? [{ key: 'impl' as TabKey, label: 'Impl. Goods', count: implGoods.length }]
       : []),
   ];

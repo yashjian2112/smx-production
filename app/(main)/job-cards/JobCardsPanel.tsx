@@ -251,7 +251,7 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
   const [expanded,   setExpanded]   = useState<string | null>(null);
   const [dispatching, setDispatching] = useState<JobCard | null>(null);
 
-  const canDispatch = ['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN'].includes(sessionRole);
+  const canDispatch = ['INVENTORY_MANAGER', 'ADMIN'].includes(sessionRole);
 
   const load = useCallback(async () => {
     setLoading(true);

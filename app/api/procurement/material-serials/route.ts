@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 // GET /api/procurement/material-serials?grnId=xxx — list serials for a GRN
 export async function GET(req: NextRequest) {
   const session = await requireSession();
-  if (!['ADMIN', 'INVENTORY_MANAGER', 'STORE_MANAGER', 'PURCHASE_MANAGER'].includes(session.role)) {
+  if (!['ADMIN', 'INVENTORY_MANAGER', 'PURCHASE_MANAGER'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

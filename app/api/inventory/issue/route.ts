@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;
+const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER'] as const;
 
 const issueSchema = z.object({
   rawMaterialId: z.string(),

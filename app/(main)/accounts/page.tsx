@@ -16,8 +16,9 @@ export default async function AccountsPage() {
   const [proformas, submittedDispatches, submittedDOs, invoices, returns] = await Promise.all([
     prisma.proformaInvoice.findMany({
       include: {
-        client:    { select: { id: true, code: true, customerName: true, globalOrIndian: true } },
+        client:    { select: { id: true, code: true, customerName: true, globalOrIndian: true, gstNumber: true } },
         createdBy: { select: { id: true, name: true } },
+        items:     { select: { quantity: true, unitPrice: true, discountPercent: true } },
         _count:    { select: { items: true } },
       },
       orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],

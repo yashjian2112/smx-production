@@ -14,8 +14,10 @@ type ProformaRow = {
   invoiceDate: string;
   status: string;
   currency: string;
-  client: { id: string; code: string; customerName: string; globalOrIndian: string | null };
+  declaredAmount: number | null;
+  client: { id: string; code: string; customerName: string; globalOrIndian: string | null; gstNumber: string | null };
   createdBy: { id: string; name: string };
+  items: Array<{ quantity: number; unitPrice: number; discountPercent: number }>;
   _count: { items: number };
 };
 
@@ -106,6 +108,18 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; border: string }
 function fmtDate(iso: string | null) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function fmtAmt(n: number, currency: string) {
+  if (currency === 'USD') return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function calcProformaTotal(p: ProformaRow): number {
+  const isExport = p.client.globalOrIndian === 'Global';
+  const hasGst = !isExport && !!p.client.gstNumber;
+  const subtotal = p.items.reduce((s, i) => s + i.quantity * i.unitPrice * (1 - i.discountPercent / 100), 0);
+  return subtotal + (hasGst ? subtotal * 0.18 : 0);
 }
 
 // ---- Main component ----
@@ -232,37 +246,50 @@ export function AccountsPanel({
               </p>
 
               <div className="space-y-2">
-                {pendingProformas.map((p) => (
-                  <div key={p.id} className="card p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono font-semibold text-sm">{p.invoiceNumber}</span>
-                          <span
-                            className="text-[10px] font-medium px-1.5 py-0.5 rounded border"
-                            style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.3)' }}
-                          >
-                            Pending Approval
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.currency}</span>
+                {pendingProformas.map((p) => {
+                  const calcTotal = calcProformaTotal(p);
+                  const declared = p.declaredAmount;
+                  const mismatch = declared != null && Math.abs(declared - calcTotal) > 1;
+                  return (
+                    <div key={p.id} className="card p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-semibold text-sm">{p.invoiceNumber}</span>
+                            <span
+                              className="text-[10px] font-medium px-1.5 py-0.5 rounded border"
+                              style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.3)' }}
+                            >
+                              Pending Approval
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.currency}</span>
+                          </div>
+                          <p className="text-zinc-400 text-sm mt-0.5">{p.client.customerName}</p>
+                          <p className="text-zinc-600 text-xs mt-0.5">
+                            {fmtDate(p.invoiceDate)}
+                            {' · '}{p._count.items} item{p._count.items !== 1 ? 's' : ''}
+                            {' · '}by {p.createdBy.name}
+                          </p>
+                          <div className="flex items-center gap-3 mt-1.5">
+                            <span className="text-xs text-white font-semibold">{fmtAmt(calcTotal, p.currency)}</span>
+                            {declared != null && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${mismatch ? 'bg-red-900/30 text-red-400 border border-red-700/40' : 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/40'}`}>
+                                Declared: {fmtAmt(declared, p.currency)}{mismatch ? ' — MISMATCH' : ''}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-zinc-400 text-sm mt-0.5">{p.client.customerName}</p>
-                        <p className="text-zinc-600 text-xs mt-0.5">
-                          {fmtDate(p.invoiceDate)}
-                          {' · '}{p._count.items} item{p._count.items !== 1 ? 's' : ''}
-                          {' · '}by {p.createdBy.name}
-                        </p>
+                        <Link
+                          href={`/sales/${p.id}`}
+                          className="shrink-0 text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
+                          style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}
+                        >
+                          Review
+                        </Link>
                       </div>
-                      <Link
-                        href={`/sales/${p.id}`}
-                        className="shrink-0 text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
-                        style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}
-                      >
-                        Review
-                      </Link>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

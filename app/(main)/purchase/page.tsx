@@ -5,14 +5,13 @@ import PurchasePanel from './PurchasePanel';
 const TITLE: Record<string, { heading: string; sub: string }> = {
   PURCHASE_MANAGER:  { heading: 'Procurement',        sub: 'RFQ · Purchase Orders · GAN' },
   INVENTORY_MANAGER: { heading: 'Requirement Orders', sub: 'Review and approve stock requirements' },
-  STORE_MANAGER:     { heading: 'Requirement Orders', sub: 'Review and approve stock requirements' },
   ADMIN:             { heading: 'Procurement',        sub: 'Requirement Orders · RFQ · Purchase Orders · GAN · GRN' },
 };
 
 export default async function PurchasePage() {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (!['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER', 'STORE_MANAGER'].includes(session.role)) redirect('/dashboard');
+  if (!['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'].includes(session.role)) redirect('/dashboard');
 
   const { heading, sub } = TITLE[session.role] ?? TITLE.ADMIN;
 

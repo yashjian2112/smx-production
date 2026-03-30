@@ -4,7 +4,7 @@ import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateNextBatchCode } from '@/lib/invoice-number';
 
-const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER'] as const;
+const ALLOWED_ROLES = ['ADMIN', 'PURCHASE_MANAGER'] as const;
 
 const itemSchema = z.object({
   rawMaterialId:    z.string(),

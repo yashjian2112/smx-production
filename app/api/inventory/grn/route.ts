@@ -4,8 +4,8 @@ import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateNextGRNNumber, generateNextBatchCode } from '@/lib/invoice-number';
 
-const ALLOWED_ROLES  = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'] as const;
-const VIEW_ROLES     = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'] as const;
+const ALLOWED_ROLES  = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'] as const;
+const VIEW_ROLES     = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'] as const;
 
 const grnItemSchema = z.object({
   poItemId:         z.string(),

@@ -1792,7 +1792,7 @@ function JobCardsTab({ sessionRole }: { sessionRole: string }) {
   const [issueError, setIssueError] = useState<string>('');
   const [showIssued, setShowIssued] = useState(false);
 
-  const canIssue = ['INVENTORY_MANAGER', 'STORE_MANAGER', 'ADMIN'].includes(sessionRole);
+  const canIssue = ['INVENTORY_MANAGER', 'ADMIN'].includes(sessionRole);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2461,7 +2461,7 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
   const [activeTab, setActiveTab] = useState<Tab>('Materials');
 
   // canManageStock: can record GRN, do stock adjustments, create PRs
-  const canManageStock     = ['ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER'].includes(sessionRole);
+  const canManageStock     = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'].includes(sessionRole);
   // canManageMaterials: can create/edit/deactivate materials and categories
   const canManageMaterials = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'].includes(sessionRole);
 

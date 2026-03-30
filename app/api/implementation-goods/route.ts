@@ -40,7 +40,7 @@ export async function GET() {
   try {
     const session = await requireSession();
 
-    const allowed = ['ADMIN', 'SALES', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER', 'ACCOUNTS', 'PACKING', 'PRODUCTION_EMPLOYEE'];
+    const allowed = ['ADMIN', 'SALES', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER', 'ACCOUNTS', 'PACKING', 'PRODUCTION_EMPLOYEE'];
     if (!allowed.includes(session.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

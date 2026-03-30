@@ -65,7 +65,7 @@ export async function GET(
 ) {
   try {
     const session = await requireSession();
-    const allowed = ['ADMIN', 'SALES', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'INVENTORY_MANAGER', 'ACCOUNTS', 'PACKING', 'PRODUCTION_EMPLOYEE'];
+    const allowed = ['ADMIN', 'SALES', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER', 'ACCOUNTS', 'PACKING', 'PRODUCTION_EMPLOYEE'];
     if (!allowed.includes(session.role))
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
@@ -160,7 +160,7 @@ export async function PATCH(
 
       // ── Store Manager does GRN ──
       case 'grn': {
-        if (!['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(session.role))
+        if (!['INVENTORY_MANAGER', 'ADMIN'].includes(session.role))
           return NextResponse.json({ error: 'Only Store Manager can do GRN' }, { status: 403 });
         if (ig.status !== 'GAN_CREATED')
           return NextResponse.json({ error: 'GAN must be created first' }, { status: 400 });
@@ -178,7 +178,7 @@ export async function PATCH(
 
       // ── Store Manager issues (IN_USE) ──
       case 'issue': {
-        if (!['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(session.role))
+        if (!['INVENTORY_MANAGER', 'ADMIN'].includes(session.role))
           return NextResponse.json({ error: 'Only Store Manager can issue' }, { status: 403 });
         if (!['RECEIVED', 'IN_STORE'].includes(ig.status))
           return NextResponse.json({ error: 'Must be RECEIVED or IN_STORE to issue' }, { status: 400 });
@@ -192,7 +192,7 @@ export async function PATCH(
 
       // ── Store Manager receives back (IN_STORE) ──
       case 'return_to_store': {
-        if (!['STORE_MANAGER', 'INVENTORY_MANAGER', 'ADMIN'].includes(session.role))
+        if (!['INVENTORY_MANAGER', 'ADMIN'].includes(session.role))
           return NextResponse.json({ error: 'Only Store Manager can receive back' }, { status: 403 });
         if (ig.status !== 'IN_USE')
           return NextResponse.json({ error: 'Must be IN_USE to return to store' }, { status: 400 });

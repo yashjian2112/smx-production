@@ -77,7 +77,7 @@ type PaymentRequestRow = {
 
 // Tabs are role-driven — PM sees procurement flow, IM sees approval queue
 const PM_TABS   = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments', 'IG / GAN'] as const;
-const IM_TABS   = ['Req. Orders'] as const;
+const IM_TABS   = ['Req. Orders', 'Purchase Orders'] as const;
 const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments', 'IG / GAN'] as const;
 type Tab = 'Req. Orders' | 'RFQ' | 'Samples' | 'Purchase Orders' | 'Vendors' | 'Payments' | 'IG / GAN';
 
@@ -107,7 +107,7 @@ function Badge({ label }: { label: string }) {
 
 export default function PurchasePanel({ sessionRole }: { sessionRole: string }) {
   const isPM   = ['ADMIN', 'PURCHASE_MANAGER'].includes(sessionRole);
-  const isIM   = ['ADMIN', 'INVENTORY_MANAGER', 'STORE_MANAGER'].includes(sessionRole);
+  const isIM   = ['ADMIN', 'INVENTORY_MANAGER'].includes(sessionRole);
   const isAdmin = sessionRole === 'ADMIN';
 
   const tabs: readonly Tab[] = isAdmin ? ADMIN_TABS : isPM ? PM_TABS : IM_TABS;

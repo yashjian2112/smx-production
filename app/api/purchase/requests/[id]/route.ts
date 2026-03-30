@@ -12,7 +12,7 @@ const updateSchema = z.object({
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PURCHASE_MANAGER', 'STORE_MANAGER', 'ACCOUNTS');
+    requireRole(session, 'ADMIN', 'PURCHASE_MANAGER', 'ACCOUNTS');
 
     const pr = await prisma.purchaseRequest.findUnique({
       where: { id: params.id },

@@ -8,7 +8,7 @@ export default async function GRNPage() {
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const canAccess = ['ADMIN', 'STORE_MANAGER', 'INVENTORY_MANAGER', 'PURCHASE_MANAGER'].includes(session.role);
+  const canAccess = ['ADMIN', 'INVENTORY_MANAGER', 'PURCHASE_MANAGER'].includes(session.role);
   if (!canAccess) redirect('/dashboard');
 
   return (

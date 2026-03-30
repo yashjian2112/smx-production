@@ -53,7 +53,7 @@ export async function GET() {
       if (igRequested > 0) counts['/sales?tab=impl'] = igRequested;
     }
 
-    if (role === 'STORE_MANAGER' || role === 'INVENTORY_MANAGER' || role === 'ADMIN') {
+    if (role === 'INVENTORY_MANAGER' || role === 'STORE_MANAGER' || role === 'ADMIN') {
       // IG needing GRN
       const igGanCreated = await prisma.implementationGood.count({
         where: { status: 'GAN_CREATED' },
