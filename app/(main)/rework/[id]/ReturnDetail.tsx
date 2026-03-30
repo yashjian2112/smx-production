@@ -76,6 +76,32 @@ const RESOLUTION_LABELS: Record<string, string> = {
   CREDIT_NOTE: 'Credit Note',
 };
 
+// Stage options for fault diagnosis
+const FAULT_STAGES = [
+  { value: 'POWERSTAGE',    label: 'Powerstage' },
+  { value: 'BRAINBOARD',    label: 'Brainboard' },
+  { value: 'ASSEMBLY',      label: 'Controller Assembly' },
+  { value: 'QC',            label: 'QC / Software' },
+  { value: 'FINAL',         label: 'Final Assembly' },
+  { value: 'DEAD',          label: 'Dead Controller' },
+];
+
+// Build issue string from stage + description fields
+function buildIssueText(stage: string, description: string, deadReason: string): string {
+  if (stage === 'DEAD') {
+    return `[Dead Controller] ${deadReason.trim()}`;
+  }
+  const stageName = FAULT_STAGES.find(s => s.value === stage)?.label ?? stage;
+  return `[${stageName}] ${description.trim()}`;
+}
+
+// Parse issue string into display parts
+function parseIssue(issue: string): { tag: string | null; body: string } {
+  const m = issue.match(/^\[([^\]]+)\]\s*([\s\S]*)/);
+  if (m) return { tag: m[1], body: m[2] };
+  return { tag: null, body: issue };
+}
+
 // Role-based next status options
 function getNextActions(status: string, role: string): { label: string; value: string; color: string }[] {
   const isAdminOrManager = ['ADMIN', 'PRODUCTION_MANAGER'].includes(role);
@@ -180,6 +206,8 @@ function RepairLogCard({ log }: { log: RepairLog }) {
   const completed = log.completedAt
     ? new Date(log.completedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
     : null;
+  const { tag, body } = parseIssue(log.issue);
+  const isDead = tag === 'Dead Controller';
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 space-y-2">
@@ -187,9 +215,21 @@ function RepairLogCard({ log }: { log: RepairLog }) {
         <span className="text-xs font-medium text-white">{log.employee.name}</span>
         <span className="text-[10px] text-zinc-500">{started}</span>
       </div>
-      <div className="p-2 rounded-md" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.12)' }}>
-        <p className="text-[9px] font-semibold text-amber-500 uppercase tracking-wider mb-0.5">Diagnosis / Issue Found</p>
-        <p className="text-xs text-amber-200">{log.issue}</p>
+      <div className="p-2 rounded-md" style={{ background: isDead ? 'rgba(239,68,68,0.06)' : 'rgba(251,191,36,0.06)', border: isDead ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(251,191,36,0.12)' }}>
+        <div className="flex items-center gap-2 mb-1">
+          <p className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: isDead ? '#f87171' : '#f59e0b' }}>
+            {isDead ? 'Dead Controller' : 'Diagnosis / Issue Found'}
+          </p>
+          {tag && (
+            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded" style={{
+              background: isDead ? 'rgba(239,68,68,0.15)' : 'rgba(251,191,36,0.15)',
+              color: isDead ? '#fca5a5' : '#fde68a',
+            }}>
+              {tag}
+            </span>
+          )}
+        </div>
+        <p className="text-xs" style={{ color: isDead ? '#fca5a5' : '#fde68a' }}>{body}</p>
       </div>
       {log.workDone ? (
         <div className="p-2 rounded-md" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.12)' }}>
@@ -231,10 +271,12 @@ export default function ReturnDetail({
   const [actionLoading, setActionLoading] = useState('');
   const [actionError, setActionError]     = useState('');
 
-  // Start repair form (production employee)
-  const [issueText, setIssueText]       = useState('');
+  // Start repair form (production employee + admin/manager)
+  const [issueText,     setIssueText]     = useState('');
+  const [faultStage,    setFaultStage]    = useState('');
+  const [deadReason,    setDeadReason]    = useState('');
   const [repairLoading, setRepairLoading] = useState(false);
-  const [repairError, setRepairError]   = useState('');
+  const [repairError,   setRepairError]   = useState('');
 
   // Complete repair form
   const [completeLogId, setCompleteLogId] = useState('');
@@ -315,20 +357,26 @@ export default function ReturnDetail({
   }
 
   async function startRepair() {
-    if (!issueText.trim()) return;
+    if (!faultStage) { setRepairError('Please select the faulty stage.'); return; }
+    if (faultStage === 'DEAD' && !deadReason.trim()) { setRepairError('Please describe the reason for dead controller.'); return; }
+    if (faultStage !== 'DEAD' && !issueText.trim()) { setRepairError('Please describe what you found.'); return; }
+
+    const issue = buildIssueText(faultStage, issueText, deadReason);
     setRepairLoading(true);
     setRepairError('');
     try {
       const res = await fetch(`/api/returns/${data.id}/repair`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ issue: issueText }),
+        body: JSON.stringify({ issue }),
       });
       if (!res.ok) {
         const j = await res.json();
         setRepairError(j.error ?? 'Failed to log repair');
       } else {
         setIssueText('');
+        setFaultStage('');
+        setDeadReason('');
         router.refresh();
       }
     } catch {
@@ -688,19 +736,64 @@ export default function ReturnDetail({
       {isEmployee && !TERMINAL.includes(data.status) && ['REPORTED', 'APPROVED', 'UNIT_RECEIVED', 'IN_REPAIR', 'EVALUATED'].includes(data.status) && !openLog && (
         <div className="card p-4 space-y-3">
           <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Log Diagnosis</p>
-          <textarea
-            className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-sky-500"
-            style={{ background: '#18181b', border: '1px solid #27272a', minHeight: 80 }}
-            placeholder="Describe what you found — root cause, fault details..."
-            value={issueText}
-            onChange={e => setIssueText(e.target.value)}
-          />
+
+          {/* Stage selector */}
+          <div>
+            <label className="text-[10px] text-zinc-400 mb-1.5 block">Faulty Stage <span className="text-red-400">*</span></label>
+            <div className="grid grid-cols-2 gap-2">
+              {FAULT_STAGES.map(s => (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => { setFaultStage(s.value); setRepairError(''); }}
+                  className="px-3 py-2 rounded-lg text-xs font-medium border transition-colors text-left"
+                  style={
+                    faultStage === s.value
+                      ? s.value === 'DEAD'
+                        ? { background: 'rgba(239,68,68,0.15)', border: '1px solid #ef4444', color: '#f87171' }
+                        : { background: 'rgba(249,115,22,0.15)', border: '1px solid #f97316', color: '#fb923c' }
+                      : { background: 'transparent', border: '1px solid #27272a', color: '#71717a' }
+                  }
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Description / reason */}
+          {faultStage && faultStage !== 'DEAD' && (
+            <div>
+              <label className="text-[10px] text-zinc-400 mb-1 block">What did you find? <span className="text-red-400">*</span></label>
+              <textarea
+                className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-sky-500"
+                style={{ background: '#18181b', border: '1px solid #27272a', minHeight: 80 }}
+                placeholder="Root cause, component failure, fault details..."
+                value={issueText}
+                onChange={e => setIssueText(e.target.value)}
+              />
+            </div>
+          )}
+
+          {faultStage === 'DEAD' && (
+            <div>
+              <label className="text-[10px] text-red-400 mb-1 block font-semibold">Dead Controller — State reason <span className="text-red-400">*</span></label>
+              <textarea
+                className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-red-500"
+                style={{ background: '#18181b', border: '1px solid rgba(239,68,68,0.4)', minHeight: 80 }}
+                placeholder="e.g. completely non-functional, burnt MOSFET, no power output, board physically damaged..."
+                value={deadReason}
+                onChange={e => setDeadReason(e.target.value)}
+              />
+            </div>
+          )}
+
           {repairError && <p className="text-xs text-red-400">{repairError}</p>}
           <button
             onClick={startRepair}
-            disabled={repairLoading || !issueText.trim()}
+            disabled={repairLoading}
             className="w-full py-2 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-40"
-            style={{ background: '#f97316' }}
+            style={{ background: faultStage === 'DEAD' ? '#ef4444' : '#f97316' }}
           >
             {repairLoading ? 'Logging…' : 'Start Repair'}
           </button>
@@ -737,19 +830,63 @@ export default function ReturnDetail({
       {isAdminOrManager && !TERMINAL.includes(data.status) && ['REPORTED', 'APPROVED', 'UNIT_RECEIVED', 'IN_REPAIR', 'EVALUATED'].includes(data.status) && !openLog && (
         <div className="card p-4 space-y-3">
           <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Log Repair Entry</p>
-          <textarea
-            className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-sky-500"
-            style={{ background: '#18181b', border: '1px solid #27272a', minHeight: 80 }}
-            placeholder="Describe what was found / repaired..."
-            value={issueText}
-            onChange={e => setIssueText(e.target.value)}
-          />
+
+          {/* Stage selector */}
+          <div>
+            <label className="text-[10px] text-zinc-400 mb-1.5 block">Faulty Stage <span className="text-red-400">*</span></label>
+            <div className="grid grid-cols-2 gap-2">
+              {FAULT_STAGES.map(s => (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => { setFaultStage(s.value); setRepairError(''); }}
+                  className="px-3 py-2 rounded-lg text-xs font-medium border transition-colors text-left"
+                  style={
+                    faultStage === s.value
+                      ? s.value === 'DEAD'
+                        ? { background: 'rgba(239,68,68,0.15)', border: '1px solid #ef4444', color: '#f87171' }
+                        : { background: 'rgba(249,115,22,0.15)', border: '1px solid #f97316', color: '#fb923c' }
+                      : { background: 'transparent', border: '1px solid #27272a', color: '#71717a' }
+                  }
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {faultStage && faultStage !== 'DEAD' && (
+            <div>
+              <label className="text-[10px] text-zinc-400 mb-1 block">What did you find? <span className="text-red-400">*</span></label>
+              <textarea
+                className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-sky-500"
+                style={{ background: '#18181b', border: '1px solid #27272a', minHeight: 80 }}
+                placeholder="Root cause, component failure, fault details..."
+                value={issueText}
+                onChange={e => setIssueText(e.target.value)}
+              />
+            </div>
+          )}
+
+          {faultStage === 'DEAD' && (
+            <div>
+              <label className="text-[10px] text-red-400 mb-1 block font-semibold">Dead Controller — State reason <span className="text-red-400">*</span></label>
+              <textarea
+                className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-red-500"
+                style={{ background: '#18181b', border: '1px solid rgba(239,68,68,0.4)', minHeight: 80 }}
+                placeholder="e.g. completely non-functional, burnt MOSFET, no power output, board physically damaged..."
+                value={deadReason}
+                onChange={e => setDeadReason(e.target.value)}
+              />
+            </div>
+          )}
+
           {repairError && <p className="text-xs text-red-400">{repairError}</p>}
           <button
             onClick={startRepair}
-            disabled={repairLoading || !issueText.trim()}
+            disabled={repairLoading}
             className="w-full py-2 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-40"
-            style={{ background: '#f97316' }}
+            style={{ background: faultStage === 'DEAD' ? '#ef4444' : '#f97316' }}
           >
             {repairLoading ? 'Logging…' : 'Log Repair'}
           </button>
