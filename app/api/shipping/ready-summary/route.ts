@@ -96,7 +96,7 @@ export async function GET() {
           approvedAt: d.approvedAt?.toISOString() ?? null,
         })),
       };
-    });
+    }).filter((o) => o.readyCount > 0 || o.packedCount > 0);
 
     return NextResponse.json(result);
   } catch (e) {
