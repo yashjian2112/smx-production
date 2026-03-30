@@ -149,9 +149,6 @@ export function OrdersList({ orders, isManager, sessionRole }: {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-semibold text-sm">{order.orderNumber}</span>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
-                          {STAGE_LABEL[order.stage] ?? order.stage.replace(/_/g, ' ')}
-                        </span>
                         {jcInfo && (
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                             style={{ background: 'rgba(255,255,255,0.06)', color: jcInfo.color }}>
