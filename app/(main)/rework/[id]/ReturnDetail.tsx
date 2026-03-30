@@ -338,15 +338,16 @@ export default function ReturnDetail({
     }
   }
 
-  async function completeRepair() {
-    if (!completeLogId || !workDone.trim()) return;
+  async function completeRepair(logId?: string) {
+    const id = logId ?? completeLogId;
+    if (!id || !workDone.trim()) return;
     setCompleteLoading(true);
     setCompleteError('');
     try {
       const res = await fetch(`/api/returns/${data.id}/repair`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repairLogId: completeLogId, workDone }),
+        body: JSON.stringify({ repairLogId: id, workDone }),
       });
       if (!res.ok) {
         const j = await res.json();
@@ -684,7 +685,7 @@ export default function ReturnDetail({
       </div>
 
       {/* Start Repair Form — production employee */}
-      {isEmployee && !TERMINAL.includes(data.status) && ['APPROVED', 'UNIT_RECEIVED', 'IN_REPAIR', 'EVALUATED'].includes(data.status) && !openLog && (
+      {isEmployee && !TERMINAL.includes(data.status) && ['REPORTED', 'APPROVED', 'UNIT_RECEIVED', 'IN_REPAIR', 'EVALUATED'].includes(data.status) && !openLog && (
         <div className="card p-4 space-y-3">
           <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Log Diagnosis</p>
           <textarea
@@ -722,7 +723,7 @@ export default function ReturnDetail({
           />
           {completeError && <p className="text-xs text-red-400">{completeError}</p>}
           <button
-            onClick={() => { setCompleteLogId(openLog.id); completeRepair(); }}
+            onClick={() => completeRepair(openLog.id)}
             disabled={completeLoading || !workDone.trim()}
             className="w-full py-2 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-40"
             style={{ background: '#22c55e' }}
@@ -733,7 +734,7 @@ export default function ReturnDetail({
       )}
 
       {/* Admins/managers can also log repairs */}
-      {isAdminOrManager && !TERMINAL.includes(data.status) && ['APPROVED', 'UNIT_RECEIVED', 'IN_REPAIR', 'EVALUATED'].includes(data.status) && !openLog && (
+      {isAdminOrManager && !TERMINAL.includes(data.status) && ['REPORTED', 'APPROVED', 'UNIT_RECEIVED', 'IN_REPAIR', 'EVALUATED'].includes(data.status) && !openLog && (
         <div className="card p-4 space-y-3">
           <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Log Repair Entry</p>
           <textarea
@@ -772,7 +773,7 @@ export default function ReturnDetail({
           />
           {completeError && <p className="text-xs text-red-400">{completeError}</p>}
           <button
-            onClick={() => { setCompleteLogId(openLog.id); completeRepair(); }}
+            onClick={() => completeRepair(openLog.id)}
             disabled={completeLoading || !workDone.trim()}
             className="w-full py-2 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-40"
             style={{ background: '#22c55e' }}

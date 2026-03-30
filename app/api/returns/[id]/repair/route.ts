@@ -52,8 +52,8 @@ export async function POST(
       include: { employee: { select: { id: true, name: true } } },
     });
 
-    // Auto-transition to IN_REPAIR if currently at APPROVED or UNIT_RECEIVED
-    if (['APPROVED', 'UNIT_RECEIVED', 'EVALUATED'].includes(ret.status)) {
+    // Auto-transition to IN_REPAIR
+    if (['REPORTED', 'APPROVED', 'UNIT_RECEIVED', 'EVALUATED'].includes(ret.status)) {
       await prisma.returnRequest.update({
         where: { id },
         data: { status: 'IN_REPAIR' },
