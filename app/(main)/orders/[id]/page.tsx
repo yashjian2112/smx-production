@@ -48,10 +48,13 @@ type UnitRow = {
 
 /**
  * Derive what status a unit has AT a given stage — even if it has already moved past it.
- *   COMPLETED  → unit has passed through this stage
+ *   COMPLETED  → unit has passed through this stage (verified by barcode existence)
  *   <actual>   → unit is currently at this stage (IN_PROGRESS / PENDING / etc.)
- *   PENDING    → unit hasn't reached this stage yet
+ *   PENDING    → unit hasn't reached this stage yet OR no work was done
  *   BLOCKED    → unit is in REWORK (blocked from all normal stages)
+ *
+ * Uses actual barcode fields to verify work was done — a stage is only COMPLETED
+ * if the unit has a barcode for that stage (generated when work is submitted).
  */
 function derivedStageStatus(unit: UnitRow, stageKey: string): string {
   if (unit.currentStage === 'REWORK') {
@@ -63,9 +66,16 @@ function derivedStageStatus(unit: UnitRow, stageKey: string): string {
   const tarIdx = STAGE_PIPELINE.indexOf(stageKey);
 
   if (curIdx < 0 || tarIdx < 0) return unit.currentStatus;
-  if (tarIdx < curIdx) return 'COMPLETED';          // already passed this stage
   if (tarIdx === curIdx) return unit.currentStatus;  // currently here
-  return 'PENDING';                                  // not yet reached
+  if (tarIdx > curIdx) return 'PENDING';             // not yet reached
+
+  // Past stage (tarIdx < curIdx) — only mark COMPLETED if barcode exists
+  // proving actual work was done at that stage
+  const barcodeField = STAGE_BARCODE_FIELD[stageKey];
+  if (barcodeField && unit[barcodeField]) return 'COMPLETED';
+
+  // No barcode = no work was done at this stage (e.g. unit skipped or hasn't started)
+  return 'PENDING';
 }
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -349,7 +359,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   });
 
   const total      = order.units.length;
-  const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED' || u.readyForDispatch).length;
+  const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED').length;
   const inProgress = order.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
   const blocked    = order.units.filter((u) => u.currentStatus === 'BLOCKED').length;
   const pct        = total > 0 ? Math.round((completed / total) * 100) : 0;
