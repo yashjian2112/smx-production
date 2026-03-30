@@ -884,6 +884,8 @@ export function DOPackingPanel({
   const [resetting,     setResetting]    = useState(false);
   const [resetError,    setResetError]   = useState('');
 
+  const canPack = role === 'PACKING' || role === 'ADMIN';
+
   const scannedCount    = doData.boxes.filter((b) => b.labelScanned).length;
   const totalBoxes      = doData.boxes.length;
   const allScanned      = totalBoxes > 0 && scannedCount === totalBoxes;
@@ -952,8 +954,8 @@ export function DOPackingPanel({
         </div>
       </div>
 
-      {/* ── OPEN: 3-phase ── */}
-      {doData.status === 'OPEN' && (
+      {/* ── OPEN: 3-phase — PACKING role only ── */}
+      {doData.status === 'OPEN' && canPack && (
         <>
           {openPhase === 'scan' && (
             <PhaseAScan
@@ -979,9 +981,15 @@ export function DOPackingPanel({
           )}
         </>
       )}
+      {doData.status === 'OPEN' && !canPack && (
+        <div className="card p-5 text-center">
+          <p className="text-zinc-400 text-sm">Awaiting packing by the Packing team.</p>
+          <p className="text-zinc-600 text-xs mt-1">Only the Packing role can scan and pack this order.</p>
+        </div>
+      )}
 
-      {/* ── PACKING: print + scan labels ── */}
-      {doData.status === 'PACKING' && (
+      {/* ── PACKING: print + scan labels — PACKING role only ── */}
+      {doData.status === 'PACKING' && canPack && (
         <div className="space-y-4">
           {/* Progress + submit */}
           <div className="card p-4 space-y-3">
@@ -1020,6 +1028,17 @@ export function DOPackingPanel({
               <BoxScanCard key={box.id} box={box} doId={doData.id} onBoxUpdate={handleBoxUpdate} />
             ))}
           </div>
+        </div>
+      )}
+      {doData.status === 'PACKING' && !canPack && (
+        <div className="card p-5 space-y-3">
+          <div className="text-sm text-zinc-400 text-center">Packing in progress by the Packing team.</div>
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <div className="h-full rounded-full transition-all"
+              style={{ width: `${totalBoxes > 0 ? (scannedCount / totalBoxes) * 100 : 0}%`, background: '#0ea5e9' }} />
+          </div>
+          <p className="text-xs text-zinc-600 text-center">{scannedCount} of {totalBoxes} boxes sealed</p>
+          <ReadOnlyBoxList boxes={doData.boxes} />
         </div>
       )}
 
