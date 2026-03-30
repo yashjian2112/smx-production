@@ -278,46 +278,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
       return;
     }
 
-    // PENDING — check job card first
-    if (!orderId) {
-      // No order context — proceed directly (legacy units)
-      fetch(`/api/units/${unitId}/work`, { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-          if (data?.id) { setSubmission(data); setStep('working'); }
-          else setStep('idle');
-        })
-        .catch(() => setStep('idle'));
-      return;
-    }
-
-    // Check job card by orderId+stage (order-level card)
-    fetch(`/api/inventory/job-cards?orderId=${orderId}&stage=${currentStage}`)
-      .then(r => r.json())
-      .then((cards: { id: string; cardNumber: string; status: string; orderQuantity: number; items: JCItem[] }[]) => {
-        const existing = cards[0];
-        if (!existing) {
-          setStep('jc_create');
-        } else if (existing.status === 'ISSUED' || existing.status === 'COMPLETED') {
-          setJobCard(existing);
-          const allVerified = existing.items.length > 0 && existing.items.every((i: { isVerified: boolean }) => i.isVerified);
-          if (allVerified) {
-            fetch(`/api/units/${unitId}/work`, { method: 'POST' })
-              .then(r => r.json())
-              .then(data => {
-                if (data?.id) { setSubmission(data); setStep('working'); }
-                else setStep('idle');
-              })
-              .catch(() => setStep('idle'));
-          } else {
-            setStep('jc_scan');
-          }
-        } else {
-          setJobCard(existing);
-          setStep('jc_waiting');
-        }
-      })
-      .catch(() => setStep('jc_create'));
+    // PENDING — go straight to idle (job card flow removed)
+    setStep('idle');
   }, [unitId, currentStatus, currentStage, orderId]);
 
   // ── manual start (fallback) ────────────────────────────────────────────────
