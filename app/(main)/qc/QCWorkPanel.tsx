@@ -398,9 +398,10 @@ function UnitCard({ unit, onSelect }: { unit: QCUnit; onSelect: (u: QCUnit) => v
 
 function CompletedCard({ unit }: { unit: CompletedUnit }) {
   return (
-    <div className="rounded-xl p-3" style={{ background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.15)' }}>
+    <div className="w-full rounded-xl p-3 relative overflow-hidden"
+      style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.18)' }}>
       <div className="flex items-start gap-3">
-        <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0 bg-green-500" />
+        <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: '#4ade80' }} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-mono text-sm font-semibold text-white leading-tight">{unit.serialNumber}</p>
@@ -411,7 +412,9 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
             {unit.order?.product.name ?? '—'} · <span className="text-zinc-500">{unit.order?.orderNumber ?? '—'}</span>
           </p>
           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-            {unit.qcPassedBy && <p className="text-[10px] text-zinc-500">By {unit.qcPassedBy.name}</p>}
+            {unit.qcPassedBy && (
+              <p className="text-[10px] text-zinc-500">By {unit.qcPassedBy.name}</p>
+            )}
             {unit.firmwareVersion && (
               <p className="text-[10px] text-zinc-600">FW {unit.firmwareVersion}</p>
             )}
