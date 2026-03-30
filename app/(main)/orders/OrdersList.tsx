@@ -16,6 +16,7 @@ export type OrderItem = {
   client?: { id: string; code: string; customerName: string } | null;
   _count: { units: number };
   units: UnitSummary[];
+  hasMyJobCard?: boolean; // true if employee has accepted this order (has a job card)
 };
 
 interface AvailableOrder {
@@ -91,8 +92,9 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   const processing = orders.filter((o) => {
     if (o.status !== 'ACTIVE') return false;
     if (allUnitsDone(o)) return false;
-    // For employees: only show in Processing if work has actually started (not all-PENDING)
-    if (isEmployee) return o.units.some(u => u.currentStatus !== 'PENDING');
+    // For employees: show in Processing if they accepted the order (have job card)
+    // OR if any unit has started work
+    if (isEmployee) return o.hasMyJobCard || o.units.some(u => u.currentStatus !== 'PENDING');
     return true;
   });
   const completed = orders.filter((o) => o.status !== 'ACTIVE' || allUnitsDone(o));

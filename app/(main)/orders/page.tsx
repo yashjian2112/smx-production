@@ -12,7 +12,9 @@ export default async function OrdersPage() {
   const isManager = session.role === 'ADMIN';
   const isAdmin   = session.role === 'ADMIN';
 
-  const [rawOrders, products, clients] = await Promise.all([
+  const isEmployee = session.role === 'PRODUCTION_EMPLOYEE';
+
+  const [rawOrders, products, clients, myJobCards] = await Promise.all([
     prisma.order.findMany({
       include: {
         product: true,
@@ -29,7 +31,17 @@ export default async function OrdersPage() {
     isAdmin
       ? prisma.client.findMany({ where: { active: true }, orderBy: { customerName: 'asc' }, select: { id: true, code: true, customerName: true } })
       : Promise.resolve([]),
+    // For employees: fetch their job cards to know which orders they've accepted
+    isEmployee
+      ? prisma.jobCard.findMany({
+          where: { createdById: session.id },
+          select: { orderId: true, stage: true, status: true },
+        })
+      : Promise.resolve([]),
   ]);
+
+  // Build a set of accepted order IDs for this employee
+  const acceptedOrderIds = new Set(myJobCards.map((jc) => jc.orderId));
 
   // Serialize dates for client components
   const orders: OrderItem[] = rawOrders.map((o) => ({
@@ -42,6 +54,7 @@ export default async function OrdersPage() {
     client: o.client ? { id: o.client.id, code: o.client.code, customerName: o.client.customerName } : null,
     _count: { units: o._count.units },
     units: o.units.map((u) => ({ currentStatus: u.currentStatus, currentStage: u.currentStage })),
+    hasMyJobCard: acceptedOrderIds.has(o.id),
   }));
 
   return (

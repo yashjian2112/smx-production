@@ -75,11 +75,23 @@ export async function GET() {
   });
   const myJobCardKeys = new Set(myJobCards.map(jc => `${jc.orderId}:${jc.stage}`));
 
-  const result = Object.values(orderMap).map(order => ({
-    ...order,
-    alreadyAccepted: myJobCardKeys.has(`${order.orderId}:${order.stage}`),
-    myJobCard: myJobCards.find(jc => jc.orderId === order.orderId) ?? null,
-  }));
+  // Filter out orders where the employee already accepted AND materials dispatched
+  // (those belong in Processing tab now, not Pending)
+  const result = Object.values(orderMap)
+    .map(order => {
+      const accepted = myJobCardKeys.has(`${order.orderId}:${order.stage}`);
+      const jc = myJobCards.find(jc => jc.orderId === order.orderId) ?? null;
+      return {
+        ...order,
+        alreadyAccepted: accepted,
+        myJobCard: jc,
+      };
+    })
+    .filter(order => {
+      // If employee accepted and job card dispatched → goes to Processing, hide from Pending
+      if (order.alreadyAccepted && order.myJobCard?.status === 'DISPATCHED') return false;
+      return true;
+    });
 
   return NextResponse.json(result);
 }
