@@ -62,7 +62,8 @@ export async function POST(
   } catch (e) {
     if (e instanceof Error && (e.message === 'Unauthorized' || e.message === 'Forbidden'))
       return NextResponse.json({ error: e.message }, { status: e.message === 'Unauthorized' ? 401 : 403 });
-    console.error(e);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    console.error('[repair/photos]', e);
+    const msg = e instanceof Error ? e.message : 'Server error';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

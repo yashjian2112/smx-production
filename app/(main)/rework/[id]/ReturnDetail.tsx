@@ -1009,9 +1009,9 @@ export default function ReturnDetail({
                 photoUrl={outerPhotoUrl}
                 uploading={outerUploading}
                 onFile={async (f) => {
-                  setOuterUploading(true);
+                  setOuterUploading(true); setRepairError('');
                   try { const url = await uploadPhoto(f, 'outer'); setOuterPhotoUrl(url); }
-                  catch { setRepairError('Photo upload failed. Try again.'); }
+                  catch (e) { setRepairError(e instanceof Error ? e.message : 'Photo upload failed. Try again.'); }
                   finally { setOuterUploading(false); }
                 }}
               />
@@ -1041,9 +1041,9 @@ export default function ReturnDetail({
                   photoUrl={boardPhotoUrl}
                   uploading={boardUploading}
                   onFile={async (f) => {
-                    setBoardUploading(true);
+                    setBoardUploading(true); setRepairError('');
                     try { const url = await uploadPhoto(f, 'board'); setBoardPhotoUrl(url); }
-                    catch { setRepairError('Photo upload failed. Try again.'); }
+                    catch (e) { setRepairError(e instanceof Error ? e.message : 'Photo upload failed. Try again.'); }
                     finally { setBoardUploading(false); }
                   }}
                 />
