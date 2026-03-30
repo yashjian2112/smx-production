@@ -20,7 +20,7 @@ type QCUnit = {
   } | null;
 };
 
-// ─── QC Item definitions (same as QcChecklist) ────────────────────────────────
+// ─── QC Item definitions ──────────────────────────────────────────────────────
 
 const QC_ITEMS = [
   { key: 'vin',         label: 'VIN'         },
@@ -42,13 +42,6 @@ type Checks = Partial<Record<ItemKey, CheckResult>>;
 type Phase = 'idle' | 'starting' | 'checklist' | 'summary' | 'submitting' | 'done';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<string, { label: string; dot: string; badge: string; badgeBg: string }> = {
-  PENDING:          { label: 'Pending',          dot: 'bg-slate-500',   badge: '#94a3b8', badgeBg: 'rgba(148,163,184,0.10)' },
-  IN_PROGRESS:      { label: 'In Progress',      dot: 'bg-sky-400',     badge: '#38bdf8', badgeBg: 'rgba(56,189,248,0.10)'  },
-  WAITING_APPROVAL: { label: 'Waiting Approval', dot: 'bg-amber-400',   badge: '#fbbf24', badgeBg: 'rgba(251,191,36,0.10)'  },
-  REJECTED_BACK:    { label: 'Rejected Back',    dot: 'bg-red-400',     badge: '#f87171', badgeBg: 'rgba(248,113,113,0.10)' },
-};
 
 function elapsed(iso: string) {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -73,12 +66,12 @@ function InlineQCChecklist({
   const [phase, setPhase] = useState<Phase>(
     unit.currentStatus === 'IN_PROGRESS' ? 'checklist' : 'idle'
   );
-  const [currentIdx, setCurrentIdx]         = useState(0);
-  const [checks, setChecks]                 = useState<Checks>({});
-  const [inputValue, setInputValue]         = useState('');
+  const [currentIdx, setCurrentIdx]           = useState(0);
+  const [checks, setChecks]                   = useState<Checks>({});
+  const [inputValue, setInputValue]           = useState('');
   const [firmwareVersion, setFirmwareVersion] = useState('');
   const [softwareVersion, setSoftwareVersion] = useState('');
-  const [error, setError]                   = useState<string | null>(null);
+  const [error, setError]                     = useState<string | null>(null);
 
   const completedCount = QC_ITEMS.filter((i) => checks[i.key]).length;
   const currentItem    = QC_ITEMS[currentIdx];
@@ -197,6 +190,7 @@ function InlineQCChecklist({
 
   // ── IDLE / STARTING ─────────────────────────────────────────────────────────
   if (phase === 'idle' || phase === 'starting') {
+    const isRework = unit.currentStatus === 'REJECTED_BACK';
     return (
       <div style={card}>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400 mb-3">
@@ -215,15 +209,26 @@ function InlineQCChecklist({
           ))}
         </div>
 
-        <div className="rounded-xl p-3 mb-4 flex items-center gap-3"
-          style={{ background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.2)' }}>
-          <Check className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-green-400">Unit</p>
-            <p className="font-mono text-sm text-white mt-0.5">{unit.serialNumber}</p>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              {unit.order?.product.name ?? '—'} · {unit.order?.orderNumber ?? '—'}
-            </p>
+        <div className="rounded-xl p-3 mb-4"
+          style={{
+            background: isRework ? 'rgba(239,68,68,0.06)' : 'rgba(34,197,94,0.05)',
+            border: `1px solid ${isRework ? 'rgba(239,68,68,0.25)' : 'rgba(34,197,94,0.2)'}`,
+          }}>
+          <div className="flex items-start gap-3">
+            <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: isRework ? '#f87171' : '#4ade80' }} />
+            <div className="flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: isRework ? '#f87171' : '#4ade80' }}>Unit</p>
+              <p className="font-mono text-sm text-white">{unit.serialNumber}</p>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {unit.order?.product.name ?? '—'} · {unit.order?.orderNumber ?? '—'}
+              </p>
+            </div>
+            {isRework && (
+              <span className="text-[9px] font-bold px-2 py-1 rounded uppercase tracking-widest"
+                style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+                Rework
+              </span>
+            )}
           </div>
         </div>
 
@@ -231,7 +236,7 @@ function InlineQCChecklist({
         <button onClick={startQC} disabled={phase === 'starting'}
           className="w-full py-3 rounded-xl text-sm font-semibold disabled:opacity-50 transition-opacity"
           style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}>
-          {phase === 'starting' ? 'Starting…' : 'Start QC Test'}
+          {phase === 'starting' ? 'Starting…' : isRework ? 'Re-run QC Test' : 'Start QC Test'}
         </button>
       </div>
     );
@@ -384,12 +389,84 @@ function InlineQCChecklist({
   return null;
 }
 
+// ─── Unit Card ────────────────────────────────────────────────────────────────
+
+function UnitCard({
+  unit,
+  onSelect,
+}: {
+  unit: QCUnit;
+  onSelect: (u: QCUnit) => void;
+}) {
+  const isRework   = unit.currentStatus === 'REJECTED_BACK';
+  const isActive   = unit.currentStatus === 'IN_PROGRESS';
+  const isWaiting  = unit.currentStatus === 'WAITING_APPROVAL';
+  const canStart   = ['PENDING', 'IN_PROGRESS', 'REJECTED_BACK'].includes(unit.currentStatus);
+
+  const accentColor = isRework ? '#f87171' : isActive ? '#38bdf8' : isWaiting ? '#fbbf24' : '#94a3b8';
+  const accentBg    = isRework ? 'rgba(248,113,113,0.08)' : isActive ? 'rgba(56,189,248,0.08)' : isWaiting ? 'rgba(251,191,36,0.08)' : 'rgba(148,163,184,0.06)';
+  const accentBorder = isRework ? 'rgba(248,113,113,0.2)' : isActive ? 'rgba(56,189,248,0.2)' : isWaiting ? 'rgba(251,191,36,0.2)' : 'rgba(148,163,184,0.12)';
+
+  return (
+    <div className="rounded-xl p-3 relative overflow-hidden"
+      style={{ background: accentBg, border: `1px solid ${accentBorder}` }}>
+
+      {/* Rework seal — top-right stamp */}
+      {isRework && (
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest"
+          style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171' }}>
+          Rework
+        </div>
+      )}
+
+      <div className="flex items-start gap-3">
+        {/* Status dot */}
+        <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: accentColor }} />
+
+        <div className="flex-1 min-w-0 pr-2">
+          <p className="font-mono text-sm font-semibold text-white leading-tight">{unit.serialNumber}</p>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            {unit.order?.product.name ?? '—'} · <span className="text-zinc-500">{unit.order?.orderNumber ?? '—'}</span>
+          </p>
+          <div className="flex items-center gap-3 mt-1.5">
+            {unit.assignedTo && (
+              <p className="text-[10px] text-zinc-500">{unit.assignedTo.name}</p>
+            )}
+            <div className="flex items-center gap-1 text-[10px] text-zinc-600">
+              <Clock className="w-2.5 h-2.5" />
+              {elapsed(unit.updatedAt)}
+            </div>
+          </div>
+        </div>
+
+        {canStart && !isRework && (
+          <button
+            onClick={() => onSelect(unit)}
+            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-semibold flex-shrink-0 self-center"
+            style={{ background: 'rgba(52,211,153,0.10)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399' }}>
+            Start QC <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        )}
+        {isRework && (
+          <button
+            onClick={() => onSelect(unit)}
+            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-semibold flex-shrink-0 self-center mt-5"
+            style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
+            Re-run <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Panel ──────────────────────────────────────────────────────────────
 
 export function QCWorkPanel({ role }: { role: string }) {
-  const [units, setUnits]         = useState<QCUnit[] | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [selected, setSelected]   = useState<QCUnit | null>(null);
+  const [units, setUnits]       = useState<QCUnit[] | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [selected, setSelected] = useState<QCUnit | null>(null);
+  const [tab, setTab]           = useState<'pending' | 'processing'>('pending');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -404,10 +481,9 @@ export function QCWorkPanel({ role }: { role: string }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Tab buckets
   const pending    = (units ?? []).filter((u) => u.currentStatus === 'PENDING');
-  const inProgress = (units ?? []).filter((u) => u.currentStatus === 'IN_PROGRESS');
-  const waiting    = (units ?? []).filter((u) => u.currentStatus === 'WAITING_APPROVAL');
-  const rejected   = (units ?? []).filter((u) => u.currentStatus === 'REJECTED_BACK');
+  const processing = (units ?? []).filter((u) => ['IN_PROGRESS', 'WAITING_APPROVAL', 'REJECTED_BACK'].includes(u.currentStatus));
 
   // If a unit is selected, show the QC checklist
   if (selected) {
@@ -432,10 +508,12 @@ export function QCWorkPanel({ role }: { role: string }) {
     );
   }
 
-  // Unit list
+  const tabUnits = tab === 'pending' ? pending : processing;
+
   return (
     <div className="max-w-lg mx-auto px-4 pb-24">
-      <div className="pt-6 pb-4 flex items-center justify-between">
+      {/* Header */}
+      <div className="pt-6 pb-3 flex items-center justify-between">
         <div>
           <h1 className="text-white text-xl font-bold">QC Work</h1>
           <p className="text-zinc-500 text-sm mt-0.5">QC &amp; Software testing queue</p>
@@ -447,137 +525,57 @@ export function QCWorkPanel({ role }: { role: string }) {
         </button>
       </div>
 
-      {loading && (
+      {/* Tabs */}
+      <div className="flex rounded-xl overflow-hidden mb-4"
+        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        {([
+          { key: 'pending',    label: 'Pending',    count: pending.length,    color: '#94a3b8' },
+          { key: 'processing', label: 'Processing', count: processing.length, color: '#38bdf8' },
+        ] as const).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors"
+            style={tab === t.key
+              ? { background: 'rgba(255,255,255,0.08)', color: t.color }
+              : { color: '#52525b' }}>
+            {t.label}
+            {t.count > 0 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center"
+                style={{ background: tab === t.key ? `${t.color}20` : 'rgba(255,255,255,0.06)', color: tab === t.key ? t.color : '#52525b' }}>
+                {t.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      {loading ? (
         <div className="flex justify-center py-16">
           <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
         </div>
-      )}
-
-      {!loading && (units ?? []).length === 0 && (
+      ) : tabUnits.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-dashed border-zinc-700"
           style={{ background: 'rgba(255,255,255,0.02)' }}>
           <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"
             style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.15)' }}>
             <Check className="w-5 h-5 text-emerald-400" />
           </div>
-          <p className="text-zinc-400 text-sm font-medium">All clear</p>
-          <p className="text-zinc-600 text-xs mt-1">No units waiting for QC</p>
+          <p className="text-zinc-400 text-sm font-medium">
+            {tab === 'pending' ? 'No units pending QC' : 'Nothing in progress'}
+          </p>
+          <p className="text-zinc-600 text-xs mt-1">
+            {tab === 'pending' ? 'All units have been picked up' : 'No active or rework units'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {tabUnits.map((u) => (
+            <UnitCard key={u.id} unit={u} onSelect={setSelected} />
+          ))}
         </div>
       )}
-
-      {!loading && (units ?? []).length > 0 && (
-        <div className="space-y-5">
-          {/* Stats row */}
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { label: 'In Progress', count: inProgress.length, color: '#38bdf8' },
-              { label: 'Pending',     count: pending.length,    color: '#94a3b8' },
-              { label: 'Waiting',     count: waiting.length,    color: '#fbbf24' },
-            ].map((s) => (
-              <div key={s.label} className="rounded-xl p-3 text-center"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                <p className="text-2xl font-bold" style={{ color: s.color }}>{s.count}</p>
-                <p className="text-[10px] text-zinc-500 mt-0.5">{s.label}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Rejected back (priority) */}
-          {rejected.length > 0 && (
-            <UnitSection title="Needs Rework" units={rejected} onSelect={setSelected} accent="#f87171" />
-          )}
-
-          {/* In progress */}
-          {inProgress.length > 0 && (
-            <UnitSection title="In Progress" units={inProgress} onSelect={setSelected} accent="#38bdf8" />
-          )}
-
-          {/* Pending */}
-          {pending.length > 0 && (
-            <UnitSection title="Pending QC" units={pending} onSelect={setSelected} accent="#94a3b8" />
-          )}
-
-          {/* Waiting approval */}
-          {waiting.length > 0 && (
-            <UnitSection title="Waiting Approval" units={waiting} onSelect={setSelected} accent="#fbbf24" />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── UnitSection ─────────────────────────────────────────────────────────────
-
-function UnitSection({
-  title,
-  units,
-  onSelect,
-  accent,
-}: {
-  title: string;
-  units: QCUnit[];
-  onSelect: (u: QCUnit) => void;
-  accent: string;
-}) {
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: accent }} />
-        <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{title}</p>
-        <span className="text-[11px] px-1.5 py-0.5 rounded font-bold"
-          style={{ background: `${accent}18`, color: accent }}>
-          {units.length}
-        </span>
-      </div>
-      <div className="space-y-2">
-        {units.map((u) => {
-          const cfg = STATUS_CONFIG[u.currentStatus] ?? STATUS_CONFIG.PENDING;
-          const canWork = ['PENDING', 'IN_PROGRESS', 'REJECTED_BACK'].includes(u.currentStatus);
-          return (
-            <div key={u.id} className="card p-3">
-              <div className="flex items-center gap-3">
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-sm font-semibold text-white">{u.serialNumber}</span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                      style={{ color: cfg.badge, background: cfg.badgeBg }}>
-                      {cfg.label}
-                    </span>
-                    {u.currentStatus === 'REJECTED_BACK' && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                        style={{ color: '#fb923c', background: 'rgba(251,146,60,0.10)', border: '1px solid rgba(251,146,60,0.2)' }}>
-                        Needs Rework
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-zinc-400 mt-0.5">
-                    {u.order?.product.name ?? '—'} · {u.order?.orderNumber ?? '—'}
-                  </p>
-                  <div className="flex items-center gap-3 mt-1">
-                    {u.assignedTo && (
-                      <p className="text-[10px] text-zinc-500">{u.assignedTo.name}</p>
-                    )}
-                    <div className="flex items-center gap-1 text-[10px] text-zinc-600">
-                      <Clock className="w-2.5 h-2.5" />
-                      {elapsed(u.updatedAt)}
-                    </div>
-                  </div>
-                </div>
-                {canWork && (
-                  <button
-                    onClick={() => onSelect(u)}
-                    className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-semibold flex-shrink-0"
-                    style={{ background: 'rgba(52,211,153,0.10)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399' }}>
-                    Start QC <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }

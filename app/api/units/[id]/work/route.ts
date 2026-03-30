@@ -152,8 +152,20 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (unit.currentStatus === UnitStatus.BLOCKED) {
     return NextResponse.json({ error: 'Unit is blocked — contact your manager' }, { status: 409 });
   }
-  if (unit.currentStatus !== UnitStatus.PENDING && unit.currentStatus !== UnitStatus.IN_PROGRESS) {
+  if (
+    unit.currentStatus !== UnitStatus.PENDING &&
+    unit.currentStatus !== UnitStatus.IN_PROGRESS &&
+    unit.currentStatus !== UnitStatus.REJECTED_BACK
+  ) {
     return NextResponse.json({ error: 'Unit is not available for work' }, { status: 409 });
+  }
+
+  // REJECTED_BACK: reset to IN_PROGRESS so the test can restart
+  if (unit.currentStatus === UnitStatus.REJECTED_BACK) {
+    await prisma.controllerUnit.update({ where: { id }, data: { currentStatus: UnitStatus.IN_PROGRESS } });
+    await prisma.stageLog.create({
+      data: { unitId: id, userId: session.id, stage: unit.currentStage, statusFrom: UnitStatus.REJECTED_BACK, statusTo: UnitStatus.IN_PROGRESS },
+    });
   }
 
   // One-unit-at-a-time: if already assigned to a different employee, block

@@ -229,7 +229,6 @@ const inventoryNav: NavItem[] = [
 // QC_USER: dedicated QC & software testing
 const qcUserNav: NavItem[] = [
   { href: '/qc',         label: 'QC Work',   icon: 'QC'        },
-  { href: '/orders',     label: 'Orders',    icon: 'Orders'    },
   { href: '/units',      label: 'Units',     icon: 'Serial'    },
 ];
 
