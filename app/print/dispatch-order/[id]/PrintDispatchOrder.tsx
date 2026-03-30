@@ -26,6 +26,7 @@ type OrderUnit = {
 type DispatchOrder = {
   id: string;
   doNumber: string;
+  dispatchQty: number;
   status: string;
   createdAt: string | Date;
   approvedAt: string | Date | null;
@@ -102,7 +103,7 @@ export function PrintDispatchOrder({
           weightKg:             box.weightKg,
         }))
       )
-    : order.units.map((u) => ({
+    : order.units.slice(0, dispatchOrder.dispatchQty).map((u) => ({
         serialNumber:         u.serialNumber,
         finalAssemblyBarcode: u.finalAssemblyBarcode,
         boxNumber:            null,
