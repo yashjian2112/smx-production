@@ -355,16 +355,15 @@ function isStageAccessible(stageKey: string, units: UnitData[]): boolean {
   if (stageIdx < 0) return false;
   return units.some((u) => STAGE_PIPELINE.indexOf(u.currentStage) >= stageIdx);
 }
-/** Resolve the display status for a unit — DISPATCHED overrides everything when readyForDispatch=true */
+/** Resolve the display status for a unit in production view */
 function effectiveStatus(u: UnitData): string {
-  if (u.readyForDispatch) return 'DISPATCHED';
   return u.derivedStatus ?? u.currentStatus;
 }
 
 function MiniProgress({ units }: { units: UnitData[] }) {
   const total = units.length;
   if (total === 0) return null;
-  const done = units.filter((u) => ['COMPLETED', 'APPROVED', 'DISPATCHED'].includes(effectiveStatus(u))).length;
+  const done = units.filter((u) => ['COMPLETED', 'APPROVED'].includes(effectiveStatus(u))).length;
   const pct = Math.round((done / total) * 100);
   return (
     <div className="mt-2">
@@ -408,7 +407,6 @@ function StageCard({
   scanLabel?: string;
 }) {
   const total      = stage.units.length;
-  const dispatched = stage.units.filter((u) => effectiveStatus(u) === 'DISPATCHED').length;
   const completed  = stage.units.filter((u) => ['COMPLETED', 'APPROVED'].includes(effectiveStatus(u))).length;
   const inProgress = stage.units.filter((u) => ['IN_PROGRESS', 'WAITING_APPROVAL'].includes(effectiveStatus(u))).length;
   const blocked    = stage.units.filter((u) => ['BLOCKED', 'REWORK', 'REJECTED_BACK'].includes(effectiveStatus(u))).length;
@@ -447,7 +445,6 @@ function StageCard({
             {total > 0 ? (
               <p className="text-[11px] text-zinc-500 mt-0.5">
                 {completed}/{total} done
-                {dispatched > 0 && <span className="text-violet-400"> · {dispatched} dispatched</span>}
                 {inProgress > 0 && ` · ${inProgress} active`}
                 {blocked > 0 && <span className="text-red-400"> · {blocked} blocked</span>}
               </p>
@@ -575,7 +572,6 @@ function StageCard({
                   const status = effectiveStatus(u);
                   const s = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
                   const isCompleted = status === 'COMPLETED' || status === 'APPROVED';
-                  const isDispatched = status === 'DISPATCHED';
                   return (
                     <li key={u.id} className="border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
                       {/* All assigned units are tappable:
@@ -587,7 +583,7 @@ function StageCard({
                           {u.barcodeForStage ?? u.serialNumber}
                         </span>
                         <span className={`text-[10px] font-semibold uppercase tracking-wider shrink-0 inline-flex items-center gap-0.5 ${s.text}`}>
-                          {isDispatched ? <>Dispatched <Check className="w-4 h-4 ml-1 inline" /></> : isCompleted ? <>Done <Check className="w-4 h-4 ml-1 inline" /></> : s.label}
+                          {isCompleted ? <>Done <Check className="w-4 h-4 ml-1 inline" /></> : s.label}
                         </span>
                         <svg className="text-zinc-600 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M9 18l6-6-6-6" />
