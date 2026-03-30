@@ -6,7 +6,7 @@ import ReturnDetail from './ReturnDetail';
 export default async function ReturnDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (!['ADMIN', 'PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER', 'SALES', 'ACCOUNTS'].includes(session.role)) {
+  if (!['ADMIN', 'PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER', 'SALES', 'ACCOUNTS', 'QC_USER'].includes(session.role)) {
     redirect('/dashboard');
   }
 
