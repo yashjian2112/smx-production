@@ -33,9 +33,9 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; text: string }>
   REJECTED:      { bg: 'rgba(239,68,68,0.12)',   color: '#ef4444', text: 'Rejected' },
 };
 
-const PENDING_STATUSES  = ['REPORTED', 'EVALUATED', 'APPROVED', 'UNIT_RECEIVED'];
-const IN_REPAIR_STATUSES = ['IN_REPAIR'];
-const DONE_STATUSES     = ['REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED', 'REJECTED'];
+const PENDING_STATUSES   = ['REPORTED', 'EVALUATED', 'APPROVED', 'UNIT_RECEIVED'];
+const IN_REPAIR_STATUSES = ['IN_REPAIR', 'REPAIRED', 'QC_CHECKED'];
+const DONE_STATUSES      = ['DISPATCHED', 'CLOSED', 'REJECTED'];
 
 function StatusBadge({ status }: { status: string }) {
   const st = STATUS_STYLES[status] ?? STATUS_STYLES.REPORTED;

@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await requireSession();
-  if (!['ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER'].includes(session.role)) {
+  if (!['ADMIN', 'SALES', 'ACCOUNTS', 'PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER', 'QC_USER'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const { id } = await params;
@@ -90,7 +90,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   UNIT_RECEIVED: ['IN_REPAIR'],
   IN_REPAIR:     ['REPAIRED'],
   REPAIRED:      ['QC_CHECKED', 'CLOSED'],
-  QC_CHECKED:    ['DISPATCHED', 'CLOSED'],
+  QC_CHECKED:    ['DISPATCHED', 'IN_REPAIR', 'CLOSED'],
   DISPATCHED:    ['CLOSED'],
 };
 

@@ -172,8 +172,9 @@ function getNextActions(status: string, role: string): { label: string; value: s
       ];
       break;
     case 'QC_CHECKED':
-      if (isAdminOrManager) return [
-        { label: 'Close', value: 'CLOSED', color: '#a1a1aa' },
+      if (isAdminOrManager || role === 'QC_USER') return [
+        { label: 'QC Pass — Ready to Dispatch', value: 'DISPATCHED', color: '#6366f1' },
+        { label: 'QC Fail — Send Back to Repair', value: 'IN_REPAIR', color: '#ef4444' },
       ];
       break;
     case 'DISPATCHED':
