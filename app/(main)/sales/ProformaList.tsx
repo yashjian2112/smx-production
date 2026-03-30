@@ -1212,7 +1212,7 @@ export function ProformaList({
     ...(!igOnlyRole ? [
       { key: 'pi'      as TabKey, label: 'Proforma', count: piList.length         },
       { key: 'invoice' as TabKey, label: 'Invoice',  count: invoices.length       },
-      { key: 'returns' as TabKey, label: 'Returns',  count: returnRequests.length },
+      { key: 'returns' as TabKey, label: 'Replacement',  count: returnRequests.length },
     ] : []),
     ...(['ADMIN', 'SALES'].includes(role)
       ? [{ key: 'samples' as TabKey, label: 'Samples', count: samples.length }]
@@ -1324,7 +1324,7 @@ export function ProformaList({
           {tab === 'returns' && canCreateReturn && (
             <Link href="/sales/returns/new" className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
               style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)', color: '#38bdf8' }}>
-              + New Return
+              + New Replacement
             </Link>
           )}
           {tab === 'samples' && ['ADMIN', 'SALES'].includes(role) && !hasActiveSample && (
@@ -1357,7 +1357,7 @@ export function ProformaList({
             tab === 'invoice' && invSubTab === 'history'
               ? 'Search history by customer, invoice no., or DO…'
               : tab === 'returns'
-              ? 'Search by customer, return no., or issue…'
+              ? 'Search by customer, replacement no., or issue…'
               : 'Search by customer or invoice no…'
           }
           value={search}
@@ -1681,11 +1681,11 @@ export function ProformaList({
         {tab === 'returns' && (
           <>
             <div className="mb-2">
-              <span className="text-xs text-zinc-500">{filteredReturns.length} return{filteredReturns.length !== 1 ? 's' : ''}</span>
+              <span className="text-xs text-zinc-500">{filteredReturns.length} replacement{filteredReturns.length !== 1 ? 's' : ''}</span>
             </div>
             {filteredReturns.length === 0 ? (
               <div className="card p-8 text-center">
-                <p className="text-zinc-500 text-sm">No return requests found.</p>
+                <p className="text-zinc-500 text-sm">No replacement requests found.</p>
               </div>
             ) : (
               filteredReturns.map((r) => {

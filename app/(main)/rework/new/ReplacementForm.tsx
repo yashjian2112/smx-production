@@ -29,14 +29,14 @@ export default function ReplacementForm({
     setError('');
     if (!clientId)          { setError('Please select a client'); return; }
     if (!issue.trim())      { setError('Please describe the issue'); return; }
-    if (!useManual && !serialNumber.trim()) { setError('Enter a serial number or switch to manual mode'); return; }
+    if (!serialNumber.trim()) { setError('Serial number is required'); return; }
     if (useManual && !productId) { setError('Please select a product'); return; }
 
     setSaving(true);
     try {
       const body = {
         clientId,
-        serialNumber: useManual ? null : serialNumber.trim(),
+        serialNumber: serialNumber.trim(),
         productId:    useManual ? productId : null,
         voltage:      useManual ? voltage : null,
         issue:        issue.trim(),
@@ -112,6 +112,16 @@ export default function ReplacementForm({
       ) : (
         <div className="space-y-3 rounded-xl border border-zinc-800 p-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
           <p className="text-xs font-medium text-zinc-400">Product Details (older controller)</p>
+          <div>
+            <label className="text-xs text-zinc-500 mb-1 block">Serial Number *</label>
+            <input
+              type="text"
+              value={serialNumber}
+              onChange={e => setSerialNumber(e.target.value)}
+              placeholder="Enter controller serial number"
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-sky-500"
+            />
+          </div>
           <div>
             <label className="text-xs text-zinc-500 mb-1 block">Product *</label>
             <select

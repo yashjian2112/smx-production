@@ -6,7 +6,7 @@ import { getFiscalYear } from '@/lib/invoice-number';
 
 const schema = z.object({
   clientId:     z.string().min(1),
-  serialNumber: z.string().nullable().optional(),
+  serialNumber: z.string().min(1),
   productId:    z.string().nullable().optional(),
   voltage:      z.string().nullable().optional(),
   issue:        z.string().min(1),
