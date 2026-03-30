@@ -2464,12 +2464,17 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
   const canManageStock     = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'].includes(sessionRole);
   // canManageMaterials: can create/edit/deactivate materials and categories
   const canManageMaterials = ['ADMIN', 'PURCHASE_MANAGER', 'INVENTORY_MANAGER'].includes(sessionRole);
+  // Reports & BOM management: ADMIN only (not INVENTORY_MANAGER)
+  const isAdmin = sessionRole === 'ADMIN';
+
+  // INVENTORY_MANAGER sees: Materials, GRN, Settings (no Reports)
+  const visibleTabs = TABS.filter(t => t !== 'Reports' || isAdmin);
 
   return (
     <div>
       {/* Tab bar */}
       <div className="flex gap-1 p-1 rounded-xl mb-6" style={{ background: 'rgba(255,255,255,0.04)' }}>
-        {TABS.map(tab => (
+        {visibleTabs.map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
             className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
               activeTab === tab ? 'bg-sky-600 text-white shadow-lg' : 'text-zinc-400 hover:text-white'
@@ -2481,7 +2486,7 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
 
       {activeTab === 'Materials' && <MaterialsTab isAdmin={canManageMaterials} />}
       {activeTab === 'GRN'       && <GRNTab       isAdmin={canManageStock} />}
-      {activeTab === 'Reports'   && <ReportsTab   isAdmin={canManageMaterials} />}
+      {activeTab === 'Reports'   && isAdmin && <ReportsTab isAdmin={true} />}
       {activeTab === 'Settings'  && <SettingsTab  isAdmin={canManageMaterials} />}
     </div>
   );
