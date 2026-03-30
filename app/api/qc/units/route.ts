@@ -1,57 +1,126 @@
 import { NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { appendTimeline } from '@/lib/timeline';
+import { generateNextFinalAssemblyBarcode } from '@/lib/barcode';
+import { StageType, UnitStatus } from '@prisma/client';
 
 /**
  * GET /api/qc/units
- * Returns all units currently in QC_AND_SOFTWARE stage
- * (PENDING, IN_PROGRESS, WAITING_APPROVAL, REJECTED_BACK)
- * Only visible to PRODUCTION_EMPLOYEE, PRODUCTION_MANAGER, ADMIN
+ * Returns units currently in QC_AND_SOFTWARE stage + recently completed QC units.
+ * QC stage does NOT require manager approval — any WAITING_APPROVAL units are
+ * auto-approved (advanced to Final Assembly) immediately on this fetch.
  */
 export async function GET() {
   try {
     const session = await requireSession();
     requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE', 'QC_USER');
 
-    const units = await prisma.controllerUnit.findMany({
+    // ── Auto-approve any WAITING_APPROVAL units stuck at QC stage ─────────────
+    const stuckUnits = await prisma.controllerUnit.findMany({
+      where: { currentStage: 'QC_AND_SOFTWARE', currentStatus: 'WAITING_APPROVAL' },
+      select: { id: true, qcBarcode: true, product: { select: { code: true } } },
+    });
+
+    for (const u of stuckUnits) {
+      let faBarcode = undefined;
+      if (u.product?.code) {
+        faBarcode = await generateNextFinalAssemblyBarcode(u.product.code);
+      }
+      await prisma.controllerUnit.update({
+        where: { id: u.id },
+        data: {
+          currentStage:         StageType.FINAL_ASSEMBLY,
+          currentStatus:        UnitStatus.PENDING,
+          ...(faBarcode ? { finalAssemblyBarcode: faBarcode } : {}),
+        },
+      });
+      await prisma.stageLog.create({
+        data: {
+          unitId:    u.id,
+          stage:     StageType.QC_AND_SOFTWARE,
+          statusFrom: UnitStatus.WAITING_APPROVAL,
+          statusTo:   UnitStatus.APPROVED,
+        },
+      });
+      await appendTimeline({
+        unitId:  u.id,
+        action:  'approved',
+        stage:   StageType.QC_AND_SOFTWARE,
+        remarks: 'QC stage auto-approved — no manager sign-off required',
+      });
+    }
+
+    // ── Active QC units (PENDING, IN_PROGRESS, REJECTED_BACK) ─────────────────
+    const activeUnits = await prisma.controllerUnit.findMany({
       where: {
-        currentStage: 'QC_AND_SOFTWARE',
-        currentStatus: { in: ['PENDING', 'IN_PROGRESS', 'WAITING_APPROVAL', 'REJECTED_BACK'] },
+        currentStage:  'QC_AND_SOFTWARE',
+        currentStatus: { in: ['PENDING', 'IN_PROGRESS', 'REJECTED_BACK'] },
       },
       select: {
-        id: true,
-        serialNumber: true,
-        currentStatus: true,
-        updatedAt: true,
+        id: true, serialNumber: true, currentStatus: true, updatedAt: true,
         readyForDispatch: true,
-        order: {
-          select: {
-            id: true,
-            orderNumber: true,
-            product: { select: { name: true, code: true } },
-          },
-        },
+        order: { select: { id: true, orderNumber: true, product: { select: { name: true, code: true } } } },
         assignments: {
           where: { stage: 'QC_AND_SOFTWARE' },
           select: { user: { select: { id: true, name: true } } },
           take: 1,
         },
-        // QC barcode for this unit
         qcBarcode: true,
       },
-      orderBy: [
-        { currentStatus: 'asc' }, // IN_PROGRESS first
-        { updatedAt: 'asc' },
-      ],
+      orderBy: [{ currentStatus: 'asc' }, { updatedAt: 'asc' }],
     });
 
-    return NextResponse.json(
-      units.map((u) => ({
-        ...u,
-        updatedAt: u.updatedAt.toISOString(),
-        assignedTo: u.assignments[0]?.user ?? null,
-      }))
-    );
+    // ── Recently completed QC units (passed in last 30 days) ──────────────────
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recentQC = await prisma.qCRecord.findMany({
+      where: { result: 'PASS', createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        createdAt: true,
+        firmwareVersion: true,
+        softwareVersion: true,
+        unit: {
+          select: {
+            id: true, serialNumber: true, currentStage: true, currentStatus: true, updatedAt: true,
+            qcBarcode: true,
+            order: { select: { id: true, orderNumber: true, product: { select: { name: true, code: true } } } },
+            assignments: {
+              where: { stage: 'QC_AND_SOFTWARE' },
+              select: { user: { select: { id: true, name: true } } },
+              take: 1,
+            },
+          },
+        },
+        user: { select: { id: true, name: true } },
+      },
+    });
+
+    const activeList = activeUnits.map((u) => ({
+      ...u,
+      updatedAt:  u.updatedAt.toISOString(),
+      assignedTo: u.assignments[0]?.user ?? null,
+      _type: 'active' as const,
+    }));
+
+    const completedList = recentQC.map((r) => ({
+      id:            r.unit.id,
+      serialNumber:  r.unit.serialNumber,
+      currentStatus: r.unit.currentStatus,
+      currentStage:  r.unit.currentStage,
+      updatedAt:     r.createdAt.toISOString(),
+      qcBarcode:     r.unit.qcBarcode,
+      order:         r.unit.order,
+      assignedTo:    r.unit.assignments[0]?.user ?? null,
+      qcPassedBy:    r.user,
+      firmwareVersion: r.firmwareVersion,
+      softwareVersion: r.softwareVersion,
+      _type: 'completed' as const,
+    }));
+
+    return NextResponse.json({ active: activeList, completed: completedList });
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
