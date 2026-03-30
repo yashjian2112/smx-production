@@ -18,9 +18,12 @@ export async function GET(req: Request) {
   const unit = await prisma.controllerUnit.findFirst({
     where: { serialNumber: serial },
     select: {
-      id:           true,
-      serialNumber: true,
-      orderId:      true,
+      id:                true,
+      serialNumber:      true,
+      orderId:           true,
+      dispatchedAt:      true,
+      warrantyStartDate: true,
+      warrantyMonths:    true,
       order: {
         select: {
           id:          true,
@@ -42,9 +45,27 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
   }
 
+  // Resolve dispatch date: unit.dispatchedAt → warrantyStartDate
+  const dispatchedAt = unit.dispatchedAt ?? unit.warrantyStartDate ?? null;
+
+  // Warranty: use unit.warrantyMonths if set, else default 90 days
+  const WARRANTY_DAYS = unit.warrantyMonths ? unit.warrantyMonths * 30 : 90;
+  let warrantyStatus: 'in_warranty' | 'out_of_warranty' | 'unknown' = 'unknown';
+  let warrantyExpiry: string | null = null;
+  let daysSinceDispatch: number | null = null;
+
+  if (dispatchedAt) {
+    const dispatchMs = new Date(dispatchedAt).getTime();
+    const nowMs      = Date.now();
+    daysSinceDispatch = Math.floor((nowMs - dispatchMs) / (1000 * 60 * 60 * 24));
+    const expiryDate  = new Date(dispatchMs + WARRANTY_DAYS * 24 * 60 * 60 * 1000);
+    warrantyExpiry    = expiryDate.toISOString();
+    warrantyStatus    = daysSinceDispatch <= WARRANTY_DAYS ? 'in_warranty' : 'out_of_warranty';
+  }
+
   return NextResponse.json({
-    unitId:      unit.id,
-    orderId:     unit.orderId,
+    unitId:       unit.id,
+    orderId:      unit.orderId,
     serialNumber: unit.serialNumber,
     orderNumber:  unit.order?.orderNumber ?? null,
     client: unit.order?.client
@@ -53,5 +74,10 @@ export async function GET(req: Request) {
     product: unit.order?.product
       ? { id: unit.order.product.id, code: unit.order.product.code, name: unit.order.product.name }
       : null,
+    dispatchedAt:      dispatchedAt?.toISOString() ?? null,
+    warrantyDays:      WARRANTY_DAYS,
+    warrantyExpiry,
+    daysSinceDispatch,
+    warrantyStatus,
   });
 }
