@@ -45,19 +45,25 @@ type PackingBoxRow = {
 };
 
 type DispatchOrderFull = {
-  id:             string;
-  doNumber:       string;
-  status:         string;
-  dispatchQty:    number;
-  totalBoxes:     number | null;
-  rejectedReason: string | null;
-  orderId:        string;
+  id:               string;
+  doNumber:         string;
+  status:           string;
+  dispatchQty:      number;
+  totalBoxes:       number | null;
+  rejectedReason:   string | null;
+  orderId:          string | null;
+  returnRequestId:  string | null;
   order: {
     orderNumber: string;
     quantity:    number;
     client:      { customerName: string } | null;
     product:     { code: string; name: string };
-  };
+  } | null;
+  returnRequest: {
+    returnNumber: string;
+    client:       { customerName: string } | null;
+    unit:         { serialNumber: string; product: { name: string } } | null;
+  } | null;
   scans:     StagedScan[];
   boxes:     PackingBoxRow[];
   createdBy: { name: string };
@@ -248,7 +254,12 @@ function PhaseAScan({
     setLookupError('');
     setLooking(true);
     try {
-      const res  = await fetch(`/api/dispatch-orders/lookup-unit?barcode=${encodeURIComponent(b)}&orderId=${encodeURIComponent(doData.orderId)}`);
+      const param = doData.orderId
+        ? `orderId=${encodeURIComponent(doData.orderId)}`
+        : doData.returnRequestId
+          ? `returnRequestId=${encodeURIComponent(doData.returnRequestId)}`
+          : '';
+      const res  = await fetch(`/api/dispatch-orders/lookup-unit?barcode=${encodeURIComponent(b)}&${param}`);
       const data = await res.json() as (InspectedUnit & { error?: string });
       if (!res.ok) { setLookupError(data.error ?? 'Unit not found'); return; }
       setInspecting(data);
@@ -376,7 +387,7 @@ function PhaseBVerify({
       <div className="rounded-lg p-3 space-y-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="flex items-center justify-between text-xs text-zinc-400">
           <span>DO #{doData.doNumber}</span>
-          <span>{doData.order.product.code} · {doData.order.product.name}</span>
+          <span>{doData.order ? `${doData.order.product.code} · ${doData.order.product.name}` : (doData.returnRequest?.unit?.product.name ?? 'Rework Return')}</span>
         </div>
         <div className="flex gap-8">
           <div>
@@ -927,14 +938,16 @@ export function DOPackingPanel({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-lg font-semibold text-white font-mono">{doData.doNumber}</span>
             <DOStatusBadge status={doData.status} />
-            {doData.dispatchQty < doData.order.quantity && (
+            {doData.order && doData.dispatchQty < doData.order.quantity && (
               <span className="text-[11px] font-bold px-2 py-0.5 rounded" style={{ color: '#fb923c', background: 'rgba(251,146,60,0.12)', border: '1px solid rgba(251,146,60,0.3)' }}>
                 PARTIAL · {doData.dispatchQty}/{doData.order.quantity} units
               </span>
             )}
           </div>
           <div className="text-sm text-zinc-400 mt-0.5">
-            {doData.order.client?.customerName ?? '—'} · Order #{doData.order.orderNumber} · {doData.order.product.name}
+            {doData.order
+              ? `${doData.order.client?.customerName ?? '—'} · Order #${doData.order.orderNumber} · ${doData.order.product.name}`
+              : `${doData.returnRequest?.client?.customerName ?? '—'} · ${doData.returnRequest?.returnNumber ?? '—'}`}
           </div>
         </div>
       </div>

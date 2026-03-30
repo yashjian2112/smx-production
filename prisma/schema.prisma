@@ -56,8 +56,6 @@ model User {
   returnRequestsReported   ReturnRequest[]    @relation("ReturnReportedBy")
   returnRequestsEvaluated  ReturnRequest[]    @relation("ReturnEvaluatedBy")
   repairLogs           RepairLog[]
-  reworkMatsRequested  ReworkMaterial[]       @relation("ReworkMatReqBy")
-  reworkMatsIssued     ReworkMaterial[]       @relation("ReworkMatIssuedBy")
   notifications        Notification[]
   orderNotes           OrderNote[]            @relation("OrderNoteAuthor")
   jobCardsCreated      JobCard[]              @relation("JCCreatedBy")
@@ -664,26 +662,28 @@ enum DOStatus {
 }
 
 model DispatchOrder {
-  id             String    @id @default(cuid())
-  doNumber       String    @unique @map("do_number")   // TSM/DO/26-27/0001
-  orderId        String    @map("order_id")
-  status         DOStatus  @default(OPEN)
-  dispatchQty    Int       @default(0) @map("dispatch_qty")
-  totalBoxes     Int?      @map("total_boxes")
-  submittedAt    DateTime? @map("submitted_at")
-  approvedAt     DateTime? @map("approved_at")
-  rejectedReason String?   @map("rejected_reason")
-  createdById    String    @map("created_by_id")
-  approvedById   String?   @map("approved_by_id")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  id              String    @id @default(cuid())
+  doNumber        String    @unique @map("do_number")   // TSM/DO/26-27/0001
+  orderId         String?   @map("order_id")
+  returnRequestId String?   @map("return_request_id")
+  status          DOStatus  @default(OPEN)
+  dispatchQty     Int       @default(0) @map("dispatch_qty")
+  totalBoxes      Int?      @map("total_boxes")
+  submittedAt     DateTime? @map("submitted_at")
+  approvedAt      DateTime? @map("approved_at")
+  rejectedReason  String?   @map("rejected_reason")
+  createdById     String    @map("created_by_id")
+  approvedById    String?   @map("approved_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  order      Order         @relation(fields: [orderId], references: [id])
-  createdBy  User          @relation("DOCreatedBy", fields: [createdById], references: [id])
-  approvedBy User?         @relation("DOApprovedBy", fields: [approvedById], references: [id])
-  boxes      PackingBox[]
-  scans      DispatchOrderScan[]
-  invoices   Invoice[]
+  order         Order?         @relation(fields: [orderId], references: [id])
+  returnRequest ReturnRequest? @relation(fields: [returnRequestId], references: [id])
+  createdBy     User           @relation("DOCreatedBy", fields: [createdById], references: [id])
+  approvedBy    User?          @relation("DOApprovedBy", fields: [approvedById], references: [id])
+  boxes         PackingBox[]
+  scans         DispatchOrderScan[]
+  invoices      Invoice[]
 
   @@map("dispatch_orders")
 }
@@ -876,13 +876,13 @@ model ReturnRequest {
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
-  client      Client          @relation(fields: [clientId], references: [id])
-  unit        ControllerUnit? @relation(fields: [unitId], references: [id])
-  order       Order?          @relation(fields: [orderId], references: [id])
-  reportedBy  User            @relation("ReturnReportedBy", fields: [reportedById], references: [id])
-  evaluatedBy User?           @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id])
-  repairLogs  RepairLog[]
-  materials   ReworkMaterial[]
+  client         Client          @relation(fields: [clientId], references: [id])
+  unit           ControllerUnit? @relation(fields: [unitId], references: [id])
+  order          Order?          @relation(fields: [orderId], references: [id])
+  reportedBy     User            @relation("ReturnReportedBy", fields: [reportedById], references: [id])
+  evaluatedBy    User?           @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id])
+  repairLogs     RepairLog[]
+  dispatchOrders DispatchOrder[]
 
   @@map("return_requests")
 }
@@ -904,29 +904,6 @@ model RepairLog {
   employee      User          @relation(fields: [employeeId], references: [id])
 
   @@map("repair_logs")
-}
-
-model ReworkMaterial {
-  id              String    @id @default(cuid())
-  returnRequestId String    @map("return_request_id")
-  rawMaterialId   String    @map("raw_material_id")
-  materialName    String    @map("material_name")   // denormalized for display
-  unit            String                             // denormalized unit (PCS, REEL, etc.)
-  qtyRequested    Float     @map("qty_requested")
-  qtyIssued       Float     @default(0) @map("qty_issued")
-  status          String    @default("PENDING")      // PENDING, ISSUED, CANCELLED
-  notes           String?
-  requestedById   String    @map("requested_by_id")
-  issuedById      String?   @map("issued_by_id")
-  issuedAt        DateTime? @map("issued_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-
-  returnRequest ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
-  rawMaterial   RawMaterial  @relation(fields: [rawMaterialId], references: [id])
-  requestedBy   User         @relation("ReworkMatReqBy",    fields: [requestedById], references: [id])
-  issuedBy      User?        @relation("ReworkMatIssuedBy", fields: [issuedById],    references: [id])
-
-  @@map("rework_materials")
 }
 
 // ----- Inventory -----
@@ -997,7 +974,6 @@ model RawMaterial {
   ganItems         GANItem[]
   damageReports    DamageReport[]
   materialSerials  MaterialSerial[]
-  reworkMaterials  ReworkMaterial[]
 
   @@map("raw_materials")
 }

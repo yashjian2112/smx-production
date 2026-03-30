@@ -91,7 +91,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const packedSerials = packedItems.map((i) => i.serial);
     const doNumber      = dispatchOrder.doNumber;
 
-    const proforma = dispatchOrder.order.proformaInvoice;
+    const proforma = dispatchOrder.order?.proformaInvoice ?? null;
     const isExport =
       proforma?.currency === 'USD' ||
       proforma?.client?.globalOrIndian === 'Global';
@@ -167,7 +167,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
         // Scale qty to dispatched units (not full order qty)
         // Shipping lines (HSN 9965) keep their original qty (lump sum)
-        const totalOrderUnits = dispatchOrder.order.units.length;
+        const totalOrderUnits = dispatchOrder.order?.units.length ?? 0;
         const dispatchedUnits = packedUnitIds.length;
         const scaleQty = (item: { quantity: number; hsnCode: string }) =>
           item.hsnCode === '9965' || totalOrderUnits === 0

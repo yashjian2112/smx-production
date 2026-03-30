@@ -22,7 +22,11 @@ type DOListItem = {
     quantity:    number;
     client:      { customerName: string } | null;
     product:     { code: string; name: string };
-  };
+  } | null;
+  returnRequest: {
+    returnNumber: string;
+    client:       { customerName: string } | null;
+  } | null;
   createdBy:  { name: string };
   approvedBy: { name: string } | null;
   boxes:      { _count: { items: number } }[];
@@ -46,6 +50,15 @@ function getTracking(invoices: InvoiceItem[] | undefined): string | null {
   }
   return null;
 }
+
+function doClientName(d: DOListItem) {
+  return d.order?.client?.customerName ?? d.returnRequest?.client?.customerName ?? '—';
+}
+function doRefLabel(d: DOListItem) {
+  return d.order?.orderNumber ? `#${d.order.orderNumber}` : (d.returnRequest?.returnNumber ?? '—');
+}
+function doProductName(d: DOListItem) { return d.order?.product?.name ?? 'Rework Return'; }
+function doOrderQty(d: DOListItem) { return d.order?.quantity ?? d.dispatchQty; }
 
 // ─── DOStatusBadge ────────────────────────────────────────────────────────────
 function DOStatusBadge({ status }: { status: string }) {
@@ -408,13 +421,13 @@ export function ShippingPanel({
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono font-semibold text-sm text-white">{d.doNumber}</span>
                       <DOStatusBadge status={d.status} />
-                      <PartialBadge dispatchQty={d.dispatchQty} orderQty={d.order.quantity} />
+                      <PartialBadge dispatchQty={d.dispatchQty} orderQty={doOrderQty(d)} />
                     </div>
                     <div className="text-sm text-zinc-400 mt-0.5">
-                      {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
+                      {doClientName(d)} · {doRefLabel(d)}
                     </div>
                     <div className="text-xs text-zinc-500 mt-0.5">
-                      {d.order.product.name}
+                      {doProductName(d)}
                       {boxCount > 0 ? ` · ${boxCount} box${boxCount !== 1 ? 'es' : ''}` : ''}
                       {unitCount > 0 ? ` · ${unitCount} scanned` : ''}
                       {' · Created '}{fmtDate(d.createdAt)}
@@ -453,13 +466,13 @@ export function ShippingPanel({
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono font-semibold text-sm text-white">{d.doNumber}</span>
                       <DOStatusBadge status={d.status} />
-                      <PartialBadge dispatchQty={d.dispatchQty} orderQty={d.order.quantity} />
+                      <PartialBadge dispatchQty={d.dispatchQty} orderQty={doOrderQty(d)} />
                     </div>
                     <div className="text-sm text-zinc-400 mt-0.5">
-                      {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
+                      {doClientName(d)} · {doRefLabel(d)}
                     </div>
                     <div className="text-xs text-zinc-500 mt-0.5">
-                      {d.order.product.name} · {boxCount} box{boxCount !== 1 ? 'es' : ''} · {unitCount} unit{unitCount !== 1 ? 's' : ''} · Submitted {fmtDate(d.submittedAt)}
+                      {doProductName(d)} · {boxCount} box{boxCount !== 1 ? 'es' : ''} · {unitCount} unit{unitCount !== 1 ? 's' : ''} · Submitted {fmtDate(d.submittedAt)}
                     </div>
                     <div className="text-xs text-zinc-600 mt-0.5">by {d.createdBy.name}</div>
                   </div>
@@ -521,13 +534,13 @@ export function ShippingPanel({
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono font-semibold text-sm text-white">{d.doNumber}</span>
                       <DOStatusBadge status={d.status} />
-                      <PartialBadge dispatchQty={d.dispatchQty} orderQty={d.order.quantity} />
+                      <PartialBadge dispatchQty={d.dispatchQty} orderQty={doOrderQty(d)} />
                     </div>
                     <div className="text-sm text-zinc-400 mt-0.5">
-                      {d.order.client?.customerName ?? '—'} · #{d.order.orderNumber}
+                      {doClientName(d)} · {doRefLabel(d)}
                     </div>
                     <div className="text-xs text-zinc-500 mt-0.5">
-                      {d.order.product.name} · {boxCount} box{boxCount !== 1 ? 'es' : ''} · {unitCount} unit{unitCount !== 1 ? 's' : ''} · {fmtDate(d.approvedAt ?? d.submittedAt)}
+                      {doProductName(d)} · {boxCount} box{boxCount !== 1 ? 'es' : ''} · {unitCount} unit{unitCount !== 1 ? 's' : ''} · {fmtDate(d.approvedAt ?? d.submittedAt)}
                     </div>
                     {d.status === 'APPROVED' && d.approvedBy && (
                       <div className="text-xs text-green-400 mt-0.5">Approved by {d.approvedBy.name}</div>

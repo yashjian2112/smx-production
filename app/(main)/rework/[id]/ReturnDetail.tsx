@@ -173,8 +173,7 @@ function getNextActions(status: string, role: string): { label: string; value: s
       break;
     case 'QC_CHECKED':
       if (isAdminOrManager) return [
-        { label: 'Mark Dispatched', value: 'DISPATCHED', color: '#6366f1' },
-        { label: 'Close',           value: 'CLOSED',     color: '#a1a1aa' },
+        { label: 'Close', value: 'CLOSED', color: '#a1a1aa' },
       ];
       break;
     case 'DISPATCHED':
@@ -431,7 +430,8 @@ export default function ReturnDetail({
   const isSales = role === 'SALES';
 
   const LOCKED_STATUSES = ['IN_REPAIR', 'REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED'];
-  const canEditDelete = ['ADMIN', 'SALES'].includes(role) && !LOCKED_STATUSES.includes(data.status);
+  const isAdmin = role === 'ADMIN';
+  const canEditDelete = isAdmin || (['SALES'].includes(role) && !LOCKED_STATUSES.includes(data.status));
 
   const openLog = data.repairLogs.find(l => !l.completedAt);
   const nextActions = getNextActions(data.status, role);
@@ -445,6 +445,29 @@ export default function ReturnDetail({
   // Status transition
   const [actionLoading, setActionLoading] = useState('');
   const [actionError,   setActionError]   = useState('');
+
+  // Create Dispatch Order
+  const [creatingDO,   setCreatingDO]   = useState(false);
+  const [doError,      setDoError]      = useState('');
+
+  async function createDispatchOrder() {
+    setCreatingDO(true);
+    setDoError('');
+    try {
+      const res = await fetch('/api/dispatch-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnRequestId: data.id, dispatchQty: 1 }),
+      });
+      const json = await res.json() as { id?: string; error?: string };
+      if (!res.ok) { setDoError(json.error ?? 'Failed to create dispatch order'); return; }
+      router.push(`/shipping/do/${json.id}`);
+    } catch {
+      setDoError('Network error');
+    } finally {
+      setCreatingDO(false);
+    }
+  }
 
   // Edit form
   const [showEdit,    setShowEdit]    = useState(false);
@@ -908,6 +931,23 @@ export default function ReturnDetail({
           )}
           {data.evaluationNotes && <p className="text-xs text-zinc-300">{data.evaluationNotes}</p>}
           {data.evaluatedBy && <p className="text-[10px] text-zinc-500">By {data.evaluatedBy.name}</p>}
+        </div>
+      )}
+
+      {/* Dispatch via DO flow — QC_CHECKED + admin/manager */}
+      {data.status === 'QC_CHECKED' && isAdminOrManager && (
+        <div className="card p-4 space-y-2">
+          <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">Dispatch</p>
+          {doError && <p className="text-xs text-red-400 mb-2">{doError}</p>}
+          <button
+            onClick={createDispatchOrder}
+            disabled={creatingDO}
+            className="px-4 py-2 rounded-lg text-xs font-medium transition-opacity disabled:opacity-40 flex items-center gap-1.5"
+            style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', color: '#818cf8' }}
+          >
+            {creatingDO ? 'Creating…' : 'Create Dispatch Order'}
+            {!creatingDO && <ChevronRight className="w-3 h-3" />}
+          </button>
         </div>
       )}
 

@@ -43,7 +43,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     if (dispatchOrder.invoices.length > 0)
       return NextResponse.json({ error: 'Invoice already exists for this dispatch order' }, { status: 400 });
 
-    const proforma = dispatchOrder.order.proformaInvoice;
+    const proforma = dispatchOrder.order?.proformaInvoice ?? null;
     if (!proforma)
       return NextResponse.json(
         { error: 'No proforma invoice linked to this order. Go to Sales → link a proforma to the order first.' },
@@ -81,7 +81,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
       // Scale quantities proportionally to dispatched units (same logic as approve route)
       // Shipping lines (HSN 9965) keep their original qty (lump sum)
-      const totalOrderUnits = dispatchOrder.order.units.length;
+      const totalOrderUnits = dispatchOrder.order?.units.length ?? 0;
       const dispatchedUnits = packedUnitIds.length;
       const scaleQty = (item: { quantity: number; hsnCode: string }) =>
         item.hsnCode === '9965' || totalOrderUnits === 0

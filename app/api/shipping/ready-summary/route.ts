@@ -59,9 +59,10 @@ export async function GET() {
         })
       : [];
 
-    // Group DOs by orderId
+    // Group DOs by orderId (skip return-based DOs which have no orderId)
     const dosByOrder = new Map<string, typeof dispatchOrders>();
     for (const d of dispatchOrders) {
+      if (!d.orderId) continue;
       const arr = dosByOrder.get(d.orderId) ?? [];
       arr.push(d);
       dosByOrder.set(d.orderId, arr);

@@ -50,7 +50,7 @@ export async function DELETE(
     if (!ret) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const locked = ['IN_REPAIR', 'REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED'];
-    if (locked.includes(ret.status)) {
+    if (locked.includes(ret.status) && session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Cannot delete after inspection has started' }, { status: 400 });
     }
 
@@ -117,7 +117,7 @@ export async function PATCH(
     // Edit base fields (only before IN_REPAIR)
     const locked = ['IN_REPAIR', 'REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED'];
     if (data.serialNumber || data.reportedIssue || data.clientId) {
-      if (locked.includes(ret.status)) {
+      if (locked.includes(ret.status) && session.role !== 'ADMIN') {
         return NextResponse.json({ error: 'Cannot edit after inspection has started' }, { status: 400 });
       }
       if (!['ADMIN', 'SALES'].includes(session.role)) {

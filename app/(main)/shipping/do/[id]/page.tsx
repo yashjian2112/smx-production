@@ -24,6 +24,13 @@ export default async function DOPackingPage({ params }: { params: { id: string }
             product: { select: { code: true, name: true } },
           },
         },
+        returnRequest: {
+          select: {
+            returnNumber: true,
+            client: { select: { customerName: true } },
+            unit: { select: { serialNumber: true, product: { select: { name: true } } } },
+          },
+        },
         scans: {
           orderBy: { scannedAt: 'asc' },
           include: {
@@ -58,7 +65,7 @@ export default async function DOPackingPage({ params }: { params: { id: string }
 
   // Auto-fix legacy DOs where dispatchQty was never set (0 = unset)
   // Use count of units actually ready for dispatch, not the total order quantity
-  if (dispatchOrder.dispatchQty === 0) {
+  if (dispatchOrder.dispatchQty === 0 && dispatchOrder.orderId) {
     const readyCount = await prisma.controllerUnit.count({
       where: {
         orderId:          dispatchOrder.orderId,
@@ -69,7 +76,7 @@ export default async function DOPackingPage({ params }: { params: { id: string }
         dispatchOrderScan: null,
       },
     });
-    const qty = readyCount > 0 ? readyCount : dispatchOrder.order.quantity;
+    const qty = readyCount > 0 ? readyCount : (dispatchOrder.order?.quantity ?? 1);
     await prisma.dispatchOrder.update({ where: { id: params.id }, data: { dispatchQty: qty } });
     dispatchOrder.dispatchQty = qty;
   }
