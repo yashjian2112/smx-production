@@ -88,8 +88,8 @@ export async function GET() {
       };
     })
     .filter(order => {
-      // If employee accepted and job card dispatched → goes to Processing, hide from Pending
-      if (order.alreadyAccepted && order.myJobCard?.status === 'DISPATCHED') return false;
+      // If employee accepted and job card dispatched/completed → goes to Processing, hide from Pending
+      if (order.alreadyAccepted && order.myJobCard?.status && ['DISPATCHED', 'COMPLETED', 'IN_PROGRESS'].includes(order.myJobCard.status)) return false;
       return true;
     });
 
