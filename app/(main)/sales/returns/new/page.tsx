@@ -24,8 +24,8 @@ export default async function NewReturnPage() {
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-24">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-white">New Return</h1>
-        <p className="text-zinc-400 text-sm mt-1">Log a customer return request</p>
+        <h1 className="text-xl font-bold text-white">New Replacement</h1>
+        <p className="text-zinc-400 text-sm mt-1">Log a customer replacement request</p>
       </div>
       <ReturnForm clients={clients} products={products} />
     </div>

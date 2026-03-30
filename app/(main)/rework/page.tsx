@@ -84,7 +84,7 @@ export default async function ReworkPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">Customer Returns</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Return requests — units requiring diagnosis and repair</p>
+          <p className="text-xs text-slate-500 mt-0.5">Replacement requests — units requiring diagnosis and repair</p>
         </div>
         {['ADMIN', 'SALES'].includes(session.role) && (
           <Link
@@ -92,7 +92,7 @@ export default async function ReworkPage() {
             className="px-3 py-2 rounded-lg text-sm font-medium text-white transition-colors"
             style={{ background: '#0ea5e9' }}
           >
-            + New Return
+            + New Replacement
           </Link>
         )}
       </div>
@@ -114,7 +114,7 @@ export default async function ReworkPage() {
       {items.length === 0 ? (
         <div className="card p-10 text-center">
           <div className="flex justify-center mb-3"><Package className="w-4 h-4" /></div>
-          <p className="text-slate-400 text-sm">No return requests yet.</p>
+          <p className="text-slate-400 text-sm">No replacement requests yet.</p>
           <p className="text-slate-600 text-xs mt-1">When a return is logged, it will appear here.</p>
         </div>
       ) : (

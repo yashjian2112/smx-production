@@ -434,7 +434,7 @@ export default function ReturnForm({ clients, products }: { clients: ClientOptio
             ? `Submitting ${qty} unit${qty > 1 ? 's' : ''}…`
             : anyOutOfWarranty
             ? 'Out of Warranty — Cannot Submit'
-            : qty > 1 ? `Submit ${qty} Return Requests` : 'Submit Return'}
+            : qty > 1 ? `Submit ${qty} Replacement Requests` : 'Submit Replacement'}
         </button>
         <button type="button" onClick={() => router.back()} disabled={loading}
           className="px-5 py-3 rounded-xl text-sm text-zinc-400 disabled:opacity-50"
