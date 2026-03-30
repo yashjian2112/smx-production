@@ -218,7 +218,6 @@ function CompletedTab({ grns }: { grns: GRN[] }) {
       {grns.map(grn => {
         const isOpen = expanded === grn.id;
         const totalQty = grn.items.reduce((s, i) => s + i.quantity, 0);
-        const totalValue = grn.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
 
         return (
           <div key={grn.id} className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
@@ -235,7 +234,7 @@ function CompletedTab({ grns }: { grns: GRN[] }) {
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                <span className="text-zinc-500 text-xs">{fmt(totalQty)} units &middot; &#8377;{fmt(totalValue)}</span>
+                <span className="text-zinc-500 text-xs">{fmt(totalQty)} units</span>
                 {isOpen ? <ChevronUp className="w-4 h-4 text-zinc-500" /> : <ChevronDown className="w-4 h-4 text-zinc-500" />}
               </div>
             </button>
@@ -248,7 +247,6 @@ function CompletedTab({ grns }: { grns: GRN[] }) {
                       <tr className="text-zinc-500 border-b border-zinc-800">
                         <th className="text-left pb-1">Material</th>
                         <th className="text-right pb-1">Received</th>
-                        <th className="text-right pb-1">Unit Price</th>
                         <th className="text-left pb-1">Condition</th>
                         <th className="text-left pb-1">Batch</th>
                       </tr>
@@ -262,7 +260,6 @@ function CompletedTab({ grns }: { grns: GRN[] }) {
                               {item.rawMaterial.name} <span className="text-zinc-500">({item.rawMaterial.unit})</span>
                             </td>
                             <td className="py-1.5 text-right text-emerald-400">{fmt(item.quantity)}</td>
-                            <td className="py-1.5 text-right text-zinc-300">&#8377;{fmt(item.unitPrice)}</td>
                             <td className="py-1.5">
                               <Badge color={item.condition === 'GOOD' ? 'green' : item.condition === 'DAMAGED' ? 'orange' : 'red'}>
                                 {item.condition}
