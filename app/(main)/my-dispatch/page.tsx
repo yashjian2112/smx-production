@@ -289,7 +289,7 @@ function ReadyCard({ order, onCreateDO, creating }: {
 }
 
 /* ── DO Sub-row (inside an order group) ── */
-function DORow({ d }: { d: DispatchOrder }) {
+function DORow({ d, canPack }: { d: DispatchOrder; canPack: boolean }) {
   const totalBoxes = d.boxes.length;
   const packedUnits = d.boxes.reduce((s, b) => s + b._count.items, 0);
 
@@ -326,8 +326,8 @@ function DORow({ d }: { d: DispatchOrder }) {
         {d.status === 'APPROVED' && <Check className="w-4 h-4 ml-1 inline" />}
       </span>
 
-      {/* Pack button — only for active DOs */}
-      {['OPEN', 'PACKING'].includes(d.status) && (
+      {/* Pack button — only for PACKING role */}
+      {canPack && ['OPEN', 'PACKING'].includes(d.status) && (
         <a
           href={`/shipping/do/${d.id}`}
           className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition-colors whitespace-nowrap font-semibold"
@@ -362,7 +362,7 @@ function DORow({ d }: { d: DispatchOrder }) {
 }
 
 /* ── Order Group Card ── */
-function OrderGroupCard({ group }: { group: OrderGroup }) {
+function OrderGroupCard({ group, canPack }: { group: OrderGroup; canPack: boolean }) {
   const totalDispatched = group.dos
     .filter(d => d.status === 'APPROVED')
     .reduce((s, d) => s + d.boxes.reduce((bs, b) => bs + b._count.items, 0), 0);
@@ -402,7 +402,7 @@ function OrderGroupCard({ group }: { group: OrderGroup }) {
       {/* DO sub-list */}
       <div className="px-3 pb-3 space-y-1.5">
         {/* Active DOs first */}
-        {activeDOs.map(d => <DORow key={d.id} d={d} />)}
+        {activeDOs.map(d => <DORow key={d.id} d={d} canPack={canPack} />)}
 
         {/* Completed DOs */}
         {completedDOs.length > 0 && (
@@ -412,7 +412,7 @@ function OrderGroupCard({ group }: { group: OrderGroup }) {
                 History
               </p>
             )}
-            {completedDOs.map(d => <DORow key={d.id} d={d} />)}
+            {completedDOs.map(d => <DORow key={d.id} d={d} canPack={canPack} />)}
           </>
         )}
       </div>
@@ -448,20 +448,23 @@ export default function MyDispatchPage() {
   const [creating,    setCreating]    = useState<string | null>(null);
   const [createError,   setCreateError]   = useState('');
   const [createSuccess, setCreateSuccess] = useState('');
+  const [role,          setRole]          = useState('');
 
   async function load() {
     setLoading(true);
     setError('');
     try {
-      const [doRes, readyRes] = await Promise.all([
+      const [doRes, readyRes, meRes] = await Promise.all([
         fetch('/api/dispatch-orders/employee'),
         fetch('/api/shipping/ready-summary'),
+        fetch('/api/me'),
       ]);
       if (!doRes.ok)    throw new Error('Failed to load dispatch orders');
       if (!readyRes.ok) throw new Error('Failed to load ready orders');
 
       const dos: DispatchOrder[] = await doRes.json();
       const ready: ReadyOrder[]  = await readyRes.json();
+      if (meRes.ok) { const me = await meRes.json() as { role?: string }; setRole(me.role ?? ''); }
 
       setAllDOs(dos);
       setReadyOrders(ready);
@@ -473,6 +476,8 @@ export default function MyDispatchPage() {
   }
 
   useEffect(() => { load(); }, []);
+
+  const canPack = role === 'PACKING' || role === 'ADMIN';
 
   async function createDO(orderId: string, dispatchQty: number) {
     setCreating(orderId);
@@ -593,7 +598,7 @@ export default function MyDispatchPage() {
                   In Packing
                 </p>
                 {topackGroups.map((g) => (
-                  <OrderGroupCard key={g.orderId} group={g} />
+                  <OrderGroupCard key={g.orderId} group={g} canPack={canPack} />
                 ))}
               </>
             )}
@@ -608,7 +613,7 @@ export default function MyDispatchPage() {
         ) : (
           <div className="space-y-3">
             {completedGroups.map((g) => (
-              <OrderGroupCard key={g.orderId} group={g} />
+              <OrderGroupCard key={g.orderId} group={g} canPack={canPack} />
             ))}
           </div>
         )
