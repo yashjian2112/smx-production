@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const publicPaths = ['/login', '/api/auth', '/print/invoice'];
-// /print/invoice is public so customers can scan QR code on invoice PDF to download
+const publicPaths = ['/login', '/api/auth'];
+// /print/* is intentionally NOT listed here — all print routes require a valid session
 export function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
   if (publicPaths.some((p) => path === p || path.startsWith(p + '/'))) {
