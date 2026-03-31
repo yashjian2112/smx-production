@@ -335,12 +335,114 @@ function CreateManualROModal({ onClose, onCreated }: { onClose: () => void; onCr
   );
 }
 
+function ROApproveModal({ ro, onClose, onApproved }: { ro: RO; onClose: () => void; onApproved: () => void }) {
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function handleApprove() {
+    setSaving(true);
+    const r = await fetch(`/api/procurement/requirement-orders/${ro.id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approvalNotes: notes.trim() || undefined }),
+    });
+    if (r.ok) { onApproved(); onClose(); }
+    else { const e = await r.json(); alert(e.error); }
+    setSaving(false);
+  }
+
+  const shortageItems = ro.items.filter(i => i.material && i.material.currentStock < i.qtyRequired);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4 pb-20 pt-4" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Fixed header */}
+        <div className="p-5 border-b border-zinc-800 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-white font-semibold text-lg">Review & Approve</h3>
+              <p className="text-zinc-400 text-xs mt-0.5">{ro.roNumber} · {ro.items.length} item{ro.items.length !== 1 ? 's' : ''}</p>
+            </div>
+            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X className="w-5 h-5" /></button>
+          </div>
+          {ro.notes && <p className="text-xs text-zinc-500 mt-2 bg-zinc-800/50 rounded-lg px-3 py-2">{ro.notes}</p>}
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {/* Items review */}
+          <div className="p-5 space-y-2">
+            <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Items to Review</div>
+            {ro.items.map(item => {
+              const mat = item.material;
+              const isShort = mat && mat.currentStock < item.qtyRequired;
+              return (
+                <div key={item.id} className={`rounded-lg p-3 border ${isShort ? 'border-amber-700/50 bg-amber-950/20' : 'border-zinc-800 bg-zinc-800/30'}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-white font-medium truncate">
+                        {mat ? mat.name : item.itemDescription}
+                      </div>
+                      {mat && <div className="text-xs text-zinc-500 mt-0.5">{mat.code} · {mat.unit}</div>}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm font-semibold text-amber-300">{item.qtyRequired} {mat?.unit || item.itemUnit}</div>
+                      {mat && (
+                        <div className={`text-xs mt-0.5 ${isShort ? 'text-red-400 font-semibold' : 'text-zinc-500'}`}>
+                          Stock: {mat.currentStock}
+                          {isShort && ` (short ${Math.ceil(item.qtyRequired - mat.currentStock)})`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {item.notes && <div className="text-xs text-zinc-500 mt-1">{item.notes}</div>}
+                </div>
+              );
+            })}
+
+            {shortageItems.length > 0 && (
+              <div className="text-xs text-amber-400 bg-amber-950/30 border border-amber-800/40 rounded-lg px-3 py-2 mt-2">
+                {shortageItems.length} item{shortageItems.length !== 1 ? 's' : ''} below required stock level
+              </div>
+            )}
+          </div>
+
+          {/* Approval notes */}
+          <div className="px-5 pb-4">
+            <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Approval Notes</label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Review comments, special instructions, or approval remarks..."
+              rows={2}
+              className="mt-1.5 w-full rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 placeholder:text-zinc-600 focus:outline-none focus:border-blue-600"
+            />
+          </div>
+        </div>
+
+        {/* Fixed footer */}
+        <div className="p-4 border-t border-zinc-800 flex gap-3 justify-end flex-shrink-0">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700">
+            Cancel
+          </button>
+          <button onClick={handleApprove} disabled={saving}
+            className="px-5 py-2 rounded-lg text-sm font-semibold bg-green-700 hover:bg-green-600 text-white disabled:opacity-50">
+            {saving ? 'Approving...' : 'Approve & Send'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ROTab({ isIM, isPM, onCreateRFQFromRO }: { isIM: boolean; isPM: boolean; onCreateRFQFromRO?: (ro: RO) => void }) {
   const [ros, setROs] = useState<RO[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('ALL');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [approveRO, setApproveRO] = useState<RO | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -352,17 +454,12 @@ function ROTab({ isIM, isPM, onCreateRFQFromRO }: { isIM: boolean; isPM: boolean
 
   useEffect(() => { load(); }, [load]);
 
-  async function approve(id: string) {
-    const r = await fetch(`/api/procurement/requirement-orders/${id}/approve`, { method: 'POST' });
-    if (r.ok) load();
-    else { const e = await r.json(); alert(e.error); }
-  }
-
   const filters = ['ALL', 'PENDING', 'APPROVED', 'CONVERTED', 'CANCELLED'];
 
   return (
     <div>
       {showCreate && <CreateManualROModal onClose={() => setShowCreate(false)} onCreated={load} />}
+      {approveRO && <ROApproveModal ro={approveRO} onClose={() => setApproveRO(null)} onApproved={load} />}
 
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex gap-2 flex-wrap">
@@ -388,63 +485,68 @@ function ROTab({ isIM, isPM, onCreateRFQFromRO }: { isIM: boolean; isPM: boolean
       ) : (
         <div className="space-y-3">
           {ros.map(ro => (
-            <div key={ro.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-white font-semibold">{ro.roNumber}</span>
-                    {ro.status !== 'APPROVED' && <Badge label={ro.status} />}
-                    <Badge label={ro.trigger} />
-                    {ro.jobCard && <span className="text-xs text-zinc-500">Job: {ro.jobCard.cardNumber}</span>}
+            <div key={ro.id} className={`bg-zinc-900 border rounded-xl overflow-hidden transition-colors ${expanded === ro.id ? 'border-blue-700/50' : 'border-zinc-800'}`}>
+              {/* Clickable header — tap to expand/collapse */}
+              <div className="p-4 cursor-pointer active:bg-zinc-800/50" onClick={() => setExpanded(expanded === ro.id ? null : ro.id)}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-white font-semibold">{ro.roNumber}</span>
+                      {ro.status !== 'APPROVED' && <Badge label={ro.status} />}
+                      <Badge label={ro.trigger} />
+                      {ro.jobCard && <span className="text-xs text-zinc-500">Job: {ro.jobCard.cardNumber}</span>}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-1">
+                      {new Date(ro.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {ro.approvedBy && <> · Approved by {ro.approvedBy.name}</>}
+                    </div>
+                    {ro.notes && <div className="text-xs text-zinc-400 mt-1 line-clamp-1">{ro.notes}</div>}
                   </div>
-                  <div className="text-xs text-zinc-500 mt-1">
-                    {new Date(ro.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    {ro.approvedBy && <> · Approved by {ro.approvedBy.name}</>}
+                  <div className="text-xs text-zinc-500 flex-shrink-0 mt-0.5">
+                    {ro.items.length} item{ro.items.length !== 1 ? 's' : ''} {expanded === ro.id ? '▲' : '▼'}
                   </div>
-                  {ro.notes && <div className="text-xs text-zinc-400 mt-1">{ro.notes}</div>}
-                </div>
-                <div className="flex gap-2 items-center flex-wrap">
-                  <button onClick={() => setExpanded(expanded === ro.id ? null : ro.id)}
-                    className="text-xs text-blue-400 hover:text-blue-300">
-                    {expanded === ro.id ? 'Hide' : `${ro.items.length} item${ro.items.length !== 1 ? 's' : ''}`}
-                  </button>
-                  <a href={`/print/ro/${ro.id}`} target="_blank" rel="noopener noreferrer"
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-white">
-                    PDF
-                  </a>
-                  {isIM && ro.status === 'PENDING' && (
-                    <button onClick={() => approve(ro.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-700 hover:bg-green-600 text-white">
-                      Approve
-                    </button>
-                  )}
-                  {isPM && ro.status === 'APPROVED' && (
-                    <button onClick={() => onCreateRFQFromRO?.(ro)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 hover:bg-blue-600 text-white">
-                      Create RFQ →
-                    </button>
-                  )}
                 </div>
               </div>
 
+              {/* Expanded: items + actions */}
               {expanded === ro.id && (
-                <div className="mt-3 border-t border-zinc-800 pt-3 space-y-2">
-                  {ro.items.map(item => (
-                    <div key={item.id} className="flex items-center justify-between text-sm">
-                      <div>
-                        <span className="text-white">
-                          {item.material ? item.material.name : item.itemDescription}
-                        </span>
-                        {item.material && <span className="text-zinc-500 ml-2 text-xs">{item.material.code}</span>}
+                <div className="border-t border-zinc-800">
+                  <div className="p-4 pt-3 space-y-2">
+                    {ro.items.map(item => (
+                      <div key={item.id} className="flex items-center justify-between text-sm">
+                        <div>
+                          <span className="text-white">
+                            {item.material ? item.material.name : item.itemDescription}
+                          </span>
+                          {item.material && <span className="text-zinc-500 ml-2 text-xs">{item.material.code}</span>}
+                        </div>
+                        <div className="text-right text-xs">
+                          <span className="text-amber-300">
+                            {item.qtyRequired} {item.material ? item.material.unit : item.itemUnit} needed
+                          </span>
+                          {item.material && <span className="text-zinc-500 ml-2">Stock: {item.material.currentStock}</span>}
+                        </div>
                       </div>
-                      <div className="text-right text-xs">
-                        <span className="text-amber-300">
-                          {item.qtyRequired} {item.material ? item.material.unit : item.itemUnit} needed
-                        </span>
-                        {item.material && <span className="text-zinc-500 ml-2">Stock: {item.material.currentStock}</span>}
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  <div className="flex gap-2 items-center flex-wrap px-4 pb-3">
+                    <a href={`/print/ro/${ro.id}`} target="_blank" rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-white">
+                      PDF
+                    </a>
+                    {isIM && ro.status === 'PENDING' && (
+                      <button onClick={() => setApproveRO(ro)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-700 hover:bg-green-600 text-white">
+                        Review & Approve
+                      </button>
+                    )}
+                    {isPM && ro.status === 'APPROVED' && (
+                      <button onClick={() => onCreateRFQFromRO?.(ro)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 hover:bg-blue-600 text-white">
+                        Create RFQ →
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
