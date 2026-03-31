@@ -622,7 +622,7 @@ function SamplesTab({ isPM, isAdmin }: { isPM: boolean; isAdmin: boolean }) {
           {filtered.map(row => {
             const requestedAt = row.sampleRequestedAt ? new Date(row.sampleRequestedAt) : null;
             const hoursElapsed = requestedAt ? (Date.now() - requestedAt.getTime()) / 3_600_000 : 0;
-            const canApprove = isAdmin || hoursElapsed >= 24;
+            const canApprove = true;
             const hoursLeft = Math.ceil(24 - hoursElapsed);
             const sym = row.currency === 'USD' ? '$' : '₹';
             const materials = row.rfq.items.map(i => i.material?.name ?? i.itemDescription ?? '—').join(', ');
@@ -656,7 +656,7 @@ function SamplesTab({ isPM, isAdmin }: { isPM: boolean; isAdmin: boolean }) {
                     {requestedAt && (
                       <div className="text-xs text-zinc-600 mt-0.5">
                         Requested {requestedAt.toLocaleDateString('en-IN')} {requestedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                        {row.sampleStatus === 'REQUESTED' && !canApprove && <span className="ml-1 text-amber-500">· {hoursLeft}h until review</span>}
+                        {}
                       </div>
                     )}
                   </div>
@@ -953,7 +953,7 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
                                       if (q.sampleStatus === 'REQUESTED') {
                                         const requestedAt = q.sampleRequestedAt ? new Date(q.sampleRequestedAt) : null;
                                         const hoursElapsed = requestedAt ? (Date.now() - requestedAt.getTime()) / 3_600_000 : 0;
-                                        const canApprove = isAdmin || hoursElapsed >= 24;
+                                        const canApprove = true;
                                         const hoursLeft = Math.ceil(24 - hoursElapsed);
                                         return canApprove ? (
                                           <div className="flex gap-1">
