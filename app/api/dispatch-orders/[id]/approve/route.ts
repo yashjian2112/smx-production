@@ -101,9 +101,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const doNumber      = dispatchOrder.doNumber;
 
     const proforma = dispatchOrder.order?.proformaInvoice ?? null;
-    const isExport =
-      proforma?.currency === 'USD' ||
-      proforma?.client?.globalOrIndian === 'Global';
+    const isExport = proforma?.client?.globalOrIndian === 'Global';
 
     const generatedInvoiceNumbers: string[] = [];
 
