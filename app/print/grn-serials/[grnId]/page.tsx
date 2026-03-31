@@ -2,11 +2,20 @@ import { prisma } from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import PrintGRNSerials from './PrintGRNSerials';
 
-export default async function GRNSerialsPage({ params }: { params: { grnId: string } }) {
+export default async function GRNSerialsPage({
+  params,
+  searchParams,
+}: {
+  params: { grnId: string };
+  searchParams: { material?: string };
+}) {
+  const materialFilter = searchParams?.material;
+
   const grn = await prisma.goodsReceipt.findUnique({
     where: { id: params.grnId },
     include: {
       materialSerials: {
+        where: materialFilter ? { materialId: materialFilter } : undefined,
         include: { material: { select: { id: true, name: true, code: true } } },
         orderBy: { barcode: 'asc' },
       },

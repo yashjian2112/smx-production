@@ -513,67 +513,11 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
 
         {/* Step 2 — Print Labels */}
         {step === 'print' && createdGRN && (
-          <div className="flex flex-col h-full">
-            <div className="px-6 pt-6 pb-4 border-b border-zinc-800 shrink-0">
-              <h2 className="text-white font-semibold text-xl mb-3">GRN Created</h2>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center">
-                    <Check className="w-3.5 h-3.5 text-white" />
-                  </div>
-                  <span className="text-xs text-zinc-400">Confirm Qty</span>
-                </div>
-                <div className="flex-1 h-px bg-emerald-800" />
-                <div className="flex items-center gap-1.5">
-                  <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-bold">2</div>
-                  <span className="text-xs text-white font-medium">Print Labels</span>
-                </div>
-                <div className="flex-1 h-px bg-zinc-700" />
-                <div className="flex items-center gap-1.5">
-                  <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-zinc-400 text-xs font-bold">3</div>
-                  <span className="text-xs text-zinc-500">Scan &amp; Verify</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 max-w-lg mx-auto w-full">
-              <div className="rounded-xl border border-emerald-800/50 p-5 mb-6 w-full" style={{ background: 'rgba(16,185,129,0.06)' }}>
-                <div className="flex items-center gap-3 mb-2">
-                  <CheckCircle className="w-6 h-6 text-emerald-400 shrink-0" />
-                  <div>
-                    <p className="text-emerald-300 font-semibold">GRN Created Successfully</p>
-                    <p className="text-emerald-500 font-mono text-sm mt-0.5">{createdGRN.grnNumber}</p>
-                  </div>
-                </div>
-                {createdGRN.serialCount > 0 ? (
-                  <p className="text-zinc-400 text-sm mt-2">
-                    <span className="text-white font-semibold">{createdGRN.serialCount}</span> barcode labels generated and ready to print.
-                  </p>
-                ) : (
-                  <p className="text-zinc-400 text-sm mt-2">No barcodes generated (no serialized materials).</p>
-                )}
-              </div>
-
-              {createdGRN.serialCount > 0 && (
-                <>
-                  <p className="text-zinc-500 text-sm mb-5 text-center">Print the barcode labels and affix them to the received items, then scan each one to confirm.</p>
-                  <button onClick={() => window.open(`/print/grn-serials/${createdGRN.id}`, '_blank')}
-                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium transition-colors mb-3">
-                    <Printer className="w-4 h-4" />
-                    Print Barcode Labels ({createdGRN.serialCount} labels)
-                  </button>
-                  <button onClick={() => setStep('scan')}
-                    className="w-full py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-medium transition-colors mb-3">
-                    Continue to Scan &amp; Verify
-                  </button>
-                </>
-              )}
-              <button onClick={onCreated}
-                className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors">
-                {createdGRN.serialCount > 0 ? 'Skip Scanning — Done' : 'Done'}
-              </button>
-            </div>
-          </div>
+          <PrintStep
+            createdGRN={createdGRN}
+            onContinue={() => setStep('scan')}
+            onDone={onCreated}
+          />
         )}
 
         {/* Step 3 — Scan & Verify */}
@@ -588,6 +532,147 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
       </div>
 
     </>
+  );
+}
+
+/* ─── Step 2: Print Labels ──────────────────────────────────── */
+function PrintStep({
+  createdGRN,
+  onContinue,
+  onDone,
+}: {
+  createdGRN: CreatedGRNInfo;
+  onContinue: () => void;
+  onDone: () => void;
+}) {
+  const [serials, setSerials] = useState<MaterialSerial[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/procurement/material-serials?grnId=${createdGRN.id}`)
+      .then(r => r.json())
+      .then(data => { setSerials(Array.isArray(data) ? data : []); setLoading(false); });
+  }, [createdGRN.id]);
+
+  const byMaterial = serials.reduce<Record<string, { name: string; code: string; unit: string; id: string; items: MaterialSerial[] }>>(
+    (acc, s) => {
+      const key = s.material.id;
+      if (!acc[key]) acc[key] = { id: s.material.id, name: s.material.name, code: s.material.code, unit: s.material.unit, items: [] };
+      acc[key].items.push(s);
+      return acc;
+    },
+    {}
+  );
+
+  function saveCSV() {
+    const rows = ['Barcode,Material,Code,Qty,GRN'];
+    serials.forEach(s => {
+      rows.push(`${s.barcode},"${s.material.name}",${s.material.code},${s.quantity},${createdGRN.grnNumber}`);
+    });
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${createdGRN.grnNumber}-serials.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="px-6 pt-6 pb-4 border-b border-zinc-800 shrink-0">
+        <h2 className="text-white font-semibold text-xl mb-3">Print Labels</h2>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center">
+              <Check className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="text-xs text-zinc-400">Confirm Qty</span>
+          </div>
+          <div className="flex-1 h-px bg-emerald-800" />
+          <div className="flex items-center gap-1.5">
+            <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-bold">2</div>
+            <span className="text-xs text-white font-medium">Print Labels</span>
+          </div>
+          <div className="flex-1 h-px bg-zinc-700" />
+          <div className="flex items-center gap-1.5">
+            <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-zinc-400 text-xs font-bold">3</div>
+            <span className="text-xs text-zinc-500">Scan &amp; Verify</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 mt-3">
+          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="text-emerald-400 font-mono text-sm font-medium">{createdGRN.grnNumber}</span>
+          <span className="text-zinc-600 text-xs">·</span>
+          <span className="text-zinc-400 text-xs">{createdGRN.serialCount} labels generated</span>
+        </div>
+      </div>
+
+      {/* Body — scrollable */}
+      <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="max-w-2xl mx-auto space-y-3">
+          {loading ? (
+            <p className="text-zinc-400 text-sm py-6 text-center">Loading serials...</p>
+          ) : (
+            Object.values(byMaterial).map(group => (
+              <div key={group.id} className="rounded-xl border border-zinc-800 overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                {/* Component header row */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/60">
+                  <div className="min-w-0">
+                    <p className="text-white font-medium text-sm">{group.name}</p>
+                    <p className="text-zinc-500 text-xs mt-0.5">{group.code} · {group.items.length} labels</p>
+                  </div>
+                  <button
+                    onClick={() => window.open(`/print/grn-serials/${createdGRN.id}?material=${group.id}`, '_blank')}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-600 text-white text-xs font-medium transition-colors">
+                    <Printer className="w-3.5 h-3.5" />
+                    Print
+                  </button>
+                </div>
+                {/* Serial numbers list */}
+                <div className="px-4 py-2 max-h-28 overflow-y-auto">
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.items.map(s => (
+                      <span key={s.id} className="font-mono text-[10px] text-zinc-300 bg-zinc-800 px-1.5 py-0.5 rounded">
+                        {s.barcode}{s.quantity > 1 ? ` ×${s.quantity}` : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="px-6 py-4 border-t border-zinc-800 shrink-0">
+        <div className="max-w-2xl mx-auto space-y-2">
+          <div className="flex gap-2">
+            <button onClick={saveCSV}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium transition-colors">
+              Save Serial Numbers
+            </button>
+            <button onClick={() => window.open(`/print/grn-serials/${createdGRN.id}`, '_blank')}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium transition-colors">
+              <Printer className="w-4 h-4" />
+              Reprint All
+            </button>
+          </div>
+          {createdGRN.serialCount > 0 && (
+            <button onClick={onContinue}
+              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors">
+              Continue to Scan &amp; Verify
+            </button>
+          )}
+          <button onClick={onDone}
+            className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-400 text-sm hover:bg-zinc-700 transition-colors">
+            {createdGRN.serialCount > 0 ? 'Skip Scanning — Done' : 'Done'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
