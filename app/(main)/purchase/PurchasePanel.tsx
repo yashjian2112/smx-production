@@ -2542,7 +2542,7 @@ function IGGanTab({ isPM }: { isPM: boolean }) {
   const [courier, setCourier] = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [saving, setSaving] = useState(false);
-
+  const [igFilter, setIgFilter] = useState<'Pending' | 'Processing' | 'Completed'>('Pending');
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -2583,8 +2583,6 @@ function IGGanTab({ isPM }: { isPM: boolean }) {
   const pending = igList.filter(ig => ig.status === 'REQUESTED');
   const processing = igList.filter(ig => ig.status !== 'REQUESTED' && !COMPLETED_STATUSES.includes(ig.status));
   const completed = igList.filter(ig => COMPLETED_STATUSES.includes(ig.status));
-
-  const [igFilter, setIgFilter] = useState<'Pending' | 'Processing' | 'Completed'>('Pending');
 
   if (loading) return <div className="text-center text-zinc-500 py-12">Loading...</div>;
 
