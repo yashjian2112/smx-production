@@ -76,10 +76,10 @@ type PaymentRequestRow = {
 };
 
 // Tabs are role-driven — PM sees procurement flow, IM sees approval queue
-const PM_TABS   = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments', 'IG / GAN'] as const;
+const PM_TABS   = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'IG / GAN'] as const;
 const IM_TABS   = ['Req. Orders', 'Purchase Orders'] as const;
-const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments', 'IG / GAN'] as const;
-type Tab = 'Req. Orders' | 'RFQ' | 'Samples' | 'Purchase Orders' | 'Vendors' | 'Payments' | 'IG / GAN';
+const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'IG / GAN'] as const;
+type Tab = 'Req. Orders' | 'RFQ' | 'Samples' | 'Purchase Orders' | 'Vendors' | 'IG / GAN';
 
 const STATUS_COLOR: Record<string, string> = {
   PENDING: 'bg-amber-900/40 text-amber-300 border border-amber-700/50',
@@ -136,7 +136,7 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
       {tab === 'Samples'        && <SamplesTab isPM={isPM} isAdmin={isAdmin} />}
       {tab === 'Purchase Orders' && <POTab isPM={isPM} isIM={isIM} />}
       {tab === 'Vendors'        && <VendorsTab isAdmin={isAdmin} isPM={isPM} />}
-      {tab === 'Payments'       && <PaymentsTab isPM={isPM} />}
+
       {tab === 'IG / GAN'       && <IGGanTab isPM={isPM} />}
     </div>
   );
