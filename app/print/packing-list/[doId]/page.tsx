@@ -9,6 +9,7 @@ export default async function PrintPackingListPage({ params }: { params: { doId:
       order: {
         include: {
           product: { select: { code: true, name: true } },
+          proformaInvoice: { select: { shippingRoute: true } },
         },
       },
       boxes: {

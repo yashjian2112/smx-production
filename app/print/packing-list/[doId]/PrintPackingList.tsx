@@ -32,8 +32,8 @@ type DispatchOrderData = {
   order: {
     orderNumber: string;
     quantity: number;
-    client: { customerName: string; shippingAddress: string | null; state: string | null } | null;
     product: { code: string; name: string };
+    proformaInvoice?: { shippingRoute: string | null } | null;
   };
   boxes: Box[];
   createdBy: { name: string };
@@ -55,10 +55,10 @@ export function PrintPackingList({
   const s = (k: string) => settings[k] ?? '';
   const coName = s('company_name') || 'SMX Drives';
   const order = dispatchOrder.order;
-  const client = order.client;
   const boxes = dispatchOrder.boxes;
   const totalUnits = boxes.reduce((sum, b) => sum + b.items.length, 0);
   const totalWeight = boxes.reduce((sum, b) => sum + (b.weightKg ?? 0), 0);
+  const shippingRoute = order.proformaInvoice?.shippingRoute;
 
   useEffect(() => {
     const t = setTimeout(() => window.print(), 600);
@@ -75,7 +75,6 @@ export function PrintPackingList({
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; background: #fff; }
-        h1, h2, h3 { font-weight: 700; }
         table { width: 100%; border-collapse: collapse; }
         th, td { border: 1px solid #c8d8f0; padding: 5px 8px; text-align: left; }
         th { background: #1a3a6b; color: #fff; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -110,48 +109,50 @@ export function PrintPackingList({
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#1a3a6b' }}>PACKING LIST</div>
-            <div style={{ fontSize: 10, marginTop: 4 }}>DO: <strong>{dispatchOrder.doNumber}</strong></div>
-            <div style={{ fontSize: 10 }}>Order: <strong>#{order.orderNumber}</strong></div>
             <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>Date: {fmtDate(dispatchOrder.createdAt)}</div>
           </div>
         </div>
 
-        {/* Customer + Product info */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+        {/* ── DISPATCH BY AIR/LAND BANNER ── */}
+        {shippingRoute && (
+          <div style={{
+            textAlign: 'center',
+            fontSize: 18,
+            fontWeight: 900,
+            textTransform: 'uppercase',
+            letterSpacing: 4,
+            padding: '8px 10px',
+            marginBottom: 12,
+            border: '2px solid #000',
+            color: '#000',
+          }}>
+            DISPATCH BY {shippingRoute}
+          </div>
+        )}
+
+        {/* ── DO + Order + Product info ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
           <div style={{ border: '1px solid #c8d8f0', borderRadius: 4, padding: '8px 10px' }}>
-            <div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: '#1a3a6b', marginBottom: 4 }}>Bill To / Ship To</div>
-            {client ? (
-              <>
-                <div style={{ fontSize: 11, fontWeight: 700 }}>{client.customerName}</div>
-                {client.shippingAddress && <div style={{ fontSize: 9, color: '#444', marginTop: 2, lineHeight: 1.4 }}>{client.shippingAddress}</div>}
-                {client.state && <div style={{ fontSize: 9, color: '#444' }}>{client.state}</div>}
-              </>
-            ) : (
-              <div style={{ fontSize: 9, color: '#aaa' }}>—</div>
-            )}
+            <div style={{ fontSize: 7, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: '#1a3a6b', marginBottom: 3 }}>DO Number</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: '#1a3a6b' }}>{dispatchOrder.doNumber}</div>
           </div>
           <div style={{ border: '1px solid #c8d8f0', borderRadius: 4, padding: '8px 10px' }}>
-            <div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: '#1a3a6b', marginBottom: 4 }}>Product Details</div>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>{order.product.code}</div>
+            <div style={{ fontSize: 7, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: '#1a3a6b', marginBottom: 3 }}>Order Number</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: '#1a3a6b' }}>{order.orderNumber}</div>
+          </div>
+          <div style={{ border: '1px solid #c8d8f0', borderRadius: 4, padding: '8px 10px' }}>
+            <div style={{ fontSize: 7, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: '#1a3a6b', marginBottom: 3 }}>Product</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: '#1a3a6b' }}>{order.product.code}</div>
             <div style={{ fontSize: 9, color: '#444', marginTop: 1 }}>{order.product.name}</div>
-            <div style={{ marginTop: 6, display: 'flex', gap: 16 }}>
-              <div>
-                <div style={{ fontSize: 7, textTransform: 'uppercase', color: '#888', letterSpacing: 0.5 }}>Order Qty</div>
-                <div style={{ fontSize: 11, fontWeight: 700 }}>{order.quantity} units</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 7, textTransform: 'uppercase', color: '#888', letterSpacing: 0.5 }}>Dispatched</div>
-                <div style={{ fontSize: 11, fontWeight: 700 }}>{totalUnits} units</div>
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* Summary row */}
+        {/* ── Summary row: Qty, Dispatched, Boxes, Weight ── */}
         <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
           {[
+            { label: 'Order Qty', value: `${order.quantity}` },
+            { label: 'Dispatched', value: `${totalUnits}` },
             { label: 'Total Boxes', value: String(boxes.length) },
-            { label: 'Total Units', value: String(totalUnits) },
             { label: 'Total Weight', value: totalWeight > 0 ? `${totalWeight.toFixed(1)} kg` : '—' },
           ].map(({ label, value }) => (
             <div
