@@ -938,53 +938,33 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
                                      <span className="px-1.5 py-0.5 rounded bg-red-900/50 text-red-400">Rejected</span>}
                                   </td>
                                   <td className="py-2 text-right">
-                                    {isPM && rfq.status === 'OPEN' && (() => {
+                                    {isPM && rfq.status === 'OPEN' && isLowest && (() => {
                                       if (q.status !== 'SUBMITTED') return null;
-                                      /* ── Standard flow: lowest price + sample ── */
-                                      if (isLowest && hasEnoughQuotes) {
-                                        if (q.sampleStatus === 'NONE' || q.sampleStatus === 'REJECTED') {
-                                          return (
-                                            <div className="flex gap-1 justify-end flex-wrap">
-                                              <button onClick={() => { setSampleNoteFor({ rfqId: rfq.id, quoteId: q.id }); setSampleNoteText(''); }}
-                                                className="px-2 py-1 rounded text-xs bg-sky-700 hover:bg-sky-600 text-white">
-                                                Request Sample
-                                              </button>
-                                              <button onClick={() => openCreatePO(rfq.id, q)}
-                                                className="px-2 py-1 rounded text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-medium">
-                                                Manual PO
-                                              </button>
-                                            </div>
-                                          );
-                                        }
-                                        if (q.sampleStatus === 'REQUESTED') {
-                                          return (
-                                            <div className="flex gap-1 justify-end">
-                                              <button onClick={() => sampleAction(rfq.id, q.id, 'approve')}
-                                                className="px-2 py-1 rounded text-xs bg-emerald-700 hover:bg-emerald-600 text-white"><Check className="w-3.5 h-3.5" /></button>
-                                              <button onClick={() => sampleAction(rfq.id, q.id, 'reject')}
-                                                className="px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white"><X className="w-3.5 h-3.5" /></button>
-                                            </div>
-                                          );
-                                        }
-                                        if (q.sampleStatus === 'APPROVED') {
-                                          return (
-                                            <button onClick={() => openCreatePO(rfq.id, q)}
-                                              className="px-2 py-1 rounded text-xs bg-green-700 hover:bg-green-600 text-white font-medium">
-                                              Create PO
-                                            </button>
-                                          );
-                                        }
-                                      }
-                                      if (isLowest && !hasEnoughQuotes) {
+                                      if (!hasEnoughQuotes) {
                                         return <span className="text-zinc-600 text-xs">{rfq.quotes.length}/5 needed</span>;
                                       }
-                                      /* ── Manual PO: any quote, skip sample ── */
-                                      return (
-                                        <button onClick={() => openCreatePO(rfq.id, q)}
-                                          className="px-2 py-1 rounded text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-medium">
-                                          Manual PO
-                                        </button>
-                                      );
+                                      if (q.sampleStatus === 'NONE' || q.sampleStatus === 'REJECTED') {
+                                        return (
+                                          <button onClick={() => { setSampleNoteFor({ rfqId: rfq.id, quoteId: q.id }); setSampleNoteText(''); }}
+                                            className="px-2 py-1 rounded text-xs bg-sky-700 hover:bg-sky-600 text-white">
+                                            Request Sample
+                                          </button>
+                                        );
+                                      }
+                                      if (q.sampleStatus === 'REQUESTED') {
+                                        return (
+                                          <div className="flex gap-1 justify-end">
+                                            <button onClick={() => sampleAction(rfq.id, q.id, 'approve')}
+                                              className="px-2 py-1 rounded text-xs bg-emerald-700 hover:bg-emerald-600 text-white"><Check className="w-3.5 h-3.5" /></button>
+                                            <button onClick={() => sampleAction(rfq.id, q.id, 'reject')}
+                                              className="px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white"><X className="w-3.5 h-3.5" /></button>
+                                          </div>
+                                        );
+                                      }
+                                      if (q.sampleStatus === 'APPROVED') {
+                                        return <span className="text-xs text-emerald-400">Auto-PO created</span>;
+                                      }
+                                      return null;
                                     })()}
                                   </td>
                                 </tr>
@@ -1379,6 +1359,9 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
   const [creatingGRN, setCreatingGRN] = useState<{ po: PO; gan: GAN } | null>(null);
   const [creatingPR, setCreatingPR] = useState<PO | null>(null);
   const [uploadingInvoiceFor, setUploadingInvoiceFor] = useState<PO | null>(null);
+  const [showManualPO, setShowManualPO] = useState(false);
+  const [poFilter, setPoFilter] = useState<'Pending' | 'Processing' | 'Completed'>('Pending');
+  const [approvingPO, setApprovingPO] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1389,15 +1372,59 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const pendingPOs = pos.filter(p => p.status === 'DRAFT');
+  const processingPOs = pos.filter(p => ['APPROVED', 'SENT', 'CONFIRMED', 'GOODS_ARRIVED', 'PARTIALLY_RECEIVED'].includes(p.status));
+  const completedPOs = pos.filter(p => ['RECEIVED', 'CANCELLED'].includes(p.status));
+  const filteredPOs = poFilter === 'Pending' ? pendingPOs : poFilter === 'Processing' ? processingPOs : completedPOs;
+
+  async function generatePO(poId: string) {
+    setApprovingPO(poId);
+    const r = await fetch(`/api/procurement/purchase-orders/${poId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'approve' }),
+    });
+    setApprovingPO(null);
+    if (r.ok) load();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
   return (
     <div>
+      {/* Header with sub-tabs + Manual PO button */}
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+        <div className="flex gap-2">
+          {([
+            { key: 'Pending' as const, count: pendingPOs.length, color: 'amber' },
+            { key: 'Processing' as const, count: processingPOs.length, color: 'blue' },
+            { key: 'Completed' as const, count: completedPOs.length, color: 'green' },
+          ]).map(f => (
+            <button key={f.key} onClick={() => setPoFilter(f.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${poFilter === f.key
+                ? f.color === 'amber' ? 'bg-amber-700 text-white' : f.color === 'blue' ? 'bg-blue-700 text-white' : 'bg-green-700 text-white'
+                : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+              {f.key}
+              <span className={`text-xs ${poFilter === f.key ? 'text-white/70' : 'text-zinc-600'}`}>{f.count}</span>
+            </button>
+          ))}
+        </div>
+        {isPM && (
+          <button onClick={() => setShowManualPO(true)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white">
+            + Manual PO
+          </button>
+        )}
+      </div>
+
+      {showManualPO && <ManualPOModal onClose={() => setShowManualPO(false)} onCreated={() => { setShowManualPO(false); load(); }} />}
+
       {loading ? (
         <div className="text-center text-zinc-500 py-12">Loading...</div>
-      ) : pos.length === 0 ? (
-        <div className="text-center text-zinc-500 py-12">No purchase orders yet. Create POs from RFQ quotes.</div>
+      ) : filteredPOs.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">No {poFilter.toLowerCase()} purchase orders</div>
       ) : (
         <div className="space-y-3">
-          {pos.map(po => (
+          {filteredPOs.map(po => (
             <div key={po.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
@@ -1422,6 +1449,12 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
                     className="text-xs text-blue-400 hover:text-blue-300">
                     {expanded === po.id ? 'Hide' : 'Details'}
                   </button>
+                  {isPM && po.status === 'DRAFT' && (
+                    <button onClick={() => generatePO(po.id)} disabled={approvingPO === po.id}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-700 hover:bg-green-600 text-white disabled:opacity-50">
+                      {approvingPO === po.id ? 'Generating...' : 'Generate PO'}
+                    </button>
+                  )}
                   {isPM && ['APPROVED', 'SENT', 'CONFIRMED'].includes(po.status) && (
                     <button onClick={() => setCreatingGAN(po)}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-700 hover:bg-orange-600 text-white">
@@ -1513,6 +1546,161 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
       {creatingGRN && <GRNModal po={creatingGRN.po} gan={creatingGRN.gan} onClose={() => setCreatingGRN(null)} onCreated={() => { setCreatingGRN(null); load(); }} />}
       {creatingPR && <CreatePaymentRequestModal po={creatingPR} onClose={() => setCreatingPR(null)} onCreated={() => { setCreatingPR(null); load(); }} />}
       {uploadingInvoiceFor && <UploadVendorInvoiceModal po={uploadingInvoiceFor} onClose={() => setUploadingInvoiceFor(null)} onCreated={() => { setUploadingInvoiceFor(null); load(); }} />}
+    </div>
+  );
+}
+
+/* ─── Manual PO Modal ──────────────────────────────────── */
+function ManualPOModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [vendorId, setVendorId] = useState('');
+  const [items, setItems] = useState<Array<{ rawMaterialId?: string; itemDescription: string; itemUnit: string; quantity: number; unitPrice: number }>>([
+    { itemDescription: '', itemUnit: 'PCS', quantity: 1, unitPrice: 0 },
+  ]);
+  const [materials, setMaterials] = useState<Array<{ id: string; name: string; code: string; unit: string }>>([]);
+  const [expectedDelivery, setExpectedDelivery] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/purchase/vendors').then(r => r.json()).then(v => setVendors(Array.isArray(v) ? v.filter((x: Vendor) => x.active) : []));
+    fetch('/api/inventory/materials?limit=500').then(r => r.json()).then(m => setMaterials(Array.isArray(m) ? m : []));
+  }, []);
+
+  function addItem() {
+    setItems(prev => [...prev, { itemDescription: '', itemUnit: 'PCS', quantity: 1, unitPrice: 0 }]);
+  }
+
+  function removeItem(idx: number) {
+    setItems(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function updateItem(idx: number, field: string, value: string | number) {
+    setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
+  }
+
+  function selectMaterial(idx: number, matId: string) {
+    const mat = materials.find(m => m.id === matId);
+    if (mat) {
+      setItems(prev => prev.map((item, i) => i === idx ? { ...item, rawMaterialId: matId, itemDescription: mat.name, itemUnit: mat.unit } : item));
+    }
+  }
+
+  const total = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+
+  async function submit() {
+    if (!vendorId) return alert('Select a vendor');
+    if (items.some(i => !i.itemDescription.trim())) return alert('All items need a description');
+    if (items.some(i => i.quantity <= 0 || i.unitPrice <= 0)) return alert('Quantity and price must be > 0');
+    setSaving(true);
+    const r = await fetch('/api/procurement/purchase-orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vendorId, items, expectedDelivery: expectedDelivery || undefined, notes: notes || undefined }),
+    });
+    setSaving(false);
+    if (r.ok) onCreated();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-zinc-950 z-[60] flex flex-col">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
+        <div>
+          <h2 className="text-white font-semibold text-lg">Manual Purchase Order</h2>
+          <p className="text-xs text-zinc-500 mt-0.5">Create PO directly without RFQ or bidding</p>
+        </div>
+        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X className="w-5 h-5" /></button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="max-w-2xl mx-auto space-y-4">
+          {/* Vendor */}
+          <div>
+            <label className="text-zinc-400 text-sm">Vendor *</label>
+            <select value={vendorId} onChange={e => setVendorId(e.target.value)}
+              className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+              <option value="">Select vendor</option>
+              {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({v.code})</option>)}
+            </select>
+          </div>
+
+          {/* Items */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-zinc-400 text-sm">Items *</label>
+              <button onClick={addItem} className="text-xs text-blue-400 hover:text-blue-300">+ Add Item</button>
+            </div>
+            <div className="space-y-3">
+              {items.map((item, idx) => (
+                <div key={idx} className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">Item {idx + 1}</span>
+                    {items.length > 1 && (
+                      <button onClick={() => removeItem(idx)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
+                    )}
+                  </div>
+                  {/* Material selector or custom */}
+                  <select onChange={e => e.target.value ? selectMaterial(idx, e.target.value) : null}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="">Select from inventory (or type custom below)</option>
+                    {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.code})</option>)}
+                  </select>
+                  <input value={item.itemDescription} onChange={e => updateItem(idx, 'itemDescription', e.target.value)}
+                    placeholder="Item description"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-xs text-zinc-500">Qty</label>
+                      <input type="number" min={1} value={item.quantity} onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
+                        onWheel={e => e.currentTarget.blur()}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-zinc-500">Unit</label>
+                      <input value={item.itemUnit} onChange={e => updateItem(idx, 'itemUnit', e.target.value)}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-zinc-500">Unit Price (₹)</label>
+                      <input type="number" min={0} step={0.01} value={item.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))}
+                        onWheel={e => e.currentTarget.blur()}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {total > 0 && (
+              <div className="text-right text-sm text-zinc-300 mt-2">Total: ₹{total.toLocaleString('en-IN')}</div>
+            )}
+          </div>
+
+          {/* Delivery date */}
+          <div>
+            <label className="text-zinc-400 text-sm">Expected Delivery</label>
+            <input type="date" value={expectedDelivery} onChange={e => setExpectedDelivery(e.target.value)}
+              className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="text-zinc-400 text-sm">Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+              className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 py-4 border-t border-zinc-800 flex-shrink-0">
+        <div className="max-w-2xl mx-auto flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+          <button onClick={submit} disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
+            {saving ? 'Creating...' : 'Create Manual PO'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2166,15 +2354,38 @@ function PaymentsTab({ isPM }: { isPM: boolean }) {
     else { const e = await r.json(); alert(e.error); }
   }
 
+  const [payFilter, setPayFilter] = useState<'Pending' | 'Processing' | 'Completed'>('Pending');
+  const pendingPay = requests.filter(r => ['SUBMITTED', 'UNDER_REVIEW'].includes(r.status));
+  const processingPay = requests.filter(r => ['PENDING_APPROVAL', 'APPROVED', 'PROCESSING'].includes(r.status));
+  const completedPay = requests.filter(r => ['PAID', 'REJECTED'].includes(r.status));
+  const filteredPay = payFilter === 'Pending' ? pendingPay : payFilter === 'Processing' ? processingPay : completedPay;
+
   if (loading) return <div className="text-center text-zinc-500 py-12">Loading...</div>;
 
   return (
     <div>
-      {requests.length === 0 ? (
-        <div className="text-center text-zinc-500 py-12">No payment requests yet</div>
+      {/* Sub-tabs */}
+      <div className="flex gap-2 mb-4">
+        {([
+          { key: 'Pending' as const, count: pendingPay.length, color: 'amber' },
+          { key: 'Processing' as const, count: processingPay.length, color: 'blue' },
+          { key: 'Completed' as const, count: completedPay.length, color: 'green' },
+        ]).map(f => (
+          <button key={f.key} onClick={() => setPayFilter(f.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${payFilter === f.key
+              ? f.color === 'amber' ? 'bg-amber-700 text-white' : f.color === 'blue' ? 'bg-blue-700 text-white' : 'bg-green-700 text-white'
+              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+            {f.key}
+            <span className={`text-xs ${payFilter === f.key ? 'text-white/70' : 'text-zinc-600'}`}>{f.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {filteredPay.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">No {payFilter.toLowerCase()} payment requests</div>
       ) : (
         <div className="space-y-3">
-          {requests.map(pr => (
+          {filteredPay.map(pr => (
             <div key={pr.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>

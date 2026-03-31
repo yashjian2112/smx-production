@@ -46,3 +46,40 @@ export async function GET(
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
+
+// POST /api/procurement/purchase-orders/[id] — approve DRAFT PO (Generate PO)
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const session = await requireSession();
+  if (!['ADMIN', 'PURCHASE_MANAGER'].includes(session.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const { action, expectedDelivery, notes } = body as { action?: string; expectedDelivery?: string; notes?: string };
+
+  if (action !== 'approve') {
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+  }
+
+  const po = await prisma.purchaseOrder.findUnique({ where: { id: params.id } });
+  if (!po) return NextResponse.json({ error: 'PO not found' }, { status: 404 });
+  if (po.status !== 'DRAFT') {
+    return NextResponse.json({ error: 'Only DRAFT POs can be approved' }, { status: 400 });
+  }
+
+  const updated = await prisma.purchaseOrder.update({
+    where: { id: params.id },
+    data: {
+      status: 'APPROVED',
+      approvedById: session.id,
+      approvedAt: new Date(),
+      ...(expectedDelivery ? { expectedDelivery: new Date(expectedDelivery) } : {}),
+      ...(notes ? { notes } : {}),
+    },
+  });
+
+  return NextResponse.json(updated);
+}
