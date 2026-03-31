@@ -938,43 +938,53 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
                                      <span className="px-1.5 py-0.5 rounded bg-red-900/50 text-red-400">Rejected</span>}
                                   </td>
                                   <td className="py-2 text-right">
-                                    {isPM && rfq.status === 'OPEN' && isLowest && (() => {
-                                      if (!hasEnoughQuotes) {
+                                    {isPM && rfq.status === 'OPEN' && (() => {
+                                      if (q.status !== 'SUBMITTED') return null;
+                                      /* ── Standard flow: lowest price + sample ── */
+                                      if (isLowest && hasEnoughQuotes) {
+                                        if (q.sampleStatus === 'NONE' || q.sampleStatus === 'REJECTED') {
+                                          return (
+                                            <div className="flex gap-1 justify-end flex-wrap">
+                                              <button onClick={() => { setSampleNoteFor({ rfqId: rfq.id, quoteId: q.id }); setSampleNoteText(''); }}
+                                                className="px-2 py-1 rounded text-xs bg-sky-700 hover:bg-sky-600 text-white">
+                                                Request Sample
+                                              </button>
+                                              <button onClick={() => openCreatePO(rfq.id, q)}
+                                                className="px-2 py-1 rounded text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-medium">
+                                                Manual PO
+                                              </button>
+                                            </div>
+                                          );
+                                        }
+                                        if (q.sampleStatus === 'REQUESTED') {
+                                          return (
+                                            <div className="flex gap-1 justify-end">
+                                              <button onClick={() => sampleAction(rfq.id, q.id, 'approve')}
+                                                className="px-2 py-1 rounded text-xs bg-emerald-700 hover:bg-emerald-600 text-white"><Check className="w-3.5 h-3.5" /></button>
+                                              <button onClick={() => sampleAction(rfq.id, q.id, 'reject')}
+                                                className="px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white"><X className="w-3.5 h-3.5" /></button>
+                                            </div>
+                                          );
+                                        }
+                                        if (q.sampleStatus === 'APPROVED') {
+                                          return (
+                                            <button onClick={() => openCreatePO(rfq.id, q)}
+                                              className="px-2 py-1 rounded text-xs bg-green-700 hover:bg-green-600 text-white font-medium">
+                                              Create PO
+                                            </button>
+                                          );
+                                        }
+                                      }
+                                      if (isLowest && !hasEnoughQuotes) {
                                         return <span className="text-zinc-600 text-xs">{rfq.quotes.length}/5 needed</span>;
                                       }
-                                      if (q.sampleStatus === 'NONE' || q.sampleStatus === 'REJECTED') {
-                                        return (
-                                          <button onClick={() => { setSampleNoteFor({ rfqId: rfq.id, quoteId: q.id }); setSampleNoteText(''); }}
-                                            className="px-2 py-1 rounded text-xs bg-sky-700 hover:bg-sky-600 text-white">
-                                            Request Sample
-                                          </button>
-                                        );
-                                      }
-                                      if (q.sampleStatus === 'REQUESTED') {
-                                        const requestedAt = q.sampleRequestedAt ? new Date(q.sampleRequestedAt) : null;
-                                        const hoursElapsed = requestedAt ? (Date.now() - requestedAt.getTime()) / 3_600_000 : 0;
-                                        const canApprove = true;
-                                        const hoursLeft = Math.ceil(24 - hoursElapsed);
-                                        return canApprove ? (
-                                          <div className="flex gap-1">
-                                            <button onClick={() => sampleAction(rfq.id, q.id, 'approve')}
-                                              className="px-2 py-1 rounded text-xs bg-emerald-700 hover:bg-emerald-600 text-white"><Check className="w-4 h-4" /></button>
-                                            <button onClick={() => sampleAction(rfq.id, q.id, 'reject')}
-                                              className="px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white"><X className="w-4 h-4" /></button>
-                                          </div>
-                                        ) : (
-                                          <span className="text-zinc-500 text-xs">{hoursLeft}h left</span>
-                                        );
-                                      }
-                                      if (q.sampleStatus === 'APPROVED') {
-                                        return (
-                                          <button onClick={() => openCreatePO(rfq.id, q)}
-                                            className="px-2 py-1 rounded text-xs bg-green-700 hover:bg-green-600 text-white font-medium">
-                                            Create PO
-                                          </button>
-                                        );
-                                      }
-                                      return null;
+                                      /* ── Manual PO: any quote, skip sample ── */
+                                      return (
+                                        <button onClick={() => openCreatePO(rfq.id, q)}
+                                          className="px-2 py-1 rounded text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-medium">
+                                          Manual PO
+                                        </button>
+                                      );
                                     })()}
                                   </td>
                                 </tr>
