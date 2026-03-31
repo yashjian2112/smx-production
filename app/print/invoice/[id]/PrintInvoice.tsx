@@ -275,13 +275,6 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         >
           Print / Save PDF
         </button>
-        <button
-          onClick={() => window.close()}
-          style={{ background: '#3f3f46', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}
-        >
-          Close
-        </button>
-        <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>Use Chrome → Print → Save as PDF for best results</span>
       </div>
 
       <div className="page-wrap">
