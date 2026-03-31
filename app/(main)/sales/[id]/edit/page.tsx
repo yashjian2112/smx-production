@@ -3,7 +3,10 @@ import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { EditProformaForm } from './EditProformaForm';
 
-export default async function EditProformaPage({ params }: { params: { id: string } }) {
+export const dynamic = 'force-dynamic';
+
+export default async function EditProformaPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getSession();
   if (!session) redirect('/login');
 
@@ -11,7 +14,7 @@ export default async function EditProformaPage({ params }: { params: { id: strin
   if (!canEdit) redirect('/sales');
 
   const proforma = await prisma.proformaInvoice.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       items: {
         orderBy: { sortOrder: 'asc' },
@@ -23,10 +26,10 @@ export default async function EditProformaPage({ params }: { params: { id: strin
   if (!proforma) redirect('/sales');
 
   // Only DRAFT can be edited by SALES
-  if (session.role === 'SALES' && proforma.status !== 'DRAFT') redirect(`/sales/${params.id}`);
+  if (session.role === 'SALES' && proforma.status !== 'DRAFT') redirect(`/sales/${id}`);
 
   // SALES can only edit their own invoices
-  if (session.role === 'SALES' && proforma.createdById !== session.id) redirect(`/sales/${params.id}`);
+  if (session.role === 'SALES' && proforma.createdById !== session.id) redirect(`/sales/${id}`);
 
   const [clients, products] = await Promise.all([
     prisma.client.findMany({ where: { active: true }, orderBy: { customerName: 'asc' } }),

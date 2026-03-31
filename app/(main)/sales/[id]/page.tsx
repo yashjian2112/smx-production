@@ -3,7 +3,10 @@ import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ProformaDetail } from './ProformaDetail';
 
-export default async function ProformaDetailPage({ params }: { params: { id: string } }) {
+export const dynamic = 'force-dynamic';
+
+export default async function ProformaDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getSession();
   if (!session) redirect('/login');
 
@@ -11,7 +14,7 @@ export default async function ProformaDetailPage({ params }: { params: { id: str
   if (!canAccess) redirect('/dashboard');
 
   const proforma = await prisma.proformaInvoice.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       client:        true,
       createdBy:     { select: { id: true, name: true } },
