@@ -410,7 +410,6 @@ export default async function DashboardPage() {
 
         <div className="space-y-3">
           <QuickLink href="/purchase" label="Procurement" sub="Manage RFQs, POs and vendors" color="violet" />
-          <QuickLink href="/inventory" label="Inventory" sub="View stock levels and materials" color="emerald" />
         </div>
       </div>
     );

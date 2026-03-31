@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Check, Star, X } from 'lucide-react';
+import { Check, Star, X, ExternalLink, Copy } from 'lucide-react';
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 type ROItem = {
@@ -76,10 +76,10 @@ type PaymentRequestRow = {
 };
 
 // Tabs are role-driven — PM sees procurement flow, IM sees approval queue
-const PM_TABS   = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments', 'IG / GAN'] as const;
+const PM_TABS   = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'IG / GAN'] as const;
 const IM_TABS   = ['Req. Orders', 'Purchase Orders'] as const;
-const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'Payments', 'IG / GAN'] as const;
-type Tab = 'Req. Orders' | 'RFQ' | 'Samples' | 'Purchase Orders' | 'Vendors' | 'Payments' | 'IG / GAN';
+const ADMIN_TABS = ['Req. Orders', 'RFQ', 'Samples', 'Purchase Orders', 'Vendors', 'IG / GAN'] as const;
+type Tab = 'Req. Orders' | 'RFQ' | 'Samples' | 'Purchase Orders' | 'Vendors' | 'IG / GAN';
 
 const STATUS_COLOR: Record<string, string> = {
   PENDING: 'bg-amber-900/40 text-amber-300 border border-amber-700/50',
@@ -136,7 +136,7 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
       {tab === 'Samples'        && <SamplesTab isPM={isPM} isAdmin={isAdmin} />}
       {tab === 'Purchase Orders' && <POTab isPM={isPM} isIM={isIM} />}
       {tab === 'Vendors'        && <VendorsTab isAdmin={isAdmin} isPM={isPM} />}
-      {tab === 'Payments'       && <PaymentsTab isPM={isPM} />}
+
       {tab === 'IG / GAN'       && <IGGanTab isPM={isPM} />}
     </div>
   );
@@ -335,12 +335,114 @@ function CreateManualROModal({ onClose, onCreated }: { onClose: () => void; onCr
   );
 }
 
+function ROApproveModal({ ro, onClose, onApproved }: { ro: RO; onClose: () => void; onApproved: () => void }) {
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function handleApprove() {
+    setSaving(true);
+    const r = await fetch(`/api/procurement/requirement-orders/${ro.id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approvalNotes: notes.trim() || undefined }),
+    });
+    if (r.ok) { onApproved(); onClose(); }
+    else { const e = await r.json(); alert(e.error); }
+    setSaving(false);
+  }
+
+  const shortageItems = ro.items.filter(i => i.material && i.material.currentStock < i.qtyRequired);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4 pb-20 pt-4" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Fixed header */}
+        <div className="p-5 border-b border-zinc-800 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-white font-semibold text-lg">Review & Approve</h3>
+              <p className="text-zinc-400 text-xs mt-0.5">{ro.roNumber} · {ro.items.length} item{ro.items.length !== 1 ? 's' : ''}</p>
+            </div>
+            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X className="w-5 h-5" /></button>
+          </div>
+          {ro.notes && <p className="text-xs text-zinc-500 mt-2 bg-zinc-800/50 rounded-lg px-3 py-2">{ro.notes}</p>}
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {/* Items review */}
+          <div className="p-5 space-y-2">
+            <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Items to Review</div>
+            {ro.items.map(item => {
+              const mat = item.material;
+              const isShort = mat && mat.currentStock < item.qtyRequired;
+              return (
+                <div key={item.id} className={`rounded-lg p-3 border ${isShort ? 'border-amber-700/50 bg-amber-950/20' : 'border-zinc-800 bg-zinc-800/30'}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-white font-medium truncate">
+                        {mat ? mat.name : item.itemDescription}
+                      </div>
+                      {mat && <div className="text-xs text-zinc-500 mt-0.5">{mat.code} · {mat.unit}</div>}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm font-semibold text-amber-300">{item.qtyRequired} {mat?.unit || item.itemUnit}</div>
+                      {mat && (
+                        <div className={`text-xs mt-0.5 ${isShort ? 'text-red-400 font-semibold' : 'text-zinc-500'}`}>
+                          Stock: {mat.currentStock}
+                          {isShort && ` (short ${Math.ceil(item.qtyRequired - mat.currentStock)})`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {item.notes && <div className="text-xs text-zinc-500 mt-1">{item.notes}</div>}
+                </div>
+              );
+            })}
+
+            {shortageItems.length > 0 && (
+              <div className="text-xs text-amber-400 bg-amber-950/30 border border-amber-800/40 rounded-lg px-3 py-2 mt-2">
+                {shortageItems.length} item{shortageItems.length !== 1 ? 's' : ''} below required stock level
+              </div>
+            )}
+          </div>
+
+          {/* Approval notes */}
+          <div className="px-5 pb-4">
+            <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Approval Notes</label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Review comments, special instructions, or approval remarks..."
+              rows={2}
+              className="mt-1.5 w-full rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 placeholder:text-zinc-600 focus:outline-none focus:border-blue-600"
+            />
+          </div>
+        </div>
+
+        {/* Fixed footer */}
+        <div className="p-4 border-t border-zinc-800 flex gap-3 justify-end flex-shrink-0">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700">
+            Cancel
+          </button>
+          <button onClick={handleApprove} disabled={saving}
+            className="px-5 py-2 rounded-lg text-sm font-semibold bg-green-700 hover:bg-green-600 text-white disabled:opacity-50">
+            {saving ? 'Approving...' : 'Approve & Send'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ROTab({ isIM, isPM, onCreateRFQFromRO }: { isIM: boolean; isPM: boolean; onCreateRFQFromRO?: (ro: RO) => void }) {
   const [ros, setROs] = useState<RO[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('ALL');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [approveRO, setApproveRO] = useState<RO | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -352,17 +454,12 @@ function ROTab({ isIM, isPM, onCreateRFQFromRO }: { isIM: boolean; isPM: boolean
 
   useEffect(() => { load(); }, [load]);
 
-  async function approve(id: string) {
-    const r = await fetch(`/api/procurement/requirement-orders/${id}/approve`, { method: 'POST' });
-    if (r.ok) load();
-    else { const e = await r.json(); alert(e.error); }
-  }
-
   const filters = ['ALL', 'PENDING', 'APPROVED', 'CONVERTED', 'CANCELLED'];
 
   return (
     <div>
       {showCreate && <CreateManualROModal onClose={() => setShowCreate(false)} onCreated={load} />}
+      {approveRO && <ROApproveModal ro={approveRO} onClose={() => setApproveRO(null)} onApproved={load} />}
 
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex gap-2 flex-wrap">
@@ -388,63 +485,68 @@ function ROTab({ isIM, isPM, onCreateRFQFromRO }: { isIM: boolean; isPM: boolean
       ) : (
         <div className="space-y-3">
           {ros.map(ro => (
-            <div key={ro.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-white font-semibold">{ro.roNumber}</span>
-                    {ro.status !== 'APPROVED' && <Badge label={ro.status} />}
-                    <Badge label={ro.trigger} />
-                    {ro.jobCard && <span className="text-xs text-zinc-500">Job: {ro.jobCard.cardNumber}</span>}
+            <div key={ro.id} className={`bg-zinc-900 border rounded-xl overflow-hidden transition-colors ${expanded === ro.id ? 'border-blue-700/50' : 'border-zinc-800'}`}>
+              {/* Clickable header — tap to expand/collapse */}
+              <div className="p-4 cursor-pointer active:bg-zinc-800/50" onClick={() => setExpanded(expanded === ro.id ? null : ro.id)}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-white font-semibold">{ro.roNumber}</span>
+                      {ro.status !== 'APPROVED' && <Badge label={ro.status} />}
+                      <Badge label={ro.trigger} />
+                      {ro.jobCard && <span className="text-xs text-zinc-500">Job: {ro.jobCard.cardNumber}</span>}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-1">
+                      {new Date(ro.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {ro.approvedBy && <> · Approved by {ro.approvedBy.name}</>}
+                    </div>
+                    {ro.notes && <div className="text-xs text-zinc-400 mt-1 line-clamp-1">{ro.notes}</div>}
                   </div>
-                  <div className="text-xs text-zinc-500 mt-1">
-                    {new Date(ro.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    {ro.approvedBy && <> · Approved by {ro.approvedBy.name}</>}
+                  <div className="text-xs text-zinc-500 flex-shrink-0 mt-0.5">
+                    {ro.items.length} item{ro.items.length !== 1 ? 's' : ''} {expanded === ro.id ? '▲' : '▼'}
                   </div>
-                  {ro.notes && <div className="text-xs text-zinc-400 mt-1">{ro.notes}</div>}
-                </div>
-                <div className="flex gap-2 items-center flex-wrap">
-                  <button onClick={() => setExpanded(expanded === ro.id ? null : ro.id)}
-                    className="text-xs text-blue-400 hover:text-blue-300">
-                    {expanded === ro.id ? 'Hide' : `${ro.items.length} item${ro.items.length !== 1 ? 's' : ''}`}
-                  </button>
-                  <a href={`/print/ro/${ro.id}`} target="_blank" rel="noopener noreferrer"
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-white">
-                    PDF
-                  </a>
-                  {isIM && ro.status === 'PENDING' && (
-                    <button onClick={() => approve(ro.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-700 hover:bg-green-600 text-white">
-                      Approve
-                    </button>
-                  )}
-                  {isPM && ro.status === 'APPROVED' && (
-                    <button onClick={() => onCreateRFQFromRO?.(ro)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 hover:bg-blue-600 text-white">
-                      Create RFQ →
-                    </button>
-                  )}
                 </div>
               </div>
 
+              {/* Expanded: items + actions */}
               {expanded === ro.id && (
-                <div className="mt-3 border-t border-zinc-800 pt-3 space-y-2">
-                  {ro.items.map(item => (
-                    <div key={item.id} className="flex items-center justify-between text-sm">
-                      <div>
-                        <span className="text-white">
-                          {item.material ? item.material.name : item.itemDescription}
-                        </span>
-                        {item.material && <span className="text-zinc-500 ml-2 text-xs">{item.material.code}</span>}
+                <div className="border-t border-zinc-800">
+                  <div className="p-4 pt-3 space-y-2">
+                    {ro.items.map(item => (
+                      <div key={item.id} className="flex items-center justify-between text-sm">
+                        <div>
+                          <span className="text-white">
+                            {item.material ? item.material.name : item.itemDescription}
+                          </span>
+                          {item.material && <span className="text-zinc-500 ml-2 text-xs">{item.material.code}</span>}
+                        </div>
+                        <div className="text-right text-xs">
+                          <span className="text-amber-300">
+                            {item.qtyRequired} {item.material ? item.material.unit : item.itemUnit} needed
+                          </span>
+                          {item.material && <span className="text-zinc-500 ml-2">Stock: {item.material.currentStock}</span>}
+                        </div>
                       </div>
-                      <div className="text-right text-xs">
-                        <span className="text-amber-300">
-                          {item.qtyRequired} {item.material ? item.material.unit : item.itemUnit} needed
-                        </span>
-                        {item.material && <span className="text-zinc-500 ml-2">Stock: {item.material.currentStock}</span>}
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  <div className="flex gap-2 items-center flex-wrap px-4 pb-3">
+                    <a href={`/print/ro/${ro.id}`} target="_blank" rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-white">
+                      PDF
+                    </a>
+                    {isIM && ro.status === 'PENDING' && (
+                      <button onClick={() => setApproveRO(ro)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-700 hover:bg-green-600 text-white">
+                        Review & Approve
+                      </button>
+                    )}
+                    {isPM && ro.status === 'APPROVED' && (
+                      <button onClick={() => onCreateRFQFromRO?.(ro)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 hover:bg-blue-600 text-white">
+                        Create RFQ →
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -520,7 +622,7 @@ function SamplesTab({ isPM, isAdmin }: { isPM: boolean; isAdmin: boolean }) {
           {filtered.map(row => {
             const requestedAt = row.sampleRequestedAt ? new Date(row.sampleRequestedAt) : null;
             const hoursElapsed = requestedAt ? (Date.now() - requestedAt.getTime()) / 3_600_000 : 0;
-            const canApprove = isAdmin || hoursElapsed >= 24;
+            const canApprove = true;
             const hoursLeft = Math.ceil(24 - hoursElapsed);
             const sym = row.currency === 'USD' ? '$' : '₹';
             const materials = row.rfq.items.map(i => i.material?.name ?? i.itemDescription ?? '—').join(', ');
@@ -554,7 +656,7 @@ function SamplesTab({ isPM, isAdmin }: { isPM: boolean; isAdmin: boolean }) {
                     {requestedAt && (
                       <div className="text-xs text-zinc-600 mt-0.5">
                         Requested {requestedAt.toLocaleDateString('en-IN')} {requestedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                        {row.sampleStatus === 'REQUESTED' && !canApprove && <span className="ml-1 text-amber-500">· {hoursLeft}h until review</span>}
+                        {}
                       </div>
                     )}
                   </div>
@@ -670,6 +772,14 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
   const [sampleNoteFor, setSampleNoteFor] = useState<{ rfqId: string; quoteId: string } | null>(null);
   const [sampleNoteText, setSampleNoteText] = useState('');
 
+  const [rfqFilter, setRfqFilter] = useState<'Pending' | 'Processing' | 'Completed'>('Pending');
+
+  const pendingRFQs = rfqs.filter(r => ['DRAFT', 'OPEN'].includes(r.status) && r._count.quotes < 5);
+  const processingRFQs = rfqs.filter(r => r.status === 'OPEN' && r._count.quotes >= 5);
+  const completedRFQs = rfqs.filter(r => ['CLOSED', 'CONVERTED', 'CANCELLED'].includes(r.status));
+
+  const filteredRFQs = rfqFilter === 'Pending' ? pendingRFQs : rfqFilter === 'Processing' ? processingRFQs : completedRFQs;
+
   return (
     <div>
       {isPM && (
@@ -680,6 +790,23 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
           </button>
         </div>
       )}
+
+      {/* Sub-tabs: Pending / Processing / Completed */}
+      <div className="flex gap-2 mb-4">
+        {([
+          { key: 'Pending' as const, count: pendingRFQs.length, color: 'amber' },
+          { key: 'Processing' as const, count: processingRFQs.length, color: 'blue' },
+          { key: 'Completed' as const, count: completedRFQs.length, color: 'green' },
+        ]).map(f => (
+          <button key={f.key} onClick={() => setRfqFilter(f.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${rfqFilter === f.key
+              ? f.color === 'amber' ? 'bg-amber-700 text-white' : f.color === 'blue' ? 'bg-blue-700 text-white' : 'bg-green-700 text-white'
+              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+            {f.key}
+            <span className={`text-xs ${rfqFilter === f.key ? 'text-white/70' : 'text-zinc-600'}`}>{f.count}</span>
+          </button>
+        ))}
+      </div>
 
       {/* Stats strip */}
       {!loading && rfqs.length > 0 && (
@@ -699,11 +826,11 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
 
       {loading ? (
         <div className="text-center text-zinc-500 py-12">Loading...</div>
-      ) : rfqs.length === 0 ? (
-        <div className="text-center text-zinc-500 py-12">No RFQs yet</div>
+      ) : filteredRFQs.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">No {rfqFilter.toLowerCase()} RFQs</div>
       ) : (
         <div className="space-y-3">
-          {rfqs.map(rfq => (
+          {filteredRFQs.map(rfq => (
             <div key={rfq.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
@@ -812,6 +939,7 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
                                   </td>
                                   <td className="py-2 text-right">
                                     {isPM && rfq.status === 'OPEN' && isLowest && (() => {
+                                      if (q.status !== 'SUBMITTED') return null;
                                       if (!hasEnoughQuotes) {
                                         return <span className="text-zinc-600 text-xs">{rfq.quotes.length}/5 needed</span>;
                                       }
@@ -824,28 +952,17 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
                                         );
                                       }
                                       if (q.sampleStatus === 'REQUESTED') {
-                                        const requestedAt = q.sampleRequestedAt ? new Date(q.sampleRequestedAt) : null;
-                                        const hoursElapsed = requestedAt ? (Date.now() - requestedAt.getTime()) / 3_600_000 : 0;
-                                        const canApprove = isAdmin || hoursElapsed >= 24;
-                                        const hoursLeft = Math.ceil(24 - hoursElapsed);
-                                        return canApprove ? (
-                                          <div className="flex gap-1">
+                                        return (
+                                          <div className="flex gap-1 justify-end">
                                             <button onClick={() => sampleAction(rfq.id, q.id, 'approve')}
-                                              className="px-2 py-1 rounded text-xs bg-emerald-700 hover:bg-emerald-600 text-white"><Check className="w-4 h-4" /></button>
+                                              className="px-2 py-1 rounded text-xs bg-emerald-700 hover:bg-emerald-600 text-white"><Check className="w-3.5 h-3.5" /></button>
                                             <button onClick={() => sampleAction(rfq.id, q.id, 'reject')}
-                                              className="px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white"><X className="w-4 h-4" /></button>
+                                              className="px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white"><X className="w-3.5 h-3.5" /></button>
                                           </div>
-                                        ) : (
-                                          <span className="text-zinc-500 text-xs">{hoursLeft}h left</span>
                                         );
                                       }
                                       if (q.sampleStatus === 'APPROVED') {
-                                        return (
-                                          <button onClick={() => openCreatePO(rfq.id, q)}
-                                            className="px-2 py-1 rounded text-xs bg-green-700 hover:bg-green-600 text-white font-medium">
-                                            Create PO
-                                          </button>
-                                        );
+                                        return <span className="text-xs text-emerald-400">Auto-PO created</span>;
                                       }
                                       return null;
                                     })()}
@@ -994,7 +1111,7 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
    CREATE RFQ MODAL
 ══════════════════════════════════════════════════════════════*/
 function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?: RO | null; onClose: () => void; onCreated: () => void }) {
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(preselectedRO ? `RFQ for ${preselectedRO.roNumber}` : '');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
@@ -1004,14 +1121,28 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
   const [vendorCategories, setVendorCategories] = useState<VendorCat[]>([]);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [approvedROs, setApprovedROs] = useState<RO[]>([]);
-  const [selectedROItems, setSelectedROItems] = useState<{ roItemId: string; materialId?: string; itemDescription?: string; itemUnit?: string; qtyRequired: number }[]>([]);
+  // Auto-select all items from the clicked RO
+  const [selectedROItems, setSelectedROItems] = useState<{ roItemId: string; materialId?: string; itemDescription?: string; itemUnit?: string; qtyRequired: number }[]>(
+    preselectedRO ? preselectedRO.items.map(item => ({
+      roItemId: item.id,
+      materialId: item.materialId ?? undefined,
+      itemDescription: item.itemDescription ?? undefined,
+      itemUnit: item.itemUnit ?? undefined,
+      qtyRequired: item.qtyRequired,
+    })) : []
+  );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch('/api/procurement/requirement-orders?status=APPROVED').then(r => r.json()).then(setApprovedROs);
+    // If opened from a specific RO, only show that RO's items; otherwise fetch all approved
+    if (preselectedRO) {
+      setApprovedROs([preselectedRO]);
+    } else {
+      fetch('/api/procurement/requirement-orders?status=APPROVED').then(r => r.json()).then(setApprovedROs);
+    }
     fetch('/api/purchase/vendors').then(r => r.json()).then(v => setVendors(Array.isArray(v) ? v : []));
     fetch('/api/purchase/vendor-categories').then(r => r.json()).then(v => setVendorCategories(Array.isArray(v) ? v : []));
-  }, []);
+  }, [preselectedRO]);
 
   // When category changes, clear vendor selection
   function handleCategoryChange(cat: string) {
@@ -1023,20 +1154,6 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
   const filteredVendors = vendors.filter(v =>
     v.active && (!category || v.categories.includes(category))
   );
-
-  // Pre-populate items from the RO that triggered this modal
-  useEffect(() => {
-    if (preselectedRO) {
-      setSelectedROItems(preselectedRO.items.map(item => ({
-        roItemId: item.id,
-        materialId: item.materialId ?? undefined,
-        itemDescription: item.itemDescription ?? undefined,
-        itemUnit: item.itemUnit ?? undefined,
-        qtyRequired: item.qtyRequired,
-      })));
-      setTitle(`RFQ for ${preselectedRO.roNumber}`);
-    }
-  }, [preselectedRO]);
 
   function toggleVendor(id: string) {
     setSelectedVendors(prev => prev.includes(id) ? prev.filter(v => v !== id) : [...prev, id]);
@@ -1082,12 +1199,19 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <h2 className="text-white font-semibold text-lg mb-4">Create RFQ</h2>
+    <div className="fixed inset-0 bg-zinc-950 z-[60] flex flex-col">
+      {/* Fixed header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
+        <div>
+          <h2 className="text-white font-semibold text-lg">Create RFQ</h2>
+          {preselectedRO && <p className="text-xs text-zinc-500 mt-0.5">From {preselectedRO.roNumber} · {preselectedRO.items.length} items</p>}
+        </div>
+        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X className="w-5 h-5" /></button>
+      </div>
 
-          <div className="space-y-4">
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="max-w-2xl mx-auto space-y-4">
             <div>
               <label className="text-zinc-400 text-sm">Title *</label>
               <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. IGBTs and Capacitors Q1 2026"
@@ -1208,14 +1332,16 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="flex gap-3 mt-6">
-            <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
-            <button onClick={submit} disabled={saving}
-              className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
-              {saving ? 'Creating...' : 'Create RFQ'}
-            </button>
-          </div>
+      {/* Fixed footer */}
+      <div className="px-5 py-4 border-t border-zinc-800 flex-shrink-0">
+        <div className="max-w-2xl mx-auto flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+          <button onClick={submit} disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
+            {saving ? 'Creating...' : 'Create RFQ'}
+          </button>
         </div>
       </div>
     </div>
@@ -1233,6 +1359,9 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
   const [creatingGRN, setCreatingGRN] = useState<{ po: PO; gan: GAN } | null>(null);
   const [creatingPR, setCreatingPR] = useState<PO | null>(null);
   const [uploadingInvoiceFor, setUploadingInvoiceFor] = useState<PO | null>(null);
+  const [showManualPO, setShowManualPO] = useState(false);
+  const [poFilter, setPoFilter] = useState<'Pending' | 'Processing' | 'Completed'>('Pending');
+  const [approvingPO, setApprovingPO] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1243,15 +1372,59 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const pendingPOs = pos.filter(p => p.status === 'DRAFT');
+  const processingPOs = pos.filter(p => ['APPROVED', 'SENT', 'CONFIRMED', 'GOODS_ARRIVED', 'PARTIALLY_RECEIVED'].includes(p.status));
+  const completedPOs = pos.filter(p => ['RECEIVED', 'CANCELLED'].includes(p.status));
+  const filteredPOs = poFilter === 'Pending' ? pendingPOs : poFilter === 'Processing' ? processingPOs : completedPOs;
+
+  async function generatePO(poId: string) {
+    setApprovingPO(poId);
+    const r = await fetch(`/api/procurement/purchase-orders/${poId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'approve' }),
+    });
+    setApprovingPO(null);
+    if (r.ok) load();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
   return (
     <div>
+      {/* Header with sub-tabs + Manual PO button */}
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+        <div className="flex gap-2">
+          {([
+            { key: 'Pending' as const, count: pendingPOs.length, color: 'amber' },
+            { key: 'Processing' as const, count: processingPOs.length, color: 'blue' },
+            { key: 'Completed' as const, count: completedPOs.length, color: 'green' },
+          ]).map(f => (
+            <button key={f.key} onClick={() => setPoFilter(f.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${poFilter === f.key
+                ? f.color === 'amber' ? 'bg-amber-700 text-white' : f.color === 'blue' ? 'bg-blue-700 text-white' : 'bg-green-700 text-white'
+                : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+              {f.key}
+              <span className={`text-xs ${poFilter === f.key ? 'text-white/70' : 'text-zinc-600'}`}>{f.count}</span>
+            </button>
+          ))}
+        </div>
+        {isPM && (
+          <button onClick={() => setShowManualPO(true)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white">
+            + Manual PO
+          </button>
+        )}
+      </div>
+
+      {showManualPO && <ManualPOModal onClose={() => setShowManualPO(false)} onCreated={() => { setShowManualPO(false); load(); }} />}
+
       {loading ? (
         <div className="text-center text-zinc-500 py-12">Loading...</div>
-      ) : pos.length === 0 ? (
-        <div className="text-center text-zinc-500 py-12">No purchase orders yet. Create POs from RFQ quotes.</div>
+      ) : filteredPOs.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">No {poFilter.toLowerCase()} purchase orders</div>
       ) : (
         <div className="space-y-3">
-          {pos.map(po => (
+          {filteredPOs.map(po => (
             <div key={po.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
@@ -1276,6 +1449,12 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
                     className="text-xs text-blue-400 hover:text-blue-300">
                     {expanded === po.id ? 'Hide' : 'Details'}
                   </button>
+                  {isPM && po.status === 'DRAFT' && (
+                    <button onClick={() => generatePO(po.id)} disabled={approvingPO === po.id}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-700 hover:bg-green-600 text-white disabled:opacity-50">
+                      {approvingPO === po.id ? 'Generating...' : 'Generate PO'}
+                    </button>
+                  )}
                   {isPM && ['APPROVED', 'SENT', 'CONFIRMED'].includes(po.status) && (
                     <button onClick={() => setCreatingGAN(po)}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-700 hover:bg-orange-600 text-white">
@@ -1367,6 +1546,161 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
       {creatingGRN && <GRNModal po={creatingGRN.po} gan={creatingGRN.gan} onClose={() => setCreatingGRN(null)} onCreated={() => { setCreatingGRN(null); load(); }} />}
       {creatingPR && <CreatePaymentRequestModal po={creatingPR} onClose={() => setCreatingPR(null)} onCreated={() => { setCreatingPR(null); load(); }} />}
       {uploadingInvoiceFor && <UploadVendorInvoiceModal po={uploadingInvoiceFor} onClose={() => setUploadingInvoiceFor(null)} onCreated={() => { setUploadingInvoiceFor(null); load(); }} />}
+    </div>
+  );
+}
+
+/* ─── Manual PO Modal ──────────────────────────────────── */
+function ManualPOModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [vendorId, setVendorId] = useState('');
+  const [items, setItems] = useState<Array<{ rawMaterialId?: string; itemDescription: string; itemUnit: string; quantity: number; unitPrice: number }>>([
+    { itemDescription: '', itemUnit: 'PCS', quantity: 1, unitPrice: 0 },
+  ]);
+  const [materials, setMaterials] = useState<Array<{ id: string; name: string; code: string; unit: string }>>([]);
+  const [expectedDelivery, setExpectedDelivery] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/purchase/vendors').then(r => r.json()).then(v => setVendors(Array.isArray(v) ? v.filter((x: Vendor) => x.active) : []));
+    fetch('/api/inventory/materials?limit=500').then(r => r.json()).then(m => setMaterials(Array.isArray(m) ? m : []));
+  }, []);
+
+  function addItem() {
+    setItems(prev => [...prev, { itemDescription: '', itemUnit: 'PCS', quantity: 1, unitPrice: 0 }]);
+  }
+
+  function removeItem(idx: number) {
+    setItems(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function updateItem(idx: number, field: string, value: string | number) {
+    setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
+  }
+
+  function selectMaterial(idx: number, matId: string) {
+    const mat = materials.find(m => m.id === matId);
+    if (mat) {
+      setItems(prev => prev.map((item, i) => i === idx ? { ...item, rawMaterialId: matId, itemDescription: mat.name, itemUnit: mat.unit } : item));
+    }
+  }
+
+  const total = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+
+  async function submit() {
+    if (!vendorId) return alert('Select a vendor');
+    if (items.some(i => !i.itemDescription.trim())) return alert('All items need a description');
+    if (items.some(i => i.quantity <= 0 || i.unitPrice <= 0)) return alert('Quantity and price must be > 0');
+    setSaving(true);
+    const r = await fetch('/api/procurement/purchase-orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vendorId, items, expectedDelivery: expectedDelivery || undefined, notes: notes || undefined }),
+    });
+    setSaving(false);
+    if (r.ok) onCreated();
+    else { const e = await r.json(); alert(e.error); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-zinc-950 z-[60] flex flex-col">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
+        <div>
+          <h2 className="text-white font-semibold text-lg">Manual Purchase Order</h2>
+          <p className="text-xs text-zinc-500 mt-0.5">Create PO directly without RFQ or bidding</p>
+        </div>
+        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X className="w-5 h-5" /></button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="max-w-2xl mx-auto space-y-4">
+          {/* Vendor */}
+          <div>
+            <label className="text-zinc-400 text-sm">Vendor *</label>
+            <select value={vendorId} onChange={e => setVendorId(e.target.value)}
+              className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+              <option value="">Select vendor</option>
+              {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({v.code})</option>)}
+            </select>
+          </div>
+
+          {/* Items */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-zinc-400 text-sm">Items *</label>
+              <button onClick={addItem} className="text-xs text-blue-400 hover:text-blue-300">+ Add Item</button>
+            </div>
+            <div className="space-y-3">
+              {items.map((item, idx) => (
+                <div key={idx} className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">Item {idx + 1}</span>
+                    {items.length > 1 && (
+                      <button onClick={() => removeItem(idx)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
+                    )}
+                  </div>
+                  {/* Material selector or custom */}
+                  <select onChange={e => e.target.value ? selectMaterial(idx, e.target.value) : null}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="">Select from inventory (or type custom below)</option>
+                    {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.code})</option>)}
+                  </select>
+                  <input value={item.itemDescription} onChange={e => updateItem(idx, 'itemDescription', e.target.value)}
+                    placeholder="Item description"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-xs text-zinc-500">Qty</label>
+                      <input type="number" min={1} value={item.quantity} onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
+                        onWheel={e => e.currentTarget.blur()}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-zinc-500">Unit</label>
+                      <input value={item.itemUnit} onChange={e => updateItem(idx, 'itemUnit', e.target.value)}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-zinc-500">Unit Price (₹)</label>
+                      <input type="number" min={0} step={0.01} value={item.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))}
+                        onWheel={e => e.currentTarget.blur()}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {total > 0 && (
+              <div className="text-right text-sm text-zinc-300 mt-2">Total: ₹{total.toLocaleString('en-IN')}</div>
+            )}
+          </div>
+
+          {/* Delivery date */}
+          <div>
+            <label className="text-zinc-400 text-sm">Expected Delivery</label>
+            <input type="date" value={expectedDelivery} onChange={e => setExpectedDelivery(e.target.value)}
+              className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="text-zinc-400 text-sm">Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+              className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 py-4 border-t border-zinc-800 flex-shrink-0">
+        <div className="max-w-2xl mx-auto flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+          <button onClick={submit} disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
+            {saving ? 'Creating...' : 'Create Manual PO'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1534,8 +1868,42 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
     load();
   }
 
+  const [copiedPortal, setCopiedPortal] = useState(false);
+  const portalUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/vendor/login`
+    : '/vendor/login';
+
+  function copyPortalLink() {
+    navigator.clipboard.writeText(portalUrl);
+    setCopiedPortal(true);
+    setTimeout(() => setCopiedPortal(false), 2000);
+  }
+
   return (
     <div className="space-y-4">
+      {/* Vendor Portal link */}
+      {(isPM || isAdmin) && (
+        <div className="bg-blue-950/30 border border-blue-800/40 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-white text-sm font-semibold flex items-center gap-2">
+              Vendor Portal
+              <span className="text-xs font-normal text-zinc-400">Share with vendors to submit quotes</span>
+            </div>
+            <div className="text-xs text-blue-300 mt-1 font-mono">{portalUrl}</div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={copyPortalLink}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${copiedPortal ? 'bg-green-700 text-white' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'}`}>
+              {copiedPortal ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy Link</>}
+            </button>
+            <a href="/vendor/login" target="_blank" rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 hover:bg-blue-600 text-white flex items-center gap-1.5">
+              <ExternalLink className="w-3.5 h-3.5" /> Open Portal
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* Category management panel */}
       {(isPM || isAdmin) && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
@@ -1619,10 +1987,19 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
                   </div>
                 </div>
                 {(isPM || isAdmin) && (
-                  <button onClick={() => setEditPortal(v)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 shrink-0">
-                    Portal Access
-                  </button>
+                  <div className="flex gap-2 shrink-0">
+                    {v.isPortalActive && v.portalEmail && (
+                      <button onClick={() => { navigator.clipboard.writeText(`${portalUrl}\n\nEmail: ${v.portalEmail}`); }}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-400 border border-zinc-700"
+                        title="Copy login details">
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button onClick={() => setEditPortal(v)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700">
+                      Portal Access
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1977,15 +2354,38 @@ function PaymentsTab({ isPM }: { isPM: boolean }) {
     else { const e = await r.json(); alert(e.error); }
   }
 
+  const [payFilter, setPayFilter] = useState<'Pending' | 'Processing' | 'Completed'>('Pending');
+  const pendingPay = requests.filter(r => ['SUBMITTED', 'UNDER_REVIEW'].includes(r.status));
+  const processingPay = requests.filter(r => ['PENDING_APPROVAL', 'APPROVED', 'PROCESSING'].includes(r.status));
+  const completedPay = requests.filter(r => ['PAID', 'REJECTED'].includes(r.status));
+  const filteredPay = payFilter === 'Pending' ? pendingPay : payFilter === 'Processing' ? processingPay : completedPay;
+
   if (loading) return <div className="text-center text-zinc-500 py-12">Loading...</div>;
 
   return (
     <div>
-      {requests.length === 0 ? (
-        <div className="text-center text-zinc-500 py-12">No payment requests yet</div>
+      {/* Sub-tabs */}
+      <div className="flex gap-2 mb-4">
+        {([
+          { key: 'Pending' as const, count: pendingPay.length, color: 'amber' },
+          { key: 'Processing' as const, count: processingPay.length, color: 'blue' },
+          { key: 'Completed' as const, count: completedPay.length, color: 'green' },
+        ]).map(f => (
+          <button key={f.key} onClick={() => setPayFilter(f.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${payFilter === f.key
+              ? f.color === 'amber' ? 'bg-amber-700 text-white' : f.color === 'blue' ? 'bg-blue-700 text-white' : 'bg-green-700 text-white'
+              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+            {f.key}
+            <span className={`text-xs ${payFilter === f.key ? 'text-white/70' : 'text-zinc-600'}`}>{f.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {filteredPay.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">No {payFilter.toLowerCase()} payment requests</div>
       ) : (
         <div className="space-y-3">
-          {requests.map(pr => (
+          {filteredPay.map(pr => (
             <div key={pr.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
@@ -2179,14 +2579,38 @@ function IGGanTab({ isPM }: { isPM: boolean }) {
     } finally { setSaving(false); }
   }
 
+  const COMPLETED_STATUSES = ['DISPATCHED', 'CLOSED', 'REJECTED', 'RETURNED', 'RETAINED'];
   const pending = igList.filter(ig => ig.status === 'REQUESTED');
-  const processed = igList.filter(ig => ig.status !== 'REQUESTED');
+  const processing = igList.filter(ig => ig.status !== 'REQUESTED' && !COMPLETED_STATUSES.includes(ig.status));
+  const completed = igList.filter(ig => COMPLETED_STATUSES.includes(ig.status));
+
+  const [igFilter, setIgFilter] = useState<'Pending' | 'Processing' | 'Completed'>('Pending');
 
   if (loading) return <div className="text-center text-zinc-500 py-12">Loading...</div>;
 
+  const shownList = igFilter === 'Pending' ? pending : igFilter === 'Processing' ? processing : completed;
+
   return (
     <div className="space-y-6">
-      {/* ── Pending GAN ── */}
+      {/* Sub-tabs */}
+      <div className="flex gap-2">
+        {([
+          { key: 'Pending' as const, count: pending.length, color: 'amber' },
+          { key: 'Processing' as const, count: processing.length, color: 'blue' },
+          { key: 'Completed' as const, count: completed.length, color: 'green' },
+        ]).map(f => (
+          <button key={f.key} onClick={() => setIgFilter(f.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${igFilter === f.key
+              ? f.color === 'amber' ? 'bg-amber-700 text-white' : f.color === 'blue' ? 'bg-blue-700 text-white' : 'bg-green-700 text-white'
+              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+            {f.key}
+            <span className={`text-xs ${igFilter === f.key ? 'text-white/70' : 'text-zinc-600'}`}>{f.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── List ── */}
+      {igFilter === 'Pending' ? (
       <div>
         <h3 className="text-sm font-semibold text-amber-400 mb-3">Awaiting GAN ({pending.length})</h3>
         {pending.length === 0 && <p className="text-zinc-500 text-sm">No pending IG requests.</p>}
@@ -2235,25 +2659,27 @@ function IGGanTab({ isPM }: { isPM: boolean }) {
           })}
         </div>
       </div>
-
-      {/* ── Processed ── */}
-      {processed.length > 0 && (
+      ) : (
         <div>
-          <h3 className="text-sm font-semibold text-zinc-400 mb-3">Processed ({processed.length})</h3>
-          <div className="space-y-2">
-            {processed.map(ig => (
-              <div key={ig.id} className="bg-zinc-900/40 border border-zinc-800/50 rounded-xl p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-white text-sm font-medium">{ig.igNumber}</span>
-                  <Badge label={ig.status} />
-                  <span className="text-xs text-zinc-500">{ig.client.customerName}</span>
+          <h3 className="text-sm font-semibold text-zinc-400 mb-3">{igFilter} ({shownList.length})</h3>
+          {shownList.length === 0 ? (
+            <p className="text-zinc-500 text-sm">No {igFilter.toLowerCase()} IG requests.</p>
+          ) : (
+            <div className="space-y-2">
+              {shownList.map(ig => (
+                <div key={ig.id} className="bg-zinc-900/40 border border-zinc-800/50 rounded-xl p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-white text-sm font-medium">{ig.igNumber}</span>
+                    <Badge label={ig.status} />
+                    <span className="text-xs text-zinc-500">{ig.client.customerName}</span>
+                  </div>
+                  <div className="text-right text-xs text-zinc-500">
+                    {ig.ganDate && <div>GAN: {new Date(ig.ganDate).toLocaleDateString('en-IN')}</div>}
+                  </div>
                 </div>
-                <div className="text-right text-xs text-zinc-500">
-                  {ig.ganDate && <div>GAN: {new Date(ig.ganDate).toLocaleDateString('en-IN')}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

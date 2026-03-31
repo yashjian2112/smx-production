@@ -13,12 +13,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!ro) return NextResponse.json({ error: 'RO not found' }, { status: 404 });
   if (ro.status !== 'PENDING') return NextResponse.json({ error: `Cannot approve RO in status ${ro.status}` }, { status: 400 });
 
+  // Accept optional approval notes from IM
+  let approvalNotes: string | undefined;
+  try {
+    const body = await req.json();
+    approvalNotes = body.approvalNotes;
+  } catch { /* no body is fine */ }
+
+  const updatedNotes = approvalNotes
+    ? (ro.notes ? `${ro.notes}\n\nIM Approval: ${approvalNotes}` : `IM Approval: ${approvalNotes}`)
+    : ro.notes;
+
   const updated = await prisma.requirementOrder.update({
     where: { id: (await params).id },
     data: {
       status: 'APPROVED',
       approvedById: session.id,
       approvedAt: new Date(),
+      notes: updatedNotes,
     },
     include: {
       items: { include: { material: { select: { id: true, name: true, unit: true } } } },

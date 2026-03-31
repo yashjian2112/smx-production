@@ -128,22 +128,10 @@ export function PrintJobCard({
     <tr>
       <td className="c" style={{ fontWeight: 600, color: '#555' }}>{idx + 1}</td>
       <td>
-        {item.rawMaterial.barcode
-          ? <span style={{ fontFamily: 'monospace', fontSize: 8, background: '#f0f5ff', padding: '1px 5px', borderRadius: 3, color: '#1a3a6b' }}>
-              {item.rawMaterial.barcode}
-            </span>
-          : <span style={{ color: '#aaa' }}>—</span>}
-      </td>
-      <td>
         <div style={{ fontWeight: 600, fontSize: 9 }}>{item.rawMaterial.name}</div>
         {item.rawMaterial.category && (
           <div style={{ fontSize: 7.5, color: '#777', marginTop: 1 }}>{item.rawMaterial.category.name}</div>
         )}
-      </td>
-      <td className="c">
-        {item.isCritical
-          ? <span style={{ background: '#dc2626', color: '#fff', fontSize: 7, fontWeight: 700, padding: '1px 5px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>Critical</span>
-          : <span style={{ background: '#e5e7eb', color: '#555', fontSize: 7, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>Optional</span>}
       </td>
       <td className="c" style={{ fontWeight: 700 }}>{displayQty(item, 'quantityReq')}</td>
       <td className="c" style={{ color: item.quantityIssued > 0 ? '#166534' : '#aaa', fontWeight: 600 }}>
@@ -318,20 +306,18 @@ export function PrintJobCard({
         <table>
           <thead>
             <tr>
-              <th style={{ width: '5%'  }} className="c">#</th>
-              <th style={{ width: '12%' }}>Barcode</th>
-              <th style={{ width: '35%' }}>Component / Material</th>
-              <th style={{ width: '9%'  }} className="c">Type</th>
-              <th style={{ width: '15%' }} className="c">Qty Required</th>
-              <th style={{ width: '15%' }} className="c">Qty Issued</th>
-              <th style={{ width: '9%'  }} className="c">Rcvd <Check className="w-4 h-4 ml-1 inline" /></th>
+              <th style={{ width: '6%'  }} className="c">#</th>
+              <th style={{ width: '46%' }}>Component / Material</th>
+              <th style={{ width: '18%' }} className="c">Qty Required</th>
+              <th style={{ width: '18%' }} className="c">Qty Issued</th>
+              <th style={{ width: '12%' }} className="c">Rcvd <Check className="w-4 h-4 ml-1 inline" /></th>
             </tr>
           </thead>
           <tbody>
             {criticalItems.length > 0 && (
               <>
                 <tr className="group-header">
-                  <td colSpan={7}>Critical Components ({criticalItems.length})</td>
+                  <td colSpan={5}>Critical Components ({criticalItems.length})</td>
                 </tr>
                 {criticalItems.map((item, idx) => (
                   <ItemRow key={item.id} item={item} idx={idx} />
@@ -341,7 +327,7 @@ export function PrintJobCard({
             {nonCriticalItems.length > 0 && (
               <>
                 <tr className="group-header">
-                  <td colSpan={7}>Optional Components ({nonCriticalItems.length})</td>
+                  <td colSpan={5}>Optional Components ({nonCriticalItems.length})</td>
                 </tr>
                 {nonCriticalItems.map((item, idx) => (
                   <ItemRow key={item.id} item={item} idx={criticalItems.length + idx} />
