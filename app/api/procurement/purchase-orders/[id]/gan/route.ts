@@ -23,7 +23,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const poId = (await params).id;
   const po = await prisma.purchaseOrder.findUnique({ where: { id: poId }, include: { items: true } });
   if (!po) return NextResponse.json({ error: 'PO not found' }, { status: 404 });
-  if (!['APPROVED', 'SENT', 'CONFIRMED'].includes(po.status)) {
+  type POStatus = 'DRAFT' | 'APPROVED' | 'SENT' | 'CONFIRMED' | 'GOODS_ARRIVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
+  const preArrivalStatuses: POStatus[] = ['APPROVED', 'SENT', 'CONFIRMED'];
+  const allowedStatuses: POStatus[] = [...preArrivalStatuses, 'GOODS_ARRIVED', 'PARTIALLY_RECEIVED'];
+  if (!allowedStatuses.includes(po.status as POStatus)) {
     return NextResponse.json({ error: `Cannot create GAN for PO in status ${po.status}` }, { status: 400 });
   }
 
@@ -32,13 +35,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let gan;
   try {
     gan = await prisma.$transaction(async (tx) => {
-      // C5: Atomic status transition — prevents concurrent GAN creation
-      const updated = await tx.purchaseOrder.updateMany({
-        where: { id: poId, status: { in: ['APPROVED', 'SENT', 'CONFIRMED'] } },
-        data: { status: 'GOODS_ARRIVED' },
-      });
-      if (updated.count === 0) {
-        throw new Error('GAN already in progress for this PO');
+      // Transition pre-arrival POs to GOODS_ARRIVED; partial/arrived POs stay as-is
+      if (preArrivalStatuses.includes(po.status as POStatus)) {
+        const updated = await tx.purchaseOrder.updateMany({
+          where: { id: poId, status: { in: preArrivalStatuses } },
+          data: { status: 'GOODS_ARRIVED' },
+        });
+        if (updated.count === 0) {
+          throw new Error('GAN already in progress for this PO');
+        }
       }
 
       const created = await tx.goodsArrivalNote.create({

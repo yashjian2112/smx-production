@@ -1455,7 +1455,7 @@ function POTab({ isPM, isIM }: { isPM: boolean; isIM: boolean }) {
                       {approvingPO === po.id ? 'Generating...' : 'Generate PO'}
                     </button>
                   )}
-                  {isPM && ['APPROVED', 'SENT', 'CONFIRMED'].includes(po.status) && (
+                  {isPM && ['APPROVED', 'SENT', 'CONFIRMED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
                     <button onClick={() => setCreatingGAN(po)}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-700 hover:bg-orange-600 text-white">
                       Goods Arrived

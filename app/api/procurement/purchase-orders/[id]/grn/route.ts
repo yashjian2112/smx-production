@@ -7,7 +7,7 @@ import { generateNextMaterialSerialBarcode } from '@/lib/barcode';
 // POST /api/procurement/purchase-orders/[id]/grn — IM creates GRN after verifying goods
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
-  if (!['ADMIN', 'INVENTORY_MANAGER'].includes(session.role)) {
+  if (!['ADMIN', 'INVENTORY_MANAGER', 'STORE_MANAGER'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

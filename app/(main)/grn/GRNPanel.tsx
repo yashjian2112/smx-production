@@ -503,7 +503,7 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
                     className="flex-1 py-3 rounded-xl bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors">Cancel</button>
                   <button type="submit" disabled={saving || !allMatch}
                     className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                    {saving ? 'Creating GRN...' : 'Confirm &amp; Generate Barcodes'}
+                    {saving ? 'Creating GRN...' : 'Confirm & Generate Barcodes'}
                   </button>
                 </div>
               </div>
