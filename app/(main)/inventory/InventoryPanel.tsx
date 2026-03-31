@@ -1895,17 +1895,16 @@ function JobCardsTab({ sessionRole }: { sessionRole: string }) {
 function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: () => void; onDone: () => void }) {
   const scanRef = useRef<HTMLInputElement>(null);
   const [scanInput, setScanInput] = useState('');
-  const [scanned, setScanned]     = useState<Record<string, boolean>>({}); // itemId → scanned
+  const [scanned, setScanned]     = useState<Record<string, number>>({}); // itemId → scan count
   const [lastScan, setLastScan]   = useState<{ text: string; ok: boolean } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]         = useState('');
 
-  // Auto-focus scan input
   useEffect(() => { scanRef.current?.focus(); }, []);
 
-  const scannedCount = Object.values(scanned).filter(Boolean).length;
-  const totalItems   = card.items.length;
-  const allScanned   = scannedCount === totalItems;
+  const totalQtyNeeded  = card.items.reduce((s, i) => s + i.quantityReq, 0);
+  const totalQtyScanned = card.items.reduce((s, i) => s + (scanned[i.id] ?? 0), 0);
+  const allScanned      = card.items.every(i => (scanned[i.id] ?? 0) >= i.quantityReq);
 
   function handleScan(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter') return;
@@ -1913,35 +1912,37 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
     setScanInput('');
     if (!val) return;
 
-    // Match by barcode or code
     const found = card.items.find(i =>
       (i.rawMaterial.barcode?.toUpperCase() === val || i.rawMaterial.code.toUpperCase() === val)
-      && !scanned[i.id]
+      && (scanned[i.id] ?? 0) < i.quantityReq
     );
 
     if (found) {
-      setScanned(prev => ({ ...prev, [found.id]: true }));
-      setLastScan({ text: found.rawMaterial.name, ok: true });
+      const newCount = (scanned[found.id] ?? 0) + 1;
+      setScanned(prev => ({ ...prev, [found.id]: newCount }));
+      setLastScan({ text: `${found.rawMaterial.name} (${newCount}/${fmt(found.quantityReq)})`, ok: true });
     } else {
-      // Check if already scanned
-      const alreadyDone = card.items.find(i =>
+      const fullyDone = card.items.find(i =>
         (i.rawMaterial.barcode?.toUpperCase() === val || i.rawMaterial.code.toUpperCase() === val)
-        && scanned[i.id]
+        && (scanned[i.id] ?? 0) >= i.quantityReq
       );
-      if (alreadyDone) {
-        setLastScan({ text: `${alreadyDone.rawMaterial.name} — already scanned`, ok: false });
+      if (fullyDone) {
+        setLastScan({ text: `${fullyDone.rawMaterial.name} — all ${fmt(fullyDone.quantityReq)} already scanned`, ok: false });
       } else {
         setLastScan({ text: `"${val}" not found in this job card`, ok: false });
       }
     }
 
-    // Clear feedback after 3s
     setTimeout(() => setLastScan(null), 3000);
     scanRef.current?.focus();
   }
 
   function undoScan(itemId: string) {
-    setScanned(prev => { const n = { ...prev }; delete n[itemId]; return n; });
+    setScanned(prev => {
+      const cur = prev[itemId] ?? 0;
+      if (cur <= 1) { const n = { ...prev }; delete n[itemId]; return n; }
+      return { ...prev, [itemId]: cur - 1 };
+    });
   }
 
   async function handleDispatch() {
@@ -1949,7 +1950,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
     setError('');
     const items = card.items.map(item => ({
       jobCardItemId: item.id,
-      issuedQty: scanned[item.id] ? item.quantityReq : 0,
+      issuedQty: scanned[item.id] ?? 0,
     }));
 
     const res = await fetch(`/api/inventory/job-cards/${card.id}/dispatch`, {
@@ -1981,8 +1982,8 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
           <p className="text-zinc-500 text-xs">{card.order.orderNumber} · {card.orderQuantity} units · {STAGE_LABEL_JC[card.stage] ?? card.stage}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-2xl font-bold" style={{ color: allScanned ? '#4ade80' : '#fbbf24' }}>{scannedCount}/{totalItems}</p>
-          <p className="text-zinc-600 text-[10px]">scanned</p>
+          <p className="text-2xl font-bold" style={{ color: allScanned ? '#4ade80' : '#fbbf24' }}>{totalQtyScanned}/{fmt(totalQtyNeeded)}</p>
+          <p className="text-zinc-600 text-[10px]">scans</p>
         </div>
       </div>
 
@@ -2013,46 +2014,54 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
       {/* Items list */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
         {card.items.map(item => {
-          const done = scanned[item.id];
-          const stock = item.rawMaterial.currentStock;
+          const qty   = scanned[item.id] ?? 0;
           const need  = item.quantityReq;
+          const done  = qty >= need;
+          const stock = item.rawMaterial.currentStock;
           const ok    = stock >= need;
+          const pct   = need > 0 ? Math.min(100, (qty / need) * 100) : 0;
 
           return (
             <div key={item.id}
-              className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all"
+              className="rounded-xl px-3 py-2.5 transition-all"
               style={{
-                background: done ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
+                background: done ? 'rgba(34,197,94,0.08)' : qty > 0 ? 'rgba(14,165,233,0.06)' : 'rgba(255,255,255,0.03)',
                 border: `1px solid ${done ? 'rgba(34,197,94,0.25)' : item.isCritical ? 'rgba(251,113,133,0.2)' : 'rgba(255,255,255,0.05)'}`,
-                opacity: done ? 0.7 : 1,
               }}>
-              {/* Status indicator */}
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${done ? 'bg-emerald-500' : 'bg-zinc-800'}`}>
-                {done ? <Check className="w-4 h-4 text-white" /> : <span className="w-2 h-2 rounded-full" style={{ background: ok ? '#4ade80' : stock > 0 ? '#fbbf24' : '#f87171' }} />}
-              </div>
+              <div className="flex items-center gap-3">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${done ? 'bg-emerald-500' : qty > 0 ? 'bg-sky-600' : 'bg-zinc-800'}`}>
+                  {done ? <Check className="w-4 h-4 text-white" /> : qty > 0 ? <span className="text-white text-[10px] font-bold">{qty}</span> : <span className="w-2 h-2 rounded-full" style={{ background: ok ? '#4ade80' : stock > 0 ? '#fbbf24' : '#f87171' }} />}
+                </div>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-zinc-200 text-sm truncate">{item.rawMaterial.name}</span>
-                  {item.isCritical && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-200 text-sm truncate">{item.rawMaterial.name}</span>
+                    {item.isCritical && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>
+                    )}
+                    <span className={`text-xs font-mono shrink-0 ${done ? 'text-emerald-400' : qty > 0 ? 'text-sky-400' : 'text-zinc-600'}`}>
+                      {qty}/{fmt(need)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-zinc-600 font-mono text-[10px]">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
+                    <span className={`text-[10px] ${ok ? 'text-emerald-400' : stock > 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                      Stock: {stock <= 0 ? 'None' : fmt(stock)}
+                    </span>
+                  </div>
+                  {need > 1 && (
+                    <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: done ? '#4ade80' : '#38bdf8' }} />
+                    </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-zinc-600 font-mono text-[10px]">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
-                  <span className="text-zinc-500 text-[10px]">Need: {fmt(need)} {item.rawMaterial.unit}</span>
-                  <span className={`text-[10px] ${ok ? 'text-emerald-400' : stock > 0 ? 'text-amber-400' : 'text-red-400'}`}>
-                    Stock: {stock <= 0 ? 'None' : fmt(stock)}
-                  </span>
-                </div>
-              </div>
 
-              {/* Undo button */}
-              {done && (
-                <button onClick={() => undoScan(item.id)} className="text-zinc-500 hover:text-red-400 p-1 shrink-0" title="Undo scan">
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+                {qty > 0 && (
+                  <button onClick={() => undoScan(item.id)} className="text-zinc-500 hover:text-red-400 p-1 shrink-0" title="Undo one scan">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
@@ -2070,8 +2079,8 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
         <div className="flex-1">
           {allScanned ? (
             <span className="text-emerald-400 text-sm font-medium">All items scanned — ready to dispatch</span>
-          ) : scannedCount > 0 ? (
-            <span className="text-amber-400 text-sm">{scannedCount}/{totalItems} scanned · {totalItems - scannedCount} remaining</span>
+          ) : totalQtyScanned > 0 ? (
+            <span className="text-amber-400 text-sm">{totalQtyScanned}/{fmt(totalQtyNeeded)} scans</span>
           ) : (
             <span className="text-zinc-500 text-sm">Scan items to begin</span>
           )}
@@ -2079,10 +2088,10 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
         <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>
         <button
           onClick={handleDispatch}
-          disabled={submitting || scannedCount === 0}
+          disabled={submitting || !allScanned}
           className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40"
-          style={{ background: allScanned ? 'rgba(34,197,94,0.9)' : 'rgba(251,191,36,0.9)' }}>
-          {submitting ? 'Dispatching...' : allScanned ? 'Dispatch' : `Partial Dispatch (${scannedCount}/${totalItems})`}
+          style={{ background: 'rgba(34,197,94,0.9)' }}>
+          {submitting ? 'Dispatching...' : 'Dispatch'}
         </button>
       </div>
     </div>
