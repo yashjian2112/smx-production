@@ -77,11 +77,20 @@ export async function POST(
     if (softwareVersion !== undefined) updateData.softwareVersion = softwareVersion;
 
     if (result === 'PASS') {
-      // Check if this is a rework unit (has open rework records)
+      // Check if this is a rework unit (has open rework records OR linked ReturnRequest)
       const openRework = await prisma.reworkRecord.findFirst({
         where: { unitId: id, status: { in: ['OPEN', 'IN_PROGRESS', 'SENT_TO_QC'] } },
       });
-      const isRework = !!openRework;
+      const linkedReturn = await prisma.returnRequest.findFirst({
+        where: { unitId: id, status: { notIn: ['CLOSED', 'REJECTED'] } },
+        select: { id: true },
+      });
+      // Also check if this unit was created as a replacement (has returnRequestId on the unit itself)
+      const unitWithReturn = await prisma.controllerUnit.findUnique({
+        where: { id },
+        select: { returnRequestId: true },
+      });
+      const isRework = !!openRework || !!linkedReturn || !!unitWithReturn?.returnRequestId;
 
       if (isRework) {
         // Rework units skip Final Assembly — go straight to dispatch-ready
@@ -113,15 +122,24 @@ export async function POST(
       });
 
       // If linked to a return request, advance to QC_CHECKED
-      const linkedReturnPass = await prisma.returnRequest.findFirst({
-        where: { unitId: id, status: { in: ['REPAIRED', 'IN_REPAIR'] } },
-        select: { id: true },
-      });
-      if (linkedReturnPass) {
+      if (linkedReturn) {
         await prisma.returnRequest.update({
-          where: { id: linkedReturnPass.id },
+          where: { id: linkedReturn.id },
           data: { status: 'QC_CHECKED' },
         });
+      }
+      // Also check replacement unit's linked return request
+      if (unitWithReturn?.returnRequestId && !linkedReturn) {
+        const replacementReturn = await prisma.returnRequest.findUnique({
+          where: { id: unitWithReturn.returnRequestId },
+          select: { id: true, status: true },
+        });
+        if (replacementReturn && !['CLOSED', 'REJECTED'].includes(replacementReturn.status)) {
+          await prisma.returnRequest.update({
+            where: { id: replacementReturn.id },
+            data: { status: 'QC_CHECKED' },
+          });
+        }
       }
       await prisma.stageLog.create({
         data: {

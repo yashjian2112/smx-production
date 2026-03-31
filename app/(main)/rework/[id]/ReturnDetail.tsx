@@ -129,7 +129,6 @@ const FAULT_STAGES = [
   { value: 'ASSEMBLY',   label: 'Controller Assembly' },
   { value: 'QC',         label: 'QC / Software' },
   { value: 'FINAL',      label: 'Final Assembly' },
-  { value: 'DEAD',       label: 'Dead Controller' },
 ];
 
 // Map wizard fault stage values to Prisma StageType enum
@@ -141,8 +140,7 @@ const STAGE_TO_ENUM: Record<string, string> = {
   FINAL:      'FINAL_ASSEMBLY',
 };
 
-function buildIssueText(stage: string, description: string, deadReason: string): string {
-  if (stage === 'DEAD') return `[Dead Controller] ${deadReason.trim()}`;
+function buildIssueText(stage: string, description: string): string {
   const stageName = FAULT_STAGES.find(s => s.value === stage)?.label ?? stage;
   return `[${stageName}] ${description.trim()}`;
 }
@@ -524,17 +522,28 @@ export default function ReturnDetail({
   const [actionError,   setActionError]   = useState('');
 
   // Create Dispatch Order
-  const [creatingDO,   setCreatingDO]   = useState(false);
-  const [doError,      setDoError]      = useState('');
+  const [creatingDO,      setCreatingDO]      = useState(false);
+  const [doError,         setDoError]         = useState('');
+  const [reworkUnitPrice, setReworkUnitPrice] = useState('');
 
   async function createDispatchOrder() {
+    const isCustomerDamage = data.faultType === 'CUSTOMER_DAMAGE';
+    const price = parseFloat(reworkUnitPrice);
+    if (isCustomerDamage && (!price || price <= 0)) {
+      setDoError('Please enter a valid unit price for customer damage.');
+      return;
+    }
     setCreatingDO(true);
     setDoError('');
     try {
       const res = await fetch('/api/dispatch-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ returnRequestId: data.id, dispatchQty: 1 }),
+        body: JSON.stringify({
+          returnRequestId: data.id,
+          dispatchQty: 1,
+          ...(isCustomerDamage && price > 0 ? { reworkUnitPrice: price } : {}),
+        }),
       });
       const json = await res.json() as { id?: string; error?: string };
       if (!res.ok) { setDoError(json.error ?? 'Failed to create dispatch order'); return; }
@@ -581,7 +590,6 @@ export default function ReturnDetail({
   const [faultTypeChoice,  setFaultTypeChoice]   = useState<'MANUFACTURING_DEFECT' | 'CUSTOMER_DAMAGE' | ''>('');
   const [faultStage,       setFaultStage]        = useState('');
   const [issueText,        setIssueText]         = useState('');
-  const [deadReason,       setDeadReason]        = useState('');
   const [barcodeConfirm,   setBarcodeConfirm]    = useState('');
   const [repairError,      setRepairError]       = useState('');
   const [repairLoading,    setRepairLoading]     = useState(false);
@@ -591,7 +599,7 @@ export default function ReturnDetail({
   const [bomLoading,  setBomLoading]  = useState(false);
 
   useEffect(() => {
-    if (!faultStage || faultStage === 'DEAD' || !data.unit) {
+    if (!faultStage || !data.unit) {
       setBomItems([]);
       return;
     }
@@ -636,7 +644,7 @@ export default function ReturnDetail({
   const [useBom,        setUseBom]        = useState(false);
 
   useEffect(() => {
-    if (!activeFaultStage || activeFaultStage === 'DEAD' || !data.unit) {
+    if (!activeFaultStage || !data.unit) {
       setMatBomItems([]);
       setUseBom(false);
       return;
@@ -707,15 +715,14 @@ export default function ReturnDetail({
 
   async function startRepair() {
     if (!faultStage) { setRepairError('Please select the faulty stage.'); return; }
-    if (faultStage === 'DEAD' && !deadReason.trim()) { setRepairError('Please describe the reason.'); return; }
-    if (faultStage !== 'DEAD' && !issueText.trim()) { setRepairError('Please describe what you found.'); return; }
+    if (!issueText.trim()) { setRepairError('Please describe what you found.'); return; }
     if (expectedSerial && !barcodeOk) { setRepairError('Barcode does not match. Please scan the correct unit.'); return; }
 
-    const issue = buildIssueText(faultStage, issueText, deadReason);
+    const issue = buildIssueText(faultStage, issueText);
     setRepairLoading(true); setRepairError('');
     try {
       // Step 1: Submit fault determination if not already done
-      if (!data.faultType && faultStage !== 'DEAD') {
+      if (!data.faultType) {
         const inspectRes = await fetch(`/api/returns/${data.id}/inspect`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -755,7 +762,7 @@ export default function ReturnDetail({
       });
       if (!res.ok) { const j = await res.json(); setRepairError(j.error ?? 'Failed'); }
       else {
-        setWizardStep(1); setFaultStage(''); setIssueText(''); setDeadReason('');
+        setWizardStep(1); setFaultStage(''); setIssueText('');
         setOuterPhotoUrl(''); setBoardPhotoUrl(''); setPsPhotoUrl('');
         setBarcodeConfirm(''); setFaultTypeChoice('');
         router.refresh();
@@ -1115,12 +1122,34 @@ export default function ReturnDetail({
 
       {/* Dispatch via DO flow — QC_CHECKED + admin/manager */}
       {data.status === 'QC_CHECKED' && isAdminOrManager && (
-        <div className="card p-4 space-y-2">
+        <div className="card p-4 space-y-3">
           <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">Dispatch</p>
-          {doError && <p className="text-xs text-red-400 mb-2">{doError}</p>}
+          {data.faultType === 'CUSTOMER_DAMAGE' && (
+            <div>
+              <label className="text-[10px] text-zinc-400 mb-1 block">
+                Unit Price for Invoice <span className="text-red-400">*</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500">{data.client?.globalOrIndian === 'Global' ? 'USD' : 'INR'}</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={reworkUnitPrice}
+                  onChange={e => { setReworkUnitPrice(e.target.value); setDoError(''); }}
+                  onWheel={e => e.currentTarget.blur()}
+                  placeholder="Enter repair charge per unit"
+                  className="flex-1 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  style={{ background: '#18181b', border: '1px solid #27272a' }}
+                />
+              </div>
+              <p className="text-[10px] text-zinc-600 mt-1">This price will appear on the rework invoice.</p>
+            </div>
+          )}
+          {doError && <p className="text-xs text-red-400">{doError}</p>}
           <button
             onClick={createDispatchOrder}
-            disabled={creatingDO}
+            disabled={creatingDO || (data.faultType === 'CUSTOMER_DAMAGE' && (!reworkUnitPrice || parseFloat(reworkUnitPrice) <= 0))}
             className="px-4 py-2 rounded-lg text-xs font-medium transition-opacity disabled:opacity-40 flex items-center gap-1.5"
             style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', color: '#818cf8' }}
           >
@@ -1265,9 +1294,7 @@ export default function ReturnDetail({
                       className="px-3 py-2.5 rounded-lg text-xs font-medium border transition-colors text-left"
                       style={
                         faultStage === s.value
-                          ? s.value === 'DEAD'
-                            ? { background: 'rgba(239,68,68,0.15)', border: '1px solid #ef4444', color: '#f87171' }
-                            : { background: 'rgba(249,115,22,0.15)', border: '1px solid #f97316', color: '#fb923c' }
+                          ? { background: 'rgba(249,115,22,0.15)', border: '1px solid #f97316', color: '#fb923c' }
                           : { background: 'transparent', border: '1px solid #27272a', color: '#71717a' }
                       }
                     >{s.label}</button>
@@ -1276,7 +1303,7 @@ export default function ReturnDetail({
               </div>
 
               {/* BOM preview */}
-              {faultStage && faultStage !== 'DEAD' && data.unit && (
+              {faultStage && data.unit && (
                 <div className="rounded-lg p-2.5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #27272a' }}>
                   {bomLoading ? (
                     <p className="text-[10px] text-zinc-500">Loading BOM…</p>
@@ -1306,7 +1333,7 @@ export default function ReturnDetail({
               )}
 
               {/* Fault Type Selection */}
-              {faultStage && faultStage !== 'DEAD' && (
+              {faultStage && (
                 <div className="mt-3">
                   <label className="text-[10px] text-zinc-400 mb-2 block">Fault Type <span className="text-red-400">*</span></label>
                   <div className="grid grid-cols-2 gap-2">
@@ -1341,7 +1368,7 @@ export default function ReturnDetail({
                   className="flex-1 py-2 rounded-lg text-xs font-medium text-zinc-400"
                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #27272a' }}
                 >Back</button>
-                <button disabled={!faultStage || (faultStage !== 'DEAD' && !faultTypeChoice)}
+                <button disabled={!faultStage || !faultTypeChoice}
                   onClick={() => { setRepairError(''); setWizardStep(4); }}
                   className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-40"
                   style={{ background: '#f97316' }}
@@ -1353,32 +1380,17 @@ export default function ReturnDetail({
           {/* Step 4: Describe Issue */}
           {wizardStep === 4 && (
             <div className="space-y-4">
-              {faultStage === 'DEAD' ? (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle className="w-4 h-4 text-red-400" />
-                    <label className="text-xs font-semibold text-red-400">Dead Controller — State reason <span className="text-red-400">*</span></label>
-                  </div>
-                  <textarea
-                    className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-red-500"
-                    style={{ background: '#18181b', border: '1px solid rgba(239,68,68,0.4)', minHeight: 100 }}
-                    placeholder="e.g. completely non-functional, burnt MOSFET, no power output, board physically damaged..."
-                    value={deadReason} onChange={e => setDeadReason(e.target.value)}
-                  />
-                </div>
-              ) : (
-                <div>
-                  <label className="text-[10px] text-zinc-400 mb-1 block">
-                    What fault did you find in <span className="text-orange-400">{FAULT_STAGES.find(s => s.value === faultStage)?.label}</span>? <span className="text-red-400">*</span>
-                  </label>
-                  <textarea
-                    className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-sky-500"
-                    style={{ background: '#18181b', border: '1px solid #27272a', minHeight: 100 }}
-                    placeholder="Root cause, component failure, fault details, observations..."
-                    value={issueText} onChange={e => setIssueText(e.target.value)}
-                  />
-                </div>
-              )}
+              <div>
+                <label className="text-[10px] text-zinc-400 mb-1 block">
+                  What fault did you find in <span className="text-orange-400">{FAULT_STAGES.find(s => s.value === faultStage)?.label}</span>? <span className="text-red-400">*</span>
+                </label>
+                <textarea
+                  className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  style={{ background: '#18181b', border: '1px solid #27272a', minHeight: 100 }}
+                  placeholder="Root cause, component failure, fault details, observations..."
+                  value={issueText} onChange={e => setIssueText(e.target.value)}
+                />
+              </div>
               {repairError && <p className="text-xs text-red-400">{repairError}</p>}
               <div className="flex gap-2">
                 <button onClick={() => { setRepairError(''); setWizardStep(3); }}
@@ -1386,7 +1398,7 @@ export default function ReturnDetail({
                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #27272a' }}
                 >Back</button>
                 <button
-                  disabled={faultStage === 'DEAD' ? !deadReason.trim() : !issueText.trim()}
+                  disabled={!issueText.trim()}
                   onClick={() => { setRepairError(''); setWizardStep(5); }}
                   className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-40"
                   style={{ background: '#f97316' }}
@@ -1401,7 +1413,7 @@ export default function ReturnDetail({
               <div className="rounded-lg p-3 space-y-1.5" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.15)' }}>
                 <p className="text-[9px] font-semibold text-sky-500 uppercase tracking-wider">Diagnosis Summary</p>
                 <p className="text-xs text-sky-300 font-mono">
-                  {faultStage === 'DEAD' ? `[Dead Controller] ${deadReason}` : `[${FAULT_STAGES.find(s => s.value === faultStage)?.label}] ${issueText}`}
+                  {`[${FAULT_STAGES.find(s => s.value === faultStage)?.label}] ${issueText}`}
                 </p>
               </div>
 
@@ -1441,9 +1453,9 @@ export default function ReturnDetail({
                   onClick={startRepair}
                   disabled={repairLoading || (!!expectedSerial && !barcodeOk)}
                   className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-40"
-                  style={{ background: faultStage === 'DEAD' ? '#ef4444' : '#f97316' }}
+                  style={{ background: '#f97316' }}
                 >
-                  {repairLoading ? 'Starting…' : faultStage === 'DEAD' ? 'Log Dead Controller' : 'Start Repair'}
+                  {repairLoading ? 'Starting…' : 'Start Repair'}
                 </button>
               </div>
             </div>

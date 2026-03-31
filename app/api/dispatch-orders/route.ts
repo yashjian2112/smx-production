@@ -9,6 +9,7 @@ const createSchema = z.object({
   orderId:          z.string().min(1).optional(),
   returnRequestId:  z.string().min(1).optional(),
   dispatchQty:      z.number().int().min(1),
+  reworkUnitPrice:  z.number().positive().optional(),
 }).refine(d => d.orderId || d.returnRequestId, {
   message: 'Either orderId or returnRequestId is required',
 });
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { orderId, returnRequestId, dispatchQty } = parsed.data;
+    const { orderId, returnRequestId, dispatchQty, reworkUnitPrice } = parsed.data;
 
     const doNumber = await generateNextDONumber();
 
@@ -100,6 +101,7 @@ export async function POST(req: NextRequest) {
           doNumber,
           returnRequestId,
           dispatchQty,
+          reworkUnitPrice: reworkUnitPrice ?? undefined,
           status: 'OPEN',
           createdById: session.id,
         },

@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { amountToWords } from '@/lib/number-to-words';
 import { getFiscalYear } from '@/lib/invoice-number';
+import { QRCodeCanvas } from '@/components/QRCode';
 
 type InvoiceItem = {
   id: string;
@@ -467,10 +468,18 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
             </div>
           </div>
           <div className="footer-col">
-            <div className="sign-wrap">
+            <div className="sign-wrap" style={{ position: 'relative' }}>
               <div className="f-label">For {coName}</div>
               <div style={{ fontSize: 7.5, color: '#888', marginBottom: 2 }}>Authorised Signatory</div>
               <div className="sign-line">Authorised Signatory</div>
+              <div style={{ position: 'absolute', bottom: 0, right: 0 }}>
+                <QRCodeCanvas
+                  value={`https://production-peach-tau.vercel.app/print/invoice/${invoice.id}`}
+                  size={60}
+                  dark="#1a3a6b"
+                  light="#ffffff"
+                />
+              </div>
             </div>
           </div>
         </div>

@@ -24,7 +24,7 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
       assignments: { include: { user: { select: { id: true, name: true, email: true } } } },
       stageLogs: { include: { user: true, approvedBy: true }, orderBy: { createdAt: 'desc' }, take: 20 },
       qcRecords: { include: { issueCategory: true }, orderBy: { createdAt: 'desc' } },
-      reworkRecords: { include: { rootCauseCategory: true, assignedUser: true }, orderBy: { createdAt: 'desc' } },
+      reworkRecords: { include: { rootCauseCategory: true, assignedUser: true, returnRequest: { select: { id: true, returnNumber: true } } }, orderBy: { createdAt: 'desc' } },
       timelineLogs: { include: { user: true }, orderBy: { createdAt: 'desc' } },
       componentChecks: {
         include: { component: true, checker: { select: { id: true, name: true } } },
@@ -32,6 +32,14 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
       workSubmissions: {
         select: { stage: true, employeeId: true, buildTimeSec: true, submittedAt: true },
         orderBy: { submittedAt: 'asc' },
+      },
+      linkedReturnRequest: {
+        select: { id: true, returnNumber: true, reportedIssue: true, faultType: true, status: true },
+      },
+      returnRequests: {
+        select: { id: true, returnNumber: true, reportedIssue: true, faultType: true, status: true },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
       },
     },
   });
@@ -124,6 +132,50 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
           })()}
         </div>
       </div>
+
+      {/* Rework / Replacement Tracking */}
+      {(() => {
+        // Collect all return requests linked to this unit (direct + via returnRequestId)
+        const allReturns = [
+          ...(unit.linkedReturnRequest ? [unit.linkedReturnRequest] : []),
+          ...unit.returnRequests,
+        ].filter((r, i, arr) => arr.findIndex(x => x.id === r.id) === i); // deduplicate
+
+        if (allReturns.length === 0) return null;
+
+        return (
+          <div className="card p-4 space-y-3">
+            <h3 className="font-medium text-sm">Rework / Replacement</h3>
+            {allReturns.map(ret => (
+              <Link key={ret.id} href={`/rework/${ret.id}`}
+                className="block rounded-xl p-3 transition-colors hover:bg-white/[0.03]"
+                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest"
+                    style={unit.linkedReturnRequest?.id === ret.id
+                      ? { color: '#818cf8', background: 'rgba(129,140,248,0.12)', border: '1px solid rgba(129,140,248,0.25)' }
+                      : { color: '#f87171', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)' }
+                    }>
+                    {unit.linkedReturnRequest?.id === ret.id ? 'Replacement' : 'Rework'}
+                  </span>
+                  <span className="font-mono text-xs text-sky-400">{ret.returnNumber}</span>
+                  {ret.faultType && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+                      style={ret.faultType === 'MANUFACTURING_DEFECT'
+                        ? { color: '#f87171', background: 'rgba(239,68,68,0.1)' }
+                        : { color: '#fbbf24', background: 'rgba(251,191,36,0.1)' }
+                      }>
+                      {ret.faultType === 'MANUFACTURING_DEFECT' ? 'Mfg Defect' : 'Customer Damage'}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-400 line-clamp-2">{ret.reportedIssue}</p>
+                <p className="text-[10px] text-zinc-600 mt-1">Status: {ret.status.replace(/_/g, ' ')}</p>
+              </Link>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Build Team — who worked on each stage */}
       {unit.assignments.length > 0 && (

@@ -102,6 +102,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const useInventoryPS = availablePS.length >= qty;
     const useInventoryBB = availableBB.length >= qty;
 
+    // Check if this proforma is linked to a ReturnRequest (replacement order)
+    const linkedReturn = await prisma.returnRequest.findFirst({
+      where: { proformaId: proforma.id },
+      select: { id: true },
+    });
+
     // Generate units
     for (let i = 0; i < qty; i++) {
       const serial    = await generateNextSerial(product.code);
@@ -123,6 +129,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           powerstageBarcode,
           brainboardBarcode,
           qcBarcode,
+          returnRequestId: linkedReturn?.id ?? undefined,
         },
       });
     }

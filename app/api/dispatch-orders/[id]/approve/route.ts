@@ -188,8 +188,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         const isExportRework = reworkReturn.client?.globalOrIndian === 'Global';
         const currency = isExportRework ? 'USD' : 'INR';
         const isMfgDefect = reworkReturn.faultType === 'MANUFACTURING_DEFECT';
-        // Mfg defect = 1 INR/USD (warranty replacement), customer damage = actual repair value
-        const unitPrice = isMfgDefect ? 1 : 1; // For now, 1 unit price — actual pricing TBD for customer damage
+        // Mfg defect = 1 INR/USD (warranty replacement), customer damage = actual repair value from DO
+        const unitPrice = isMfgDefect ? 1 : (dispatchOrder.reworkUnitPrice ?? 1);
         const productName = reworkReturn.unit?.product?.name ?? 'Rework Unit';
         const productCode = reworkReturn.unit?.product?.code ?? '';
         const serialNumber = reworkReturn.unit?.serialNumber ?? '';

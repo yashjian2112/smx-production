@@ -31,6 +31,7 @@ const createSchema = z.object({
   splitInvoice:        z.boolean().optional(),
   splitServicePercent: z.number().min(0).max(100).optional(),
   shippingRoute:       z.enum(['AIR', 'LAND']).optional(),
+  returnRequestId:     z.string().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
     const { clientId, documentType, invoiceType, currency, exchangeRate, termsOfPayment, deliveryDays,
-            termsOfDelivery, notes, relatedInvoiceId, items, splitInvoice, splitServicePercent, shippingRoute } = parsed.data;
+            termsOfDelivery, notes, relatedInvoiceId, items, splitInvoice, splitServicePercent, shippingRoute, returnRequestId } = parsed.data;
 
     const client = await prisma.client.findUnique({ where: { id: clientId } });
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 400 });
@@ -149,6 +150,14 @@ export async function POST(req: NextRequest) {
         createdBy: { select: { id: true, name: true } },
       },
     });
+
+    // If linked to a return request, set proformaId on the ReturnRequest
+    if (returnRequestId) {
+      await prisma.returnRequest.update({
+        where: { id: returnRequestId },
+        data: { proformaId: proforma.id },
+      }).catch(() => {}); // Ignore if returnRequestId is invalid
+    }
 
     return NextResponse.json(proforma, { status: 201 });
   } catch (e) {

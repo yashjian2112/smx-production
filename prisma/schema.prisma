@@ -262,11 +262,13 @@ model ControllerUnit {
   warrantyStartDate    DateTime? @map("warranty_start_date")
   warrantyMonths       Int?      @map("warranty_months")      // 12 for retail, 36 for OEM
   dispatchedAt         DateTime? @map("dispatched_at")
+  returnRequestId      String?   @map("return_request_id")  // links replacement units to their ReturnRequest
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   order       Order    @relation(fields: [orderId], references: [id])
   product     Product  @relation(fields: [productId], references: [id])
+  linkedReturnRequest ReturnRequest? @relation("ReplacementUnits", fields: [returnRequestId], references: [id])
   assignments StageAssignment[]
   stageLogs   StageLog[]
   qcRecords   QCRecord[]
@@ -681,6 +683,7 @@ model DispatchOrder {
   rejectedReason  String?   @map("rejected_reason")
   createdById     String    @map("created_by_id")
   approvedById    String?   @map("approved_by_id")
+  reworkUnitPrice Float?    @map("rework_unit_price")  // manual price for customer damage invoices
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -902,10 +905,11 @@ model ReturnRequest {
   evaluatedBy    User?           @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id])
   faultApprovedBy User?          @relation("ReturnFaultApprovedBy", fields: [faultApprovedById], references: [id])
   blameEmployee  User?           @relation("ReturnBlameEmployee", fields: [blameEmployeeId], references: [id])
-  repairLogs     RepairLog[]
-  reworkRecords  ReworkRecord[]
-  dispatchOrders DispatchOrder[]
-  materials      ReworkMaterial[]
+  repairLogs       RepairLog[]
+  reworkRecords    ReworkRecord[]
+  dispatchOrders   DispatchOrder[]
+  materials        ReworkMaterial[]
+  replacementUnits ControllerUnit[] @relation("ReplacementUnits")
 
   @@map("return_requests")
 }
