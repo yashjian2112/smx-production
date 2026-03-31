@@ -61,9 +61,18 @@ type ReturnData = {
   serialNumber: string | null;
   evaluationNotes: string | null;
   resolution: string | null;
+  faultType: string | null;
+  faultApproval: string | null;
+  faultApprovedBy: { id: string; name: string } | null;
+  blameEmployee: { id: string; name: string } | null;
+  blameStage: string | null;
+  blameDate: string | null;
+  topPhotoUrl: string | null;
+  bbInspectionPhotoUrl: string | null;
+  psInspectionPhotoUrl: string | null;
   createdAt: string;
   updatedAt: string;
-  client: { code: string; customerName: string };
+  client: { code: string; customerName: string; globalOrIndian?: string | null };
   unit: {
     id: string;
     serialNumber: string;
@@ -121,6 +130,15 @@ const FAULT_STAGES = [
   { value: 'FINAL',      label: 'Final Assembly' },
   { value: 'DEAD',       label: 'Dead Controller' },
 ];
+
+// Map wizard fault stage values to Prisma StageType enum
+const STAGE_TO_ENUM: Record<string, string> = {
+  POWERSTAGE: 'POWERSTAGE_MANUFACTURING',
+  BRAINBOARD: 'BRAINBOARD_MANUFACTURING',
+  ASSEMBLY:   'CONTROLLER_ASSEMBLY',
+  QC:         'QC_AND_SOFTWARE',
+  FINAL:      'FINAL_ASSEMBLY',
+};
 
 function buildIssueText(stage: string, description: string, deadReason: string): string {
   if (stage === 'DEAD') return `[Dead Controller] ${deadReason.trim()}`;
@@ -409,6 +427,65 @@ function WizardStepBar({ step }: { step: number }) {
   );
 }
 
+// ─── Fault Approval (Sales/Admin) ────────────────────────────────────────
+
+function FaultApprovalCard({ returnId, onDone }: { returnId: string; onDone: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [reason, setReason] = useState('');
+
+  async function handleApproval(action: 'APPROVED' | 'REJECTED') {
+    setLoading(true); setError('');
+    try {
+      const res = await fetch(`/api/returns/${returnId}/fault-approval`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, reason: reason || undefined }),
+      });
+      if (!res.ok) {
+        const j = await res.json();
+        setError(j.error ?? 'Failed');
+      } else {
+        onDone();
+      }
+    } catch { setError('Network error'); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="card p-4 space-y-3" style={{ border: '1px solid rgba(251,191,36,0.3)' }}>
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="w-4 h-4 text-amber-400" />
+        <p className="text-sm font-medium text-amber-400">Customer Damage — Approval Required</p>
+      </div>
+      <p className="text-xs text-zinc-400">
+        Production has determined this is customer damage. Approve to allow repair work to proceed.
+      </p>
+      <textarea
+        className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-sky-500"
+        style={{ background: '#18181b', border: '1px solid #27272a', minHeight: 60 }}
+        placeholder="Add notes (optional)..."
+        value={reason} onChange={e => setReason(e.target.value)}
+      />
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={() => handleApproval('APPROVED')}
+          disabled={loading}
+          className="flex-1 py-2 rounded-lg text-xs font-medium text-white transition-opacity disabled:opacity-40"
+          style={{ background: '#22c55e' }}
+        >{loading ? 'Processing...' : 'Approve'}</button>
+        <button
+          onClick={() => handleApproval('REJECTED')}
+          disabled={loading}
+          className="flex-1 py-2 rounded-lg text-xs font-medium text-white transition-opacity disabled:opacity-40"
+          style={{ background: '#ef4444' }}
+        >{loading ? 'Processing...' : 'Reject'}</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ReturnDetail({
@@ -489,13 +566,17 @@ export default function ReturnDetail({
 
   // ── Repair Wizard state ──
   const CAN_START_REPAIR = ['REPORTED', 'APPROVED', 'UNIT_RECEIVED', 'IN_REPAIR', 'EVALUATED'].includes(data.status);
-  const showWizard = (isEmployee || isAdminOrManager) && !TERMINAL.includes(data.status) && CAN_START_REPAIR && !openLog;
+  const customerDamagePending = data.faultType === 'CUSTOMER_DAMAGE' && data.faultApproval !== 'APPROVED';
+  const showWizard = (isEmployee || isAdminOrManager) && !TERMINAL.includes(data.status) && CAN_START_REPAIR && !openLog && !customerDamagePending;
 
   const [wizardStep,       setWizardStep]       = useState(1);
   const [outerPhotoUrl,    setOuterPhotoUrl]     = useState('');
   const [outerUploading,   setOuterUploading]    = useState(false);
   const [boardPhotoUrl,    setBoardPhotoUrl]     = useState('');
   const [boardUploading,   setBoardUploading]    = useState(false);
+  const [psPhotoUrl,       setPsPhotoUrl]        = useState('');
+  const [psUploading,      setPsUploading]       = useState(false);
+  const [faultTypeChoice,  setFaultTypeChoice]   = useState<'MANUFACTURING_DEFECT' | 'CUSTOMER_DAMAGE' | ''>('');
   const [faultStage,       setFaultStage]        = useState('');
   const [issueText,        setIssueText]         = useState('');
   const [deadReason,       setDeadReason]        = useState('');
@@ -578,7 +659,7 @@ export default function ReturnDetail({
   }, [data.id]);
 
   // ── Photo upload helper ──
-  async function uploadPhoto(file: File, field: 'outer' | 'board' | 'after'): Promise<string> {
+  async function uploadPhoto(file: File, field: 'outer' | 'board' | 'after' | 'top' | 'bb' | 'ps'): Promise<string> {
     const fd = new FormData();
     fd.append(field, file);
     const res = await fetch(`/api/returns/${data.id}/repair/photos`, { method: 'POST', body: fd });
@@ -586,10 +667,9 @@ export default function ReturnDetail({
       const j = await res.json().catch(() => ({})) as { error?: string };
       throw new Error(j.error ?? 'Photo upload failed');
     }
-    const j = await res.json() as { outerUrl?: string; boardUrl?: string; afterUrl?: string };
-    if (field === 'board') return j.boardUrl ?? '';
-    if (field === 'after') return j.afterUrl ?? '';
-    return j.outerUrl ?? '';
+    const j = await res.json() as Record<string, string>;
+    const keyMap: Record<string, string> = { outer: 'outerUrl', board: 'boardUrl', after: 'afterUrl', top: 'topUrl', bb: 'bbUrl', ps: 'psUrl' };
+    return j[keyMap[field]] ?? '';
   }
 
   // ── Handlers ──
@@ -632,6 +712,35 @@ export default function ReturnDetail({
     const issue = buildIssueText(faultStage, issueText, deadReason);
     setRepairLoading(true); setRepairError('');
     try {
+      // Step 1: Submit fault determination if not already done
+      if (!data.faultType && faultStage !== 'DEAD') {
+        const inspectRes = await fetch(`/api/returns/${data.id}/inspect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            faultType: faultTypeChoice,
+            blameStage: STAGE_TO_ENUM[faultStage] || undefined,
+            topPhotoUrl:          outerPhotoUrl || undefined,
+            bbInspectionPhotoUrl: boardPhotoUrl || undefined,
+            psInspectionPhotoUrl: psPhotoUrl    || undefined,
+          }),
+        });
+        if (!inspectRes.ok) {
+          const j = await inspectRes.json();
+          setRepairError(j.error ?? 'Failed to save fault determination');
+          setRepairLoading(false);
+          return;
+        }
+        const inspectResult = await inspectRes.json() as { faultApproval?: string };
+        // If customer damage → needs approval, don't proceed to repair
+        if (faultTypeChoice === 'CUSTOMER_DAMAGE' && inspectResult.faultApproval === 'PENDING') {
+          setRepairLoading(false);
+          router.refresh();
+          return;
+        }
+      }
+
+      // Step 2: Create repair log
       const res = await fetch(`/api/returns/${data.id}/repair`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -644,7 +753,8 @@ export default function ReturnDetail({
       if (!res.ok) { const j = await res.json(); setRepairError(j.error ?? 'Failed'); }
       else {
         setWizardStep(1); setFaultStage(''); setIssueText(''); setDeadReason('');
-        setOuterPhotoUrl(''); setBoardPhotoUrl(''); setBarcodeConfirm('');
+        setOuterPhotoUrl(''); setBoardPhotoUrl(''); setPsPhotoUrl('');
+        setBarcodeConfirm(''); setFaultTypeChoice('');
         router.refresh();
       }
     } catch { setRepairError('Network error'); }
@@ -937,6 +1047,69 @@ export default function ReturnDetail({
         </div>
       )}
 
+      {/* Fault Type Determination — shown after inspection */}
+      {data.faultType && (
+        <div className="card p-4 space-y-2">
+          <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Fault Determination</p>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+              style={data.faultType === 'MANUFACTURING_DEFECT'
+                ? { background: 'rgba(239,68,68,0.12)', color: '#f87171' }
+                : { background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>
+              {data.faultType === 'MANUFACTURING_DEFECT' ? 'Manufacturing Defect' : 'Customer Damage'}
+            </span>
+            {data.faultApproval && (
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                style={
+                  data.faultApproval === 'APPROVED'
+                    ? { background: 'rgba(34,197,94,0.12)', color: '#22c55e' }
+                    : data.faultApproval === 'REJECTED'
+                    ? { background: 'rgba(239,68,68,0.12)', color: '#ef4444' }
+                    : { background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }
+                }>
+                {data.faultApproval === 'APPROVED' ? 'Approved' : data.faultApproval === 'REJECTED' ? 'Rejected' : 'Awaiting Approval'}
+              </span>
+            )}
+          </div>
+          {data.faultApprovedBy && (
+            <p className="text-[10px] text-zinc-500">
+              {data.faultApproval === 'APPROVED' ? 'Approved' : 'Reviewed'} by {data.faultApprovedBy.name}
+            </p>
+          )}
+          {/* Blame info — ADMIN only */}
+          {isAdmin && data.blameEmployee && data.blameStage && (
+            <div className="p-2 rounded-lg mt-2" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
+              <p className="text-[9px] font-semibold text-red-500 uppercase tracking-wider mb-1">Accountability (Admin Only)</p>
+              <p className="text-xs text-red-300">Employee: <span className="font-medium">{data.blameEmployee.name}</span></p>
+              <p className="text-xs text-red-300">Stage: <span className="font-medium">{data.blameStage}</span></p>
+              {data.blameDate && (
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Date: {new Date(data.blameDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Fault Approval — for Sales/Admin when customer damage is pending */}
+      {data.faultType === 'CUSTOMER_DAMAGE' && data.faultApproval === 'PENDING' && (isSales || isAdmin) && (
+        <FaultApprovalCard returnId={data.id} onDone={() => router.refresh()} />
+      )}
+
+      {/* Pending approval notice for production users */}
+      {data.faultType === 'CUSTOMER_DAMAGE' && data.faultApproval === 'PENDING' && (isEmployee || isAdminOrManager) && !isSales && !isAdmin && (
+        <div className="card p-4 space-y-2" style={{ border: '1px solid rgba(251,191,36,0.2)' }}>
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-400" />
+            <p className="text-sm font-medium text-amber-400">Awaiting Approval</p>
+          </div>
+          <p className="text-xs text-zinc-400">
+            This unit has been identified as customer damage. Repair cannot start until Sales or Admin approves.
+          </p>
+        </div>
+      )}
+
       {/* Dispatch via DO flow — QC_CHECKED + admin/manager */}
       {data.status === 'QC_CHECKED' && isAdminOrManager && (
         <div className="card p-4 space-y-2">
@@ -1047,14 +1220,18 @@ export default function ReturnDetail({
                     finally { setBoardUploading(false); }
                   }}
                 />
-                <div className="space-y-2">
-                  <label className="text-[10px] text-zinc-400 block">Powerstage</label>
-                  <p className="text-[10px] text-zinc-600">Bottom board — MOSFET / driver PCB</p>
-                  <div className="rounded-lg border border-dashed flex items-center justify-center"
-                    style={{ borderColor: '#3f3f46', background: 'rgba(255,255,255,0.02)', height: 120 }}>
-                    <span className="text-[10px] text-zinc-600 text-center px-2">Same as brainboard if single-board unit</span>
-                  </div>
-                </div>
+                <PhotoCapture
+                  label="Powerstage"
+                  hint="Bottom board — MOSFET / driver PCB"
+                  photoUrl={psPhotoUrl}
+                  uploading={psUploading}
+                  onFile={async (f) => {
+                    setPsUploading(true); setRepairError('');
+                    try { const url = await uploadPhoto(f, 'ps'); setPsPhotoUrl(url); }
+                    catch (e) { setRepairError(e instanceof Error ? e.message : 'Photo upload failed. Try again.'); }
+                    finally { setPsUploading(false); }
+                  }}
+                />
               </div>
               {repairError && <p className="text-xs text-red-400">{repairError}</p>}
               <div className="flex gap-2">
@@ -1125,13 +1302,43 @@ export default function ReturnDetail({
                 </div>
               )}
 
+              {/* Fault Type Selection */}
+              {faultStage && faultStage !== 'DEAD' && (
+                <div className="mt-3">
+                  <label className="text-[10px] text-zinc-400 mb-2 block">Fault Type <span className="text-red-400">*</span></label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button"
+                      onClick={() => setFaultTypeChoice('MANUFACTURING_DEFECT')}
+                      className="px-3 py-2.5 rounded-lg text-xs font-medium border transition-colors text-left"
+                      style={faultTypeChoice === 'MANUFACTURING_DEFECT'
+                        ? { background: 'rgba(239,68,68,0.15)', border: '1px solid #ef4444', color: '#f87171' }
+                        : { background: 'transparent', border: '1px solid #27272a', color: '#71717a' }}>
+                      Manufacturing Defect
+                    </button>
+                    <button type="button"
+                      onClick={() => setFaultTypeChoice('CUSTOMER_DAMAGE')}
+                      className="px-3 py-2.5 rounded-lg text-xs font-medium border transition-colors text-left"
+                      style={faultTypeChoice === 'CUSTOMER_DAMAGE'
+                        ? { background: 'rgba(251,191,36,0.15)', border: '1px solid #fbbf24', color: '#fbbf24' }
+                        : { background: 'transparent', border: '1px solid #27272a', color: '#71717a' }}>
+                      Customer Damage
+                    </button>
+                  </div>
+                  {faultTypeChoice === 'CUSTOMER_DAMAGE' && (
+                    <p className="text-[10px] text-amber-400 mt-1.5">
+                      Requires approval from Sales or Admin before repair can begin.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {repairError && <p className="text-xs text-red-400">{repairError}</p>}
               <div className="flex gap-2">
                 <button onClick={() => { setRepairError(''); setWizardStep(2); }}
                   className="flex-1 py-2 rounded-lg text-xs font-medium text-zinc-400"
                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #27272a' }}
                 >Back</button>
-                <button disabled={!faultStage}
+                <button disabled={!faultStage || (faultStage !== 'DEAD' && !faultTypeChoice)}
                   onClick={() => { setRepairError(''); setWizardStep(4); }}
                   className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-40"
                   style={{ background: '#f97316' }}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
-import { generateNextFinalInvoiceNumber } from '@/lib/invoice-number';
+import { generateNextFinalInvoiceNumber, generateNextReworkInvoiceNumber } from '@/lib/invoice-number';
 import { z } from 'zod';
 
 const approveSchema = z.object({
@@ -35,6 +35,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
                 items:  { orderBy: { sortOrder: 'asc' } },
               },
             },
+          },
+        },
+        returnRequest: {
+          select: {
+            id: true,
+            faultType: true,
+            client: { select: { id: true, globalOrIndian: true } },
+            unit: { select: { id: true, serialNumber: true, product: { select: { name: true, code: true } } } },
           },
         },
         boxes: {
@@ -98,6 +106,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     const generatedInvoiceNumbers: string[] = [];
 
+    // ── Rework invoice pre-gen ──────────────────────────────────────────────────
+    const reworkReturn = dispatchOrder.returnRequest;
+    const isReworkDO = !!reworkReturn;
+    let reworkInvoiceNumber: string | null = null;
+    if (isReworkDO && reworkReturn) {
+      const isExportRework = reworkReturn.client?.globalOrIndian === 'Global';
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const num = await generateNextReworkInvoiceNumber(isExportRework);
+        const taken = await prisma.invoice.count({ where: { invoiceNumber: num } });
+        if (taken === 0) { reworkInvoiceNumber = num; break; }
+      }
+      if (!reworkInvoiceNumber) {
+        return NextResponse.json({ error: 'Could not generate unique rework invoice number — try again' }, { status: 409 });
+      }
+    }
+
     // ── Pre-generate invoice numbers OUTSIDE the transaction ─────────────────
     // CRITICAL: generateNextFinalInvoiceNumber uses the global prisma client.
     // Calling it inside prisma.$transaction can cause connection-pool deadlocks.
@@ -158,7 +182,46 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         });
       }
 
-      // 5. Auto-generate Invoice(s) using pre-generated numbers
+      // 5a. Auto-generate Rework Invoice (RE prefix)
+      if (isReworkDO && reworkReturn && reworkInvoiceNumber) {
+        const clientId = reworkReturn.client?.id;
+        const isExportRework = reworkReturn.client?.globalOrIndian === 'Global';
+        const currency = isExportRework ? 'USD' : 'INR';
+        const isMfgDefect = reworkReturn.faultType === 'MANUFACTURING_DEFECT';
+        // Mfg defect = 1 INR/USD (warranty replacement), customer damage = actual repair value
+        const unitPrice = isMfgDefect ? 1 : 1; // For now, 1 unit price — actual pricing TBD for customer damage
+        const productName = reworkReturn.unit?.product?.name ?? 'Rework Unit';
+        const productCode = reworkReturn.unit?.product?.code ?? '';
+        const serialNumber = reworkReturn.unit?.serialNumber ?? '';
+        const description = `${productName}${productCode ? ` (${productCode})` : ''} — Rework${isMfgDefect ? ' (Warranty)' : ' (Customer Damage)'}`;
+
+        const totalAmount = unitPrice * packedUnitIds.length;
+        generatedInvoiceNumbers.push(reworkInvoiceNumber);
+
+        await tx.invoice.create({
+          data: {
+            invoiceNumber:   reworkInvoiceNumber,
+            dispatchOrderId: params.id,
+            subType:         'FULL',
+            totalAmount,
+            clientId:        clientId!,
+            currency,
+            items: {
+              create: [{
+                description,
+                hsnCode:         '85044090',
+                quantity:        packedUnitIds.length,
+                unitPrice,
+                discountPercent: 0,
+                sortOrder:       0,
+                serialNumbers:   JSON.stringify(packedSerials),
+              }],
+            },
+          },
+        });
+      }
+
+      // 5b. Auto-generate Invoice(s) using pre-generated numbers (normal order DOs)
       if (proforma && preGenNumbers.length > 0) {
         const clientId    = proforma.clientId;
         const currency    = proforma.currency;

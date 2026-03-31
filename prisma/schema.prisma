@@ -82,6 +82,8 @@ model User {
   igGanActions               ImplementationGood[] @relation("IGGanBy")
   igGrnActions               ImplementationGood[] @relation("IGGrnBy")
   igTimelineEntries          IGTimeline[]         @relation("IGTimelineUser")
+  returnFaultApprovals       ReturnRequest[]      @relation("ReturnFaultApprovedBy")
+  returnBlameRecords         ReturnRequest[]      @relation("ReturnBlameEmployee")
 }
 
 enum Role {
@@ -361,6 +363,7 @@ model ReworkRecord {
   id              String   @id @default(cuid())
   unitId          String   @map("unit_id")
   assignedUserId  String?  @map("assigned_user_id")
+  returnRequestId String?  @map("return_request_id")
   rootCauseStage  StageType? @map("root_cause_stage")
   rootCauseCategoryId String? @map("root_cause_category_id")
   correctiveAction String? @map("corrective_action")
@@ -372,6 +375,7 @@ model ReworkRecord {
 
   unit        ControllerUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
   assignedUser User?         @relation(fields: [assignedUserId], references: [id])
+  returnRequest ReturnRequest? @relation(fields: [returnRequestId], references: [id])
   rootCauseCategory RootCauseCategory? @relation(fields: [rootCauseCategoryId], references: [id])
   @@map("rework_records")
 }
@@ -879,12 +883,27 @@ model ReturnRequest {
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
+  // Fault determination
+  faultType           String?    @map("fault_type")           // MANUFACTURING_DEFECT | CUSTOMER_DAMAGE
+  faultApproval       String?    @map("fault_approval")       // PENDING | APPROVED | REJECTED
+  faultApprovedById   String?    @map("fault_approved_by_id")
+  blameEmployeeId     String?    @map("blame_employee_id")
+  blameStage          StageType? @map("blame_stage")
+  blameDate           DateTime?  @map("blame_date")
+  // Inspection photos
+  topPhotoUrl         String?    @map("top_photo_url")
+  bbInspectionPhotoUrl String?   @map("bb_inspection_photo_url")
+  psInspectionPhotoUrl String?   @map("ps_inspection_photo_url")
+
   client         Client          @relation(fields: [clientId], references: [id])
   unit           ControllerUnit? @relation(fields: [unitId], references: [id])
   order          Order?          @relation(fields: [orderId], references: [id])
   reportedBy     User            @relation("ReturnReportedBy", fields: [reportedById], references: [id])
   evaluatedBy    User?           @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id])
+  faultApprovedBy User?          @relation("ReturnFaultApprovedBy", fields: [faultApprovedById], references: [id])
+  blameEmployee  User?           @relation("ReturnBlameEmployee", fields: [blameEmployeeId], references: [id])
   repairLogs     RepairLog[]
+  reworkRecords  ReworkRecord[]
   dispatchOrders DispatchOrder[]
   materials      ReworkMaterial[]
 
@@ -899,6 +918,7 @@ model RepairLog {
   workDone        String?   @map("work_done")
   beforePhotoUrl  String?   @map("before_photo_url")
   boardPhotoUrl   String?   @map("board_photo_url")
+  powerstagePhotoUrl String? @map("powerstage_photo_url")
   afterPhotoUrl   String?   @map("after_photo_url")
   employeeId      String    @map("employee_id")
   startedAt       DateTime  @default(now()) @map("started_at")

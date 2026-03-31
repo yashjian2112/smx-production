@@ -17,12 +17,14 @@ export async function GET(
   const ret = await prisma.returnRequest.findUnique({
     where: { id },
     include: {
-      client:      { select: { code: true, customerName: true } },
-      unit:        { select: { id: true, serialNumber: true, currentStage: true, currentStatus: true, product: { select: { name: true, code: true } } } },
-      order:       { select: { id: true, orderNumber: true } },
-      reportedBy:  { select: { id: true, name: true } },
-      evaluatedBy: { select: { id: true, name: true } },
-      repairLogs:  { include: { employee: { select: { id: true, name: true } } }, orderBy: { startedAt: 'desc' } },
+      client:          { select: { code: true, customerName: true, globalOrIndian: true } },
+      unit:            { select: { id: true, serialNumber: true, currentStage: true, currentStatus: true, product: { select: { name: true, code: true } } } },
+      order:           { select: { id: true, orderNumber: true } },
+      reportedBy:      { select: { id: true, name: true } },
+      evaluatedBy:     { select: { id: true, name: true } },
+      faultApprovedBy: { select: { id: true, name: true } },
+      blameEmployee:   { select: { id: true, name: true } },
+      repairLogs:      { include: { employee: { select: { id: true, name: true } } }, orderBy: { startedAt: 'desc' } },
     },
   });
   if (!ret) return NextResponse.json({ error: 'Not found' }, { status: 404 });

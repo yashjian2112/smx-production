@@ -15,11 +15,13 @@ export default async function ReturnDetailPage({ params }: { params: Promise<{ i
   const ret = await prisma.returnRequest.findUnique({
     where: { id },
     include: {
-      client:      { select: { code: true, customerName: true } },
-      unit:        { select: { id: true, serialNumber: true, currentStage: true, currentStatus: true, product: { select: { name: true, code: true } } } },
-      order:       { select: { id: true, orderNumber: true } },
-      reportedBy:  { select: { id: true, name: true } },
-      evaluatedBy: { select: { id: true, name: true } },
+      client:          { select: { code: true, customerName: true, globalOrIndian: true } },
+      unit:            { select: { id: true, serialNumber: true, currentStage: true, currentStatus: true, product: { select: { name: true, code: true } } } },
+      order:           { select: { id: true, orderNumber: true } },
+      reportedBy:      { select: { id: true, name: true } },
+      evaluatedBy:     { select: { id: true, name: true } },
+      faultApprovedBy: { select: { id: true, name: true } },
+      blameEmployee:   { select: { id: true, name: true } },
       repairLogs:  {
         include: { employee: { select: { id: true, name: true } } },
         orderBy: { startedAt: 'desc' },
@@ -31,8 +33,9 @@ export default async function ReturnDetailPage({ params }: { params: Promise<{ i
 
   const serialized = {
     ...ret,
-    createdAt: ret.createdAt.toISOString(),
-    updatedAt: ret.updatedAt.toISOString(),
+    createdAt:  ret.createdAt.toISOString(),
+    updatedAt:  ret.updatedAt.toISOString(),
+    blameDate:  ret.blameDate?.toISOString() ?? null,
     repairLogs: ret.repairLogs.map(l => ({
       ...l,
       startedAt:   l.startedAt.toISOString(),

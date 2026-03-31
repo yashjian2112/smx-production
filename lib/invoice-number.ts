@@ -236,6 +236,32 @@ export async function generateNextIGNumber(): Promise<string> {
 }
 
 /**
+ * Generates the next Rework Invoice number from the invoices table.
+ * Export:   TSM/RE/ES/YY-YY/0001
+ * Domestic: TSM/RE/DS/YY-YY/0001
+ * Resets to 0001 on 1st April each year.
+ */
+export async function generateNextReworkInvoiceNumber(isExport: boolean): Promise<string> {
+  const fy     = getFiscalYear();
+  const prefix = isExport ? `TSM/RE/ES/${fy}/` : `TSM/RE/DS/${fy}/`;
+
+  const latest = await prisma.invoice.findFirst({
+    where: { invoiceNumber: { startsWith: prefix } },
+    orderBy: { invoiceNumber: 'desc' },
+    select: { invoiceNumber: true },
+  });
+
+  let next = 1;
+  if (latest) {
+    const parts = latest.invoiceNumber.split('/');
+    const seq   = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(seq)) next = seq + 1;
+  }
+
+  return `${prefix}${String(next).padStart(4, '0')}`;
+}
+
+/**
  * Generates the next Invoice number from the invoices table (NOT proforma_invoices).
  * Export:   TSM/ES/YY-YY/0001
  * Domestic: TSM/DS/YY-YY/0001

@@ -24,38 +24,34 @@ export async function POST(
     const outerFile = formData.get('outer') as File | null;
     const boardFile = formData.get('board') as File | null;
     const afterFile = formData.get('after') as File | null;
+    const topFile   = formData.get('top')   as File | null;
+    const bbFile    = formData.get('bb')    as File | null;
+    const psFile    = formData.get('ps')    as File | null;
 
-    if (!outerFile && !boardFile && !afterFile) {
+    if (!outerFile && !boardFile && !afterFile && !topFile && !bbFile && !psFile) {
       return NextResponse.json({ error: 'At least one photo is required' }, { status: 400 });
     }
 
-    const result: { outerUrl?: string; boardUrl?: string; afterUrl?: string } = {};
+    const result: Record<string, string> = {};
 
-    if (outerFile) {
-      const blob = await put(
-        `returns/${id}/outer.${getExt(outerFile)}`,
-        outerFile,
-        { access: 'public' }
-      );
-      result.outerUrl = blob.url;
-    }
+    const uploads: [File | null, string, string][] = [
+      [outerFile, 'outer',  'outerUrl'],
+      [boardFile, 'board',  'boardUrl'],
+      [afterFile, 'after',  'afterUrl'],
+      [topFile,   'top',    'topUrl'],
+      [bbFile,    'bb',     'bbUrl'],
+      [psFile,    'ps',     'psUrl'],
+    ];
 
-    if (boardFile) {
-      const blob = await put(
-        `returns/${id}/board.${getExt(boardFile)}`,
-        boardFile,
-        { access: 'public' }
-      );
-      result.boardUrl = blob.url;
-    }
-
-    if (afterFile) {
-      const blob = await put(
-        `returns/${id}/after.${getExt(afterFile)}`,
-        afterFile,
-        { access: 'public' }
-      );
-      result.afterUrl = blob.url;
+    for (const [file, name, key] of uploads) {
+      if (file) {
+        const blob = await put(
+          `returns/${id}/${name}.${getExt(file)}`,
+          file,
+          { access: 'public' }
+        );
+        result[key] = blob.url;
+      }
     }
 
     return NextResponse.json(result);

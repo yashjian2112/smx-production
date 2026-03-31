@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { appendTimeline } from '@/lib/timeline';
+import { generateNextQCBarcode } from '@/lib/barcode';
+import { StageType, UnitStatus } from '@prisma/client';
 import { z } from 'zod';
 
 // GET — list repair logs for this return
@@ -110,12 +113,47 @@ export async function PATCH(
     });
 
     // Auto-transition to REPAIRED if return is IN_REPAIR
-    const ret = await prisma.returnRequest.findUnique({ where: { id } });
+    const ret = await prisma.returnRequest.findUnique({
+      where: { id },
+      select: { id: true, status: true, unitId: true },
+    });
     if (ret && ret.status === 'IN_REPAIR') {
       await prisma.returnRequest.update({
         where: { id },
         data: { status: 'REPAIRED' },
       });
+
+      // Move linked unit to QC_AND_SOFTWARE stage for real QC testing
+      if (ret.unitId) {
+        const unit = await prisma.controllerUnit.findUnique({
+          where: { id: ret.unitId },
+          select: { id: true, qcBarcode: true, product: { select: { code: true } } },
+        });
+        if (unit) {
+          // Generate QC barcode if not already assigned
+          let qcBarcode = unit.qcBarcode;
+          if (!qcBarcode && unit.product?.code) {
+            qcBarcode = await generateNextQCBarcode(unit.product.code);
+          }
+
+          await prisma.controllerUnit.update({
+            where: { id: ret.unitId },
+            data: {
+              currentStage:  StageType.QC_AND_SOFTWARE,
+              currentStatus: UnitStatus.PENDING,
+              ...(qcBarcode ? { qcBarcode } : {}),
+            },
+          });
+
+          await appendTimeline({
+            unitId:  ret.unitId,
+            action:  'status_changed',
+            stage:   StageType.QC_AND_SOFTWARE,
+            remarks: 'Repair completed — sent to QC for testing',
+            userId:  session.id,
+          });
+        }
+      }
     }
 
     return NextResponse.json(updated);

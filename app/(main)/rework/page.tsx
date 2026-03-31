@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Package } from 'lucide-react';
+import { Package, Wrench, AlertTriangle } from 'lucide-react';
 
 type ReturnItem = {
   id: string;
@@ -12,13 +12,30 @@ type ReturnItem = {
   status: string;
   type: string;
   resolution: string | null;
+  faultType: string | null;
+  faultApproval: string | null;
   clientName: string;
   clientCode: string;
   createdByName: string;
   evaluatedByName: string | null;
   createdAt: string;
   batchId: string | null;
+  origin: 'replacement';
 };
+
+type QCFailItem = {
+  id: string;
+  unitSerial: string;
+  orderNumber: string;
+  productName: string;
+  status: string;
+  cycleCount: number;
+  assignedTo: string | null;
+  createdAt: string;
+  origin: 'qc_failure';
+};
+
+type UnifiedItem = ReturnItem | QCFailItem;
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; text: string }> = {
   REPORTED:      { bg: 'rgba(251,191,36,0.12)',  color: '#fbbf24', text: 'Reported' },
@@ -31,11 +48,18 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; text: string }>
   DISPATCHED:    { bg: 'rgba(99,102,241,0.12)',  color: '#6366f1', text: 'Dispatched' },
   CLOSED:        { bg: 'rgba(113,113,122,0.15)', color: '#a1a1aa', text: 'Closed' },
   REJECTED:      { bg: 'rgba(239,68,68,0.12)',   color: '#ef4444', text: 'Rejected' },
+  OPEN:          { bg: 'rgba(251,191,36,0.12)',  color: '#fbbf24', text: 'Open' },
+  IN_PROGRESS:   { bg: 'rgba(249,115,22,0.12)',  color: '#f97316', text: 'In Progress' },
+  COMPLETED:     { bg: 'rgba(34,197,94,0.12)',   color: '#22c55e', text: 'Completed' },
+  SENT_TO_QC:    { bg: 'rgba(56,189,248,0.12)',  color: '#38bdf8', text: 'Sent to QC' },
 };
 
-const PENDING_STATUSES   = ['REPORTED', 'EVALUATED', 'APPROVED', 'UNIT_RECEIVED'];
-const IN_REPAIR_STATUSES = ['IN_REPAIR', 'REPAIRED', 'QC_CHECKED'];
-const DONE_STATUSES      = ['DISPATCHED', 'CLOSED', 'REJECTED'];
+const RETURN_PENDING   = ['REPORTED', 'EVALUATED', 'APPROVED', 'UNIT_RECEIVED'];
+const RETURN_ACTIVE    = ['IN_REPAIR', 'REPAIRED', 'QC_CHECKED'];
+const RETURN_DONE      = ['DISPATCHED', 'CLOSED', 'REJECTED'];
+
+const REWORK_ACTIVE    = ['OPEN', 'IN_PROGRESS', 'SENT_TO_QC'];
+const REWORK_DONE      = ['COMPLETED'];
 
 function StatusBadge({ status }: { status: string }) {
   const st = STATUS_STYLES[status] ?? STATUS_STYLES.REPORTED;
@@ -47,31 +71,22 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-type DisplayGroup =
-  | { kind: 'single'; item: ReturnItem }
-  | { kind: 'batch';  items: ReturnItem[] };
-
-function buildGroups(items: ReturnItem[]): DisplayGroup[] {
-  const batches = new Map<string, ReturnItem[]>();
-  const groups: DisplayGroup[] = [];
-  for (const item of items) {
-    if (!item.batchId) {
-      groups.push({ kind: 'single', item });
-    } else {
-      const existing = batches.get(item.batchId);
-      if (existing) {
-        existing.push(item);
-      } else {
-        const arr: ReturnItem[] = [item];
-        batches.set(item.batchId, arr);
-        groups.push({ kind: 'batch', items: arr });
-      }
-    }
+function OriginBadge({ origin }: { origin: 'replacement' | 'qc_failure' }) {
+  if (origin === 'qc_failure') {
+    return (
+      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
+        style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}>
+        QC Failure
+      </span>
+    );
   }
-  return groups;
+  return (
+    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
+      style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}>
+      Replacement
+    </span>
+  );
 }
-
-const STATUS_ORDER = ['IN_REPAIR', 'REPORTED', 'UNIT_RECEIVED', 'APPROVED', 'EVALUATED', 'REPAIRED', 'QC_CHECKED', 'DISPATCHED', 'CLOSED', 'REJECTED'];
 
 export default async function ReworkPage({
   searchParams,
@@ -83,8 +98,9 @@ export default async function ReworkPage({
   if (!['ADMIN', 'PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER', 'SALES', 'QC_USER'].includes(session.role)) redirect('/dashboard');
 
   const { tab: rawTab } = await searchParams;
-  const tab = rawTab === 'in_repair' ? 'in_repair' : rawTab === 'completed' ? 'completed' : 'pending';
+  const tab = rawTab === 'active' ? 'active' : rawTab === 'completed' ? 'completed' : 'pending';
 
+  // Fetch return requests
   const raw = await prisma.returnRequest.findMany({
     include: {
       client:      { select: { customerName: true, code: true } },
@@ -94,7 +110,7 @@ export default async function ReworkPage({
     orderBy: { createdAt: 'desc' },
   });
 
-  const items: ReturnItem[] = raw.map((r) => ({
+  const returnItems: ReturnItem[] = raw.map((r) => ({
     id:              r.id,
     returnNumber:    r.returnNumber,
     serialNumber:    r.serialNumber,
@@ -102,29 +118,77 @@ export default async function ReworkPage({
     status:          r.status,
     type:            r.type,
     resolution:      r.resolution,
+    faultType:       r.faultType,
+    faultApproval:   r.faultApproval,
     clientName:      r.client.customerName,
     clientCode:      r.client.code,
     createdByName:   r.reportedBy.name,
     evaluatedByName: r.evaluatedBy?.name ?? null,
     createdAt:       r.createdAt.toISOString(),
     batchId:         r.batchId,
+    origin:          'replacement',
   }));
 
-  const pendingItems  = items.filter(i => PENDING_STATUSES.includes(i.status));
-  const inRepairItems = items.filter(i => IN_REPAIR_STATUSES.includes(i.status));
-  const doneItems     = items.filter(i => DONE_STATUSES.includes(i.status));
+  // Fetch standalone rework records (QC failures not linked to returns)
+  const standaloneRework = await prisma.reworkRecord.findMany({
+    where: { returnRequestId: null },
+    include: {
+      unit: {
+        select: {
+          id: true,
+          serialNumber: true,
+          currentStage: true,
+          currentStatus: true,
+          order: { select: { id: true, orderNumber: true, product: { select: { name: true, code: true } } } },
+        },
+      },
+      assignedUser: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
 
-  const activeItems =
-    tab === 'in_repair' ? inRepairItems :
-    tab === 'completed' ? doneItems :
-    pendingItems;
+  const qcFailItems: QCFailItem[] = standaloneRework.map((r) => ({
+    id:           r.id,
+    unitSerial:   r.unit.serialNumber,
+    orderNumber:  r.unit.order?.orderNumber ?? '—',
+    productName:  r.unit.order?.product?.name ?? '—',
+    status:       r.status,
+    cycleCount:   r.cycleCount,
+    assignedTo:   r.assignedUser?.name ?? null,
+    createdAt:    r.createdAt.toISOString(),
+    origin:       'qc_failure',
+  }));
 
-  const groups = buildGroups(activeItems);
+  // Build tab counts
+  const pendingReturns  = returnItems.filter(i => RETURN_PENDING.includes(i.status));
+  const activeReturns   = returnItems.filter(i => RETURN_ACTIVE.includes(i.status));
+  const doneReturns     = returnItems.filter(i => RETURN_DONE.includes(i.status));
+
+  const activeRework    = qcFailItems.filter(i => REWORK_ACTIVE.includes(i.status));
+  const doneRework      = qcFailItems.filter(i => REWORK_DONE.includes(i.status));
+
+  const pendingCount    = pendingReturns.length;
+  const activeCount     = activeReturns.length + activeRework.length;
+  const doneCount       = doneReturns.length + doneRework.length;
+
+  let activeItems: UnifiedItem[] = [];
+  if (tab === 'pending') {
+    activeItems = pendingReturns;
+  } else if (tab === 'active') {
+    activeItems = [...activeReturns, ...activeRework].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  } else {
+    activeItems = [...doneReturns, ...doneRework].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
 
   const TABS = [
-    { key: 'pending',   label: 'Pending',   count: pendingItems.length,  accent: '#fbbf24' },
-    { key: 'in_repair', label: 'In Repair',  count: inRepairItems.length, accent: '#f97316' },
-    { key: 'completed', label: 'Completed',  count: doneItems.length,     accent: '#71717a' },
+    { key: 'pending',   label: 'Pending',   count: pendingCount,  accent: '#fbbf24' },
+    { key: 'active',    label: 'In Repair',  count: activeCount,   accent: '#f97316' },
+    { key: 'completed', label: 'Completed',  count: doneCount,     accent: '#71717a' },
   ];
 
   return (
@@ -132,8 +196,8 @@ export default async function ReworkPage({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">Customer Returns</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Replacement requests — units requiring diagnosis and repair</p>
+          <h2 className="text-lg font-semibold text-white">Rework</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Replacement requests and QC failures</p>
         </div>
         {['ADMIN', 'SALES'].includes(session.role) && (
           <Link href="/rework/new"
@@ -171,21 +235,21 @@ export default async function ReworkPage({
       </div>
 
       {/* Content */}
-      {groups.length === 0 ? (
+      {activeItems.length === 0 ? (
         <div className="card p-10 text-center">
           <div className="flex justify-center mb-3"><Package className="w-4 h-4 text-zinc-600" /></div>
           <p className="text-slate-400 text-sm">
             {tab === 'pending'   ? 'No pending requests.' :
-             tab === 'in_repair' ? 'Nothing currently in repair.' :
-             'No completed returns yet.'}
+             tab === 'active'    ? 'Nothing currently in repair.' :
+             'No completed items yet.'}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {groups.map(g =>
-            g.kind === 'single'
-              ? <ReturnCard key={g.item.id} item={g.item} />
-              : <BatchCard  key={g.items[0].batchId} items={g.items} />
+          {activeItems.map(item =>
+            item.origin === 'replacement'
+              ? <ReturnCard key={item.id} item={item} />
+              : <QCFailCard key={item.id} item={item} />
           )}
         </div>
       )}
@@ -203,6 +267,7 @@ function ReturnCard({ item }: { item: ReturnItem }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <span className="text-xs font-mono text-sky-400">{item.returnNumber}</span>
+              <OriginBadge origin="replacement" />
               <StatusBadge status={item.status} />
               <span className="text-[10px] text-slate-600">{date}</span>
             </div>
@@ -217,10 +282,25 @@ function ReturnCard({ item }: { item: ReturnItem }) {
 
             {item.serialNumber && (
               <div className="flex items-center gap-2 mb-2 p-2 rounded-lg" style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
-                <svg className="w-3.5 h-3.5 text-sky-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
-                </svg>
+                <Package className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                 <span className="text-xs font-mono text-sky-300">{item.serialNumber}</span>
+              </div>
+            )}
+
+            {item.faultType && (
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                  style={item.faultType === 'MANUFACTURING_DEFECT'
+                    ? { background: 'rgba(239,68,68,0.12)', color: '#f87171' }
+                    : { background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>
+                  {item.faultType === 'MANUFACTURING_DEFECT' ? 'Mfg Defect' : 'Customer Damage'}
+                </span>
+                {item.faultApproval === 'PENDING' && (
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>
+                    Awaiting Approval
+                  </span>
+                )}
               </div>
             )}
 
@@ -228,13 +308,6 @@ function ReturnCard({ item }: { item: ReturnItem }) {
               <p className="text-[9px] font-semibold text-amber-500 uppercase tracking-wider mb-0.5">Reported Issue</p>
               <p className="text-xs text-amber-200 line-clamp-2">{item.reportedIssue}</p>
             </div>
-
-            {item.resolution && (
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[10px] text-zinc-500">Resolution:</span>
-                <span className="text-[10px] font-medium text-emerald-400">{item.resolution}</span>
-              </div>
-            )}
 
             <p className="text-[10px] text-slate-600">Logged by {item.createdByName}</p>
           </div>
@@ -245,57 +318,43 @@ function ReturnCard({ item }: { item: ReturnItem }) {
   );
 }
 
-function BatchCard({ items }: { items: ReturnItem[] }) {
-  const first     = items[0];
-  const date      = new Date(first.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
-  const repStatus = items
-    .map(i => i.status)
-    .sort((a, b) => STATUS_ORDER.indexOf(a) - STATUS_ORDER.indexOf(b))[0] ?? first.status;
+function QCFailCard({ item }: { item: QCFailItem }) {
+  const date = new Date(item.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}>
-              Batch · {items.length} units
-            </span>
-            <StatusBadge status={repStatus} />
-            <span className="text-[10px] text-slate-600">{date}</span>
-          </div>
-
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-6 h-6 rounded-full bg-sky-900/50 border border-sky-700/30 flex items-center justify-center text-[9px] font-semibold text-sky-300">
-              {first.clientName.slice(0, 2).toUpperCase()}
+    <Link href={`/units/${item.id}`} className="block">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <OriginBadge origin="qc_failure" />
+              <StatusBadge status={item.status} />
+              {item.cycleCount > 1 && (
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                  style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}>
+                  Cycle {item.cycleCount}
+                </span>
+              )}
+              <span className="text-[10px] text-slate-600">{date}</span>
             </div>
-            <span className="text-sm font-medium text-white">{first.clientName}</span>
-            <span className="text-[10px] text-slate-600 font-mono">{first.clientCode}</span>
-          </div>
 
-          <div className="p-2 rounded-lg mb-3" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.15)' }}>
-            <p className="text-[9px] font-semibold text-amber-500 uppercase tracking-wider mb-0.5">Reported Issue</p>
-            <p className="text-xs text-amber-200 line-clamp-2">{first.reportedIssue}</p>
+            <div className="flex items-center gap-2 mb-2 p-2 rounded-lg" style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
+              <Wrench className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              <span className="text-xs font-mono text-sky-300">{item.unitSerial}</span>
+            </div>
+
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs text-zinc-400">{item.productName}</span>
+              <span className="text-[10px] text-zinc-600 font-mono">{item.orderNumber}</span>
+            </div>
+
+            {item.assignedTo && (
+              <p className="text-[10px] text-slate-600">Assigned to {item.assignedTo}</p>
+            )}
           </div>
+          <svg className="text-zinc-600 shrink-0 mt-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
         </div>
       </div>
-
-      <div className="space-y-1.5">
-        {items.map((item) => (
-          <Link key={item.id} href={`/rework/${item.id}`}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:border-zinc-600"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <svg className="w-3 h-3 text-sky-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
-            </svg>
-            <span className="text-xs font-mono text-sky-300 flex-1">{item.serialNumber ?? '—'}</span>
-            <span className="text-[10px] font-mono text-zinc-500">{item.returnNumber}</span>
-            <StatusBadge status={item.status} />
-            <svg className="text-zinc-600 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
-          </Link>
-        ))}
-      </div>
-
-      <p className="text-[10px] text-slate-600 mt-2">Logged by {first.createdByName}</p>
-    </div>
+    </Link>
   );
 }

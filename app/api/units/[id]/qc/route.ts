@@ -111,6 +111,18 @@ export async function POST(
         where: { unitId: id, status: { in: ['OPEN', 'IN_PROGRESS', 'SENT_TO_QC'] } },
         data: { status: 'COMPLETED' },
       });
+
+      // If linked to a return request, advance to QC_CHECKED
+      const linkedReturnPass = await prisma.returnRequest.findFirst({
+        where: { unitId: id, status: { in: ['REPAIRED', 'IN_REPAIR'] } },
+        select: { id: true },
+      });
+      if (linkedReturnPass) {
+        await prisma.returnRequest.update({
+          where: { id: linkedReturnPass.id },
+          data: { status: 'QC_CHECKED' },
+        });
+      }
       await prisma.stageLog.create({
         data: {
           unitId: id,
@@ -161,15 +173,29 @@ export async function POST(
           statusTo: UnitStatus.BLOCKED,
         },
       });
+      // Check if unit has a linked ReturnRequest
+      const linkedReturn = await prisma.returnRequest.findFirst({
+        where: { unitId: id, status: { notIn: ['CLOSED', 'REJECTED'] } },
+        select: { id: true },
+      });
+
       await prisma.reworkRecord.create({
         data: {
           unitId: id,
           status: 'OPEN',
           rootCauseStage: sourceStage as StageType | undefined,
-          // Assign rework to the employee who built the controller
           assignedUserId: assemblyAssignment?.userId ?? undefined,
+          returnRequestId: linkedReturn?.id ?? undefined,
         },
       });
+
+      // If linked to a return request, transition it back to IN_REPAIR
+      if (linkedReturn) {
+        await prisma.returnRequest.update({
+          where: { id: linkedReturn.id },
+          data: { status: 'IN_REPAIR' },
+        });
+      }
       await appendTimeline({
         unitId: id,
         userId: session.id,
