@@ -74,7 +74,10 @@ export function OrdersList({ orders, isManager, sessionRole }: {
     if (isEmployee && tab === 'pending') loadPending();
   }, [isEmployee, tab, loadPending]);
 
+  const [acceptError, setAcceptError] = useState('');
+
   async function acceptOrder(orderId: string, stage: string) {
+    setAcceptError('');
     setAccepting(`${orderId}:${stage}`);
     const res = await fetch('/api/inventory/job-cards', {
       method: 'POST',
@@ -82,7 +85,12 @@ export function OrdersList({ orders, isManager, sessionRole }: {
       body: JSON.stringify({ orderId, stage }),
     });
     setAccepting(null);
-    if (res.ok) await loadPending();
+    if (res.ok) {
+      await loadPending();
+    } else {
+      const data = await res.json().catch(() => ({ error: 'Failed to accept order' }));
+      setAcceptError(data.error || 'Failed to accept order');
+    }
   }
 
   const allUnitsDone = (o: OrderItem) =>
@@ -127,6 +135,11 @@ export function OrdersList({ orders, isManager, sessionRole }: {
       {/* Pending tab — employee only */}
       {tab === 'pending' && (
         <div className="space-y-2">
+          {acceptError && (
+            <div className="p-3 rounded-lg text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              {acceptError}
+            </div>
+          )}
           {loadingPending ? (
             <div className="flex justify-center py-10">
               <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
