@@ -48,10 +48,24 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (proforma.orderId)
       return NextResponse.json({ error: 'Already converted to order', orderId: proforma.orderId }, { status: 400 });
 
-    // Find ALL product items (exclude freight/service lines)
+    // Find ALL product items (exclude freight/service lines without productId)
     const productItems = proforma.items.filter((i) => i.productId && i.product);
     if (productItems.length === 0)
       return NextResponse.json({ error: 'No product line item found in this invoice to create an order from' }, { status: 400 });
+
+    // Total quantity across all products
+    const totalQty = productItems.reduce((sum, item) => sum + item.quantity, 0);
+
+    // Use first product as the primary product on the order
+    const primaryProduct = productItems[0].product!;
+
+    // Auto-generate or use provided order number
+    const orderNumber = parsed.data.orderNumber?.trim() || await generateNextOrderNumber();
+
+    // Check for duplicate order number
+    const existingOrder = await prisma.order.findFirst({ where: { orderNumber } });
+    if (existingOrder)
+      return NextResponse.json({ error: `Order number "${orderNumber}" already exists` }, { status: 400 });
 
     // Check if this proforma is linked to a ReturnRequest (replacement order)
     const linkedReturn = await prisma.returnRequest.findFirst({
@@ -59,43 +73,33 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       select: { id: true },
     });
 
-    const notesText = parsed.data.notes?.trim();
-    const createdOrders: any[] = [];
+    // Create ONE order for all products, total quantity
+    const order = await prisma.order.create({
+      data: {
+        orderNumber,
+        productId:    primaryProduct.id,
+        clientId:     proforma.clientId,
+        quantity:     totalQty,
+        priority:     0,
+        status:       'ACTIVE',
+        createdById:  session.id,
+      },
+      include: { product: true },
+    });
 
-    // Create one order per product item
+    const notesText = parsed.data.notes?.trim();
+    const productSummary = productItems.map(i => `${i.product!.code} x${i.quantity}`).join(', ');
+    await appendTimeline({
+      orderId: order.id,
+      userId:  session.id,
+      action:  'order_created',
+      remarks: `Converted from Proforma Invoice ${proforma.invoiceNumber} — ${productSummary}${notesText ? ` — Notes: ${notesText}` : ''}`,
+    });
+
+    // Generate units for EACH product item
     for (const targetItem of productItems) {
       const product = targetItem.product!;
       const qty = targetItem.quantity;
-
-      const orderNumber = parsed.data.orderNumber && productItems.length === 1
-        ? parsed.data.orderNumber.trim()
-        : await generateNextOrderNumber();
-
-      // Check for duplicate order number
-      const existingOrder = await prisma.order.findFirst({ where: { orderNumber } });
-      if (existingOrder)
-        return NextResponse.json({ error: `Order number "${orderNumber}" already exists` }, { status: 400 });
-
-      // Create the production order
-      const order = await prisma.order.create({
-        data: {
-          orderNumber,
-          productId:    product.id,
-          clientId:     proforma.clientId,
-          quantity:     qty,
-          priority:     0,
-          status:       'ACTIVE',
-          createdById:  session.id,
-        },
-        include: { product: true },
-      });
-
-      await appendTimeline({
-        orderId: order.id,
-        userId:  session.id,
-        action:  'order_created',
-        remarks: `Converted from Proforma Invoice ${proforma.invoiceNumber} — ${product.code} x${qty}${notesText ? ` — Notes: ${notesText}` : ''}`,
-      });
 
       // Try to allocate PS and BB barcodes from MaterialSerial inventory
       const availablePS = await prisma.materialSerial.findMany({
@@ -111,7 +115,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const useInventoryPS = availablePS.length >= qty;
       const useInventoryBB = availableBB.length >= qty;
 
-      // Generate units
       for (let i = 0; i < qty; i++) {
         const serial    = await generateNextSerial(product.code);
         const qcBarcode = await generateNextQCBarcode(product.code);
@@ -150,29 +153,22 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           data: { status: 'ALLOCATED', allocatedToOrderId: order.id },
         });
       }
-
-      // Log serials
-      const createdUnits = await prisma.controllerUnit.findMany({ where: { orderId: order.id }, orderBy: { serialNumber: 'asc' } });
-      for (const u of createdUnits) {
-        await appendTimeline({ unitId: u.id, orderId: order.id, userId: session.id, action: 'serial_generated', stage: u.currentStage, remarks: u.serialNumber });
-      }
-
-      createdOrders.push(order);
     }
 
-    // Link PI to the first order (primary) and mark as converted
+    // Log serials
+    const createdUnits = await prisma.controllerUnit.findMany({ where: { orderId: order.id }, orderBy: { serialNumber: 'asc' } });
+    for (const u of createdUnits) {
+      await appendTimeline({ unitId: u.id, orderId: order.id, userId: session.id, action: 'serial_generated', stage: u.currentStage, remarks: u.serialNumber });
+    }
+
+    // Mark PI as converted and link the order
     await prisma.proformaInvoice.update({
       where: { id: params.id },
-      data:  { status: 'CONVERTED', orderId: createdOrders[0].id },
+      data:  { status: 'CONVERTED', orderId: order.id },
     });
 
-    const updatedOrder = await prisma.order.findUnique({ where: { id: createdOrders[0].id }, include: { product: true, units: true } });
-    return NextResponse.json({
-      ok: true,
-      order: updatedOrder,
-      orders: createdOrders.map(o => ({ id: o.id, orderNumber: o.orderNumber, product: o.product?.code, quantity: o.quantity })),
-      proformaId: params.id,
-    });
+    const updatedOrder = await prisma.order.findUnique({ where: { id: order.id }, include: { product: true, units: true } });
+    return NextResponse.json({ ok: true, order: updatedOrder, proformaId: params.id });
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
