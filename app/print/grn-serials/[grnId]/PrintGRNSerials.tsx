@@ -28,89 +28,108 @@ export default function PrintGRNSerials({ grn }: { grn: GRN }) {
     return () => clearTimeout(t);
   }, []);
 
-  const byMaterial = grn.materialSerials.reduce<Record<string, { material: Serial['material']; stageType: string; serials: Serial[] }>>(
-    (acc, s) => {
-      if (!acc[s.material.id]) acc[s.material.id] = { material: s.material, stageType: s.stageType, serials: [] };
-      acc[s.material.id].serials.push(s);
-      return acc;
-    },
-    {}
-  );
-
   return (
-    <div style={{ fontFamily: 'monospace', padding: '16px', background: '#fff', color: '#000' }}>
-      <style>{`
-        @media print {
-          @page { size: A4; margin: 10mm; }
-          body { margin: 0; }
-        }
-        .label {
-          display: inline-block;
-          border: 1px solid #000;
-          padding: 6px 10px;
-          margin: 4px;
-          width: 180px;
-          text-align: center;
-          vertical-align: top;
-          page-break-inside: avoid;
-        }
-        .barcode-text {
-          font-family: 'Libre Barcode 128', monospace;
-          font-size: 36px;
-          line-height: 1;
-          letter-spacing: 2px;
-        }
-        .label-code {
-          font-size: 11px;
-          font-weight: bold;
-          margin-top: 2px;
-        }
-        .label-info {
-          font-size: 9px;
-          color: #555;
-          margin-top: 1px;
-        }
-        .section-header {
-          font-weight: bold;
-          font-size: 13px;
-          margin: 12px 0 6px;
-          border-bottom: 1px solid #ccc;
-          padding-bottom: 4px;
-        }
-        .print-header {
-          margin-bottom: 12px;
-          font-size: 12px;
-        }
-      `}</style>
-
+    <>
       <link
         href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap"
         rel="stylesheet"
       />
+      <style>{`
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #fff; }
 
-      <div className="print-header">
-        <strong>GRN Barcode Labels</strong> — {grn.grnNumber}<br />
-        PO: {grn.purchaseOrder.poNumber} | Vendor: {grn.purchaseOrder.vendor.name}<br />
-        Total labels: {grn.materialSerials.length}
+        @media print {
+          @page {
+            size: 50mm 25mm;
+            margin: 0;
+          }
+          body { margin: 0; }
+          .no-print { display: none; }
+        }
+
+        /* One label per page */
+        .label {
+          width: 50mm;
+          height: 25mm;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 1mm 1.5mm;
+          page-break-after: always;
+        }
+        .label:last-child {
+          page-break-after: auto;
+        }
+
+        .barcode {
+          font-family: 'Libre Barcode 128', monospace;
+          font-size: 30px;
+          line-height: 1;
+          letter-spacing: 0;
+          white-space: nowrap;
+          max-width: 100%;
+        }
+
+        .barcode-num {
+          font-family: monospace;
+          font-size: 7pt;
+          font-weight: bold;
+          letter-spacing: 0.5px;
+          margin-top: 0.5mm;
+        }
+
+        .label-sub {
+          font-family: Arial, sans-serif;
+          font-size: 6pt;
+          color: #333;
+          margin-top: 0.3mm;
+          text-align: center;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 48mm;
+        }
+
+        /* Screen preview */
+        @media screen {
+          body { background: #f5f5f5; padding: 16px; }
+          .label {
+            border: 1px dashed #999;
+            margin: 4px auto;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          }
+          .no-print {
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            color: #333;
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            display: inline-block;
+          }
+        }
+      `}</style>
+
+      <div className="no-print">
+        <strong>GRN: {grn.grnNumber}</strong> &nbsp;·&nbsp;
+        {grn.materialSerials.length} labels &nbsp;·&nbsp;
+        50mm × 25mm &nbsp;·&nbsp; TVS LP46 Neo
       </div>
 
-      {Object.values(byMaterial).map(({ material, stageType, serials }) => (
-        <div key={material.id}>
-          <div className="section-header">
-            {material.name} ({material.code}) — {stageType} Stage — {serials.length} units
-          </div>
-          <div>
-            {serials.map(s => (
-              <div key={s.id} className="label">
-                <div className="barcode-text">{s.barcode}</div>
-                <div className="label-code">{s.barcode}</div>
-                {s.quantity > 1 && <div className="label-info" style={{ fontWeight: 'bold', fontSize: '11px' }}>Qty: {s.quantity} {material.code}</div>}
-                <div className="label-info">{stageType} · {grn.grnNumber}</div>
-              </div>
-            ))}
+      {grn.materialSerials.map(s => (
+        <div key={s.id} className="label">
+          <div className="barcode">{s.barcode}</div>
+          <div className="barcode-num">{s.barcode}</div>
+          <div className="label-sub">
+            {s.material.name}{s.quantity > 1 ? ` · Qty: ${s.quantity}` : ''} · {grn.grnNumber}
           </div>
         </div>
       ))}
-    </div>
+    </>
   );
 }
