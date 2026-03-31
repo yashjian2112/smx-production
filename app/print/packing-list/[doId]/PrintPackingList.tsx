@@ -200,8 +200,8 @@ export function PrintPackingList({
         </table>
 
         {/* Signature section */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 20 }}>
-          {['Packed By', 'Checked By', 'Authorized By'].map((label) => (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 20 }}>
+          {['Packed By', 'Checked By'].map((label) => (
             <div key={label} style={{ borderTop: '1px solid #aaa', paddingTop: 6 }}>
               <div style={{ fontSize: 8, color: '#888' }}>{label}</div>
               <div style={{ marginTop: 20, borderTop: '1px dashed #ccc', paddingTop: 3, fontSize: 8, color: '#aaa' }}>Signature &amp; Date</div>
