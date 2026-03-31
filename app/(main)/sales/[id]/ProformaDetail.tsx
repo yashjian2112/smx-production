@@ -80,12 +80,15 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   const productItems = proforma.items.filter((i) => i.hsnCode !== '9965');
   const subtotal    = productItems.reduce((s, i) => s + calcItem(i), 0);
   const fullSubtotal = proforma.items.reduce((s, i) => s + calcItem(i), 0);
-  const isExport    = proforma.currency === 'USD';
+  const isExport    = proforma.client.globalOrIndian === 'Global';
+  const isUsdIndian = !isExport && proforma.currency === 'USD';
   const sellerState = 'gujarat';
   const buyerState  = (proforma.client.state ?? '').toLowerCase();
   const isIntra     = !isExport && !!buyerState && buyerState === sellerState;
-  const gst         = isExport ? 0 : fullSubtotal * 0.18;
-  const total       = fullSubtotal + gst;
+  const exchRate    = proforma.exchangeRate ?? 1;
+  const gstBaseINR  = isUsdIndian ? fullSubtotal * exchRate : fullSubtotal;
+  const gst         = isExport ? 0 : gstBaseINR * 0.18;
+  const total       = isUsdIndian ? fullSubtotal : fullSubtotal + gst;
   const st          = STATUS_STYLE[proforma.status] ?? STATUS_STYLE.DRAFT;
 
   // Split invoice preview — split is on total (incl. shipping + GST)
@@ -564,12 +567,18 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
           <div className="flex justify-between text-sm"><span className="text-zinc-500">Sub Total</span><span>{fmtAmt(fullSubtotal, proforma.currency)}</span></div>
           {!isExport && isIntra && (
             <>
-              <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{fmtAmt(fullSubtotal * 0.09, proforma.currency)}</span></div>
-              <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{fmtAmt(fullSubtotal * 0.09, proforma.currency)}</span></div>
+              <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{fmtAmt(gst * 0.5, 'INR')}</span></div>
+              <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{fmtAmt(gst * 0.5, 'INR')}</span></div>
             </>
           )}
-          {!isExport && !isIntra && <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{fmtAmt(gst, proforma.currency)}</span></div>}
-          <div className="flex justify-between font-semibold text-sky-400 border-t border-zinc-800 pt-2"><span>Total</span><span>{fmtAmt(total, proforma.currency)}</span></div>
+          {!isExport && !isIntra && <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{fmtAmt(gst, 'INR')}</span></div>}
+          <div className="flex justify-between font-semibold text-sky-400 border-t border-zinc-800 pt-2"><span>Total</span><span>{isUsdIndian ? fmtAmt((fullSubtotal) * exchRate + gst, 'INR') : fmtAmt(total, proforma.currency)}</span></div>
+          {isUsdIndian && proforma.exchangeRate && (
+            <div className="flex justify-between text-xs text-zinc-600">
+              <span>USD {fmtAmt(fullSubtotal, 'USD')} @ ₹{proforma.exchangeRate}/$ + GST</span>
+              <span>{fmtAmt(fullSubtotal, 'USD')}</span>
+            </div>
+          )}
           {isExport && proforma.exchangeRate && (
             <div className="flex justify-between text-xs text-zinc-600">
               <span>≈ INR @ ₹{proforma.exchangeRate}/$</span>
@@ -579,7 +588,7 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
           {proforma.declaredAmount != null && (
             <div className="flex justify-between text-xs mt-2 pt-2 border-t border-zinc-800">
               <span className="text-amber-400 font-medium">Declared by Sales</span>
-              <span className="text-amber-400 font-semibold">{fmtAmt(proforma.declaredAmount, proforma.currency)}</span>
+              <span className="text-amber-400 font-semibold">{fmtAmt(proforma.declaredAmount, isUsdIndian ? 'INR' : proforma.currency)}</span>
             </div>
           )}
         </div>

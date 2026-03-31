@@ -233,13 +233,18 @@ export function EditProformaForm({
   const sellerState = 'gujarat';
   const buyerState  = (selectedClient?.state ?? '').toLowerCase();
   const isIntra     = hasGst && !!buyerState && buyerState === sellerState;
-  const gst         = hasGst ? subtotal * 0.18 : 0;
-  const total       = subtotal + gst + shipping;
+  const isUsdIndian = dualCurrency && !isExport && currency === 'USD';
+  const gstBaseINR  = isUsdIndian ? subtotal * rate : subtotal;
+  const gst         = hasGst ? gstBaseINR * 0.18 : 0;
+  const total       = isUsdIndian ? subtotal + shipping : subtotal + gst + shipping;
 
   const fmtAmt = (n: number) =>
     currency === 'USD'
       ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
       : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+
+  const fmtInrVal = (n: number) =>
+    `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
   const fmtInr = (usd: number) =>
     `₹${(usd * rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -552,12 +557,12 @@ export function EditProformaForm({
           </div>
           {hasGst && isIntra && (
             <>
-              <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{fmtAmt(subtotal * 0.09)}{dualCurrency && rate > 0 && <span className="text-[11px] ml-2">{fmtInr(subtotal * 0.09)}</span>}</span></div>
-              <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{fmtAmt(subtotal * 0.09)}{dualCurrency && rate > 0 && <span className="text-[11px] ml-2">{fmtInr(subtotal * 0.09)}</span>}</span></div>
+              <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{isUsdIndian ? fmtInrVal(gst * 0.5) : fmtAmt(gst * 0.5)}</span></div>
+              <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{isUsdIndian ? fmtInrVal(gst * 0.5) : fmtAmt(gst * 0.5)}</span></div>
             </>
           )}
           {hasGst && !isIntra && (
-            <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{fmtAmt(gst)}{dualCurrency && rate > 0 && <span className="text-[11px] ml-2">{fmtInr(gst)}</span>}</span></div>
+            <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{isUsdIndian ? fmtInrVal(gst) : fmtAmt(gst)}</span></div>
           )}
           {shipping > 0 && (
             <div className="flex justify-between text-sm text-zinc-500"><span>Shipping</span><span>{fmtAmt(shipping)}{dualCurrency && rate > 0 && <span className="text-[11px] ml-2">{fmtInr(shipping)}</span>}</span></div>

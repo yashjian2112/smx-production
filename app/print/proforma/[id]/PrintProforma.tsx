@@ -39,6 +39,7 @@ type Proforma = {
   shippingRoute: string | null;
   client: Client;
   items: Item[];
+  createdBy?: { id: string; name: string };
 };
 
 type Settings = Record<string, string>;
@@ -88,10 +89,11 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
 
   const subtotal  = productItems.reduce((s, item) => s + calcItem(item), 0);
   const shipping  = shippingItem ? calcItem(shippingItem) : 0;
-  const hasGst    = !isExport && !!proforma.client.gstNumber;
-  const gstAmount = hasGst ? subtotal * 0.18 : 0;
-  const total     = subtotal + gstAmount + shipping;
-  const totalINR  = isDual ? total * rate : (currency === 'INR' ? total : total * rate);
+  const hasGst      = !isExport && !!proforma.client.gstNumber;
+  const gstBaseINR  = isDual ? subtotal * rate : subtotal;
+  const gstAmount   = hasGst ? gstBaseINR * 0.18 : 0;
+  const total       = isDual ? subtotal + shipping : subtotal + gstAmount + shipping;
+  const totalINR    = isDual ? (subtotal + shipping) * rate + gstAmount : (currency === 'INR' ? total : total * rate);
 
   const fy     = getFiscalYear(new Date(proforma.invoiceDate));
   const s      = (k: string) => settings[k] ?? '';
@@ -307,7 +309,7 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
         )}
 
         {/* ── TERMS (below info bar) ── */}
-        <div className={`terms-row ${hasGst ? 'terms-3col' : 'terms-2col'}`}>
+        <div className="terms-row terms-3col">
           <div className="term-cell">
             <div className="term-label">Mode / Terms of Payment</div>
             <div className="term-value">{proforma.termsOfPayment || '—'}</div>
@@ -316,12 +318,10 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
             <div className="term-label">Delivery Schedule</div>
             <div className="term-value">{proforma.deliveryDays ? `Within ${proforma.deliveryDays} days of payment` : '—'}</div>
           </div>
-          {hasGst && (
-            <div className="term-cell">
-              <div className="term-label">Tax</div>
-              <div className="term-value">{isIntraState ? 'CGST 9% + SGST 9%' : 'IGST 18%'}</div>
-            </div>
-          )}
+          <div className="term-cell">
+            <div className="term-label">Sales Representative</div>
+            <div className="term-value">{proforma.createdBy?.name || '—'}</div>
+          </div>
         </div>
 
         {/* ── SHIPPING ROUTE BANNER (domestic only) ── */}
@@ -430,19 +430,19 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
                   <>
                     <div className="t-row-dual">
                       <span className="t-lbl">CGST @ 9%</span>
-                      <span className="t-val">{fmt(subtotal * 0.09, 'USD')}</span>
-                      <span className="t-val-inr">{fmtInr(subtotal * 0.09, rate)}</span>
+                      <span className="t-val"></span>
+                      <span className="t-val-inr">{fmt(gstAmount * 0.5, 'INR')}</span>
                     </div>
                     <div className="t-row-dual">
                       <span className="t-lbl">SGST @ 9%</span>
-                      <span className="t-val">{fmt(subtotal * 0.09, 'USD')}</span>
-                      <span className="t-val-inr">{fmtInr(subtotal * 0.09, rate)}</span>
+                      <span className="t-val"></span>
+                      <span className="t-val-inr">{fmt(gstAmount * 0.5, 'INR')}</span>
                     </div>
                   </>
                 ) : (
                   <>
-                    <div className="t-row"><span className="t-lbl">CGST @ 9%</span><span>{fmt(subtotal * 0.09, currency)}</span></div>
-                    <div className="t-row"><span className="t-lbl">SGST @ 9%</span><span>{fmt(subtotal * 0.09, currency)}</span></div>
+                    <div className="t-row"><span className="t-lbl">CGST @ 9%</span><span>{fmt(gstAmount * 0.5, 'INR')}</span></div>
+                    <div className="t-row"><span className="t-lbl">SGST @ 9%</span><span>{fmt(gstAmount * 0.5, 'INR')}</span></div>
                   </>
                 )}
               </>
@@ -451,11 +451,11 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
               isDual ? (
                 <div className="t-row-dual">
                   <span className="t-lbl">IGST @ 18%</span>
-                  <span className="t-val">{fmt(gstAmount, 'USD')}</span>
-                  <span className="t-val-inr">{fmtInr(gstAmount, rate)}</span>
+                  <span className="t-val"></span>
+                  <span className="t-val-inr">{fmt(gstAmount, 'INR')}</span>
                 </div>
               ) : (
-                <div className="t-row"><span className="t-lbl">IGST @ 18%</span><span>{fmt(gstAmount, currency)}</span></div>
+                <div className="t-row"><span className="t-lbl">IGST @ 18%</span><span>{fmt(gstAmount, 'INR')}</span></div>
               )
             )}
             {shipping > 0 && (
@@ -474,7 +474,7 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
               <div className="t-total-dual">
                 <span>TOTAL</span>
                 <span className="t-val">{fmt(total, 'USD')}</span>
-                <span className="t-val-inr">{fmtInr(total, rate)}</span>
+                <span className="t-val-inr">{fmt(totalINR, 'INR')}</span>
               </div>
             ) : (
               <>

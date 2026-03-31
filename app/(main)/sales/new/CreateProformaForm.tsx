@@ -159,12 +159,18 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   const sellerState    = 'gujarat';
   const buyerState     = (selectedClient?.state ?? '').toLowerCase();
   const isIntra        = !isExport && !!buyerState && buyerState === sellerState;
-  const gst            = isExport ? 0 : subtotal * 0.18;
-  const total          = subtotal + gst + shipping;
+  // For USD-INR: GST is always on INR-equivalent subtotal
+  const isUsdIndian     = dualCurrency && !isExport && currency === 'USD';
+  const gstBaseINR      = isUsdIndian ? subtotal * rate : subtotal;
+  const gst             = isExport ? 0 : gstBaseINR * 0.18;
+  // Total: for USD-INR, product total in USD; GST is INR add-on shown separately
+  const total           = isUsdIndian ? subtotal + shipping : subtotal + gst + shipping;
 
   const fmtAmt = (n: number) => currency === 'USD'
     ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
     : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+
+  const fmtInrVal = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
   const fmtInr = (usd: number) => rate > 0
     ? `₹${(usd * rate).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
@@ -615,12 +621,12 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           </div>
           {!isExport && isIntra && (
             <>
-              <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{fmtAmt(subtotal * 0.09)}</span></div>
-              <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{fmtAmt(subtotal * 0.09)}</span></div>
+              <div className="flex justify-between text-sm text-zinc-500"><span>CGST 9%</span><span>{isUsdIndian ? fmtInrVal(gst * 0.5) : fmtAmt(gst * 0.5)}</span></div>
+              <div className="flex justify-between text-sm text-zinc-500"><span>SGST 9%</span><span>{isUsdIndian ? fmtInrVal(gst * 0.5) : fmtAmt(gst * 0.5)}</span></div>
             </>
           )}
           {!isExport && !isIntra && (
-            <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{fmtAmt(gst)}</span></div>
+            <div className="flex justify-between text-sm text-zinc-500"><span>IGST 18%</span><span>{isUsdIndian ? fmtInrVal(gst) : fmtAmt(gst)}</span></div>
           )}
           {shipping > 0 && (
             <div className="flex justify-between text-sm text-zinc-500">
@@ -634,9 +640,11 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           <div className="flex justify-between text-sm font-semibold border-t border-zinc-800 pt-2">
             <span>Total</span>
             <div className="flex gap-6 items-baseline">
-              <span className={`text-sky-400${isExport && rate > 0 ? ' w-24 text-right' : ''}`}>{fmtAmt(total)}</span>
+              <span className={`text-sky-400${(isExport || dualCurrency) && rate > 0 ? ' w-24 text-right' : ''}`}>{fmtAmt(total)}</span>
               {dualCurrency && rate > 0 && (
-                <span className="w-24 text-right text-emerald-400 text-xs font-semibold">{fmtInr(total)}</span>
+                <span className="w-24 text-right text-emerald-400 text-xs font-semibold">
+                  {fmtInrVal(isUsdIndian ? (subtotal + shipping) * rate + gst : total * rate)}
+                </span>
               )}
             </div>
           </div>
