@@ -62,6 +62,7 @@ interface GRN {
   };
   items: GRNItem[];
   batches: { id: string; batchCode: string; quantity: number; remainingQty: number; condition: string }[];
+  materialSerials: { status: string }[];
 }
 
 /* ─── Helpers ──────────────────────────────────────────────── */
@@ -81,7 +82,7 @@ function Badge({ children, color }: { children: React.ReactNode; color: string }
 }
 
 /* ─── Main Panel ────────────────────────────────────────────── */
-const TABS = ['Pending', 'Completed'] as const;
+const TABS = ['Pending', 'Processing', 'Completed'] as const;
 type Tab = typeof TABS[number];
 
 export default function GRNPanel() {
@@ -104,6 +105,10 @@ export default function GRNPanel() {
 
   useEffect(() => { load(); }, [load]);
 
+  // GRNs with at least one PRINTED serial = Processing; rest = Completed
+  const processingGRNs = grns.filter(g => g.materialSerials.some(s => s.status === 'PRINTED'));
+  const completedGRNs = grns.filter(g => !g.materialSerials.some(s => s.status === 'PRINTED'));
+
   return (
     <div>
       {/* Tabs */}
@@ -117,8 +122,11 @@ export default function GRNPanel() {
             {t === 'Pending' && pendingGANs.length > 0 && (
               <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-900/40 text-amber-400">{pendingGANs.length}</span>
             )}
-            {t === 'Completed' && grns.length > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] bg-zinc-700 text-zinc-400">{grns.length}</span>
+            {t === 'Processing' && processingGRNs.length > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] bg-sky-900/40 text-sky-400">{processingGRNs.length}</span>
+            )}
+            {t === 'Completed' && completedGRNs.length > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] bg-zinc-700 text-zinc-400">{completedGRNs.length}</span>
             )}
           </button>
         ))}
@@ -127,7 +135,8 @@ export default function GRNPanel() {
       {loading && <p className="text-zinc-400 text-sm py-6 text-center">Loading...</p>}
 
       {!loading && tab === 'Pending' && <PendingTab gans={pendingGANs} onCreateGRN={setGrnModal} />}
-      {!loading && tab === 'Completed' && <CompletedTab grns={grns} />}
+      {!loading && tab === 'Processing' && <CompletedTab grns={processingGRNs} />}
+      {!loading && tab === 'Completed' && <CompletedTab grns={completedGRNs} />}
 
       {grnModal && (
         <GRNModal
@@ -668,16 +677,25 @@ function PrintStep({
               Reprint All
             </button>
           </div>
-          {createdGRN.serialCount > 0 && (
-            <button onClick={onContinue}
+          {createdGRN.serialCount > 0 ? (
+            saved ? (
+              <button onClick={onDone}
+                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                <CheckCircle className="w-4 h-4" />
+                Done
+              </button>
+            ) : (
+              <button onClick={onContinue}
+                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors">
+                Continue to Scan &amp; Verify
+              </button>
+            )
+          ) : (
+            <button onClick={onDone}
               className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors">
-              Continue to Scan &amp; Verify
+              Done
             </button>
           )}
-          <button onClick={onDone}
-            className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-400 text-sm hover:bg-zinc-700 transition-colors">
-            {createdGRN.serialCount > 0 ? 'Skip Scanning — Done' : 'Done'}
-          </button>
         </div>
       </div>
     </div>
@@ -877,10 +895,9 @@ function SerialScanStep({
                   All Verified — Done
                 </button>
               ) : (
-                <button onClick={onDone}
-                  className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-400 text-sm hover:bg-zinc-700 transition-colors">
-                  Skip Remaining — Done ({confirmed}/{total} scanned)
-                </button>
+                <p className="text-center text-amber-400 text-xs py-2">
+                  Scan all {total} barcodes to complete GRN &nbsp;·&nbsp; {confirmed}/{total} scanned
+                </p>
               )}
             </div>
           </div>
