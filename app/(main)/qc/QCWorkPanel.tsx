@@ -231,16 +231,22 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
   // ── Barcode scan verification ─────────────────────────────────────────────
   // Rework units already have a QC barcode sticker → scan that.
   // Fresh units have an assembly barcode sticker → scan that.
+  // Manual-entry (replacement) units have no barcodes → scan serial number.
   const isReworkUnit = unit.currentStatus === 'REJECTED_BACK';
-  const expectedBarcode = isReworkUnit
-    ? (unit.qcBarcode ?? unit.assemblyBarcode)
-    : (unit.assemblyBarcode ?? unit.qcBarcode);
+  const isManualEntry = !unit.assemblyBarcode && !unit.qcBarcode;
+  const expectedBarcode = isManualEntry
+    ? unit.serialNumber
+    : isReworkUnit
+      ? (unit.qcBarcode ?? unit.assemblyBarcode)
+      : (unit.assemblyBarcode ?? unit.qcBarcode);
 
   function handleScanVerify() {
     const entered = scanInput.trim();
     if (!entered) { setScanError('Scan or enter the barcode'); scanRef.current?.focus(); return; }
     if (expectedBarcode && entered !== expectedBarcode) {
-      setScanError('Barcode mismatch — please scan the correct unit');
+      setScanError(isManualEntry
+        ? 'Serial number mismatch — please enter the correct serial number'
+        : 'Barcode mismatch — please scan the correct unit');
       setScanInput('');
       scanRef.current?.focus();
       return;
@@ -249,33 +255,38 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
     setPhase('idle');
   }
 
+  const verifyTitle = isManualEntry
+    ? 'Scan Barcode'
+    : isReworkUnit ? 'Scan QC Barcode' : 'Scan Assembly Barcode';
+  const verifyDesc = isManualEntry
+    ? 'Scan the barcode on the Unit to proceed.'
+    : isReworkUnit
+      ? 'Scan the QC barcode sticker on the unit from the previous test.'
+      : 'Scan the assembly barcode label on the physical unit to confirm you have the correct unit.';
+
   if (phase === 'verify') {
     return (
       <div style={card}>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-sky-400 mb-3">Unit Verification</p>
-        <h3 className="text-base font-semibold text-white mb-1">
-          {isReworkUnit ? 'Scan QC Barcode' : 'Scan Assembly Barcode'}
-        </h3>
-        <p className="text-zinc-500 text-sm mb-5">
-          {isReworkUnit
-            ? 'Scan the QC barcode sticker on the unit from the previous test.'
-            : 'Scan the assembly barcode label on the physical unit to confirm you have the correct unit.'}
-        </p>
+        <h3 className="text-base font-semibold text-white mb-1">{verifyTitle}</h3>
+        <p className="text-zinc-500 text-sm mb-5">{verifyDesc}</p>
         <div className="rounded-xl p-3 mb-5"
           style={{ background: 'rgba(14,165,233,0.05)', border: '1px solid rgba(14,165,233,0.15)' }}>
-          <p className="text-[10px] text-zinc-500 mb-1">Scan this barcode</p>
-          {expectedBarcode ? (
-            <p className="font-mono text-base font-bold mb-0.5"
-              style={{ color: isReworkUnit ? '#34d399' : '#38bdf8' }}>
-              {expectedBarcode}
-            </p>
-          ) : (
-            <p className="font-mono text-xs text-zinc-500 italic mb-0.5">No barcode on record — scan any barcode</p>
+          <p className="text-[10px] text-zinc-500 mb-1">
+            {isManualEntry ? 'Enter this serial number' : 'Scan this barcode'}
+          </p>
+          <p className="font-mono text-base font-bold mb-0.5"
+            style={{ color: isManualEntry ? '#fbbf24' : isReworkUnit ? '#34d399' : '#38bdf8' }}>
+            {expectedBarcode}
+          </p>
+          {!isManualEntry && (
+            <p className="font-mono text-[10px] text-zinc-500">{unit.serialNumber}</p>
           )}
-          <p className="font-mono text-[10px] text-zinc-500">{unit.serialNumber}</p>
           <p className="text-xs text-zinc-500 mt-0.5">{unit.order?.product.name} · {unit.order?.orderNumber}</p>
         </div>
-        <label className="block text-xs text-zinc-500 mb-1.5">Scan Result</label>
+        <label className="block text-xs text-zinc-500 mb-1.5">
+          {isManualEntry ? 'Serial Number' : 'Scan Result'}
+        </label>
         <input
           ref={scanRef}
           autoFocus
@@ -283,7 +294,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
           value={scanInput}
           onChange={(e) => { setScanInput(e.target.value); setScanError(null); }}
           onKeyDown={(e) => { if (e.key === 'Enter') handleScanVerify(); }}
-          placeholder={expectedBarcode ? `Scan ${expectedBarcode}…` : 'Scan barcode…'}
+          placeholder={isManualEntry ? `Enter ${expectedBarcode}…` : `Scan ${expectedBarcode}…`}
           className="w-full px-3 py-3 rounded-xl text-sm text-white placeholder-zinc-700 outline-none mb-3 font-mono"
           style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${scanError ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}` }}
         />
