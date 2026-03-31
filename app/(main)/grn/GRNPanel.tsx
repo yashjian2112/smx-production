@@ -547,6 +547,8 @@ function PrintStep({
 }) {
   const [serials, setSerials] = useState<MaterialSerial[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     fetch(`/api/procurement/material-serials?grnId=${createdGRN.id}`)
@@ -564,18 +566,20 @@ function PrintStep({
     {}
   );
 
-  function saveCSV() {
-    const rows = ['Barcode,Material,Code,Qty,GRN'];
-    serials.forEach(s => {
-      rows.push(`${s.barcode},"${s.material.name}",${s.material.code},${s.quantity},${createdGRN.grnNumber}`);
+  async function saveSerials() {
+    setSaving(true);
+    const res = await fetch('/api/procurement/material-serials', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grnId: createdGRN.id }),
     });
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${createdGRN.grnNumber}-serials.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    setSaving(false);
+    if (res.ok) {
+      setSaved(true);
+      // Refresh serials to show CONFIRMED status
+      const updated = await fetch(`/api/procurement/material-serials?grnId=${createdGRN.id}`).then(r => r.json());
+      setSerials(Array.isArray(updated) ? updated : []);
+    }
   }
 
   return (
@@ -650,9 +654,13 @@ function PrintStep({
       <div className="px-6 py-4 border-t border-zinc-800 shrink-0">
         <div className="max-w-2xl mx-auto space-y-2">
           <div className="flex gap-2">
-            <button onClick={saveCSV}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium transition-colors">
-              Save Serial Numbers
+            <button onClick={saveSerials} disabled={saving || saved}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                saved
+                  ? 'bg-emerald-800/40 text-emerald-400 cursor-default'
+                  : 'bg-zinc-700 hover:bg-zinc-600 text-white disabled:opacity-50'
+              }`}>
+              {saved ? <><Check className="w-4 h-4" /> Serials Saved</> : saving ? 'Saving...' : 'Save Serial Numbers'}
             </button>
             <button onClick={() => window.open(`/print/grn-serials/${createdGRN.id}`, '_blank')}
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium transition-colors">
