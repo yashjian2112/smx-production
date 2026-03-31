@@ -91,6 +91,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (parsed.data.status === 'PENDING_APPROVAL' && (parsed.data.declaredAmount == null || parsed.data.declaredAmount <= 0))
       return NextResponse.json({ error: 'Total amount is required when submitting for approval' }, { status: 400 });
 
+    // Split invoice can only be changed in DRAFT status
+    if ((parsed.data.splitInvoice !== undefined || parsed.data.splitServicePercent !== undefined) && existing.status !== 'DRAFT')
+      return NextResponse.json({ error: 'Split invoice settings can only be changed while in draft' }, { status: 400 });
+
+    // Validate declared amount does not exceed proforma total
+    if (parsed.data.declaredAmount != null && parsed.data.declaredAmount > 0) {
+      const piItems = await prisma.proformaInvoiceItem.findMany({ where: { proformaId: params.id } });
+      const piTotal = piItems.reduce((s, i) => s + i.quantity * i.unitPrice * (1 - i.discountPercent / 100), 0);
+      // For non-export, add GST to total
+      const client = await prisma.client.findUnique({ where: { id: existing.clientId }, select: { globalOrIndian: true } });
+      const isExportPI = client?.globalOrIndian === 'Global';
+      const maxTotal = isExportPI ? piTotal : piTotal * 1.18;
+      if (parsed.data.declaredAmount > maxTotal * 1.01) // 1% tolerance for rounding
+        return NextResponse.json({ error: `Declared amount cannot exceed the invoice total` }, { status: 400 });
+    }
+
     const { items, rejectedReason, ...rest } = parsed.data;
 
     const proforma = await prisma.proformaInvoice.update({

@@ -66,9 +66,9 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   const isOwner          = proforma.createdBy.id === userId;
   const canEdit          = (role === 'ADMIN' || (role === 'SALES' && isOwner)) && proforma.status === 'DRAFT';
   const canDelete        = canEdit;
-  // Split invoice can be set any time before order is converted (dispatch not yet done)
+  // Split invoice can only be set while still in DRAFT
   const canEditSplit     = (role === 'ADMIN' || (role === 'SALES' && isOwner)) &&
-                           !['CONVERTED', 'REJECTED'].includes(proforma.status) &&
+                           proforma.status === 'DRAFT' &&
                            proforma.invoiceType === 'SALE';
   const canSendApproval  = (role === 'ADMIN' || (role === 'SALES' && isOwner)) && proforma.status === 'DRAFT';
   const canApprove       = (role === 'ADMIN' || role === 'ACCOUNTS') && proforma.status === 'PENDING_APPROVAL';
@@ -140,6 +140,10 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   async function sendForApproval() {
     if (!approvalAmount || parseFloat(approvalAmount) <= 0) {
       setApprovalAmountError('Enter the total amount');
+      return;
+    }
+    if (parseFloat(approvalAmount) > total) {
+      setApprovalAmountError(`Amount cannot exceed the invoice total (${isUsdIndian ? '₹' : proforma.currency === 'USD' ? '$' : '₹'}${total.toLocaleString(proforma.currency === 'USD' && !isUsdIndian ? 'en-US' : 'en-IN', { minimumFractionDigits: 2 })})`);
       return;
     }
     setLoading(true); setError(''); setApprovalAmountError('');
@@ -601,7 +605,9 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
           <div className="w-full max-w-sm bg-zinc-900 border border-zinc-700 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold mb-1">Submit for Approval</h3>
             <p className="text-xs text-zinc-500 mb-3">Enter the total invoice amount for accounts verification.</p>
-            <label className="block text-xs text-zinc-400 mb-1">Total Amount ({proforma.currency}) <span className="text-red-400">*</span></label>
+            <label className="block text-xs text-zinc-400 mb-1">Total Amount ({isUsdIndian ? 'INR' : proforma.currency}) <span className="text-red-400">*</span>
+              <span className="text-zinc-600 ml-1">(max: {isUsdIndian ? '₹' : proforma.currency === 'USD' ? '$' : '₹'}{total.toLocaleString(proforma.currency === 'USD' && !isUsdIndian ? 'en-US' : 'en-IN', { minimumFractionDigits: 2 })})</span>
+            </label>
             <input
               type="number"
               value={approvalAmount}
