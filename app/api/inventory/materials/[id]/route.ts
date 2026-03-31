@@ -75,6 +75,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const body = await req.json();
   const data = updateSchema.parse(body);
 
+  // Only ADMIN can change packSize
+  if (data.packSize !== undefined && session.role !== 'ADMIN') {
+    delete (data as Record<string, unknown>).packSize;
+  }
+
   const material = await prisma.rawMaterial.update({
     where: { id: params.id },
     data,

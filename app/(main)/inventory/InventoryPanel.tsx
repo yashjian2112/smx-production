@@ -1127,7 +1127,7 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
 }
 
 // ─── Materials Tab ────────────────────────────────────────────────────────────
-function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
+function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin: boolean }) {
   const [materials,    setMaterials]    = useState<RawMaterial[]>([]);
   const [categories,   setCategories]   = useState<Category[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -1662,19 +1662,21 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                 </div>
               </div>
 
-              {/* Pack Size */}
-              <div>
-                <label className="text-zinc-400 text-xs">Pack Size <span className="text-zinc-600">(units per label at GRN)</span></label>
-                <input type="number" min="1" step="1" value={fPackSize} onChange={e => setFPackSize(e.target.value)}
-                  onWheel={e => (e.target as HTMLInputElement).blur()}
-                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                  style={{ background: 'rgb(39,39,42)' }} />
-                {parseInt(fPackSize) > 1 && (
-                  <p className="text-zinc-500 text-xs mt-1">
-                    Each barcode label = {fPackSize} {fUnit || 'PCS'}. GRN will generate 1 label per {fPackSize} units received.
-                  </p>
-                )}
-              </div>
+              {/* Pack Size — admin only */}
+              {isRealAdmin && (
+                <div>
+                  <label className="text-zinc-400 text-xs">Pack Size <span className="text-zinc-600">(units per label at GRN)</span></label>
+                  <input type="number" min="1" step="1" value={fPackSize} onChange={e => setFPackSize(e.target.value)}
+                    onWheel={e => (e.target as HTMLInputElement).blur()}
+                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                    style={{ background: 'rgb(39,39,42)' }} />
+                  {parseInt(fPackSize) > 1 && (
+                    <p className="text-zinc-500 text-xs mt-1">
+                      Each barcode label = {fPackSize} {fUnit || 'PCS'}. GRN will generate 1 label per {fPackSize} units received.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Description */}
               <div>
@@ -2889,7 +2891,7 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
         ))}
       </div>
 
-      {activeTab === 'Materials'  && <MaterialsTab isAdmin={canManageMaterials} />}
+      {activeTab === 'Materials'  && <MaterialsTab isAdmin={canManageMaterials} isRealAdmin={isAdmin} />}
       {activeTab === 'GRN'        && <GRNTab       isAdmin={canManageStock} />}
       {activeTab === 'Job Cards'  && canSeeJobCards && <JobCardsTab sessionRole={sessionRole} />}
       {activeTab === 'Rework'     && canSeeRework && <ReworkTab canIssue={['ADMIN', 'STORE_MANAGER'].includes(sessionRole)} />}
