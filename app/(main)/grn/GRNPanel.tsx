@@ -382,25 +382,33 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
     }
   }
 
+  const allMatch = items.every(i => i.qtyVerified === i.qtyArrived);
+
   return (
     <>
-      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-        <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 bg-zinc-950 z-50 flex flex-col overflow-hidden">
 
-          {/* Step 1 — Confirm Qty */}
-          {step === 'confirm' && (
-            <form onSubmit={submit} className="p-6">
+        {/* Step 1 — Confirm Qty */}
+        {step === 'confirm' && (
+          <form onSubmit={submit} className="flex flex-col h-full">
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4 border-b border-zinc-800 shrink-0">
               <div className="flex items-center justify-between mb-1">
-                <h2 className="text-white font-semibold text-lg">Verify &amp; Create GRN</h2>
+                <h2 className="text-white font-semibold text-xl">Verify &amp; Create GRN</h2>
                 <button type="button" onClick={onClose} className="text-zinc-500 hover:text-white">
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <p className="text-zinc-500 text-sm mb-1">Against GAN: <span className="text-amber-400 font-mono">{gan.ganNumber}</span></p>
-              <p className="text-zinc-500 text-xs mb-4">Vendor: {gan.po.vendor.name} &middot; PO: {gan.po.poNumber}</p>
+              <p className="text-zinc-500 text-sm">
+                GAN: <span className="text-amber-400 font-mono">{gan.ganNumber}</span>
+                <span className="mx-2 text-zinc-700">·</span>
+                {gan.po.vendor.name}
+                <span className="mx-2 text-zinc-700">·</span>
+                PO: {gan.po.poNumber}
+              </p>
 
               {/* Step indicator */}
-              <div className="flex items-center gap-2 mb-5">
+              <div className="flex items-center gap-2 mt-4">
                 <div className="flex items-center gap-1.5">
                   <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-bold">1</div>
                   <span className="text-xs text-white font-medium">Confirm Qty</span>
@@ -416,64 +424,99 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
                   <span className="text-xs text-zinc-500">Scan &amp; Verify</span>
                 </div>
               </div>
+            </div>
 
-              {/* Items */}
-              <div className="space-y-3 mb-4">
+            {/* Items — scrollable */}
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="max-w-2xl mx-auto space-y-3">
                 {items.map((item, i) => {
-                  const remaining = item.poQty - item.poReceived;
+                  const matches = item.qtyVerified === item.qtyArrived;
+                  const totalEntered = item.qtyVerified + item.qtyRejected;
+                  const overCount = totalEntered > item.qtyArrived;
+
                   return (
-                    <div key={item.materialId} className="rounded-xl p-3 border border-zinc-800"
-                      style={{ background: 'rgba(255,255,255,0.02)' }}>
-                      <div className="mb-2">
-                        <span className="text-sm text-zinc-200 font-medium">{item.name}</span>
-                        <p className="text-xs text-zinc-500 mt-0.5">{fmt(item.qtyArrived)} {item.unit} arrived &middot; PO remaining: {fmt(remaining)}</p>
+                    <div key={item.materialId}
+                      className={`rounded-xl border transition-colors ${matches ? 'border-emerald-800/60' : 'border-zinc-800'}`}
+                      style={{ background: matches ? 'rgba(16,185,129,0.05)' : 'rgba(255,255,255,0.03)' }}>
+
+                      {/* Item header */}
+                      <div className="flex items-center justify-between px-4 pt-4 pb-2 gap-4">
+                        <div className="min-w-0">
+                          <p className="text-white font-medium text-sm">{item.name}</p>
+                          <p className="text-zinc-500 text-xs mt-0.5">PO qty: {fmt(item.poQty)} {item.unit}</p>
+                        </div>
+                        {/* qty display: verified / arrived */}
+                        <div className="shrink-0 text-right">
+                          <div className={`font-mono font-bold text-2xl leading-none ${matches ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {fmt(item.qtyVerified)}
+                            <span className="text-zinc-600 font-normal text-lg">/{fmt(item.qtyArrived)}</span>
+                          </div>
+                          <p className="text-zinc-500 text-[10px] mt-0.5 uppercase tracking-wider">{item.unit}</p>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+
+                      {/* Qty inputs */}
+                      <div className="grid grid-cols-2 gap-3 px-4 pb-4">
                         <div>
-                          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Verified Qty</label>
+                          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Received Qty</label>
                           <input type="number" min={0} max={item.qtyArrived} step="any" value={item.qtyVerified}
                             onChange={e => { const n = [...items]; n[i].qtyVerified = parseFloat(e.target.value) || 0; setItems(n); }}
                             onWheel={e => (e.target as HTMLInputElement).blur()}
-                            className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" />
+                            className={`w-full mt-1 bg-zinc-800 border rounded-lg px-3 py-2 text-white text-sm focus:outline-none transition-colors ${
+                              matches ? 'border-emerald-700 focus:border-emerald-500' : 'border-zinc-700 focus:border-amber-500'
+                            }`} />
                         </div>
                         <div>
                           <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Rejected Qty</label>
                           <input type="number" min={0} step="any" value={item.qtyRejected}
                             onChange={e => { const n = [...items]; n[i].qtyRejected = parseFloat(e.target.value) || 0; setItems(n); }}
                             onWheel={e => (e.target as HTMLInputElement).blur()}
-                            className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-red-500" />
+                            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500" />
                         </div>
                       </div>
+
+                      {overCount && (
+                        <div className="px-4 pb-3">
+                          <p className="text-red-400 text-xs">Received + Rejected ({fmt(totalEntered)}) exceeds arrived qty ({fmt(item.qtyArrived)})</p>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
+
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes (optional)..." rows={2}
+                  className="w-full bg-zinc-800/60 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-zinc-500 resize-none" />
               </div>
+            </div>
 
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Verification notes (optional)..." rows={2}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm mb-4 focus:outline-none focus:border-emerald-500 resize-none" />
-
-              {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
-
-              <div className="flex gap-3">
-                <button type="button" onClick={onClose}
-                  className="flex-1 py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors">Cancel</button>
-                <button type="submit" disabled={saving}
-                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                  {saving ? 'Creating GRN...' : 'Confirm &amp; Generate Barcodes'}
-                </button>
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-zinc-800 shrink-0">
+              <div className="max-w-2xl mx-auto">
+                {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+                {!allMatch && (
+                  <p className="text-amber-400 text-xs mb-3 text-center">
+                    Received qty must match arrived qty for all items to proceed
+                  </p>
+                )}
+                <div className="flex gap-3">
+                  <button type="button" onClick={onClose}
+                    className="flex-1 py-3 rounded-xl bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors">Cancel</button>
+                  <button type="submit" disabled={saving || !allMatch}
+                    className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
+                    {saving ? 'Creating GRN...' : 'Confirm &amp; Generate Barcodes'}
+                  </button>
+                </div>
               </div>
-            </form>
-          )}
+            </div>
+          </form>
+        )}
 
-          {/* Step 2 — Print Labels */}
-          {step === 'print' && createdGRN && (
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-white font-semibold text-lg">GRN Created</h2>
-              </div>
-
-              {/* Step indicator */}
-              <div className="flex items-center gap-2 mb-6">
+        {/* Step 2 — Print Labels */}
+        {step === 'print' && createdGRN && (
+          <div className="flex flex-col h-full">
+            <div className="px-6 pt-6 pb-4 border-b border-zinc-800 shrink-0">
+              <h2 className="text-white font-semibold text-xl mb-3">GRN Created</h2>
+              <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5">
                   <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center">
                     <Check className="w-3.5 h-3.5 text-white" />
@@ -491,59 +534,57 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
                   <span className="text-xs text-zinc-500">Scan &amp; Verify</span>
                 </div>
               </div>
+            </div>
 
-              {/* GRN info */}
-              <div className="rounded-xl border border-emerald-800/50 p-4 mb-5" style={{ background: 'rgba(16,185,129,0.06)' }}>
+            <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 max-w-lg mx-auto w-full">
+              <div className="rounded-xl border border-emerald-800/50 p-5 mb-6 w-full" style={{ background: 'rgba(16,185,129,0.06)' }}>
                 <div className="flex items-center gap-3 mb-2">
-                  <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <CheckCircle className="w-6 h-6 text-emerald-400 shrink-0" />
                   <div>
-                    <p className="text-emerald-300 font-medium text-sm">GRN Created Successfully</p>
-                    <p className="text-emerald-500 font-mono text-xs mt-0.5">{createdGRN.grnNumber}</p>
+                    <p className="text-emerald-300 font-semibold">GRN Created Successfully</p>
+                    <p className="text-emerald-500 font-mono text-sm mt-0.5">{createdGRN.grnNumber}</p>
                   </div>
                 </div>
                 {createdGRN.serialCount > 0 ? (
-                  <p className="text-zinc-400 text-sm">
-                    <span className="text-white font-medium">{createdGRN.serialCount}</span> barcode labels generated and ready to print.
+                  <p className="text-zinc-400 text-sm mt-2">
+                    <span className="text-white font-semibold">{createdGRN.serialCount}</span> barcode labels generated and ready to print.
                   </p>
                 ) : (
-                  <p className="text-zinc-400 text-sm">No barcodes generated for this GRN (no serialized materials).</p>
+                  <p className="text-zinc-400 text-sm mt-2">No barcodes generated (no serialized materials).</p>
                 )}
               </div>
 
               {createdGRN.serialCount > 0 && (
                 <>
-                  <p className="text-zinc-500 text-xs mb-4">Print the barcode labels and affix them to the received items before scanning to confirm.</p>
-                  <button
-                    onClick={() => window.open(`/print/grn-serials/${createdGRN.id}`, '_blank')}
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium transition-colors mb-3">
+                  <p className="text-zinc-500 text-sm mb-5 text-center">Print the barcode labels and affix them to the received items, then scan each one to confirm.</p>
+                  <button onClick={() => window.open(`/print/grn-serials/${createdGRN.id}`, '_blank')}
+                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium transition-colors mb-3">
                     <Printer className="w-4 h-4" />
                     Print Barcode Labels ({createdGRN.serialCount} labels)
                   </button>
-                  <button
-                    onClick={() => setStep('scan')}
-                    className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-medium transition-colors mb-3">
+                  <button onClick={() => setStep('scan')}
+                    className="w-full py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-medium transition-colors mb-3">
                     Continue to Scan &amp; Verify
                   </button>
                 </>
               )}
-
               <button onClick={onCreated}
                 className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors">
                 {createdGRN.serialCount > 0 ? 'Skip Scanning — Done' : 'Done'}
               </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Step 3 — Scan & Verify */}
-          {step === 'scan' && createdGRN && (
-            <SerialScanStep
-              grnId={createdGRN.id}
-              grnNumber={createdGRN.grnNumber}
-              onDone={onCreated}
-              onPrintAgain={() => window.open(`/print/grn-serials/${createdGRN.id}`, '_blank')}
-            />
-          )}
-        </div>
+        {/* Step 3 — Scan & Verify */}
+        {step === 'scan' && createdGRN && (
+          <SerialScanStep
+            grnId={createdGRN.id}
+            grnNumber={createdGRN.grnNumber}
+            onDone={onCreated}
+            onPrintAgain={() => window.open(`/print/grn-serials/${createdGRN.id}`, '_blank')}
+          />
+        )}
       </div>
 
     </>
@@ -618,128 +659,138 @@ function SerialScanStep({
 
   return (
     <>
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-white font-semibold text-lg">Scan &amp; Verify Barcodes</h2>
+      <div className="flex flex-col h-full">
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4 border-b border-zinc-800 shrink-0">
+          <h2 className="text-white font-semibold text-xl mb-3">Scan &amp; Verify Barcodes</h2>
+          {/* Step indicator */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center">
+                <Check className="w-3.5 h-3.5 text-white" />
+              </div>
+              <span className="text-xs text-zinc-400">Confirm Qty</span>
+            </div>
+            <div className="flex-1 h-px bg-emerald-800" />
+            <div className="flex items-center gap-1.5">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center">
+                <Check className="w-3.5 h-3.5 text-white" />
+              </div>
+              <span className="text-xs text-zinc-400">Print Labels</span>
+            </div>
+            <div className="flex-1 h-px bg-emerald-800" />
+            <div className="flex items-center gap-1.5">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-bold">3</div>
+              <span className="text-xs text-white font-medium">Scan &amp; Verify</span>
+            </div>
+          </div>
+          <p className="text-zinc-500 text-xs mt-3">GRN: <span className="text-zinc-300 font-mono">{grnNumber}</span></p>
         </div>
 
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 mb-5">
-          <div className="flex items-center gap-1.5">
-            <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center">
-              <Check className="w-3.5 h-3.5 text-white" />
-            </div>
-            <span className="text-xs text-zinc-400">Confirm Qty</span>
-          </div>
-          <div className="flex-1 h-px bg-emerald-800" />
-          <div className="flex items-center gap-1.5">
-            <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center">
-              <Check className="w-3.5 h-3.5 text-white" />
-            </div>
-            <span className="text-xs text-zinc-400">Print Labels</span>
-          </div>
-          <div className="flex-1 h-px bg-emerald-800" />
-          <div className="flex items-center gap-1.5">
-            <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-bold">3</div>
-            <span className="text-xs text-white font-medium">Scan &amp; Verify</span>
+        {/* Body — scrollable */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="max-w-2xl mx-auto">
+            {loading ? (
+              <p className="text-zinc-400 text-sm py-6 text-center">Loading barcodes...</p>
+            ) : (
+              <>
+                {/* Progress bar */}
+                <div className="mb-4 p-3 rounded-xl border border-zinc-800" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Scan Progress</span>
+                    <Badge color={allConfirmed ? 'green' : 'yellow'}>{confirmed}/{total} confirmed</Badge>
+                  </div>
+                  <div className="w-full bg-zinc-800 rounded-full h-2">
+                    <div className="bg-emerald-500 h-2 rounded-full transition-all"
+                      style={{ width: total > 0 ? `${(confirmed / total) * 100}%` : '0%' }} />
+                  </div>
+                  {lastScanned && (
+                    <p className="text-emerald-400 text-xs mt-2 flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      Last scanned: <span className="font-mono">{lastScanned}</span>
+                    </p>
+                  )}
+                </div>
+
+                {/* Scan button */}
+                {!allConfirmed && (
+                  <button
+                    onClick={() => { setScanError(''); setScanning(true); }}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium transition-colors mb-4">
+                    <ScanLine className="w-4 h-4" />
+                    Scan Next Barcode
+                  </button>
+                )}
+
+                {scanError && (
+                  <div className="mb-3 p-3 rounded-xl bg-red-900/30 border border-red-800">
+                    <p className="text-red-400 text-sm">{scanError}</p>
+                    <button onClick={() => setScanError('')} className="text-red-500 text-xs mt-1 underline">Dismiss</button>
+                  </div>
+                )}
+
+                {/* Serials list grouped by material */}
+                <div className="space-y-3">
+                  {Object.values(byMaterial).map(group => (
+                    <div key={group.code}>
+                      <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider mb-1.5">
+                        {group.name} ({group.code})
+                      </div>
+                      <div className="space-y-1">
+                        {group.items.map(s => (
+                          <div key={s.id}
+                            className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs ${
+                              s.status === 'CONFIRMED'
+                                ? 'bg-emerald-900/20 border border-emerald-800/40'
+                                : 'bg-zinc-800/50 border border-zinc-700/50'
+                            }`}>
+                            <span className="font-mono text-zinc-300">{s.barcode}</span>
+                            <div className="flex items-center gap-2">
+                              {s.quantity > 1 && <span className="text-zinc-500">×{s.quantity}</span>}
+                              {s.status === 'CONFIRMED' ? (
+                                <span className="flex items-center gap-1 text-emerald-400">
+                                  <Check className="w-3 h-3" /> Confirmed
+                                </span>
+                              ) : (
+                                <span className="text-zinc-500">Pending</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
-        <p className="text-zinc-500 text-xs mb-4">GRN: <span className="text-zinc-300 font-mono">{grnNumber}</span></p>
-
-        {loading ? (
-          <p className="text-zinc-400 text-sm py-6 text-center">Loading barcodes...</p>
-        ) : (
-          <>
-            {/* Progress bar */}
-            <div className="mb-4 p-3 rounded-xl border border-zinc-800" style={{ background: 'rgba(255,255,255,0.02)' }}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Scan Progress</span>
-                <Badge color={allConfirmed ? 'green' : 'yellow'}>{confirmed}/{total} confirmed</Badge>
+        {/* Footer */}
+        {!loading && (
+          <div className="px-6 py-4 border-t border-zinc-800 shrink-0">
+            <div className="max-w-2xl mx-auto">
+              <div className="flex gap-2 mb-3">
+                <button onClick={onPrintAgain}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors">
+                  <Printer className="w-3.5 h-3.5" />
+                  Print Again
+                </button>
               </div>
-              <div className="w-full bg-zinc-800 rounded-full h-2">
-                <div className="bg-emerald-500 h-2 rounded-full transition-all"
-                  style={{ width: total > 0 ? `${(confirmed / total) * 100}%` : '0%' }} />
-              </div>
-              {lastScanned && (
-                <p className="text-emerald-400 text-xs mt-2 flex items-center gap-1">
-                  <Check className="w-3 h-3" />
-                  Last scanned: <span className="font-mono">{lastScanned}</span>
-                </p>
+              {allConfirmed ? (
+                <button onClick={onDone}
+                  className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  All Verified — Done
+                </button>
+              ) : (
+                <button onClick={onDone}
+                  className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-400 text-sm hover:bg-zinc-700 transition-colors">
+                  Skip Remaining — Done ({confirmed}/{total} scanned)
+                </button>
               )}
             </div>
-
-            {/* Scan button */}
-            {!allConfirmed && (
-              <button
-                onClick={() => { setScanError(''); setScanning(true); }}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium transition-colors mb-4">
-                <ScanLine className="w-4 h-4" />
-                Scan Next Barcode
-              </button>
-            )}
-
-            {scanError && (
-              <div className="mb-3 p-3 rounded-xl bg-red-900/30 border border-red-800">
-                <p className="text-red-400 text-sm">{scanError}</p>
-                <button onClick={() => setScanError('')} className="text-red-500 text-xs mt-1 underline">Dismiss</button>
-              </div>
-            )}
-
-            {/* Serials list grouped by material */}
-            <div className="space-y-3 mb-4 max-h-48 overflow-y-auto">
-              {Object.values(byMaterial).map(group => (
-                <div key={group.code}>
-                  <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider mb-1.5">
-                    {group.name} ({group.code})
-                  </div>
-                  <div className="space-y-1">
-                    {group.items.map(s => (
-                      <div key={s.id}
-                        className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs ${
-                          s.status === 'CONFIRMED'
-                            ? 'bg-emerald-900/20 border border-emerald-800/40'
-                            : 'bg-zinc-800/50 border border-zinc-700/50'
-                        }`}>
-                        <span className="font-mono text-zinc-300">{s.barcode}</span>
-                        <div className="flex items-center gap-2">
-                          {s.quantity > 1 && <span className="text-zinc-500">×{s.quantity}</span>}
-                          {s.status === 'CONFIRMED' ? (
-                            <span className="flex items-center gap-1 text-emerald-400">
-                              <Check className="w-3 h-3" /> Confirmed
-                            </span>
-                          ) : (
-                            <span className="text-zinc-500">Pending</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-2 mb-2">
-              <button onClick={onPrintAgain}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors">
-                <Printer className="w-3.5 h-3.5" />
-                Print Again
-              </button>
-            </div>
-
-            {allConfirmed ? (
-              <button onClick={onDone}
-                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2">
-                <CheckCircle className="w-4 h-4" />
-                All Verified — Done
-              </button>
-            ) : (
-              <button onClick={onDone}
-                className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-400 text-sm hover:bg-zinc-700 transition-colors">
-                Skip Remaining — Done ({confirmed}/{total} scanned)
-              </button>
-            )}
-          </>
+          </div>
         )}
       </div>
 
