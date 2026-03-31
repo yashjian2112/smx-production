@@ -1096,7 +1096,7 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
    CREATE RFQ MODAL
 ══════════════════════════════════════════════════════════════*/
 function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?: RO | null; onClose: () => void; onCreated: () => void }) {
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(preselectedRO ? `RFQ for ${preselectedRO.roNumber}` : '');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
@@ -1106,14 +1106,28 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
   const [vendorCategories, setVendorCategories] = useState<VendorCat[]>([]);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [approvedROs, setApprovedROs] = useState<RO[]>([]);
-  const [selectedROItems, setSelectedROItems] = useState<{ roItemId: string; materialId?: string; itemDescription?: string; itemUnit?: string; qtyRequired: number }[]>([]);
+  // Auto-select all items from the clicked RO
+  const [selectedROItems, setSelectedROItems] = useState<{ roItemId: string; materialId?: string; itemDescription?: string; itemUnit?: string; qtyRequired: number }[]>(
+    preselectedRO ? preselectedRO.items.map(item => ({
+      roItemId: item.id,
+      materialId: item.materialId ?? undefined,
+      itemDescription: item.itemDescription ?? undefined,
+      itemUnit: item.itemUnit ?? undefined,
+      qtyRequired: item.qtyRequired,
+    })) : []
+  );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch('/api/procurement/requirement-orders?status=APPROVED').then(r => r.json()).then(setApprovedROs);
+    // If opened from a specific RO, only show that RO's items; otherwise fetch all approved
+    if (preselectedRO) {
+      setApprovedROs([preselectedRO]);
+    } else {
+      fetch('/api/procurement/requirement-orders?status=APPROVED').then(r => r.json()).then(setApprovedROs);
+    }
     fetch('/api/purchase/vendors').then(r => r.json()).then(v => setVendors(Array.isArray(v) ? v : []));
     fetch('/api/purchase/vendor-categories').then(r => r.json()).then(v => setVendorCategories(Array.isArray(v) ? v : []));
-  }, []);
+  }, [preselectedRO]);
 
   // When category changes, clear vendor selection
   function handleCategoryChange(cat: string) {
@@ -1125,20 +1139,6 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
   const filteredVendors = vendors.filter(v =>
     v.active && (!category || v.categories.includes(category))
   );
-
-  // Pre-populate items from the RO that triggered this modal
-  useEffect(() => {
-    if (preselectedRO) {
-      setSelectedROItems(preselectedRO.items.map(item => ({
-        roItemId: item.id,
-        materialId: item.materialId ?? undefined,
-        itemDescription: item.itemDescription ?? undefined,
-        itemUnit: item.itemUnit ?? undefined,
-        qtyRequired: item.qtyRequired,
-      })));
-      setTitle(`RFQ for ${preselectedRO.roNumber}`);
-    }
-  }, [preselectedRO]);
 
   function toggleVendor(id: string) {
     setSelectedVendors(prev => prev.includes(id) ? prev.filter(v => v !== id) : [...prev, id]);
@@ -1184,12 +1184,19 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <h2 className="text-white font-semibold text-lg mb-4">Create RFQ</h2>
+    <div className="fixed inset-0 bg-zinc-950 z-[60] flex flex-col">
+      {/* Fixed header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
+        <div>
+          <h2 className="text-white font-semibold text-lg">Create RFQ</h2>
+          {preselectedRO && <p className="text-xs text-zinc-500 mt-0.5">From {preselectedRO.roNumber} · {preselectedRO.items.length} items</p>}
+        </div>
+        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X className="w-5 h-5" /></button>
+      </div>
 
-          <div className="space-y-4">
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="max-w-2xl mx-auto space-y-4">
             <div>
               <label className="text-zinc-400 text-sm">Title *</label>
               <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. IGBTs and Capacitors Q1 2026"
@@ -1310,14 +1317,16 @@ function CreateRFQModal({ preselectedRO, onClose, onCreated }: { preselectedRO?:
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="flex gap-3 mt-6">
-            <button onClick={onClose} className="flex-1 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
-            <button onClick={submit} disabled={saving}
-              className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
-              {saving ? 'Creating...' : 'Create RFQ'}
-            </button>
-          </div>
+      {/* Fixed footer */}
+      <div className="px-5 py-4 border-t border-zinc-800 flex-shrink-0">
+        <div className="max-w-2xl mx-auto flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-sm">Cancel</button>
+          <button onClick={submit} disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
+            {saving ? 'Creating...' : 'Create RFQ'}
+          </button>
         </div>
       </div>
     </div>
