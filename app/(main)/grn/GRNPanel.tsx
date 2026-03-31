@@ -317,8 +317,6 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [scanningIndex, setScanningIndex] = useState<number | null>(null);
-  const [scanError, setScanError] = useState('');
 
   const [items, setItems] = useState<GRNItemState[]>(
     gan.items.map(gi => {
@@ -336,45 +334,14 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
         unitPrice: poItem?.unitPrice ?? 0,
         poQty: poItem?.quantity ?? 0,
         poReceived: poItem?.receivedQuantity ?? 0,
-        scanned: !gi.material.barcode,
+        scanned: true, // qty always editable — verification happens in Step 3 via serial scan
       };
     })
   );
 
-  const allScanned = items.every(i => i.scanned);
-  const hasBarcodedItems = items.some(i => i.expectedBarcode);
-
-  function handleMaterialScan(code: string) {
-    setScanError('');
-    if (scanningIndex === null) return;
-
-    const item = items[scanningIndex];
-    if (item.expectedBarcode && code.toUpperCase() === item.expectedBarcode.toUpperCase()) {
-      const updated = [...items];
-      updated[scanningIndex].scanned = true;
-      setItems(updated);
-      setScanningIndex(null);
-    } else {
-      const matchIdx = items.findIndex(i => !i.scanned && i.expectedBarcode && i.expectedBarcode.toUpperCase() === code.toUpperCase());
-      if (matchIdx >= 0) {
-        const updated = [...items];
-        updated[matchIdx].scanned = true;
-        setItems(updated);
-        setScanningIndex(null);
-      } else {
-        setScanError(`Barcode "${code}" does not match any expected material. Expected: ${item.expectedBarcode}`);
-      }
-    }
-  }
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-
-    if (!allScanned) {
-      setError('All items must be scanned and verified before creating GRN');
-      return;
-    }
 
     const verifiedItems = items.filter(i => i.qtyVerified > 0);
     if (verifiedItems.length === 0) {
@@ -450,74 +417,31 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
                 </div>
               </div>
 
-              {/* Barcode verification progress */}
-              {hasBarcodedItems && (
-                <div className="mb-4 p-3 rounded-xl border border-zinc-800" style={{ background: 'rgba(255,255,255,0.02)' }}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Material Barcode Scan</span>
-                    <Badge color={allScanned ? 'green' : 'yellow'}>
-                      {items.filter(i => i.scanned).length}/{items.length} verified
-                    </Badge>
-                  </div>
-                  <div className="w-full bg-zinc-800 rounded-full h-1.5">
-                    <div className="bg-emerald-500 h-1.5 rounded-full transition-all"
-                      style={{ width: `${(items.filter(i => i.scanned).length / items.length) * 100}%` }} />
-                  </div>
-                </div>
-              )}
-
               {/* Items */}
               <div className="space-y-3 mb-4">
                 {items.map((item, i) => {
                   const remaining = item.poQty - item.poReceived;
-                  const needsScan = !!item.expectedBarcode && !item.scanned;
-
                   return (
-                    <div key={item.materialId}
-                      className={`rounded-xl p-3 border transition-colors ${
-                        item.scanned ? 'border-emerald-800/50' : 'border-zinc-800'
-                      }`}
-                      style={{ background: item.scanned ? 'rgba(16,185,129,0.04)' : 'rgba(255,255,255,0.02)' }}>
-
-                      <div className="flex items-center justify-between mb-2 gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-zinc-200 font-medium">{item.name}</span>
-                            {item.scanned ? (
-                              <Badge color="green">Verified</Badge>
-                            ) : item.expectedBarcode ? (
-                              <Badge color="yellow">Not Scanned</Badge>
-                            ) : (
-                              <Badge color="zinc">No Barcode</Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-zinc-500">{fmt(item.qtyArrived)} {item.unit} arrived &middot; PO remaining: {fmt(remaining)}</span>
-                        </div>
-                        {needsScan && (
-                          <button type="button" onClick={() => { setScanError(''); setScanningIndex(i); }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-700 hover:bg-sky-600 text-white transition-colors shrink-0">
-                            <ScanLine className="w-3.5 h-3.5" />
-                            Scan
-                          </button>
-                        )}
+                    <div key={item.materialId} className="rounded-xl p-3 border border-zinc-800"
+                      style={{ background: 'rgba(255,255,255,0.02)' }}>
+                      <div className="mb-2">
+                        <span className="text-sm text-zinc-200 font-medium">{item.name}</span>
+                        <p className="text-xs text-zinc-500 mt-0.5">{fmt(item.qtyArrived)} {item.unit} arrived &middot; PO remaining: {fmt(remaining)}</p>
                       </div>
-
-                      <div className={`grid grid-cols-2 gap-2 ${!item.scanned && item.expectedBarcode ? 'opacity-40 pointer-events-none' : ''}`}>
+                      <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Verified Qty</label>
                           <input type="number" min={0} max={item.qtyArrived} step="any" value={item.qtyVerified}
                             onChange={e => { const n = [...items]; n[i].qtyVerified = parseFloat(e.target.value) || 0; setItems(n); }}
                             onWheel={e => (e.target as HTMLInputElement).blur()}
-                            disabled={!item.scanned}
-                            className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-50" />
+                            className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" />
                         </div>
                         <div>
                           <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Rejected Qty</label>
                           <input type="number" min={0} step="any" value={item.qtyRejected}
                             onChange={e => { const n = [...items]; n[i].qtyRejected = parseFloat(e.target.value) || 0; setItems(n); }}
                             onWheel={e => (e.target as HTMLInputElement).blur()}
-                            disabled={!item.scanned}
-                            className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-red-500 disabled:opacity-50" />
+                            className="w-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-red-500" />
                         </div>
                       </div>
                     </div>
@@ -533,9 +457,9 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
               <div className="flex gap-3">
                 <button type="button" onClick={onClose}
                   className="flex-1 py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors">Cancel</button>
-                <button type="submit" disabled={saving || !allScanned}
+                <button type="submit" disabled={saving}
                   className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                  {saving ? 'Creating GRN...' : !allScanned ? 'Scan All Items First' : 'Confirm &amp; Generate Barcodes'}
+                  {saving ? 'Creating GRN...' : 'Confirm &amp; Generate Barcodes'}
                 </button>
               </div>
             </form>
@@ -622,23 +546,6 @@ function GRNModal({ gan, onClose, onCreated }: { gan: PendingGAN; onClose: () =>
         </div>
       </div>
 
-      {/* Material barcode scanner overlay (step 1 only) */}
-      {step === 'confirm' && scanningIndex !== null && (
-        <div className="fixed inset-0 z-[60]">
-          <BarcodeScanner
-            title={`Scan: ${items[scanningIndex].name}`}
-            hint={`Expected barcode: ${items[scanningIndex].expectedBarcode}`}
-            onScan={handleMaterialScan}
-            onClose={() => { setScanningIndex(null); setScanError(''); }}
-          />
-          {scanError && (
-            <div className="fixed bottom-24 left-4 right-4 z-[70] bg-red-900/90 border border-red-700 rounded-xl p-3 text-center">
-              <p className="text-red-200 text-sm">{scanError}</p>
-              <button onClick={() => setScanError('')} className="text-red-400 text-xs mt-1 underline">Dismiss</button>
-            </div>
-          )}
-        </div>
-      )}
     </>
   );
 }
