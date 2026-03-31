@@ -429,12 +429,6 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
               placeholder="e.g. v2.4.1" className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-zinc-700 outline-none"
               style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
           </div>
-          <div>
-            <label className="block text-xs text-zinc-500 mb-1">Software Version</label>
-            <input type="text" value={softwareVersion} onChange={(e) => setSoftwareVersion(e.target.value)}
-              placeholder="e.g. v1.2.0" className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-zinc-700 outline-none"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
-          </div>
         </div>
         <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
           {QC_ITEMS.map((item, idx) => {
@@ -751,12 +745,6 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
                 <span className="text-[10px] px-1.5 py-0.5 rounded font-mono"
                   style={{ color: '#94a3b8', background: 'rgba(148,163,184,0.08)' }}>
                   FW {unit.firmwareVersion}
-                </span>
-              )}
-              {unit.softwareVersion && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded font-mono"
-                  style={{ color: '#94a3b8', background: 'rgba(148,163,184,0.08)' }}>
-                  SW {unit.softwareVersion}
                 </span>
               )}
               {passCount !== null && failCount !== null && (
