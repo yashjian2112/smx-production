@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateGRNNumber } from '@/lib/procurement-numbers';
-import { generateNextMaterialSerialBarcode } from '@/lib/barcode';
+
 
 // POST /api/procurement/purchase-orders/[id]/grn — IM creates GRN after verifying goods
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -70,6 +70,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     quantity: number;
   }> = [];
 
+  // Get starting sequence per prefix ONCE, then increment locally to avoid duplicates
+  // (calling generateNextMaterialSerialBarcode in a loop returns the same seq each time
+  //  because nothing is written between calls)
+  const year = String(new Date().getFullYear() % 100).padStart(2, '0');
+  const prefixCounters = new Map<string, number>();
+
+  async function getNextSeq(prefix: string): Promise<number> {
+    if (!prefixCounters.has(prefix)) {
+      const last = await prisma.materialSerial.findFirst({
+        where: { barcode: { startsWith: prefix } },
+        orderBy: { barcode: 'desc' },
+        select: { barcode: true },
+      });
+      let seq = 1;
+      if (last?.barcode) {
+        const seqPart = last.barcode.slice(prefix.length);
+        seq = (parseInt(seqPart, 10) || 0) + 1;
+      }
+      prefixCounters.set(prefix, seq);
+    }
+    const seq = prefixCounters.get(prefix)!;
+    prefixCounters.set(prefix, seq + 1);
+    return seq;
+  }
+
   for (const item of items) {
     if (item.qtyVerified <= 0) continue;
     const mat = materialMap.get(item.materialId);
@@ -80,11 +105,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const packSize = mat?.packSize ?? 1;
     const totalUnits = Math.floor(item.qtyVerified);
     const numPacks = Math.ceil(totalUnits / packSize);
+    const prefix = `${categoryCode.trim().toUpperCase()}${stageType.toUpperCase()}${year}`;
 
     for (let i = 0; i < numPacks; i++) {
-      // Last pack may have fewer units if qty doesn't divide evenly
+      const seq = await getNextSeq(prefix);
+      if (seq > 99999) throw new Error(`Material serial barcode sequence full for ${prefix}`);
+      const barcode = `${prefix}${String(seq).padStart(5, '0')}`;
       const unitsInPack = Math.min(packSize, totalUnits - i * packSize);
-      const barcode = await generateNextMaterialSerialBarcode(categoryCode, stageType);
       serialsToCreate.push({ materialId: item.materialId, stageType, barcode, quantity: unitsInPack });
     }
   }
