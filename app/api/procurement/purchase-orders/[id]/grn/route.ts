@@ -53,30 +53,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const grnNumber = await generateGRNNumber();
   const poId = (await params).id;
 
-  // Fetch material details (productionStage, category code) for traceable items
+  // Fetch material details (productionStage, category code, packSize) for serial generation
   const materialIds = Array.from(new Set(items.map(i => i.materialId).filter(Boolean)));
   const materials = await prisma.rawMaterial.findMany({
     where: { id: { in: materialIds } },
-    select: { id: true, productionStage: true, category: { select: { code: true } } },
+    select: { id: true, productionStage: true, packSize: true, category: { select: { code: true } } },
   });
   const materialMap = new Map(materials.map(m => [m.id, m]));
 
-  // Pre-generate all MaterialSerial barcodes outside transaction (barcode.ts queries DB)
+  // Pre-generate MaterialSerial barcodes for ALL materials (full serialization)
+  // Each serial represents one "pack" of packSize units
   const serialsToCreate: Array<{
     materialId: string;
     stageType: string;
     barcode: string;
+    quantity: number;
   }> = [];
 
   for (const item of items) {
     if (item.qtyVerified <= 0) continue;
     const mat = materialMap.get(item.materialId);
-    if (!mat?.productionStage || !['PS', 'BB'].includes(mat.productionStage)) continue;
-    const categoryCode = mat.category?.code ?? 'MAT';
-    const stageType = mat.productionStage as 'PS' | 'BB';
-    for (let i = 0; i < Math.floor(item.qtyVerified); i++) {
+    const categoryCode = mat?.category?.code ?? 'MAT';
+    const stageType = mat?.productionStage && ['PS', 'BB'].includes(mat.productionStage)
+      ? mat.productionStage
+      : 'GN';
+    const packSize = mat?.packSize ?? 1;
+    const totalUnits = Math.floor(item.qtyVerified);
+    const numPacks = Math.ceil(totalUnits / packSize);
+
+    for (let i = 0; i < numPacks; i++) {
+      // Last pack may have fewer units if qty doesn't divide evenly
+      const unitsInPack = Math.min(packSize, totalUnits - i * packSize);
       const barcode = await generateNextMaterialSerialBarcode(categoryCode, stageType);
-      serialsToCreate.push({ materialId: item.materialId, stageType, barcode });
+      serialsToCreate.push({ materialId: item.materialId, stageType, barcode, quantity: unitsInPack });
     }
   }
 
@@ -101,7 +110,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
 
-    // Create MaterialSerial records for traceable materials
+    // Create MaterialSerial records (one per pack)
     if (serialsToCreate.length > 0) {
       await tx.materialSerial.createMany({
         data: serialsToCreate.map(s => ({
@@ -109,6 +118,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           grnId: created.id,
           stageType: s.stageType,
           barcode: s.barcode,
+          quantity: s.quantity,
           status: 'PRINTED',
         })),
       });

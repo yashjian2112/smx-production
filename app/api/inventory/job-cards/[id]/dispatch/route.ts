@@ -3,8 +3,9 @@ import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 // POST /api/inventory/job-cards/[id]/dispatch
-// Body: { items: [{ jobCardItemId: string, issuedQty: number }] }
-// IM scans each item and sets the issued qty.
+// Body: { items: [{ jobCardItemId: string, issuedQty: number, serialIds?: string[] }] }
+// IM scans each item's unique MaterialSerial barcodes.
+// serialIds are the MaterialSerial IDs to mark as CONSUMED.
 // Rules:
 //   - Critical items: issuedQty must == quantityReq (no shortfall allowed)
 //   - Non-critical items: any qty ok (partial dispatch)
@@ -22,7 +23,7 @@ export async function POST(
 
   const { id } = await params;
   const body = await req.json();
-  const { items }: { items: { jobCardItemId: string; issuedQty: number }[] } = body;
+  const { items }: { items: { jobCardItemId: string; issuedQty: number; serialIds?: string[] }[] } = body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: 'items array required' }, { status: 400 });
@@ -154,6 +155,15 @@ export async function POST(
         where: { id: item.id },
         data: { quantityIssued: issued },
       });
+
+      // Mark MaterialSerials as CONSUMED and link to job card item
+      const itemPayload = items.find(i => i.jobCardItemId === item.id);
+      if (itemPayload?.serialIds?.length) {
+        await tx.materialSerial.updateMany({
+          where: { id: { in: itemPayload.serialIds } },
+          data: { status: 'CONSUMED', jobCardItemId: item.id },
+        });
+      }
     }
 
     // Update job card status

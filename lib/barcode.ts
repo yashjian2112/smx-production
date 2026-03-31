@@ -187,16 +187,16 @@ export async function findUnitByComponentBarcode(barcode: string) {
 
 /**
  * Generate barcode for a material serial (individual component received at GRN).
- * Format: {categoryCode}{stageType}{YY}{seq4} — e.g. PCBPS260001
- * Uses 4-digit sequence to distinguish from 3-digit production barcodes.
+ * Format: {categoryCode}{stageType}{YY}{seq5} — e.g. PCBPS2600001, CAPGN2600001
+ * Uses 5-digit sequence for high-volume materials.
  * Queries MaterialSerial table so it's independent of production barcode sequences.
  */
 export async function generateNextMaterialSerialBarcode(
   categoryCode: string,
-  stageType: 'PS' | 'BB'
+  stageType: string = 'GN'
 ): Promise<string> {
   const year = String(new Date().getFullYear() % 100).padStart(2, '0');
-  const prefix = `${categoryCode.trim().toUpperCase()}${stageType}${year}`;
+  const prefix = `${categoryCode.trim().toUpperCase()}${stageType.toUpperCase()}${year}`;
   const last = await prisma.materialSerial.findFirst({
     where: { barcode: { startsWith: prefix } },
     orderBy: { barcode: 'desc' },
@@ -207,8 +207,8 @@ export async function generateNextMaterialSerialBarcode(
     const seqPart = last.barcode.slice(prefix.length);
     seq = (parseInt(seqPart, 10) || 0) + 1;
   }
-  if (seq > 9999) throw new Error(`Material serial barcode sequence full for ${prefix}`);
-  return `${prefix}${String(seq).padStart(4, '0')}`;
+  if (seq > 99999) throw new Error(`Material serial barcode sequence full for ${prefix}`);
+  return `${prefix}${String(seq).padStart(5, '0')}`;
 }
 
 /** Map stage keys to their barcode DB field */

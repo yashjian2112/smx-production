@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 type Serial = {
   id: string;
   barcode: string;
+  quantity: number;
   stageType: string;
   status: string;
   material: { id: string; name: string; code: string };
@@ -103,6 +104,7 @@ export default function PrintGRNSerials({ grn }: { grn: GRN }) {
               <div key={s.id} className="label">
                 <div className="barcode-text">{s.barcode}</div>
                 <div className="label-code">{s.barcode}</div>
+                {s.quantity > 1 && <div className="label-info" style={{ fontWeight: 'bold', fontSize: '11px' }}>Qty: {s.quantity} {material.code}</div>}
                 <div className="label-info">{stageType} · {grn.grnNumber}</div>
               </div>
             ))}

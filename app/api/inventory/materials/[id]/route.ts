@@ -20,6 +20,7 @@ const updateSchema = z.object({
   minimumStock:      z.number().min(0).optional(),
   reorderPoint:      z.number().min(0).optional(),
   minimumOrderQty:   z.number().min(0).optional(),
+  packSize:          z.number().int().min(1).optional(),
   active:            z.boolean().optional(),
 });
 

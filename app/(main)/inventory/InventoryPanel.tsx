@@ -13,7 +13,7 @@ interface RawMaterial {
   purchaseUnit?: string | null; conversionFactor?: number | null;
   description?: string | null; hsnCode?: string | null;
   purchasePrice?: number; leadTimeDays?: number;
-  currentStock: number; minimumStock: number; reorderPoint: number; minimumOrderQty?: number;
+  currentStock: number; minimumStock: number; reorderPoint: number; minimumOrderQty?: number; packSize?: number;
   committedStock?: number; availableStock?: number;
   category?: { id: string; name: string } | null;
   preferredVendor?: { id: string; name: string } | null;
@@ -1152,6 +1152,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   const [fConvFactor,    setFConvFactor]    = useState('');
   const [fOpenQty,       setFOpenQty]       = useState('');
   const [fBarcodePrefix, setFBarcodePrefix] = useState('');
+  const [fPackSize,      setFPackSize]      = useState('1');
   const [fSaving,        setFSaving]        = useState(false);
   const [fError,         setFError]         = useState('');
   const [printMatId,     setPrintMatId]     = useState<string | null>(null);
@@ -1193,7 +1194,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
 
   function openNewMat() {
     setEditMat(null); setFName(''); setFUnit('PCS'); setFCatId(''); setFMin('0'); setFReord('0'); setFMoq('1');
-    setFDesc(''); setFVendorId(''); setFPurchaseUnit(''); setFConvFactor(''); setFOpenQty(''); setFBarcodePrefix(''); setFError('');
+    setFDesc(''); setFVendorId(''); setFPurchaseUnit(''); setFConvFactor(''); setFOpenQty(''); setFBarcodePrefix(''); setFPackSize('1'); setFError('');
     setShowInlineCat(false); setShowInlineVendor(false);
     setShowMatForm(true);
   }
@@ -1204,7 +1205,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
     setFDesc(m.description ?? '');
     setFVendorId(m.preferredVendor?.id ?? '');
     setFPurchaseUnit(m.purchaseUnit ?? ''); setFConvFactor(m.conversionFactor ? String(m.conversionFactor) : '');
-    setFError('');
+    setFPackSize(String(m.packSize ?? 1)); setFError('');
     setShowInlineCat(false); setShowInlineVendor(false);
     setShowMatForm(true);
   }
@@ -1217,6 +1218,7 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
       preferredVendorId: fVendorId || undefined,
       minimumStock: parseFloat(fMin) || 0, reorderPoint: parseFloat(fReord) || 0,
       minimumOrderQty: parseFloat(fMoq) || 1,
+      packSize: parseInt(fPackSize) || 1,
       purchaseUnit: fPurchaseUnit || undefined,
       conversionFactor: fPurchaseUnit && fConvFactor ? parseFloat(fConvFactor) : undefined,
       ...(!editMat && fBarcodePrefix.trim() ? { barcodePrefix: fBarcodePrefix.trim().toUpperCase() } : {}),
@@ -1660,6 +1662,20 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
                 </div>
               </div>
 
+              {/* Pack Size */}
+              <div>
+                <label className="text-zinc-400 text-xs">Pack Size <span className="text-zinc-600">(units per label at GRN)</span></label>
+                <input type="number" min="1" step="1" value={fPackSize} onChange={e => setFPackSize(e.target.value)}
+                  onWheel={e => (e.target as HTMLInputElement).blur()}
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                  style={{ background: 'rgb(39,39,42)' }} />
+                {parseInt(fPackSize) > 1 && (
+                  <p className="text-zinc-500 text-xs mt-1">
+                    Each barcode label = {fPackSize} {fUnit || 'PCS'}. GRN will generate 1 label per {fPackSize} units received.
+                  </p>
+                )}
+              </div>
+
               {/* Description */}
               <div>
                 <label className="text-zinc-400 text-xs">Description <span className="text-zinc-600">(optional)</span></label>
@@ -1891,57 +1907,81 @@ function JobCardsTab({ sessionRole }: { sessionRole: string }) {
   );
 }
 
-// ── Full-screen scan panel for dispatching a job card ─────────────────────────
+// ── Full-screen scan panel for dispatching a job card (serial-based) ──────────
+interface ScannedSerialInv { serialId: string; barcode: string; packQty: number; jobCardItemId: string; materialName: string }
+
 function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: () => void; onDone: () => void }) {
   const scanRef = useRef<HTMLInputElement>(null);
   const [scanInput, setScanInput] = useState('');
-  const [scanned, setScanned]     = useState<Record<string, number>>({}); // itemId → scan count
+  const [scannedSerials, setScannedSerials] = useState<ScannedSerialInv[]>([]);
   const [lastScan, setLastScan]   = useState<{ text: string; ok: boolean } | null>(null);
+  const [scanning, setScanning]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]         = useState('');
 
   useEffect(() => { scanRef.current?.focus(); }, []);
 
-  const totalQtyNeeded  = card.items.reduce((s, i) => s + i.quantityReq, 0);
-  const totalQtyScanned = card.items.reduce((s, i) => s + (scanned[i.id] ?? 0), 0);
-  const allScanned      = card.items.every(i => (scanned[i.id] ?? 0) >= i.quantityReq);
+  const qtyByItem = (itemId: string) => scannedSerials.filter(s => s.jobCardItemId === itemId).reduce((sum, s) => sum + s.packQty, 0);
+  const serialIdsForItem = (itemId: string) => scannedSerials.filter(s => s.jobCardItemId === itemId).map(s => s.serialId);
 
-  function handleScan(e: React.KeyboardEvent<HTMLInputElement>) {
+  const totalQtyNeeded  = card.items.reduce((s, i) => s + i.quantityReq, 0);
+  const totalQtyScanned = scannedSerials.reduce((s, ser) => s + ser.packQty, 0);
+  const allScanned      = card.items.every(i => qtyByItem(i.id) >= i.quantityReq);
+
+  async function handleScan(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter') return;
     const val = scanInput.trim().toUpperCase();
     setScanInput('');
     if (!val) return;
 
-    const found = card.items.find(i =>
-      (i.rawMaterial.barcode?.toUpperCase() === val || i.rawMaterial.code.toUpperCase() === val)
-      && (scanned[i.id] ?? 0) < i.quantityReq
-    );
-
-    if (found) {
-      const newCount = (scanned[found.id] ?? 0) + 1;
-      setScanned(prev => ({ ...prev, [found.id]: newCount }));
-      setLastScan({ text: `${found.rawMaterial.name} (${newCount}/${fmt(found.quantityReq)})`, ok: true });
-    } else {
-      const fullyDone = card.items.find(i =>
-        (i.rawMaterial.barcode?.toUpperCase() === val || i.rawMaterial.code.toUpperCase() === val)
-        && (scanned[i.id] ?? 0) >= i.quantityReq
-      );
-      if (fullyDone) {
-        setLastScan({ text: `${fullyDone.rawMaterial.name} — all ${fmt(fullyDone.quantityReq)} already scanned`, ok: false });
-      } else {
-        setLastScan({ text: `"${val}" not found in this job card`, ok: false });
-      }
+    if (scannedSerials.some(s => s.barcode === val)) {
+      setLastScan({ text: `"${val}" already scanned`, ok: false });
+      setTimeout(() => setLastScan(null), 3000);
+      scanRef.current?.focus();
+      return;
     }
 
+    setScanning(true);
+    try {
+      const res = await fetch('/api/inventory/job-cards/scan-serial', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: val, jobCardId: card.id }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setLastScan({ text: data.error || 'Scan failed', ok: false });
+      } else {
+        const currentQty = qtyByItem(data.jobCardItemId);
+        if (currentQty >= data.quantityReq) {
+          setLastScan({ text: `${data.materialName} — all ${fmt(data.quantityReq)} already covered`, ok: false });
+        } else {
+          const packQty = data.packQty ?? 1;
+          const newQty = currentQty + packQty;
+          setScannedSerials(prev => [...prev, {
+            serialId: data.serialId,
+            barcode: data.barcode,
+            packQty,
+            jobCardItemId: data.jobCardItemId,
+            materialName: data.materialName,
+          }]);
+          setLastScan({ text: `${data.materialName} +${packQty} (${fmt(newQty)}/${fmt(data.quantityReq)})`, ok: true });
+        }
+      }
+    } catch {
+      setLastScan({ text: 'Network error — try again', ok: false });
+    }
+    setScanning(false);
     setTimeout(() => setLastScan(null), 3000);
     scanRef.current?.focus();
   }
 
-  function undoScan(itemId: string) {
-    setScanned(prev => {
-      const cur = prev[itemId] ?? 0;
-      if (cur <= 1) { const n = { ...prev }; delete n[itemId]; return n; }
-      return { ...prev, [itemId]: cur - 1 };
+  function undoLastScanForItem(itemId: string) {
+    setScannedSerials(prev => {
+      const idx = prev.findLastIndex(s => s.jobCardItemId === itemId);
+      if (idx === -1) return prev;
+      return [...prev.slice(0, idx), ...prev.slice(idx + 1)];
     });
   }
 
@@ -1950,7 +1990,8 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
     setError('');
     const items = card.items.map(item => ({
       jobCardItemId: item.id,
-      issuedQty: scanned[item.id] ?? 0,
+      issuedQty: qtyByItem(item.id),
+      serialIds: serialIdsForItem(item.id),
     }));
 
     const res = await fetch(`/api/inventory/job-cards/${card.id}/dispatch`, {
@@ -1983,11 +2024,11 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
         </div>
         <div className="text-right shrink-0">
           <p className="text-2xl font-bold" style={{ color: allScanned ? '#4ade80' : '#fbbf24' }}>{totalQtyScanned}/{fmt(totalQtyNeeded)}</p>
-          <p className="text-zinc-600 text-[10px]">scans</p>
+          <p className="text-zinc-600 text-[10px]">units scanned</p>
         </div>
       </div>
 
-      {/* Scan input — large and prominent */}
+      {/* Scan input */}
       <div className="px-4 py-4 border-b border-zinc-800/50" style={{ background: 'rgba(14,165,233,0.03)' }}>
         <div className="flex items-center gap-3 px-4 py-3 rounded-2xl" style={{ background: 'rgba(14,165,233,0.08)', border: '2px solid rgba(14,165,233,0.25)' }}>
           <ScanLine className="w-6 h-6 text-sky-400 shrink-0" />
@@ -1997,12 +2038,13 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
             value={scanInput}
             onChange={e => setScanInput(e.target.value)}
             onKeyDown={handleScan}
-            placeholder="Scan item barcode..."
+            placeholder="Scan serial barcode..."
             autoFocus
+            disabled={scanning}
             className="flex-1 bg-transparent text-lg text-white placeholder-zinc-600 outline-none font-mono"
           />
+          {scanning && <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin shrink-0" />}
         </div>
-        {/* Scan feedback */}
         {lastScan && (
           <div className={`mt-2 px-4 py-2 rounded-xl text-sm font-medium ${lastScan.ok ? 'text-emerald-400 bg-emerald-900/20' : 'text-red-400 bg-red-900/20'}`}>
             {lastScan.ok ? <Check className="w-4 h-4 inline mr-1.5" /> : <X className="w-4 h-4 inline mr-1.5" />}
@@ -2014,12 +2056,13 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
       {/* Items list */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
         {card.items.map(item => {
-          const qty   = scanned[item.id] ?? 0;
+          const qty   = qtyByItem(item.id);
           const need  = item.quantityReq;
           const done  = qty >= need;
           const stock = item.rawMaterial.currentStock;
           const ok    = stock >= need;
           const pct   = need > 0 ? Math.min(100, (qty / need) * 100) : 0;
+          const itemSerials = scannedSerials.filter(s => s.jobCardItemId === item.id);
 
           return (
             <div key={item.id}
@@ -2044,7 +2087,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-zinc-600 font-mono text-[10px]">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
+                    <span className="text-zinc-600 font-mono text-[10px]">{item.rawMaterial.code}</span>
                     <span className={`text-[10px] ${ok ? 'text-emerald-400' : stock > 0 ? 'text-amber-400' : 'text-red-400'}`}>
                       Stock: {stock <= 0 ? 'None' : fmt(stock)}
                     </span>
@@ -2054,10 +2097,22 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
                       <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: done ? '#4ade80' : '#38bdf8' }} />
                     </div>
                   )}
+                  {itemSerials.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {itemSerials.map(s => (
+                        <span key={s.serialId} className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-sky-900/30 text-sky-400">
+                          {s.barcode}{s.packQty > 1 ? ` (×${s.packQty})` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {qty > need && (
+                    <p className="text-amber-400 text-[10px] mt-1">Excess: {fmt(qty - need)} units (will be returned after use)</p>
+                  )}
                 </div>
 
                 {qty > 0 && (
-                  <button onClick={() => undoScan(item.id)} className="text-zinc-500 hover:text-red-400 p-1 shrink-0" title="Undo one scan">
+                  <button onClick={() => undoLastScanForItem(item.id)} className="text-zinc-500 hover:text-red-400 p-1 shrink-0" title="Undo last scan">
                     <X className="w-4 h-4" />
                   </button>
                 )}
@@ -2074,15 +2129,15 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
         </div>
       )}
 
-      {/* Footer — dispatch button */}
+      {/* Footer */}
       <div className="px-4 py-4 border-t border-zinc-800 flex items-center gap-3" style={{ background: 'rgba(0,0,0,0.5)' }}>
         <div className="flex-1">
           {allScanned ? (
-            <span className="text-emerald-400 text-sm font-medium">All items scanned — ready to dispatch</span>
+            <span className="text-emerald-400 text-sm font-medium">All packs scanned — ready to dispatch</span>
           ) : totalQtyScanned > 0 ? (
-            <span className="text-amber-400 text-sm">{totalQtyScanned}/{fmt(totalQtyNeeded)} scans</span>
+            <span className="text-amber-400 text-sm">{fmt(totalQtyScanned)}/{fmt(totalQtyNeeded)} units</span>
           ) : (
-            <span className="text-zinc-500 text-sm">Scan items to begin</span>
+            <span className="text-zinc-500 text-sm">Scan serial barcodes to begin</span>
           )}
         </div>
         <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>

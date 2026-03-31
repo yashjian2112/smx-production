@@ -24,6 +24,7 @@ const createSchema = z.object({
   reorderPoint:      z.number().min(0).default(0),
   code:              z.string().optional(),
   barcodePrefix:     z.string().min(2).max(8),
+  packSize:          z.number().int().min(1).default(1),
 });
 
 export async function GET() {
@@ -94,6 +95,7 @@ export async function POST(req: Request) {
       preferredVendorId: data.preferredVendorId ?? null,
       minimumStock:      data.minimumStock,
       reorderPoint:      data.reorderPoint,
+      packSize:          data.packSize,
     },
     include: {
       category:        { select: { id: true, name: true } },

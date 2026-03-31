@@ -1005,6 +1005,7 @@ model RawMaterial {
   active            Boolean  @default(true)
   barcode           String?  @unique
   productionStage   String?  @map("production_stage")  // "PS" | "BB" | null — for individual serial tracking at GRN
+  packSize          Int      @default(1) @map("pack_size")          // units per pack for serial labeling at GRN (1 = individual)
   batchTracking     Boolean  @default(false) @map("batch_tracking")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -1423,9 +1424,10 @@ model JobCardItem {
   isVerified     Boolean @default(false) @map("is_verified")
   returnedQty    Float   @default(0) @map("returned_qty")  // returned to store after job
 
-  jobCard     JobCard         @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
-  rawMaterial RawMaterial     @relation(fields: [rawMaterialId], references: [id])
-  batch       InventoryBatch? @relation(fields: [batchId], references: [id])
+  jobCard         JobCard         @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  rawMaterial     RawMaterial     @relation(fields: [rawMaterialId], references: [id])
+  batch           InventoryBatch? @relation(fields: [batchId], references: [id])
+  consumedSerials MaterialSerial[]
 
   @@map("job_card_items")
 }
@@ -1686,21 +1688,24 @@ model GANItem {
   @@map("gan_items")
 }
 
-// Material Serials — individual barcodes generated at GRN for traceable components
+// Material Serials — individual barcodes generated at GRN for every component
 model MaterialSerial {
   id          String    @id @default(cuid())
   materialId  String    @map("material_id")
   grnId       String    @map("grn_id")
-  stageType   String    @map("stage_type")            // "PS" | "BB"
+  stageType   String    @default("GN") @map("stage_type") // "PS" | "BB" | "GN" (general)
   barcode     String    @unique
+  quantity    Int       @default(1)                    // units per pack (from material.packSize at GRN)
   status      String    @default("PRINTED")            // PRINTED | CONFIRMED | ALLOCATED | CONSUMED
   confirmedAt DateTime? @map("confirmed_at")
   allocatedToOrderId String? @map("allocated_to_order_id")
   allocatedToUnitId  String? @map("allocated_to_unit_id")
+  jobCardItemId      String? @map("job_card_item_id")  // set when consumed via job card dispatch
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  material RawMaterial    @relation(fields: [materialId], references: [id])
-  grn      GoodsReceipt   @relation(fields: [grnId], references: [id])
+  material    RawMaterial    @relation(fields: [materialId], references: [id])
+  grn         GoodsReceipt   @relation(fields: [grnId], references: [id])
+  jobCardItem JobCardItem?   @relation(fields: [jobCardItemId], references: [id])
 
   @@map("material_serials")
 }

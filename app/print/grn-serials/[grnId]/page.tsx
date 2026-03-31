@@ -24,7 +24,7 @@ export default async function GRNSerialsPage({ params }: { params: { grnId: stri
     return (
       <div className="p-8 text-center">
         <p className="text-gray-500">No material serials found for this GRN.</p>
-        <p className="text-gray-400 text-sm mt-1">Only traceable materials (PS/BB stage) generate individual barcodes.</p>
+        <p className="text-gray-400 text-sm mt-1">No barcodes were generated for this GRN.</p>
       </div>
     );
   }
