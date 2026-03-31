@@ -127,6 +127,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         ...(rest.splitInvoice         !== undefined && { splitInvoice: rest.splitInvoice }),
         ...(rest.splitServicePercent  !== undefined && { splitServicePercent: rest.splitServicePercent }),
         ...(rest.declaredAmount       !== undefined && { declaredAmount: rest.declaredAmount }),
+        ...(rest.shippingRoute       !== undefined && { shippingRoute: rest.shippingRoute }),
         ...(items !== undefined && {
           items: {
             deleteMany: {},

@@ -29,6 +29,7 @@ type InitialProforma = {
   termsOfPayment: string | null;
   deliveryDays: number | null;
   termsOfDelivery: string | null;
+  shippingRoute: string | null;
   notes: string | null;
   items: InitialItem[];
 };
@@ -152,6 +153,9 @@ export function EditProformaForm({
   const [rateLoading,    setRateLoading]    = useState(false);
   const [termsOfPayment, setTermsOfPayment] = useState(proforma.termsOfPayment ?? '');
   const [deliveryDays,   setDeliveryDays]   = useState(proforma.deliveryDays?.toString() ?? '');
+  const [shippingRoute,  setShippingRoute]  = useState<'AIR' | 'LAND' | ''>(
+    (proforma.shippingRoute === 'AIR' || proforma.shippingRoute === 'LAND') ? proforma.shippingRoute : ''
+  );
   const [notes,          setNotes]          = useState(() => isReplacement ? stripReplacementHeader(proforma.notes) : (proforma.notes ?? ''));
 
   // Replacement-specific
@@ -309,6 +313,7 @@ export function EditProformaForm({
           exchangeRate:    currency === 'USD' && rate > 0 ? rate : null,
           termsOfPayment:  termsOfPayment  || undefined,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : null,
+          shippingRoute:   shippingRoute || null,
           notes:           finalNotes    || undefined,
           items:           submitItems,
         }),
@@ -430,6 +435,27 @@ export function EditProformaForm({
         <label className={lCls}>Delivery Days <span className="normal-case text-zinc-600 font-normal text-[10px]">(days after receiving payment)</span></label>
         <input type="number" min={1} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 30" />
       </div>
+
+      {/* Shipping Route — domestic clients only */}
+      {!isExport && (
+        <div>
+          <label className={lCls}>Dispatch Mode</label>
+          <div className="flex gap-2">
+            {(['AIR', 'LAND'] as const).map((mode) => (
+              <button key={mode} type="button"
+                onClick={() => setShippingRoute(shippingRoute === mode ? '' : mode)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                style={{
+                  background: shippingRoute === mode ? (mode === 'AIR' ? 'rgba(59,130,246,0.15)' : 'rgba(34,197,94,0.15)') : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${shippingRoute === mode ? (mode === 'AIR' ? 'rgba(59,130,246,0.3)' : 'rgba(34,197,94,0.3)') : 'rgba(255,255,255,0.08)'}`,
+                  color: shippingRoute === mode ? (mode === 'AIR' ? '#60a5fa' : '#4ade80') : '#94a3b8',
+                }}>
+                {mode === 'AIR' ? 'By Air' : 'By Land'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Line Items ── */}
       <div>
