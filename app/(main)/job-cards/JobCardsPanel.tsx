@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Camera, Star, Check, ClipboardList } from 'lucide-react';
+import { X, Check, ClipboardList, ScanLine, ArrowLeft } from 'lucide-react';
 
 interface RawMaterial {
   id: string; name: string; code: string; unit: string; barcode?: string | null;
-  currentStock: number; purchaseUnit?: string | null; conversionFactor?: number | null;
+  currentStock: number;
 }
 
 interface JobCardItem {
@@ -43,59 +43,61 @@ const STATUS_COLOR: Record<string, { bg: string; text: string; dot: string }> = 
   CANCELLED:   { bg: 'rgba(113,113,122,0.08)', text: '#71717a', dot: '#71717a' },
 };
 
-// ── Dispatch Modal ────────────────────────────────────────────────────────────
-function DispatchModal({
-  card, onClose, onDone
-}: { card: JobCard; onClose: () => void; onDone: () => void }) {
-  // issuedQty per item id, default = min(stock, required)
-  const [qtys, setQtys] = useState<Record<string, string>>(() => {
-    const m: Record<string, string> = {};
-    for (const item of card.items) {
-      const available = Math.min(item.rawMaterial.currentStock, item.quantityReq);
-      m[item.id] = String(available);
-    }
-    return m;
-  });
-  const [scanInput, setScanInput]   = useState('');
-  const [scannedId, setScannedId]   = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [criticalErrors, setCriticalErrors] = useState<string[]>([]);
-  const [error, setError] = useState('');
+// ── Full-screen scan panel for dispatching a job card ─────────────────────────
+function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: () => void; onDone: () => void }) {
   const scanRef = useRef<HTMLInputElement>(null);
+  const [scanInput, setScanInput] = useState('');
+  const [scanned, setScanned]     = useState<Record<string, boolean>>({});
+  const [lastScan, setLastScan]   = useState<{ text: string; ok: boolean } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]         = useState('');
 
-  // Scan barcode → highlight that item
+  useEffect(() => { scanRef.current?.focus(); }, []);
+
+  const scannedCount = Object.values(scanned).filter(Boolean).length;
+  const totalItems   = card.items.length;
+  const allScanned   = scannedCount === totalItems;
+
   function handleScan(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter') return;
     const val = scanInput.trim().toUpperCase();
     setScanInput('');
+    if (!val) return;
+
     const found = card.items.find(i =>
-      i.rawMaterial.barcode?.toUpperCase() === val ||
-      i.rawMaterial.code.toUpperCase() === val
+      (i.rawMaterial.barcode?.toUpperCase() === val || i.rawMaterial.code.toUpperCase() === val)
+      && !scanned[i.id]
     );
+
     if (found) {
-      setScannedId(found.id);
-      setTimeout(() => setScannedId(null), 2000);
+      setScanned(prev => ({ ...prev, [found.id]: true }));
+      setLastScan({ text: found.rawMaterial.name, ok: true });
+    } else {
+      const alreadyDone = card.items.find(i =>
+        (i.rawMaterial.barcode?.toUpperCase() === val || i.rawMaterial.code.toUpperCase() === val)
+        && scanned[i.id]
+      );
+      if (alreadyDone) {
+        setLastScan({ text: `${alreadyDone.rawMaterial.name} — already scanned`, ok: false });
+      } else {
+        setLastScan({ text: `"${val}" not found in this job card`, ok: false });
+      }
     }
+
+    setTimeout(() => setLastScan(null), 3000);
+    scanRef.current?.focus();
   }
 
-  // Critical items check on the fly
-  const criticalShort = card.items.filter(item => {
-    if (!item.isCritical) return false;
-    const issued = parseFloat(qtys[item.id] || '0');
-    return issued < item.quantityReq;
-  });
-
-  const allItemsFull = card.items.every(item => {
-    const issued = parseFloat(qtys[item.id] || '0');
-    return issued >= item.quantityReq;
-  });
-  const dispatchLabel = allItemsFull ? 'Full Dispatch' : 'Partial Dispatch';
+  function undoScan(itemId: string) {
+    setScanned(prev => { const n = { ...prev }; delete n[itemId]; return n; });
+  }
 
   async function handleDispatch() {
-    setSubmitting(true); setError(''); setCriticalErrors([]);
+    setSubmitting(true);
+    setError('');
     const items = card.items.map(item => ({
       jobCardItemId: item.id,
-      issuedQty: parseFloat(qtys[item.id] || '0'),
+      issuedQty: scanned[item.id] ? item.quantityReq : 0,
     }));
 
     const res = await fetch(`/api/inventory/job-cards/${card.id}/dispatch`, {
@@ -103,141 +105,130 @@ function DispatchModal({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items }),
     });
-
     setSubmitting(false);
+
     if (res.ok) {
       onDone();
     } else {
       const data = await res.json();
-      if (data.criticalErrors) setCriticalErrors(data.criticalErrors);
+      if (data.criticalErrors) setError(data.criticalErrors.join('\n'));
+      else if (data.stockErrors) setError(data.stockErrors.join('\n'));
       else setError(data.error || 'Dispatch failed');
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
-      <div className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-2xl sm:rounded-2xl overflow-hidden"
-        style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.08)' }}>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-zinc-800">
-          <div>
-            <p className="text-white font-semibold">{card.cardNumber}</p>
-            <p className="text-zinc-500 text-xs">{card.order.orderNumber} · {card.orderQuantity} units · {STAGE_LABEL[card.stage] ?? card.stage}</p>
-          </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white px-2"><X className="w-4 h-4" /></button>
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'rgb(9,9,11)' }}>
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800" style={{ background: 'rgba(0,0,0,0.5)' }}>
+        <button onClick={onClose} className="text-zinc-400 hover:text-white p-1">
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-semibold text-sm">{card.cardNumber}</p>
+          <p className="text-zinc-500 text-xs">{card.order.orderNumber} · {card.orderQuantity} units · {STAGE_LABEL[card.stage] ?? card.stage}</p>
         </div>
-
-        {/* Scan bar */}
-        <div className="px-4 pt-3 pb-2 border-b border-zinc-800/50">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.15)' }}>
-            <Camera className="w-4 h-4 text-sky-400" />
-            <input
-              ref={scanRef}
-              type="text"
-              value={scanInput}
-              onChange={e => setScanInput(e.target.value)}
-              onKeyDown={handleScan}
-              placeholder="Scan item barcode to highlight…"
-              className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 outline-none font-mono"
-            />
-          </div>
+        <div className="text-right shrink-0">
+          <p className="text-2xl font-bold" style={{ color: allScanned ? '#4ade80' : '#fbbf24' }}>{scannedCount}/{totalItems}</p>
+          <p className="text-zinc-600 text-[10px]">scanned</p>
         </div>
+      </div>
 
-        {/* Items list */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-          {card.items.map(item => {
-            const stock    = item.rawMaterial.currentStock;
-            const need     = item.quantityReq;
-            const issued   = parseFloat(qtys[item.id] || '0');
-            const ok       = stock >= need;
-            const stockLow = !ok && stock > 0;
-            const noStock  = stock <= 0;
-            const isScanned = scannedId === item.id;
-
-            return (
-              <div key={item.id}
-                className="rounded-xl px-3 py-2.5 transition-all"
-                style={{
-                  background: isScanned ? 'rgba(14,165,233,0.12)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${isScanned ? 'rgba(14,165,233,0.4)' : item.isCritical ? 'rgba(251,113,133,0.2)' : 'rgba(255,255,255,0.05)'}`,
-                }}>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok ? 'bg-emerald-400' : stockLow ? 'bg-amber-400' : 'bg-red-400'}`} />
-                  <span className="text-zinc-500 font-mono text-[10px]">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
-                  <span className="text-zinc-200 text-sm flex-1 truncate">{item.rawMaterial.name}</span>
-                  {item.isCritical && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3">
-                  {/* Stock info */}
-                  <div className="flex-1 text-xs text-zinc-500">
-                    Need: <span className="text-zinc-300">{fmt(need)} {item.rawMaterial.unit}</span>
-                    {' · '}
-                    Stock: <span className={ok ? 'text-emerald-400' : stockLow ? 'text-amber-400' : 'text-red-400'}>
-                      {noStock ? 'None' : fmt(stock)}
-                    </span>
-                  </div>
-                  {/* Qty input */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <input
-                      type="number"
-                      min={0}
-                      max={Math.min(stock, need)}
-                      step="any"
-                      value={qtys[item.id]}
-                      onChange={e => setQtys(prev => ({ ...prev, [item.id]: e.target.value }))}
-                      onWheel={e => (e.target as HTMLInputElement).blur()}
-                      className="w-20 text-right text-sm font-mono text-white bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 outline-none focus:border-sky-500"
-                    />
-                    <span className="text-zinc-500 text-xs">{item.rawMaterial.unit}</span>
-                  </div>
-                </div>
-
-                {/* Issued qty indicator */}
-                {issued > 0 && issued < need && (
-                  <p className="text-[10px] text-amber-400 mt-1">
-                    Issuing {fmt(issued)} of {fmt(need)} — shortfall of {fmt(need - issued)}
-                    {item.isCritical && ' ⚠ CRITICAL ITEM'}
-                  </p>
-                )}
-              </div>
-            );
-          })}
+      {/* Scan input */}
+      <div className="px-4 py-4 border-b border-zinc-800/50" style={{ background: 'rgba(14,165,233,0.03)' }}>
+        <div className="flex items-center gap-3 px-4 py-3 rounded-2xl" style={{ background: 'rgba(14,165,233,0.08)', border: '2px solid rgba(14,165,233,0.25)' }}>
+          <ScanLine className="w-6 h-6 text-sky-400 shrink-0" />
+          <input
+            ref={scanRef}
+            type="text"
+            value={scanInput}
+            onChange={e => setScanInput(e.target.value)}
+            onKeyDown={handleScan}
+            placeholder="Scan item barcode..."
+            autoFocus
+            className="flex-1 bg-transparent text-lg text-white placeholder-zinc-600 outline-none font-mono"
+          />
         </div>
-
-        {/* Errors */}
-        {(criticalErrors.length > 0 || error) && (
-          <div className="px-4 py-2 border-t border-red-900/30" style={{ background: 'rgba(239,68,68,0.06)' }}>
-            {criticalErrors.map((e, i) => (
-              <p key={i} className="text-red-400 text-xs">⛔ {e}</p>
-            ))}
-            {error && <p className="text-red-400 text-xs">⛔ {error}</p>}
+        {lastScan && (
+          <div className={`mt-2 px-4 py-2 rounded-xl text-sm font-medium ${lastScan.ok ? 'text-emerald-400 bg-emerald-900/20' : 'text-red-400 bg-red-900/20'}`}>
+            {lastScan.ok ? <Check className="w-4 h-4 inline mr-1.5" /> : <X className="w-4 h-4 inline mr-1.5" />}
+            {lastScan.text}
           </div>
         )}
+      </div>
 
-        {/* Footer */}
-        <div className="px-4 py-3 border-t border-zinc-800 flex items-center gap-3">
-          {/* Dispatch type preview */}
-          <div className="flex-1">
-            <span className={`text-xs px-2 py-1 rounded-lg font-medium ${allItemsFull ? 'text-emerald-400 bg-emerald-900/20' : 'text-amber-400 bg-amber-900/20'}`}>
-              {dispatchLabel}
-            </span>
-            {criticalShort.length > 0 && (
-              <p className="text-red-400 text-[10px] mt-0.5">{criticalShort.length} critical item{criticalShort.length > 1 ? 's' : ''} insufficient</p>
-            )}
-          </div>
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>
-          <button
-            onClick={handleDispatch}
-            disabled={submitting || criticalShort.length > 0}
-            className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40"
-            style={{ background: criticalShort.length > 0 ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.8)' }}>
-            {submitting ? 'Dispatching…' : `Dispatch (${dispatchLabel})`}
-          </button>
+      {/* Items list */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
+        {card.items.map(item => {
+          const done = scanned[item.id];
+          const stock = item.rawMaterial.currentStock;
+          const need  = item.quantityReq;
+          const ok    = stock >= need;
+
+          return (
+            <div key={item.id}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all"
+              style={{
+                background: done ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${done ? 'rgba(34,197,94,0.25)' : item.isCritical ? 'rgba(251,113,133,0.2)' : 'rgba(255,255,255,0.05)'}`,
+                opacity: done ? 0.7 : 1,
+              }}>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${done ? 'bg-emerald-500' : 'bg-zinc-800'}`}>
+                {done ? <Check className="w-4 h-4 text-white" /> : <span className="w-2 h-2 rounded-full" style={{ background: ok ? '#4ade80' : stock > 0 ? '#fbbf24' : '#f87171' }} />}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-200 text-sm truncate">{item.rawMaterial.name}</span>
+                  {item.isCritical && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-zinc-600 font-mono text-[10px]">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
+                  <span className="text-zinc-500 text-[10px]">Need: {fmt(need)} {item.rawMaterial.unit}</span>
+                  <span className={`text-[10px] ${ok ? 'text-emerald-400' : stock > 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                    Stock: {stock <= 0 ? 'None' : fmt(stock)}
+                  </span>
+                </div>
+              </div>
+
+              {done && (
+                <button onClick={() => undoScan(item.id)} className="text-zinc-500 hover:text-red-400 p-1 shrink-0" title="Undo scan">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="px-4 py-2 border-t border-red-900/30" style={{ background: 'rgba(239,68,68,0.06)' }}>
+          <p className="text-red-400 text-xs whitespace-pre-line">{error}</p>
         </div>
+      )}
+
+      {/* Footer */}
+      <div className="px-4 py-4 border-t border-zinc-800 flex items-center gap-3" style={{ background: 'rgba(0,0,0,0.5)' }}>
+        <div className="flex-1">
+          {allScanned ? (
+            <span className="text-emerald-400 text-sm font-medium">All items scanned — ready to dispatch</span>
+          ) : scannedCount > 0 ? (
+            <span className="text-amber-400 text-sm">{scannedCount}/{totalItems} scanned · {totalItems - scannedCount} remaining</span>
+          ) : (
+            <span className="text-zinc-500 text-sm">Scan items to begin</span>
+          )}
+        </div>
+        <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>
+        <button
+          onClick={handleDispatch}
+          disabled={submitting || scannedCount === 0}
+          className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40"
+          style={{ background: allScanned ? 'rgba(34,197,94,0.9)' : 'rgba(251,191,36,0.9)' }}>
+          {submitting ? 'Dispatching...' : allScanned ? 'Dispatch' : `Partial Dispatch (${scannedCount}/${totalItems})`}
+        </button>
       </div>
     </div>
   );
@@ -245,11 +236,11 @@ function DispatchModal({
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) {
-  const [tab,        setTab]        = useState<'pending' | 'dispatched' | 'completed'>('pending');
-  const [cards,      setCards]      = useState<JobCard[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [expanded,   setExpanded]   = useState<string | null>(null);
-  const [dispatching, setDispatching] = useState<JobCard | null>(null);
+  const [tab,      setTab]      = useState<'pending' | 'dispatched' | 'completed'>('pending');
+  const [cards,    setCards]    = useState<JobCard[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [scanning, setScanning] = useState<JobCard | null>(null);
 
   const canDispatch = ['INVENTORY_MANAGER', 'ADMIN'].includes(sessionRole);
 
@@ -262,6 +253,11 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
   }, [tab]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Full-screen scan mode
+  if (scanning) {
+    return <JobCardScanPanel card={scanning} onClose={() => setScanning(null)} onDone={() => { setScanning(null); load(); }} />;
+  }
 
   const tabs: { key: typeof tab; label: string }[] = [
     { key: 'pending',    label: 'Pending' },
@@ -316,17 +312,12 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: sc.bg, color: sc.text }}>
                           {card.status}
                         </span>
-                        {card.dispatchType && (
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${card.dispatchType === 'FULL' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-amber-900/30 text-amber-400'}`}>
-                            {card.dispatchType === 'FULL' ? 'Full' : 'Partial'}
-                          </span>
-                        )}
                         <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
                           {STAGE_LABEL[card.stage] ?? card.stage.replace(/_/g, ' ')}
                         </span>
                         {lowCritical > 0 && card.status === 'PENDING' && (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-red-900/30 text-red-400">
-                            ⛔ {lowCritical} critical short
+                            {lowCritical} critical short
                           </span>
                         )}
                       </div>
@@ -348,40 +339,38 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
                       {card.items.length > 0 && (
                         <button onClick={() => setExpanded(isOpen ? null : card.id)}
                           className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
-                          {isOpen ? '▲ Hide' : `▼ ${card.items.length} items`}
+                          {isOpen ? 'Hide' : `${card.items.length} items`}
                         </button>
                       )}
                       <button
                         onClick={() => window.open(`/print/job-card/${card.id}`, '_blank')}
                         className="px-2 py-1.5 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors"
                         title="Print Job Card">
-                        🖨
+                        Print
                       </button>
                       {canDispatch && card.status === 'PENDING' && (
-                        <button onClick={() => setDispatching(card)}
-                          className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-all"
+                        <button onClick={() => setScanning(card)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-all"
                           style={{ background: 'rgba(34,197,94,0.8)' }}>
-                          Dispatch
+                          <ScanLine className="w-4 h-4" /> Scan & Dispatch
                         </button>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Items preview (collapsed view) */}
+                {/* Items preview */}
                 {isOpen && card.items.length > 0 && (
                   <div className="border-t border-zinc-800/60 px-3 py-3 space-y-1">
-                    <div className="flex items-center gap-2 px-1 mb-2">
-                      <p className="text-zinc-600 text-[10px] uppercase tracking-wide flex-1">
-                        {card.items.length} components
-                        {criticalCount > 0 && ` · ${criticalCount} critical`}
-                      </p>
-                    </div>
+                    <p className="text-zinc-600 text-[10px] uppercase tracking-wide px-1 mb-2">
+                      {card.items.length} components
+                      {criticalCount > 0 && ` · ${criticalCount} critical`}
+                    </p>
                     {card.items.map(item => {
-                      const stock  = item.rawMaterial.currentStock;
-                      const need   = item.quantityReq;
-                      const ok     = stock >= need;
-                      const low    = !ok && stock > 0;
+                      const stock = item.rawMaterial.currentStock;
+                      const need  = item.quantityReq;
+                      const ok    = stock >= need;
+                      const low   = !ok && stock > 0;
 
                       return (
                         <div key={item.id} className="flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg"
@@ -392,7 +381,7 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
                           <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok ? 'bg-emerald-400' : low ? 'bg-amber-400' : 'bg-red-400'}`} />
                           <span className="text-zinc-500 font-mono text-[10px] shrink-0">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
                           <span className="text-zinc-300 flex-1 truncate">{item.rawMaterial.name}</span>
-                          {item.isCritical && <Star className="w-3 h-3 fill-red-500 text-red-500 inline shrink-0" />}
+                          {item.isCritical && <span className="text-[9px] px-1 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>}
                           <span className="text-amber-300 font-medium shrink-0">{fmt(need)} {item.rawMaterial.unit}</span>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${ok ? 'text-emerald-400 bg-emerald-900/20' : low ? 'text-amber-400 bg-amber-900/20' : 'text-red-400 bg-red-900/20'}`}>
                             {fmt(stock)} stk
@@ -409,15 +398,6 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
             );
           })}
         </div>
-      )}
-
-      {/* Dispatch Modal */}
-      {dispatching && (
-        <DispatchModal
-          card={dispatching}
-          onClose={() => setDispatching(null)}
-          onDone={() => { setDispatching(null); load(); }}
-        />
       )}
     </div>
   );

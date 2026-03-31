@@ -2070,17 +2070,19 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
         <div className="flex-1">
           {allScanned ? (
             <span className="text-emerald-400 text-sm font-medium">All items scanned — ready to dispatch</span>
+          ) : scannedCount > 0 ? (
+            <span className="text-amber-400 text-sm">{scannedCount}/{totalItems} scanned · {totalItems - scannedCount} remaining</span>
           ) : (
-            <span className="text-zinc-500 text-sm">Scan {totalItems - scannedCount} more item{totalItems - scannedCount !== 1 ? 's' : ''}</span>
+            <span className="text-zinc-500 text-sm">Scan items to begin</span>
           )}
         </div>
         <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>
         <button
           onClick={handleDispatch}
-          disabled={submitting || !allScanned}
+          disabled={submitting || scannedCount === 0}
           className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40"
-          style={{ background: 'rgba(34,197,94,0.9)' }}>
-          {submitting ? 'Dispatching...' : 'Dispatch'}
+          style={{ background: allScanned ? 'rgba(34,197,94,0.9)' : 'rgba(251,191,36,0.9)' }}>
+          {submitting ? 'Dispatching...' : allScanned ? 'Dispatch' : `Partial Dispatch (${scannedCount}/${totalItems})`}
         </button>
       </div>
     </div>
