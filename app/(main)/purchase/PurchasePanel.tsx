@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Check, Star, X } from 'lucide-react';
+import { Check, Star, X, ExternalLink, Copy } from 'lucide-react';
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 type ROItem = {
@@ -1645,8 +1645,42 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
     load();
   }
 
+  const [copiedPortal, setCopiedPortal] = useState(false);
+  const portalUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/vendor/login`
+    : '/vendor/login';
+
+  function copyPortalLink() {
+    navigator.clipboard.writeText(portalUrl);
+    setCopiedPortal(true);
+    setTimeout(() => setCopiedPortal(false), 2000);
+  }
+
   return (
     <div className="space-y-4">
+      {/* Vendor Portal link */}
+      {(isPM || isAdmin) && (
+        <div className="bg-blue-950/30 border border-blue-800/40 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-white text-sm font-semibold flex items-center gap-2">
+              Vendor Portal
+              <span className="text-xs font-normal text-zinc-400">Share with vendors to submit quotes</span>
+            </div>
+            <div className="text-xs text-blue-300 mt-1 font-mono">{portalUrl}</div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={copyPortalLink}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${copiedPortal ? 'bg-green-700 text-white' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'}`}>
+              {copiedPortal ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy Link</>}
+            </button>
+            <a href="/vendor/login" target="_blank" rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 hover:bg-blue-600 text-white flex items-center gap-1.5">
+              <ExternalLink className="w-3.5 h-3.5" /> Open Portal
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* Category management panel */}
       {(isPM || isAdmin) && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
@@ -1730,10 +1764,19 @@ function VendorsTab({ isAdmin, isPM }: { isAdmin: boolean; isPM: boolean }) {
                   </div>
                 </div>
                 {(isPM || isAdmin) && (
-                  <button onClick={() => setEditPortal(v)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 shrink-0">
-                    Portal Access
-                  </button>
+                  <div className="flex gap-2 shrink-0">
+                    {v.isPortalActive && v.portalEmail && (
+                      <button onClick={() => { navigator.clipboard.writeText(`${portalUrl}\n\nEmail: ${v.portalEmail}`); }}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-400 border border-zinc-700"
+                        title="Copy login details">
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button onClick={() => setEditPortal(v)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700">
+                      Portal Access
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
