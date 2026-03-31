@@ -772,6 +772,14 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
   const [sampleNoteFor, setSampleNoteFor] = useState<{ rfqId: string; quoteId: string } | null>(null);
   const [sampleNoteText, setSampleNoteText] = useState('');
 
+  const [rfqFilter, setRfqFilter] = useState<'Pending' | 'Processing' | 'Completed'>('Pending');
+
+  const pendingRFQs = rfqs.filter(r => ['DRAFT', 'OPEN'].includes(r.status) && r._count.quotes < 5);
+  const processingRFQs = rfqs.filter(r => r.status === 'OPEN' && r._count.quotes >= 5);
+  const completedRFQs = rfqs.filter(r => ['CLOSED', 'CONVERTED', 'CANCELLED'].includes(r.status));
+
+  const filteredRFQs = rfqFilter === 'Pending' ? pendingRFQs : rfqFilter === 'Processing' ? processingRFQs : completedRFQs;
+
   return (
     <div>
       {isPM && (
@@ -782,6 +790,23 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
           </button>
         </div>
       )}
+
+      {/* Sub-tabs: Pending / Processing / Completed */}
+      <div className="flex gap-2 mb-4">
+        {([
+          { key: 'Pending' as const, count: pendingRFQs.length, color: 'amber' },
+          { key: 'Processing' as const, count: processingRFQs.length, color: 'blue' },
+          { key: 'Completed' as const, count: completedRFQs.length, color: 'green' },
+        ]).map(f => (
+          <button key={f.key} onClick={() => setRfqFilter(f.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${rfqFilter === f.key
+              ? f.color === 'amber' ? 'bg-amber-700 text-white' : f.color === 'blue' ? 'bg-blue-700 text-white' : 'bg-green-700 text-white'
+              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+            {f.key}
+            <span className={`text-xs ${rfqFilter === f.key ? 'text-white/70' : 'text-zinc-600'}`}>{f.count}</span>
+          </button>
+        ))}
+      </div>
 
       {/* Stats strip */}
       {!loading && rfqs.length > 0 && (
@@ -801,11 +826,11 @@ function RFQTab({ isPM, isIM, isAdmin, preselectedRO, onClearPreselected }: { is
 
       {loading ? (
         <div className="text-center text-zinc-500 py-12">Loading...</div>
-      ) : rfqs.length === 0 ? (
-        <div className="text-center text-zinc-500 py-12">No RFQs yet</div>
+      ) : filteredRFQs.length === 0 ? (
+        <div className="text-center text-zinc-500 py-12">No {rfqFilter.toLowerCase()} RFQs</div>
       ) : (
         <div className="space-y-3">
-          {rfqs.map(rfq => (
+          {filteredRFQs.map(rfq => (
             <div key={rfq.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
@@ -2333,14 +2358,38 @@ function IGGanTab({ isPM }: { isPM: boolean }) {
     } finally { setSaving(false); }
   }
 
+  const COMPLETED_STATUSES = ['DISPATCHED', 'CLOSED', 'REJECTED', 'RETURNED', 'RETAINED'];
   const pending = igList.filter(ig => ig.status === 'REQUESTED');
-  const processed = igList.filter(ig => ig.status !== 'REQUESTED');
+  const processing = igList.filter(ig => ig.status !== 'REQUESTED' && !COMPLETED_STATUSES.includes(ig.status));
+  const completed = igList.filter(ig => COMPLETED_STATUSES.includes(ig.status));
+
+  const [igFilter, setIgFilter] = useState<'Pending' | 'Processing' | 'Completed'>('Pending');
 
   if (loading) return <div className="text-center text-zinc-500 py-12">Loading...</div>;
 
+  const shownList = igFilter === 'Pending' ? pending : igFilter === 'Processing' ? processing : completed;
+
   return (
     <div className="space-y-6">
-      {/* ── Pending GAN ── */}
+      {/* Sub-tabs */}
+      <div className="flex gap-2">
+        {([
+          { key: 'Pending' as const, count: pending.length, color: 'amber' },
+          { key: 'Processing' as const, count: processing.length, color: 'blue' },
+          { key: 'Completed' as const, count: completed.length, color: 'green' },
+        ]).map(f => (
+          <button key={f.key} onClick={() => setIgFilter(f.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${igFilter === f.key
+              ? f.color === 'amber' ? 'bg-amber-700 text-white' : f.color === 'blue' ? 'bg-blue-700 text-white' : 'bg-green-700 text-white'
+              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+            {f.key}
+            <span className={`text-xs ${igFilter === f.key ? 'text-white/70' : 'text-zinc-600'}`}>{f.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── List ── */}
+      {igFilter === 'Pending' ? (
       <div>
         <h3 className="text-sm font-semibold text-amber-400 mb-3">Awaiting GAN ({pending.length})</h3>
         {pending.length === 0 && <p className="text-zinc-500 text-sm">No pending IG requests.</p>}
@@ -2389,25 +2438,27 @@ function IGGanTab({ isPM }: { isPM: boolean }) {
           })}
         </div>
       </div>
-
-      {/* ── Processed ── */}
-      {processed.length > 0 && (
+      ) : (
         <div>
-          <h3 className="text-sm font-semibold text-zinc-400 mb-3">Processed ({processed.length})</h3>
-          <div className="space-y-2">
-            {processed.map(ig => (
-              <div key={ig.id} className="bg-zinc-900/40 border border-zinc-800/50 rounded-xl p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-white text-sm font-medium">{ig.igNumber}</span>
-                  <Badge label={ig.status} />
-                  <span className="text-xs text-zinc-500">{ig.client.customerName}</span>
+          <h3 className="text-sm font-semibold text-zinc-400 mb-3">{igFilter} ({shownList.length})</h3>
+          {shownList.length === 0 ? (
+            <p className="text-zinc-500 text-sm">No {igFilter.toLowerCase()} IG requests.</p>
+          ) : (
+            <div className="space-y-2">
+              {shownList.map(ig => (
+                <div key={ig.id} className="bg-zinc-900/40 border border-zinc-800/50 rounded-xl p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-white text-sm font-medium">{ig.igNumber}</span>
+                    <Badge label={ig.status} />
+                    <span className="text-xs text-zinc-500">{ig.client.customerName}</span>
+                  </div>
+                  <div className="text-right text-xs text-zinc-500">
+                    {ig.ganDate && <div>GAN: {new Date(ig.ganDate).toLocaleDateString('en-IN')}</div>}
+                  </div>
                 </div>
-                <div className="text-right text-xs text-zinc-500">
-                  {ig.ganDate && <div>GAN: {new Date(ig.ganDate).toLocaleDateString('en-IN')}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
