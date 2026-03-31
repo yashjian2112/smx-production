@@ -88,7 +88,7 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
   const exchRate    = proforma.exchangeRate ?? 1;
   const gstBaseINR  = isUsdIndian ? fullSubtotal * exchRate : fullSubtotal;
   const gst         = isExport ? 0 : gstBaseINR * 0.18;
-  const total       = isUsdIndian ? fullSubtotal : fullSubtotal + gst;
+  const total       = isUsdIndian ? fullSubtotal * exchRate + gst : fullSubtotal + gst;
   const st          = STATUS_STYLE[proforma.status] ?? STATUS_STYLE.DRAFT;
 
   // Split invoice preview — split is on total (incl. shipping + GST)

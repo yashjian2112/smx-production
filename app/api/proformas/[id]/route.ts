@@ -99,10 +99,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (parsed.data.declaredAmount != null && parsed.data.declaredAmount > 0) {
       const piItems = await prisma.proformaInvoiceItem.findMany({ where: { proformaId: params.id } });
       const piTotal = piItems.reduce((s, i) => s + i.quantity * i.unitPrice * (1 - i.discountPercent / 100), 0);
-      // For non-export, add GST to total
       const client = await prisma.client.findUnique({ where: { id: existing.clientId }, select: { globalOrIndian: true } });
       const isExportPI = client?.globalOrIndian === 'Global';
-      const maxTotal = isExportPI ? piTotal : piTotal * 1.18;
+      // For USD-INR (domestic USD), declared amount is in INR → convert subtotal to INR first
+      const isUsdIndian = !isExportPI && existing.currency === 'USD';
+      const baseTotal = isUsdIndian ? piTotal * (existing.exchangeRate ?? 1) : piTotal;
+      const maxTotal = isExportPI ? piTotal : baseTotal * 1.18;
       if (parsed.data.declaredAmount > maxTotal * 1.01) // 1% tolerance for rounding
         return NextResponse.json({ error: `Declared amount cannot exceed the invoice total` }, { status: 400 });
     }
