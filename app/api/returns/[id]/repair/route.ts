@@ -24,9 +24,10 @@ export async function GET(
 }
 
 const createSchema = z.object({
-  issue:          z.string().min(1),
-  beforePhotoUrl: z.string().optional(),
-  boardPhotoUrl:  z.string().optional(),
+  issue:              z.string().min(1),
+  beforePhotoUrl:     z.string().optional(),
+  boardPhotoUrl:      z.string().optional(),
+  powerstagePhotoUrl: z.string().optional(),
 });
 
 // POST — start a repair (employee logs what they found)
@@ -41,6 +42,14 @@ export async function POST(
     const ret = await prisma.returnRequest.findUnique({ where: { id } });
     if (!ret) return NextResponse.json({ error: 'Return not found' }, { status: 404 });
 
+    // Prevent concurrent open repair logs
+    const openLog = await prisma.repairLog.findFirst({
+      where: { returnRequestId: id, completedAt: null },
+    });
+    if (openLog) {
+      return NextResponse.json({ error: 'A repair is already in progress' }, { status: 400 });
+    }
+
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
@@ -53,8 +62,9 @@ export async function POST(
         unitId:          ret.unitId ?? null,
         issue:           parsed.data.issue,
         employeeId:      session.id,
-        beforePhotoUrl:  parsed.data.beforePhotoUrl ?? null,
-        boardPhotoUrl:   parsed.data.boardPhotoUrl ?? null,
+        beforePhotoUrl:     parsed.data.beforePhotoUrl ?? null,
+        boardPhotoUrl:      parsed.data.boardPhotoUrl ?? null,
+        powerstagePhotoUrl: parsed.data.powerstagePhotoUrl ?? null,
       },
       include: { employee: { select: { id: true, name: true } } },
     });

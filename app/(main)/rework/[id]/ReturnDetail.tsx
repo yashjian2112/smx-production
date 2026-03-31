@@ -13,6 +13,7 @@ type RepairLog = {
   beforePhotoUrl: string | null;
   boardPhotoUrl: string | null;
   afterPhotoUrl: string | null;
+  powerstagePhotoUrl: string | null;
   startedAt: string;
   completedAt: string | null;
   employee: { id: string; name: string };
@@ -255,9 +256,10 @@ function RepairLogCard({ log }: { log: RepairLog }) {
   const { tag, body } = parseIssue(log.issue);
   const isDead = tag === 'Dead Controller';
   const photos = [
-    log.beforePhotoUrl ? { url: log.beforePhotoUrl, label: 'Outer' } : null,
-    log.boardPhotoUrl  ? { url: log.boardPhotoUrl,  label: 'Board' } : null,
-    log.afterPhotoUrl  ? { url: log.afterPhotoUrl,  label: 'After' } : null,
+    log.beforePhotoUrl      ? { url: log.beforePhotoUrl,      label: 'Outer' } : null,
+    log.boardPhotoUrl       ? { url: log.boardPhotoUrl,       label: 'Brainboard' } : null,
+    log.powerstagePhotoUrl  ? { url: log.powerstagePhotoUrl,  label: 'Powerstage' } : null,
+    log.afterPhotoUrl       ? { url: log.afterPhotoUrl,       label: 'After' } : null,
   ].filter(Boolean) as { url: string; label: string }[];
 
   return (
@@ -746,8 +748,9 @@ export default function ReturnDetail({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           issue,
-          beforePhotoUrl: outerPhotoUrl || undefined,
-          boardPhotoUrl:  boardPhotoUrl  || undefined,
+          beforePhotoUrl:     outerPhotoUrl || undefined,
+          boardPhotoUrl:      boardPhotoUrl  || undefined,
+          powerstagePhotoUrl: psPhotoUrl     || undefined,
         }),
       });
       if (!res.ok) { const j = await res.json(); setRepairError(j.error ?? 'Failed'); }

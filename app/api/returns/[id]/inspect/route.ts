@@ -39,6 +39,11 @@ export async function POST(
       return NextResponse.json({ error: 'Fault type already determined' }, { status: 400 });
     }
 
+    const allowedStatuses = ['REPORTED', 'EVALUATED', 'APPROVED', 'UNIT_RECEIVED', 'IN_REPAIR'];
+    if (!allowedStatuses.includes(ret.status)) {
+      return NextResponse.json({ error: `Cannot inspect in status ${ret.status}` }, { status: 400 });
+    }
+
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {

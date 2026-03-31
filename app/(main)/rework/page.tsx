@@ -25,6 +25,7 @@ type ReturnItem = {
 
 type QCFailItem = {
   id: string;
+  unitId: string;
   unitSerial: string;
   orderNumber: string;
   productName: string;
@@ -150,6 +151,7 @@ export default async function ReworkPage({
 
   const qcFailItems: QCFailItem[] = standaloneRework.map((r) => ({
     id:           r.id,
+    unitId:       r.unit.id,
     unitSerial:   r.unit.serialNumber,
     orderNumber:  r.unit.order?.orderNumber ?? '—',
     productName:  r.unit.order?.product?.name ?? '—',
@@ -322,7 +324,7 @@ function QCFailCard({ item }: { item: QCFailItem }) {
   const date = new Date(item.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
 
   return (
-    <Link href={`/units/${item.id}`} className="block">
+    <Link href={`/units/${item.unitId}`} className="block">
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
