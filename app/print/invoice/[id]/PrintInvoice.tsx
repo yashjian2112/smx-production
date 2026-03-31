@@ -45,8 +45,12 @@ type DispatchOrder = {
   doNumber: string;
   approvedBy: { name: string } | null;
   order: {
+    orderNumber: string;
+    quantity: number;
     product: { code: string; name: string };
+    _count: { units: number };
   };
+  boxes: Array<{ items: Array<{ id: string }> }>;
 } | null;
 
 type Invoice = {
@@ -140,6 +144,14 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
 
   const approvedByName = invoice.dispatchOrder?.approvedBy?.name ?? '—';
 
+  // Dispatch info for partial/full label
+  const doNumber     = invoice.dispatchOrder?.doNumber ?? '';
+  const orderNumber  = invoice.dispatchOrder?.order?.orderNumber ?? '';
+  const orderQty     = invoice.dispatchOrder?.order?.quantity ?? 0;
+  const dispatchedQty = invoice.dispatchOrder?.boxes?.reduce(
+    (sum, b) => sum + b.items.length, 0
+  ) ?? 0;
+  const isPartial    = orderQty > 0 && dispatchedQty < orderQty;
 
   useEffect(() => {
     const t = setTimeout(() => window.print(), 600);
@@ -231,6 +243,13 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         .declaration { margin-top: 3px; font-size: 7.5px; color: #666; line-height: 1.4; }
         .notes-bar { padding: 3px 10px; font-size: 8px; color: #333; border-top: 1px solid #c8d8f0; }
         .comp-gen { text-align: center; font-size: 7px; color: #999; padding: 2px; background: #f8faff; }
+
+        /* DISPATCH INFO BAR */
+        .dispatch-bar { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px; border-bottom: 1px solid #c8d8f0; background: #fff; font-size: 8.5px; }
+        .dispatch-ref { display: flex; gap: 16px; }
+        .dispatch-ref span { color: #555; }
+        .dispatch-ref strong { color: #111; }
+        .partial-badge { background: #fef3c7; color: #92400e; font-weight: 700; font-size: 8px; padding: 2px 8px; border-radius: 3px; border: 1px solid #f59e0b; text-transform: uppercase; letter-spacing: 0.5px; }
       `}</style>
 
       {/* Print controls */}
@@ -322,6 +341,20 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         {!isExport && invoice.proforma?.shippingRoute && (
           <div className="shipping-banner">
             DISPATCH BY {invoice.proforma.shippingRoute}
+          </div>
+        )}
+
+        {/* DISPATCH INFO BAR — DO#, Order#, partial badge */}
+        {doNumber && (
+          <div className="dispatch-bar">
+            <div className="dispatch-ref">
+              <span>DO: <strong>{doNumber}</strong></span>
+              <span>Order: <strong>{orderNumber}</strong></span>
+              <span>Units: <strong>{dispatchedQty} of {orderQty}</strong></span>
+            </div>
+            {isPartial && (
+              <span className="partial-badge">Partial Dispatch</span>
+            )}
           </div>
         )}
 

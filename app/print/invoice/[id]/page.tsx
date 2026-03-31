@@ -16,11 +16,17 @@ export default async function PrintInvoicePage({ params }: { params: { id: strin
       dispatchOrder: {
         include: {
           order: {
-            include: {
+            select: {
+              orderNumber: true,
+              quantity: true,
               product: { select: { code: true, name: true } },
+              _count: { select: { units: true } },
             },
           },
           approvedBy: { select: { name: true } },
+          boxes: {
+            select: { items: { select: { id: true } } },
+          },
         },
       },
       proforma: {
