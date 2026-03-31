@@ -14,7 +14,7 @@ import { StageType, UnitStatus } from '@prisma/client';
 export async function GET() {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE', 'QC_USER');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'QC_USER');
 
     // ── Auto-approve any WAITING_APPROVAL units stuck at QC stage ─────────────
     const stuckUnits = await prisma.controllerUnit.findMany({

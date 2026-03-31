@@ -8,7 +8,7 @@ export default async function QCWorkPage() {
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const allowed = ['ADMIN', 'PRODUCTION_MANAGER', 'PRODUCTION_EMPLOYEE', 'QC_USER'];
+  const allowed = ['ADMIN', 'PRODUCTION_MANAGER', 'QC_USER'];
   if (!allowed.includes(session.role)) redirect('/dashboard');
 
   return <QCWorkPanel role={session.role} />;

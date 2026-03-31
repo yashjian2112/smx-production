@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireSession } from '@/lib/auth';
+import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
 import { notify } from '@/lib/notify';
@@ -12,6 +12,7 @@ export async function POST(
 ) {
   try {
     const session = await requireSession();
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'QC_USER');
     const { id } = await params;
     const body = await req.json();
     const {
