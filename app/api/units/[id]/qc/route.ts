@@ -3,7 +3,7 @@ import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
 import { notify } from '@/lib/notify';
-import { generateNextQCBarcode } from '@/lib/barcode';
+import { generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
 import { StageType, UnitStatus } from '@prisma/client';
 
 export async function POST(
@@ -104,14 +104,19 @@ export async function POST(
           },
         });
       } else {
-        // Fresh units proceed to Final Assembly — auto-approve (no separate FA work stage)
+        // Fresh units proceed to Final Assembly for FA work
+        // Pre-generate FA barcode so the label can be printed for scanning
+        let faBarcode: string | undefined;
+        if (!unit.finalAssemblyBarcode && unit.product?.code) {
+          faBarcode = await generateNextFinalAssemblyBarcode(unit.product.code);
+        }
         await prisma.controllerUnit.update({
           where: { id },
           data: {
             ...updateData,
             currentStage: StageType.FINAL_ASSEMBLY,
-            currentStatus: UnitStatus.APPROVED,
-            readyForDispatch: false,
+            currentStatus: UnitStatus.PENDING,
+            ...(faBarcode ? { finalAssemblyBarcode: faBarcode } : {}),
           },
         });
       }
