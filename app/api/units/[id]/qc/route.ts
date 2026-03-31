@@ -104,13 +104,14 @@ export async function POST(
           },
         });
       } else {
-        // Fresh units proceed to Final Assembly as normal
+        // Fresh units proceed to Final Assembly — auto-approve (no separate FA work stage)
         await prisma.controllerUnit.update({
           where: { id },
           data: {
             ...updateData,
             currentStage: StageType.FINAL_ASSEMBLY,
-            currentStatus: UnitStatus.PENDING,
+            currentStatus: UnitStatus.APPROVED,
+            readyForDispatch: false,
           },
         });
       }
