@@ -163,12 +163,11 @@ export function PrintQC({
             ['ISSUED', qcRecords[0] ? new Date(qcRecords[0].createdAt).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }).toUpperCase() : '—'],
             ['TESTER', qcRecords[0]?.tester ?? '—'],
             ['FW',     firmwareVersion || '—'],
-            ['SW',     softwareVersion || '—'],
             ['ATTEMPTS', String(qcRecords.length)],
           ].map(([k, v], i, arr) => (
             <div key={k} style={{ flex: 1, padding: '3px 8px', borderRight: i < arr.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
               <div style={{ fontWeight: 700, letterSpacing: 0.6, marginBottom: 1, fontSize: 7 }}>{k}</div>
-              <div style={{ color: '#0f172a', fontFamily: k === 'SERIAL' || k === 'DOC' || k === 'FW' || k === 'SW' ? 'monospace' : 'inherit', fontSize: 8 }}>{v}</div>
+              <div style={{ color: '#0f172a', fontFamily: k === 'SERIAL' || k === 'DOC' || k === 'FW' ? 'monospace' : 'inherit', fontSize: 8 }}>{v}</div>
             </div>
           ))}
         </div>

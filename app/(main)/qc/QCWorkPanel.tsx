@@ -97,7 +97,6 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
   const [checks, setChecks]                   = useState<Checks>({});
   const [inputValue, setInputValue]           = useState('');
   const [firmwareVersion, setFirmwareVersion] = useState('');
-  const [softwareVersion, setSoftwareVersion] = useState('');
   const [error, setError]                     = useState<string | null>(null);
   const [issueCategories, setIssueCategories] = useState<IssueCategory[]>([]);
   const [issueCategoryId, setIssueCategoryId] = useState('');
@@ -185,7 +184,6 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
           result,
           checklistData: checks,
           firmwareVersion: firmwareVersion || undefined,
-          softwareVersion: softwareVersion || undefined,
           issueCategoryId: result === 'FAIL' ? issueCategoryId    : undefined,
           sourceStage:     result === 'FAIL' ? sourceStage        : undefined,
           remarks:         result === 'FAIL' ? failRemarks.trim() : undefined,
@@ -424,10 +422,12 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
         <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-4">Review &amp; Submit</p>
         <div className="space-y-3 mb-4">
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">Firmware Version</label>
+            <label className="block text-xs mb-1" style={{ color: firmwareVersion.trim() ? '#94a3b8' : '#f87171' }}>
+              Firmware Version <span className="text-red-400">*</span>
+            </label>
             <input type="text" value={firmwareVersion} onChange={(e) => setFirmwareVersion(e.target.value)}
               placeholder="e.g. v2.4.1" className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-zinc-700 outline-none"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+              style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${firmwareVersion.trim() ? 'rgba(255,255,255,0.1)' : 'rgba(239,68,68,0.4)'}` }} />
           </div>
         </div>
         <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -512,7 +512,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
 
         {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
         <div className="flex gap-2">
-          <button onClick={() => submitResult('PASS')} disabled={phase === 'submitting'}
+          <button onClick={() => submitResult('PASS')} disabled={phase === 'submitting' || !firmwareVersion.trim()}
             className="flex-1 py-3 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5"
             style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
             <Check className="w-4 h-4" />
