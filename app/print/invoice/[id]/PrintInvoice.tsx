@@ -77,6 +77,11 @@ function fmt(amount: number, currency: string) {
   return `\u20b9${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function fmtInr(usdAmount: number, rate: number) {
+  const inr = usdAmount * rate;
+  return `\u20b9${inr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function fmtDate(d: string | Date) {
   return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
@@ -244,6 +249,16 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         .notes-bar { padding: 3px 10px; font-size: 8px; color: #333; border-top: 1px solid #c8d8f0; }
         .comp-gen { text-align: center; font-size: 7px; color: #999; padding: 2px; background: #f8faff; }
 
+        /* DUAL CURRENCY TOTALS */
+        .t-dual-head { display: grid; grid-template-columns: 1fr 100px 100px; font-size: 7px; font-weight: 700; text-transform: uppercase; color: #1a3a6b; letter-spacing: 0.5px; padding-bottom: 2px; border-bottom: 1px solid #c8d8f0; margin-bottom: 2px; }
+        .t-dual-head span:not(:first-child) { text-align: right; }
+        .t-row-dual { display: grid; grid-template-columns: 1fr 100px 100px; padding: 1.5px 0; font-size: 8.5px; }
+        .t-row-dual .t-lbl { color: #444; }
+        .t-row-dual .t-val { text-align: right; }
+        .t-row-dual .t-val-inr { text-align: right; color: #555; }
+        .t-total-dual { display: grid; grid-template-columns: 1fr 100px 100px; font-weight: 800; font-size: 11px; color: #1a3a6b; padding: 3px 0; }
+        .t-total-dual span:not(:first-child) { text-align: right; }
+
         /* DISPATCH INFO BAR */
         .dispatch-bar { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px; border-bottom: 1px solid #c8d8f0; background: #fff; font-size: 8.5px; }
         .dispatch-ref { display: flex; gap: 16px; }
@@ -317,7 +332,10 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
             <div className="info-cell">
               <div className="info-label">Currency</div>
               <div className="info-value">
-                {currency}{isExport && invoice.exchangeRate ? ` @ \u20b9${invoice.exchangeRate}` : ''}
+                {isUsdIndian ? 'USD & INR' : currency}
+                {(isUsdIndian || (isExport && invoice.exchangeRate)) && (
+                  <span style={{ fontSize: 8, color: '#555', fontWeight: 400, marginLeft: 4 }}>@ ₹{invoice.exchangeRate}/$</span>
+                )}
               </div>
             </div>
           </div>
@@ -388,9 +406,9 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
               <th style={{ width: '9%' }} className="c">HSN / SAC</th>
               <th style={{ width: '7%' }} className="c">Qty</th>
               <th style={{ width: '6%' }} className="c">UOM</th>
-              <th style={{ width: '13%' }} className="r">Rate ({currency})</th>
-              <th style={{ width: '7%' }} className="c">Disc %</th>
-              <th style={{ width: '14%' }} className="r">Amount ({currency})</th>
+              <th style={{ width: isUsdIndian ? '14%' : '13%' }} className="r">Rate {isUsdIndian ? '(USD / \u20b9)' : `(${currency})`}</th>
+              <th style={{ width: isUsdIndian ? '6%' : '7%' }} className="c">Disc %</th>
+              <th style={{ width: isUsdIndian ? '18%' : '14%' }} className="r">Amount {isUsdIndian ? '(USD / \u20b9)' : `(${currency})`}</th>
             </tr>
           </thead>
           <tbody>
@@ -411,9 +429,15 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
                   <td className="c" style={{ fontFamily: 'monospace', fontSize: 7.5 }}>{item.hsnCode}</td>
                   <td className="c">{item.quantity}</td>
                   <td className="c" style={{ color: '#888' }}>PCS</td>
-                  <td className="r">{fmt(item.unitPrice, currency)}</td>
+                  <td className="r">
+                    {fmt(item.unitPrice, currency)}
+                    {isUsdIndian && <div style={{ fontSize: 7, color: '#888' }}>{fmtInr(item.unitPrice, exchRate)}</div>}
+                  </td>
                   <td className="c">{item.discountPercent ? `${item.discountPercent}%` : '—'}</td>
-                  <td className="r" style={{ fontWeight: 600 }}>{fmt(calcItem(item), currency)}</td>
+                  <td className="r" style={{ fontWeight: 600 }}>
+                    {fmt(calcItem(item), currency)}
+                    {isUsdIndian && <div style={{ fontSize: 7, color: '#888' }}>{fmtInr(calcItem(item), exchRate)}</div>}
+                  </td>
                 </tr>
               );
             })}
@@ -426,38 +450,64 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         {/* TOTALS */}
         <div className="totals-wrap">
           <div className="totals-box">
-            <div className="t-row"><span className="t-lbl">Sub Total</span><span>{fmt(subtotal, currency)}</span></div>
+            {isUsdIndian && (
+              <div className="t-dual-head">
+                <span>Description</span>
+                <span>USD ($)</span>
+                <span>INR (₹)</span>
+              </div>
+            )}
+            {isUsdIndian ? (
+              <div className="t-row-dual"><span className="t-lbl">Sub Total</span><span className="t-val">{fmt(subtotal, 'USD')}</span><span className="t-val-inr">{fmtInr(subtotal, exchRate)}</span></div>
+            ) : (
+              <div className="t-row"><span className="t-lbl">Sub Total</span><span>{fmt(subtotal, currency)}</span></div>
+            )}
             {!isExport && isIntraState && (
               <>
-                <div className="t-row"><span className="t-lbl">CGST @ 9%</span><span>{fmt(gstAmountINR * 0.5, 'INR')}</span></div>
-                <div className="t-row"><span className="t-lbl">SGST @ 9%</span><span>{fmt(gstAmountINR * 0.5, 'INR')}</span></div>
+                {isUsdIndian ? (
+                  <>
+                    <div className="t-row-dual"><span className="t-lbl">CGST @ 9%</span><span className="t-val"></span><span className="t-val-inr">{fmt(gstAmountINR * 0.5, 'INR')}</span></div>
+                    <div className="t-row-dual"><span className="t-lbl">SGST @ 9%</span><span className="t-val"></span><span className="t-val-inr">{fmt(gstAmountINR * 0.5, 'INR')}</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="t-row"><span className="t-lbl">CGST @ 9%</span><span>{fmt(gstAmountINR * 0.5, 'INR')}</span></div>
+                    <div className="t-row"><span className="t-lbl">SGST @ 9%</span><span>{fmt(gstAmountINR * 0.5, 'INR')}</span></div>
+                  </>
+                )}
               </>
             )}
             {!isExport && !isIntraState && (
-              <div className="t-row"><span className="t-lbl">IGST @ 18%</span><span>{fmt(gstAmountINR, 'INR')}</span></div>
+              isUsdIndian ? (
+                <div className="t-row-dual"><span className="t-lbl">IGST @ 18%</span><span className="t-val"></span><span className="t-val-inr">{fmt(gstAmountINR, 'INR')}</span></div>
+              ) : (
+                <div className="t-row"><span className="t-lbl">IGST @ 18%</span><span>{fmt(gstAmountINR, 'INR')}</span></div>
+              )
             )}
             {shipping > 0 && (
-              <div className="t-row"><span className="t-lbl">Freight &amp; Forwarding</span><span>{fmt(shipping, currency)}</span></div>
+              isUsdIndian ? (
+                <div className="t-row-dual"><span className="t-lbl">Freight &amp; Forwarding</span><span className="t-val">{fmt(shipping, 'USD')}</span><span className="t-val-inr">{fmtInr(shipping, exchRate)}</span></div>
+              ) : (
+                <div className="t-row"><span className="t-lbl">Freight &amp; Forwarding</span><span>{fmt(shipping, currency)}</span></div>
+              )
             )}
             <div className="t-sep" />
-            <div className="t-total">
-              <span>TOTAL</span>
-              {isUsdIndian
-                ? <span>\u20b9{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                : <span>{fmt(total, currency)}</span>
-              }
-            </div>
-            {currency === 'USD' && invoice.exchangeRate && !isUsdIndian && (
-              <div className="t-row" style={{ fontSize: 7.5, color: '#888', marginTop: 2 }}>
-                <span>≈ INR @ \u20b9{invoice.exchangeRate}/$</span>
-                <span>\u20b9{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-              </div>
-            )}
-            {isUsdIndian && invoice.exchangeRate && (
-              <div className="t-row" style={{ fontSize: 7.5, color: '#888', marginTop: 2 }}>
-                <span>USD {fmt(subtotal + shipping, 'USD')} @ \u20b9{invoice.exchangeRate}/$ + GST</span>
+            {isUsdIndian ? (
+              <div className="t-total-dual">
+                <span>TOTAL</span>
                 <span>{fmt(subtotal + shipping, 'USD')}</span>
+                <span>{fmt(totalINR, 'INR')}</span>
               </div>
+            ) : (
+              <>
+                <div className="t-total"><span>TOTAL</span><span>{fmt(total, currency)}</span></div>
+                {currency === 'USD' && invoice.exchangeRate && (
+                  <div className="t-row" style={{ fontSize: 7.5, color: '#888', marginTop: 2 }}>
+                    <span>≈ INR @ \u20b9{invoice.exchangeRate}/$</span>
+                    <span>\u20b9{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+              </>
             )}
             <div className="t-qty">
               <span>Total Quantity</span>
@@ -470,7 +520,10 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
         <div className="words-bar">
           <span>
             <strong style={{ color: '#1a3a6b' }}>Amount Chargeable (in words):</strong>&nbsp;
-            {isUsdIndian ? amountToWords(totalINR, 'INR') : currency === 'USD' ? amountToWords(total, 'USD') : amountToWords(total, 'INR')}
+            {isUsdIndian
+              ? <>{amountToWords(subtotal + shipping, 'USD')}<span style={{ color: '#5a7a3a', marginLeft: 6 }}>/ {amountToWords(totalINR, 'INR')}</span></>
+              : currency === 'USD' ? amountToWords(total, 'USD') : amountToWords(total, 'INR')
+            }
           </span>
           <span style={{ color: '#999', fontStyle: 'italic', fontSize: 7.5 }}>E. &amp; O.E.</span>
         </div>
