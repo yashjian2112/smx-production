@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Check, X, Package } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Check, X, Package, ScanLine, ArrowLeft } from 'lucide-react';
 
-const TABS = ['Materials', 'GRN', 'Rework', 'Reports', 'Settings'] as const;
+const TABS = ['Materials', 'GRN', 'Job Cards', 'Rework', 'Reports', 'Settings'] as const;
 type Tab = typeof TABS[number];
 
 interface MaterialVariant { id: string; name: string; barcode: string; currentStock: number; }
@@ -1760,13 +1760,14 @@ function MaterialsTab({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-// ─── Job Cards Tab ────────────────────────────────────────────────────────────
+// ─── Job Cards Tab (Full-screen scan-based dispatch) ─────────────────────────
 interface JobCardItem {
   id: string;
   rawMaterialId: string;
   quantityReq: number;
   quantityIssued: number;
-  rawMaterial: { id: string; name: string; code: string; unit: string; barcode?: string | null };
+  isCritical: boolean;
+  rawMaterial: { id: string; name: string; code: string; unit: string; barcode?: string | null; currentStock: number };
   batch?: { id: string; batchCode: string; remainingQty: number } | null;
 }
 
@@ -1775,141 +1776,312 @@ interface JobCard {
   cardNumber: string;
   stage: string;
   status: string;
+  dispatchType?: string | null;
+  orderQuantity: number;
   createdAt: string;
-  issuedAt?: string | null;
-  order: { orderNumber: string };
-  unit: { serialNumber: string };
+  dispatchedAt?: string | null;
+  order: { orderNumber: string; quantity: number };
+  unit?: { serialNumber: string } | null;
   createdBy: { name: string };
-  issuedBy?: { name: string } | null;
+  dispatchedBy?: { name: string } | null;
   items: JobCardItem[];
 }
 
-function JobCardsTab({ sessionRole }: { sessionRole: string }) {
-  const [pending, setPending] = useState<JobCard[]>([]);
-  const [issued,  setIssued]  = useState<JobCard[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [issueError, setIssueError] = useState<string>('');
-  const [showIssued, setShowIssued] = useState(false);
+const STAGE_LABEL_JC: Record<string, string> = {
+  POWERSTAGE_MANUFACTURING: 'Powerstage', BRAINBOARD_MANUFACTURING: 'Brainboard',
+  CONTROLLER_ASSEMBLY: 'Assembly', QC_AND_SOFTWARE: 'QC & Software',
+  REWORK: 'Rework', FINAL_ASSEMBLY: 'Final Assembly',
+};
 
-  const canIssue = ['INVENTORY_MANAGER', 'ADMIN'].includes(sessionRole);
+function JobCardsTab({ sessionRole }: { sessionRole: string }) {
+  const [cards,   setCards]   = useState<JobCard[]>([]);
+  const [tab,     setTab]     = useState<'pending' | 'dispatched'>('pending');
+  const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState<JobCard | null>(null);
+
+  const canDispatch = ['INVENTORY_MANAGER', 'ADMIN'].includes(sessionRole);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [pRes, iRes] = await Promise.all([
-      fetch('/api/inventory/job-cards?status=PENDING'),
-      fetch('/api/inventory/job-cards?status=ISSUED'),
-    ]);
-    if (pRes.ok) setPending(await pRes.json());
-    if (iRes.ok) setIssued(await iRes.json());
+    const status = tab === 'pending' ? 'PENDING' : 'DISPATCHED';
+    const res = await fetch(`/api/inventory/job-cards?status=${status}`);
+    if (res.ok) setCards(await res.json());
     setLoading(false);
-  }, []);
+  }, [tab]);
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleIssue(id: string) {
-    setIssuingId(id);
-    setIssueError('');
-    const res = await fetch(`/api/inventory/job-cards/${id}/issue`, { method: 'POST' });
-    setIssuingId(null);
-    if (res.ok) { load(); }
-    else { const e = await res.json(); setIssueError(e.error || 'Failed to issue'); }
+  // ── Full-screen scan panel ──
+  if (scanning) {
+    return <JobCardScanPanel card={scanning} onClose={() => setScanning(null)} onDone={() => { setScanning(null); load(); }} />;
   }
-
-  if (loading) return <p className="text-zinc-400 text-sm py-6">Loading job cards…</p>;
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-white font-medium">Pending Job Cards ({pending.length})</h3>
-      </div>
-
-      {issueError && (
-        <div className="mb-3 px-4 py-2 rounded-lg text-red-400 text-sm border border-red-900/40" style={{ background: 'rgba(239,68,68,0.08)' }}>
-          {issueError}
-        </div>
-      )}
-
-      {pending.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
-          <p className="text-zinc-400 text-sm">No pending job cards</p>
-          <p className="text-zinc-600 text-xs mt-1">Job cards are created by production staff when starting a new unit at a stage</p>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {pending.map(card => (
-          <div key={card.id} className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
-            <div className="p-4 flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-white font-medium font-mono">{card.cardNumber}</span>
-                  <Badge color="yellow">PENDING</Badge>
-                  <Badge color="sky">{card.stage.replace(/_/g, ' ')}</Badge>
-                </div>
-                <p className="text-zinc-400 text-xs mt-1">
-                  Order: <span className="text-zinc-300">{card.order.orderNumber}</span>
-                  {' · '}Serial: <span className="text-zinc-300">{card.unit.serialNumber}</span>
-                  {' · '}By: {card.createdBy.name}
-                </p>
-                {card.items.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {card.items.map(item => (
-                      <div key={item.id} className="flex items-center gap-2 text-xs">
-                        <span className="text-zinc-500 font-mono">{item.rawMaterial.code}</span>
-                        <span className="text-zinc-300">{item.rawMaterial.name}</span>
-                        <span className="text-amber-400 ml-auto">{item.quantityReq} {item.rawMaterial.unit}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {canIssue && (
-                <button
-                  onClick={() => handleIssue(card.id)}
-                  disabled={issuingId === card.id}
-                  className="shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50">
-                  {issuingId === card.id ? 'Issuing…' : 'Issue Components'}
-                </button>
-              )}
-            </div>
-          </div>
+      {/* Sub-tabs */}
+      <div className="flex gap-1 p-1 rounded-xl mb-5" style={{ background: 'rgba(255,255,255,0.04)' }}>
+        {(['pending', 'dispatched'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${tab === t ? 'bg-sky-600 text-white shadow' : 'text-zinc-400 hover:text-white'}`}>
+            {t === 'pending' ? 'Pending' : 'Dispatched'}
+          </button>
         ))}
       </div>
 
-      {/* Issued cards (collapsed) */}
-      <div className="mt-6">
-        <button
-          onClick={() => setShowIssued(s => !s)}
-          className="flex items-center gap-2 text-zinc-400 hover:text-white text-sm transition-colors mb-3">
-          <span>{showIssued ? '▾' : '▸'}</span>
-          <span>Issued Job Cards ({issued.length})</span>
-        </button>
-
-        {showIssued && (
-          <div className="space-y-2">
-            {issued.length === 0 && <p className="text-zinc-500 text-xs">No issued job cards</p>}
-            {issued.map(card => (
-              <div key={card.id} className="rounded-xl p-4 flex items-center gap-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-zinc-300 font-mono text-sm">{card.cardNumber}</span>
-                    <Badge color="green">ISSUED</Badge>
-                    <Badge color="sky">{card.stage.replace(/_/g, ' ')}</Badge>
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="w-6 h-6 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : cards.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          <p className="text-zinc-400 text-sm">No {tab} job cards</p>
+          {tab === 'pending' && <p className="text-zinc-600 text-xs mt-1">Created when production employees accept an order</p>}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {cards.map(card => {
+            const criticalShort = card.items.filter(i => i.isCritical && i.rawMaterial.currentStock < i.quantityReq).length;
+            return (
+              <div key={card.id} className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="p-4 flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-white font-semibold font-mono text-sm">{card.cardNumber}</span>
+                      <Badge color={tab === 'pending' ? 'yellow' : 'green'}>{card.status}</Badge>
+                      <Badge color="sky">{STAGE_LABEL_JC[card.stage] ?? card.stage.replace(/_/g, ' ')}</Badge>
+                      {card.dispatchType && (
+                        <Badge color={card.dispatchType === 'FULL' ? 'green' : 'yellow'}>{card.dispatchType === 'FULL' ? 'Full' : 'Partial'}</Badge>
+                      )}
+                      {criticalShort > 0 && tab === 'pending' && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-900/30 text-red-400">{criticalShort} critical short</span>
+                      )}
+                    </div>
+                    <p className="text-zinc-400 text-xs mt-1.5">
+                      Order <span className="text-zinc-300">{card.order.orderNumber}</span>
+                      {' · '}<span className="text-zinc-300">{card.orderQuantity} unit{card.orderQuantity !== 1 ? 's' : ''}</span>
+                      {' · '}By {card.createdBy.name}
+                    </p>
+                    {card.dispatchedAt && (
+                      <p className="text-zinc-500 text-xs mt-0.5">
+                        Dispatched {card.dispatchedBy?.name ? `by ${card.dispatchedBy.name}` : ''} {fmtDate(card.dispatchedAt)}
+                      </p>
+                    )}
+                    <p className="text-zinc-600 text-[10px] mt-0.5">{card.items.length} items · {fmtDate(card.createdAt)}</p>
                   </div>
-                  <p className="text-zinc-500 text-xs mt-0.5">
-                    {card.order.orderNumber} · {card.unit.serialNumber}
-                    {card.issuedBy && <> · Issued by {card.issuedBy.name}</>}
-                    {card.issuedAt && <> · {fmtDate(card.issuedAt)}</>}
-                  </p>
-                </div>
-                <div className="text-xs text-zinc-600 shrink-0">
-                  {card.items.length} item{card.items.length !== 1 ? 's' : ''}
+                  <div className="flex gap-2 shrink-0 items-center">
+                    <button onClick={() => window.open(`/print/job-card/${card.id}`, '_blank')}
+                      className="px-2 py-1.5 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                      Print
+                    </button>
+                    {canDispatch && card.status === 'PENDING' && (
+                      <button onClick={() => setScanning(card)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-all"
+                        style={{ background: 'rgba(34,197,94,0.8)' }}>
+                        <ScanLine className="w-4 h-4" /> Scan & Dispatch
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            ))}
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Full-screen scan panel for dispatching a job card ─────────────────────────
+function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: () => void; onDone: () => void }) {
+  const scanRef = useRef<HTMLInputElement>(null);
+  const [scanInput, setScanInput] = useState('');
+  const [scanned, setScanned]     = useState<Record<string, boolean>>({}); // itemId → scanned
+  const [lastScan, setLastScan]   = useState<{ text: string; ok: boolean } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]         = useState('');
+
+  // Auto-focus scan input
+  useEffect(() => { scanRef.current?.focus(); }, []);
+
+  const scannedCount = Object.values(scanned).filter(Boolean).length;
+  const totalItems   = card.items.length;
+  const allScanned   = scannedCount === totalItems;
+
+  function handleScan(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return;
+    const val = scanInput.trim().toUpperCase();
+    setScanInput('');
+    if (!val) return;
+
+    // Match by barcode or code
+    const found = card.items.find(i =>
+      (i.rawMaterial.barcode?.toUpperCase() === val || i.rawMaterial.code.toUpperCase() === val)
+      && !scanned[i.id]
+    );
+
+    if (found) {
+      setScanned(prev => ({ ...prev, [found.id]: true }));
+      setLastScan({ text: found.rawMaterial.name, ok: true });
+    } else {
+      // Check if already scanned
+      const alreadyDone = card.items.find(i =>
+        (i.rawMaterial.barcode?.toUpperCase() === val || i.rawMaterial.code.toUpperCase() === val)
+        && scanned[i.id]
+      );
+      if (alreadyDone) {
+        setLastScan({ text: `${alreadyDone.rawMaterial.name} — already scanned`, ok: false });
+      } else {
+        setLastScan({ text: `"${val}" not found in this job card`, ok: false });
+      }
+    }
+
+    // Clear feedback after 3s
+    setTimeout(() => setLastScan(null), 3000);
+    scanRef.current?.focus();
+  }
+
+  function undoScan(itemId: string) {
+    setScanned(prev => { const n = { ...prev }; delete n[itemId]; return n; });
+  }
+
+  async function handleDispatch() {
+    setSubmitting(true);
+    setError('');
+    const items = card.items.map(item => ({
+      jobCardItemId: item.id,
+      issuedQty: scanned[item.id] ? item.quantityReq : 0,
+    }));
+
+    const res = await fetch(`/api/inventory/job-cards/${card.id}/dispatch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    });
+    setSubmitting(false);
+
+    if (res.ok) {
+      onDone();
+    } else {
+      const data = await res.json();
+      if (data.criticalErrors) setError(data.criticalErrors.join('\n'));
+      else if (data.stockErrors) setError(data.stockErrors.join('\n'));
+      else setError(data.error || 'Dispatch failed');
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'rgb(9,9,11)' }}>
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800" style={{ background: 'rgba(0,0,0,0.5)' }}>
+        <button onClick={onClose} className="text-zinc-400 hover:text-white p-1">
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-semibold text-sm">{card.cardNumber}</p>
+          <p className="text-zinc-500 text-xs">{card.order.orderNumber} · {card.orderQuantity} units · {STAGE_LABEL_JC[card.stage] ?? card.stage}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-2xl font-bold" style={{ color: allScanned ? '#4ade80' : '#fbbf24' }}>{scannedCount}/{totalItems}</p>
+          <p className="text-zinc-600 text-[10px]">scanned</p>
+        </div>
+      </div>
+
+      {/* Scan input — large and prominent */}
+      <div className="px-4 py-4 border-b border-zinc-800/50" style={{ background: 'rgba(14,165,233,0.03)' }}>
+        <div className="flex items-center gap-3 px-4 py-3 rounded-2xl" style={{ background: 'rgba(14,165,233,0.08)', border: '2px solid rgba(14,165,233,0.25)' }}>
+          <ScanLine className="w-6 h-6 text-sky-400 shrink-0" />
+          <input
+            ref={scanRef}
+            type="text"
+            value={scanInput}
+            onChange={e => setScanInput(e.target.value)}
+            onKeyDown={handleScan}
+            placeholder="Scan item barcode..."
+            autoFocus
+            className="flex-1 bg-transparent text-lg text-white placeholder-zinc-600 outline-none font-mono"
+          />
+        </div>
+        {/* Scan feedback */}
+        {lastScan && (
+          <div className={`mt-2 px-4 py-2 rounded-xl text-sm font-medium ${lastScan.ok ? 'text-emerald-400 bg-emerald-900/20' : 'text-red-400 bg-red-900/20'}`}>
+            {lastScan.ok ? <Check className="w-4 h-4 inline mr-1.5" /> : <X className="w-4 h-4 inline mr-1.5" />}
+            {lastScan.text}
           </div>
         )}
+      </div>
+
+      {/* Items list */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
+        {card.items.map(item => {
+          const done = scanned[item.id];
+          const stock = item.rawMaterial.currentStock;
+          const need  = item.quantityReq;
+          const ok    = stock >= need;
+
+          return (
+            <div key={item.id}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all"
+              style={{
+                background: done ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${done ? 'rgba(34,197,94,0.25)' : item.isCritical ? 'rgba(251,113,133,0.2)' : 'rgba(255,255,255,0.05)'}`,
+                opacity: done ? 0.7 : 1,
+              }}>
+              {/* Status indicator */}
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${done ? 'bg-emerald-500' : 'bg-zinc-800'}`}>
+                {done ? <Check className="w-4 h-4 text-white" /> : <span className="w-2 h-2 rounded-full" style={{ background: ok ? '#4ade80' : stock > 0 ? '#fbbf24' : '#f87171' }} />}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-200 text-sm truncate">{item.rawMaterial.name}</span>
+                  {item.isCritical && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-zinc-600 font-mono text-[10px]">{item.rawMaterial.barcode ?? item.rawMaterial.code}</span>
+                  <span className="text-zinc-500 text-[10px]">Need: {fmt(need)} {item.rawMaterial.unit}</span>
+                  <span className={`text-[10px] ${ok ? 'text-emerald-400' : stock > 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                    Stock: {stock <= 0 ? 'None' : fmt(stock)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Undo button */}
+              {done && (
+                <button onClick={() => undoScan(item.id)} className="text-zinc-500 hover:text-red-400 p-1 shrink-0" title="Undo scan">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="px-4 py-2 border-t border-red-900/30" style={{ background: 'rgba(239,68,68,0.06)' }}>
+          <p className="text-red-400 text-xs whitespace-pre-line">{error}</p>
+        </div>
+      )}
+
+      {/* Footer — dispatch button */}
+      <div className="px-4 py-4 border-t border-zinc-800 flex items-center gap-3" style={{ background: 'rgba(0,0,0,0.5)' }}>
+        <div className="flex-1">
+          {allScanned ? (
+            <span className="text-emerald-400 text-sm font-medium">All items scanned — ready to dispatch</span>
+          ) : (
+            <span className="text-zinc-500 text-sm">Scan {totalItems - scannedCount} more item{totalItems - scannedCount !== 1 ? 's' : ''}</span>
+          )}
+        </div>
+        <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>
+        <button
+          onClick={handleDispatch}
+          disabled={submitting || scannedCount === 0}
+          className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40"
+          style={{ background: allScanned ? 'rgba(34,197,94,0.9)' : 'rgba(251,191,36,0.8)' }}>
+          {submitting ? 'Dispatching...' : allScanned ? 'Dispatch (Full)' : `Dispatch (Partial · ${scannedCount}/${totalItems})`}
+        </button>
       </div>
     </div>
   );
@@ -2628,9 +2800,12 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
   const canSeeRework = ['ADMIN', 'STORE_MANAGER', 'PRODUCTION_MANAGER'].includes(sessionRole);
 
   // INVENTORY_MANAGER sees: Materials, GRN, Settings (no Reports, no Rework)
+  const canSeeJobCards = ['ADMIN', 'INVENTORY_MANAGER'].includes(sessionRole);
+
   const visibleTabs = TABS.filter(t => {
-    if (t === 'Reports') return isAdmin;
-    if (t === 'Rework')  return canSeeRework;
+    if (t === 'Reports')   return isAdmin;
+    if (t === 'Rework')    return canSeeRework;
+    if (t === 'Job Cards') return canSeeJobCards;
     return true;
   });
 
@@ -2648,11 +2823,12 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
         ))}
       </div>
 
-      {activeTab === 'Materials' && <MaterialsTab isAdmin={canManageMaterials} />}
-      {activeTab === 'GRN'       && <GRNTab       isAdmin={canManageStock} />}
-      {activeTab === 'Rework'    && canSeeRework && <ReworkTab canIssue={['ADMIN', 'STORE_MANAGER'].includes(sessionRole)} />}
-      {activeTab === 'Reports'   && isAdmin && <ReportsTab isAdmin={true} />}
-      {activeTab === 'Settings'  && <SettingsTab  isAdmin={canManageMaterials} />}
+      {activeTab === 'Materials'  && <MaterialsTab isAdmin={canManageMaterials} />}
+      {activeTab === 'GRN'        && <GRNTab       isAdmin={canManageStock} />}
+      {activeTab === 'Job Cards'  && canSeeJobCards && <JobCardsTab sessionRole={sessionRole} />}
+      {activeTab === 'Rework'     && canSeeRework && <ReworkTab canIssue={['ADMIN', 'STORE_MANAGER'].includes(sessionRole)} />}
+      {activeTab === 'Reports'    && isAdmin && <ReportsTab isAdmin={true} />}
+      {activeTab === 'Settings'   && <SettingsTab  isAdmin={canManageMaterials} />}
     </div>
   );
 }
