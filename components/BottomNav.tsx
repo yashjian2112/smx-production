@@ -215,7 +215,6 @@ const shippingNav: NavItem[] = [
 const purchaseNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard',   icon: 'Dashboard'  },
   { href: '/purchase',  label: 'Procurement', icon: 'Purchase'   },
-  { href: '/inventory', label: 'Inventory',   icon: 'Inventory'  },
 ];
 
 // INVENTORY_MANAGER / STORE_MANAGER
