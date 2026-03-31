@@ -5,8 +5,6 @@ import { Barcode128 } from '@/components/Barcode128';
 
 type BoxItem = {
   id: string;
-  serial: string;
-  barcode: string;
   unit: { serialNumber: string };
 };
 
@@ -19,8 +17,6 @@ type DispatchOrder = {
     client: {
       customerName: string;
       state: string | null;
-      shippingAddress: string | null;
-      phone: string | null;
     } | null;
     product: { code: string; name: string };
     proformaInvoice?: { shippingRoute: string | null } | null;
@@ -58,6 +54,7 @@ export function PrintBoxLabel({ box, settings }: { box: Box; settings: Settings 
   const order = box.dispatchOrder.order;
   const client = order.client;
   const totalBoxes = box.dispatchOrder.totalBoxes ?? '?';
+  const shippingRoute = order.proformaInvoice?.shippingRoute;
 
   useEffect(() => {
     const t = setTimeout(() => window.print(), 600);
@@ -67,160 +64,175 @@ export function PrintBoxLabel({ box, settings }: { box: Box; settings: Settings 
   return (
     <>
       <style>{`
-        @page { size: A6 landscape; margin: 5mm 6mm; }
+        @page { size: A5 landscape; margin: 4mm 5mm; }
         @media print {
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .no-print { display: none !important; }
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, Helvetica, sans-serif; font-size: 9px; color: #111; background: #fff; }
-
-        .label-wrap {
-          border: 2px solid #1a3a6b;
-          width: 138mm;
-          min-height: 96mm;
-          display: flex;
-          flex-direction: column;
-          page-break-after: avoid;
-        }
-
-        .lbl-hdr {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background: #1a3a6b;
-          color: #fff;
-          padding: 5px 8px;
-        }
-        .lbl-co { font-size: 9px; font-weight: 700; letter-spacing: 0.3px; }
-        .lbl-do { font-size: 8px; opacity: 0.85; }
-        .lbl-shipping { text-align: center; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; padding: 4px 8px; border-bottom: 2px solid #1a3a6b; color: #000; }
-
-        .lbl-box-number {
-          text-align: center;
-          padding: 6px 8px 2px;
-          border-bottom: 1px solid #c8d8f0;
-        }
-        .box-num-big { font-size: 22px; font-weight: 900; color: #1a3a6b; letter-spacing: 1px; line-height: 1; }
-        .box-num-sub { font-size: 9px; color: #555; margin-top: 2px; }
-
-        .lbl-barcode { text-align: center; padding: 4px 8px; border-bottom: 1px solid #c8d8f0; }
-        .lbl-barcode-label { font-family: monospace; font-size: 8px; color: #444; margin-top: 1px; }
-
-        .lbl-info { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #c8d8f0; }
-        .lbl-info-cell { padding: 4px 8px; }
-        .lbl-info-cell:first-child { border-right: 1px solid #c8d8f0; }
-        .lbl-info-label { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #1a3a6b; margin-bottom: 1px; }
-        .lbl-info-value { font-size: 9px; font-weight: 600; color: #111; line-height: 1.4; }
-
-        .lbl-serials { padding: 4px 8px; border-bottom: 1px solid #c8d8f0; flex: 1; }
-        .lbl-ser-title { font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #1a3a6b; margin-bottom: 3px; }
-        .ser-list { display: flex; flex-wrap: wrap; gap: 3px 10px; }
-        .ser-item { font-family: monospace; font-size: 8px; color: #111; background: #f0f5ff; border: 1px solid #c8d8f0; border-radius: 3px; padding: 1px 5px; }
-
-        .lbl-footer { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: #f8faff; }
-        .lbl-footer-text { font-size: 7.5px; color: #666; }
-        .sealed-badge { font-size: 8px; font-weight: 700; padding: 2px 8px; border-radius: 10px; color: #fff; background: ${box.isSealed ? '#166534' : '#92400e'}; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #000; background: #fff; }
       `}</style>
 
-      {/* Print controls */}
-      <div className="no-print" style={{ padding: '10px 16px', background: '#18181b', display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16 }}>
-        <button
-          onClick={() => window.print()}
-          style={{ background: '#1a3a6b', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}
-        >
+      {/* Screen controls */}
+      <div className="no-print" style={{ padding: '10px 16px', background: '#18181b', display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
+        <button onClick={() => window.print()}
+          style={{ background: '#1a3a6b', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
           Print Label
         </button>
-        <button
-          onClick={() => window.close()}
-          style={{ background: '#3f3f46', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}
-        >
+        <button onClick={() => window.close()}
+          style={{ background: '#3f3f46', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>
           Close
         </button>
-        <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>Print on A6 / cut to label size</span>
       </div>
 
-      <div className="label-wrap">
+      <div style={{
+        border: '3px solid #000',
+        width: '200mm',
+        minHeight: '138mm',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
 
-        {/* Header */}
-        <div className="lbl-hdr">
-          <div className="lbl-co">{coName}</div>
-          <div className="lbl-do">DO: {box.dispatchOrder.doNumber}</div>
+        {/* ── TOP BAR: Company + DO + Order ── */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: '#000',
+          color: '#fff',
+          padding: '6px 12px',
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: 1 }}>{coName}</div>
+          <div style={{ textAlign: 'right', fontSize: 10 }}>
+            <span style={{ fontWeight: 700 }}>{box.dispatchOrder.doNumber}</span>
+            <span style={{ margin: '0 6px', opacity: 0.5 }}>|</span>
+            <span>{order.orderNumber}</span>
+          </div>
         </div>
 
-        {/* Shipping route banner */}
-        {order.proformaInvoice?.shippingRoute && (
-          <div className="lbl-shipping">DISPATCH BY {order.proformaInvoice.shippingRoute}</div>
+        {/* ── DISPATCH MODE BANNER ── */}
+        {shippingRoute && (
+          <div style={{
+            textAlign: 'center',
+            fontSize: 20,
+            fontWeight: 900,
+            textTransform: 'uppercase' as const,
+            letterSpacing: 4,
+            padding: '6px 10px',
+            borderBottom: '3px solid #000',
+            color: '#000',
+          }}>
+            DISPATCH BY {shippingRoute}
+          </div>
         )}
 
-        {/* Box number */}
-        <div className="lbl-box-number">
-          <div className="box-num-big">BOX {box.boxNumber} <span style={{ fontSize: 14, fontWeight: 600, color: '#555' }}>of {totalBoxes}</span></div>
-          <div className="box-num-sub">{box.boxLabel}</div>
+        {/* ── BOX NUMBER — large and bold ── */}
+        <div style={{
+          textAlign: 'center',
+          padding: '10px 10px 6px',
+          borderBottom: '2px solid #000',
+        }}>
+          <div style={{ fontSize: 42, fontWeight: 900, letterSpacing: 2, lineHeight: 1, color: '#000' }}>
+            BOX {box.boxNumber}
+            <span style={{ fontSize: 20, fontWeight: 600, color: '#555', marginLeft: 4 }}>/ {totalBoxes}</span>
+          </div>
+          <div style={{ fontSize: 10, color: '#444', marginTop: 2, fontFamily: 'monospace' }}>{box.boxLabel}</div>
         </div>
 
-        {/* Barcode of box label */}
-        <div className="lbl-barcode">
+        {/* ── BARCODE ── */}
+        <div style={{ textAlign: 'center', padding: '6px 10px', borderBottom: '1px solid #ccc' }}>
           <Barcode128
             value={box.boxLabel}
-            width={1.5}
-            height={36}
-            fontSize={9}
+            width={1.8}
+            height={44}
+            fontSize={0}
             displayValue={false}
             background="#ffffff"
             lineColor="#000000"
           />
-          <div className="lbl-barcode-label">{box.boxLabel}</div>
         </div>
 
-        {/* Info grid */}
-        <div className="lbl-info">
-          <div className="lbl-info-cell">
-            <div className="lbl-info-label">Customer</div>
-            <div className="lbl-info-value">{client?.customerName ?? '—'}</div>
+        {/* ── INFO GRID: 2×2 ── */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          borderBottom: '2px solid #000',
+        }}>
+          {/* Customer */}
+          <div style={{ padding: '6px 10px', borderRight: '1px solid #ccc', borderBottom: '1px solid #ccc' }}>
+            <div style={{ fontSize: 7, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 0.8, color: '#555', marginBottom: 2 }}>Customer</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#000' }}>{client?.customerName ?? '—'}</div>
+            {client?.state && <div style={{ fontSize: 9, color: '#444' }}>{client.state}</div>}
           </div>
-          <div className="lbl-info-cell">
-            <div className="lbl-info-label">Product</div>
-            <div className="lbl-info-value">{order.product.code}</div>
+          {/* Product */}
+          <div style={{ padding: '6px 10px', borderBottom: '1px solid #ccc' }}>
+            <div style={{ fontSize: 7, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 0.8, color: '#555', marginBottom: 2 }}>Product</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#000' }}>{order.product.code}</div>
+            <div style={{ fontSize: 9, color: '#444' }}>{order.product.name}</div>
           </div>
-          <div className="lbl-info-cell" style={{ borderTop: '1px solid #c8d8f0' }}>
-            <div className="lbl-info-label">Destination</div>
-            <div className="lbl-info-value">{client?.state ?? '—'}</div>
+          {/* Weight */}
+          <div style={{ padding: '6px 10px', borderRight: '1px solid #ccc' }}>
+            <div style={{ fontSize: 7, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 0.8, color: '#555', marginBottom: 2 }}>Weight</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#000' }}>{box.weightKg != null ? `${box.weightKg} kg` : '—'}</div>
           </div>
-          <div className="lbl-info-cell" style={{ borderTop: '1px solid #c8d8f0' }}>
-            <div className="lbl-info-label">Date</div>
-            <div className="lbl-info-value">{fmtDate(box.createdAt)}</div>
-          </div>
-          {box.weightKg && (
-            <div className="lbl-info-cell" style={{ borderTop: '1px solid #c8d8f0' }}>
-              <div className="lbl-info-label">Weight</div>
-              <div className="lbl-info-value">{box.weightKg} kg</div>
+          {/* Box Size */}
+          <div style={{ padding: '6px 10px' }}>
+            <div style={{ fontSize: 7, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 0.8, color: '#555', marginBottom: 2 }}>Box Size</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#000' }}>
+              {box.boxSize
+                ? `${box.boxSize.name} (${box.boxSize.lengthCm}x${box.boxSize.widthCm}x${box.boxSize.heightCm} cm)`
+                : '—'}
             </div>
-          )}
-          {box.boxSize && (
-            <div className="lbl-info-cell" style={{ borderTop: '1px solid #c8d8f0' }}>
-              <div className="lbl-info-label">Box Size</div>
-              <div className="lbl-info-value">{box.boxSize.name} · {box.boxSize.lengthCm}×{box.boxSize.widthCm}×{box.boxSize.heightCm} cm</div>
-            </div>
-          )}
+          </div>
         </div>
 
-        {/* Serial numbers */}
-        <div className="lbl-serials">
-          <div className="lbl-ser-title">Contents — {box.items.length} unit{box.items.length !== 1 ? 's' : ''}</div>
-          <div className="ser-list">
+        {/* ── SERIAL NUMBERS ── */}
+        <div style={{ padding: '6px 10px', flex: 1 }}>
+          <div style={{ fontSize: 7, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 0.8, color: '#555', marginBottom: 4 }}>
+            Contents — {box.items.length} unit{box.items.length !== 1 ? 's' : ''}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 8px' }}>
             {box.items.map((item) => (
-              <span key={item.id} className="ser-item">{item.unit.serialNumber}</span>
+              <span key={item.id} style={{
+                fontFamily: 'monospace',
+                fontSize: 9,
+                color: '#000',
+                background: '#f0f0f0',
+                border: '1px solid #ccc',
+                borderRadius: 3,
+                padding: '2px 6px',
+                fontWeight: 600,
+              }}>
+                {item.unit.serialNumber}
+              </span>
             ))}
-            {box.items.length === 0 && <span style={{ fontSize: 8, color: '#aaa', fontStyle: 'italic' }}>No items scanned yet</span>}
+            {box.items.length === 0 && <span style={{ fontSize: 9, color: '#aaa', fontStyle: 'italic' }}>No items scanned yet</span>}
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="lbl-footer">
-          <span className="lbl-footer-text">Order: {order.orderNumber}</span>
-          <span className="sealed-badge">{box.isSealed ? 'SEALED' : 'OPEN'}</span>
-          <span className="lbl-footer-text">{fmtDate(box.createdAt)}</span>
+        {/* ── FOOTER ── */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '5px 10px',
+          borderTop: '2px solid #000',
+          background: '#f5f5f5',
+        }}>
+          <span style={{ fontSize: 9, fontWeight: 600, color: '#333' }}>{fmtDate(box.createdAt)}</span>
+          <span style={{
+            fontSize: 9,
+            fontWeight: 800,
+            padding: '2px 10px',
+            borderRadius: 10,
+            color: '#fff',
+            background: box.isSealed ? '#166534' : '#92400e',
+            textTransform: 'uppercase' as const,
+            letterSpacing: 0.5,
+          }}>
+            {box.isSealed ? 'SEALED' : 'OPEN'}
+          </span>
+          <span style={{ fontSize: 8, color: '#666' }}>{coName} Production System</span>
         </div>
 
       </div>

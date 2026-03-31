@@ -12,6 +12,7 @@ export default async function PrintBoxLabelPage({ params }: { params: { boxId: s
           order: {
             include: {
               product: { select: { code: true, name: true } },
+              client:  { select: { customerName: true, state: true, shippingAddress: true, phone: true } },
               proformaInvoice: { select: { shippingRoute: true } },
             },
           },
