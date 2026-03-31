@@ -52,6 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
                 unitId:  true,
                 serial:  true,
                 barcode: true,
+                unit:    { select: { productId: true } },
               },
             },
           },
@@ -228,14 +229,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         const exchangeRate = proforma.exchangeRate ?? null;
         const notes       = proforma.notes ?? null;
 
-        // Scale qty to dispatched units (not full order qty)
-        // Shipping lines (HSN 9965) keep their original qty (lump sum)
-        const totalOrderUnits = dispatchOrder.order?.units.length ?? 0;
-        const dispatchedUnits = packedUnitIds.length;
-        const scaleQty = (item: { quantity: number; hsnCode: string }) =>
-          item.hsnCode === '9965' || totalOrderUnits === 0
-            ? item.quantity
-            : Math.round((item.quantity / totalOrderUnits) * dispatchedUnits);
+        // Count dispatched units per product to generate accurate invoice items
+        const dispatchedByProduct = new Map<string, number>();
+        for (const item of packedItems) {
+          const pid = (item as any).unit?.productId as string | undefined;
+          if (pid) dispatchedByProduct.set(pid, (dispatchedByProduct.get(pid) ?? 0) + 1);
+        }
 
         // Product items only (exclude HSN 9965 shipping line)
         const productItems = proforma.items.filter((item) => item.hsnCode !== '9965');
@@ -245,8 +244,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           const servicePct = proforma.splitServicePercent;
           const goodsPct   = 100 - servicePct;
 
-          const subtotal = productItems.reduce((sum, item) => {
-            return sum + item.unitPrice * scaleQty(item) * (1 - item.discountPercent / 100);
+          // Filter to only dispatched products for split invoice
+          const dispatchedProductItems = productItems.filter((item) =>
+            item.productId ? (dispatchedByProduct.get(item.productId) ?? 0) > 0 : false
+          );
+
+          const subtotal = dispatchedProductItems.reduce((sum, item) => {
+            const qty = item.productId ? (dispatchedByProduct.get(item.productId) ?? 0) : 0;
+            return sum + item.unitPrice * qty * (1 - item.discountPercent / 100);
           }, 0);
 
           const serviceLineUnitPrice =
@@ -258,10 +263,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           const serviceInvoiceNumber = preGenNumbers[1];
           generatedInvoiceNumbers.push(goodsInvoiceNumber, serviceInvoiceNumber);
 
-          const goodsItems = productItems.map((item, idx) => ({
+          const goodsItems = dispatchedProductItems.map((item, idx) => ({
             description:     item.description,
             hsnCode:         item.hsnCode,
-            quantity:        scaleQty(item),
+            quantity:        item.productId ? (dispatchedByProduct.get(item.productId) ?? 0) : 0,
             unitPrice:       item.unitPrice * (goodsPct / 100),
             discountPercent: item.discountPercent,
             sortOrder:       item.sortOrder ?? idx,
@@ -324,19 +329,40 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           const fullInvoiceNumber = preGenNumbers[0];
           generatedInvoiceNumbers.push(fullInvoiceNumber);
 
-          const allItems = proforma.items.map((item, idx) => ({
-            description:     item.description,
-            hsnCode:         item.hsnCode,
-            quantity:        scaleQty(item),
-            unitPrice:       item.unitPrice,
-            discountPercent: item.discountPercent,
-            sortOrder:       item.sortOrder ?? idx,
-            serialNumbers:
-              item.hsnCode !== '9965' &&
-              idx === proforma.items.findIndex((i) => i.hsnCode !== '9965')
-                ? JSON.stringify(packedSerials)
-                : null,
-          }));
+          // Only include PI items whose product was actually dispatched, with real qty
+          const allItems = proforma.items
+            .map((item, idx) => {
+              if (item.hsnCode === '9965') {
+                // Shipping line — include as-is (lump sum)
+                return {
+                  description:     item.description,
+                  hsnCode:         item.hsnCode,
+                  quantity:        item.quantity,
+                  unitPrice:       item.unitPrice,
+                  discountPercent: item.discountPercent,
+                  sortOrder:       item.sortOrder ?? idx,
+                  serialNumbers:   null as string | null,
+                };
+              }
+              const qty = item.productId ? (dispatchedByProduct.get(item.productId) ?? 0) : 0;
+              if (qty === 0) return null; // skip products not in this dispatch
+              return {
+                description:     item.description,
+                hsnCode:         item.hsnCode,
+                quantity:        qty,
+                unitPrice:       item.unitPrice,
+                discountPercent: item.discountPercent,
+                sortOrder:       item.sortOrder ?? idx,
+                serialNumbers:   null as string | null,
+              };
+            })
+            .filter((item): item is NonNullable<typeof item> => item !== null);
+
+          // Attach serial numbers to first product item
+          const firstProductIdx = allItems.findIndex((i) => i.hsnCode !== '9965');
+          if (firstProductIdx >= 0) {
+            allItems[firstProductIdx].serialNumbers = JSON.stringify(packedSerials);
+          }
 
           const fullTotalAmount = allItems.reduce(
             (sum, item) => sum + item.quantity * item.unitPrice * (1 - item.discountPercent / 100),
