@@ -113,7 +113,7 @@ export default function SerialPage() {
           setQuery(''); inputRef.current?.focus(); return;
         }
         if (status === 'BLOCKED') {
-          setError('This unit is blocked — contact your manager before proceeding.');
+          setError('This unit failed QC — contact your manager before proceeding.');
           setQuery(''); inputRef.current?.focus(); return;
         }
         if (status === 'WAITING_APPROVAL') {

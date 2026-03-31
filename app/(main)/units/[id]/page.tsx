@@ -42,7 +42,11 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
     PENDING: 'text-zinc-400',
     IN_PROGRESS: 'text-amber-400',
     COMPLETED: 'text-green-400',
+    APPROVED: 'text-green-300',
     BLOCKED: 'text-red-400',
+  };
+  const statusLabels: Record<string, string> = {
+    BLOCKED: 'QC FAIL',
   };
   const stageLabels: Record<string, string> = {
     POWERSTAGE_MANUFACTURING: 'Powerstage',
@@ -96,7 +100,7 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
         <div className="flex gap-2 mt-3 flex-wrap">
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[unit.currentStatus] ?? 'text-zinc-400'}`}
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            {unit.currentStatus.replace(/_/g, ' ')}
+            {statusLabels[unit.currentStatus] ?? unit.currentStatus.replace(/_/g, ' ')}
           </span>
           <span className="text-xs px-2 py-0.5 rounded-full font-medium text-zinc-400"
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>

@@ -341,7 +341,7 @@ const STATUS_STYLES: Record<string, { dot: string; text: string; label: string }
   PENDING:          { dot: 'bg-zinc-600',    text: 'text-zinc-500',    label: 'Pending'      },
   IN_PROGRESS:      { dot: 'bg-amber-400',   text: 'text-amber-400',   label: 'In Progress'  },
   COMPLETED:        { dot: 'bg-green-400',   text: 'text-green-400',   label: 'Done'         },
-  BLOCKED:          { dot: 'bg-red-500',     text: 'text-red-400',     label: 'Blocked'      },
+  BLOCKED:          { dot: 'bg-red-500',     text: 'text-red-400',     label: 'QC Fail'      },
   REWORK:           { dot: 'bg-orange-500',  text: 'text-orange-400',  label: 'Rework'       },
   WAITING_APPROVAL: { dot: 'bg-sky-400',     text: 'text-sky-400',     label: 'Approval'     },
   APPROVED:         { dot: 'bg-green-300',   text: 'text-green-300',   label: 'Approved'     },
@@ -466,7 +466,7 @@ function StageCard({
               <p className="text-[11px] text-zinc-500 mt-0.5">
                 {completed}/{total} done
                 {inProgress > 0 && ` · ${inProgress} active`}
-                {blocked > 0 && <span className="text-red-400"> · {blocked} blocked</span>}
+                {blocked > 0 && <span className="text-red-400"> · {blocked} fail</span>}
               </p>
             ) : (
               <p className="text-[11px] text-zinc-600 mt-0.5">No units yet</p>

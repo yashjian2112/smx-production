@@ -48,7 +48,7 @@ const STATUS_CONFIG: Record<UnitStatus, { label: string; dot: string; row: strin
   IN_PROGRESS:      { label: 'In Progress',      dot: 'bg-sky-400',     row: 'border-l-2 border-sky-500/40' },
   WAITING_APPROVAL: { label: 'Waiting Approval', dot: 'bg-amber-400',   row: 'border-l-2 border-amber-500/40' },
   REJECTED_BACK:    { label: 'Rejected Back',    dot: 'bg-red-400',     row: 'border-l-2 border-red-500/40' },
-  BLOCKED:          { label: 'Blocked',          dot: 'bg-orange-400',  row: 'border-l-2 border-orange-500/40' },
+  BLOCKED:          { label: 'QC Fail',           dot: 'bg-orange-400',  row: 'border-l-2 border-orange-500/40' },
 };
 
 const STAGE_COLORS: Record<StageType, string> = {
@@ -310,7 +310,7 @@ export function FloorView() {
               label="In Rework"
               value={reworkCount}
               color={reworkCount > 0 ? 'text-red-400' : 'text-slate-400'}
-              sub={blockedTotal > 0 ? `${blockedTotal} blocked` : undefined}
+              sub={blockedTotal > 0 ? `${blockedTotal} QC fail` : undefined}
             />
           </div>
 

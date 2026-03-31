@@ -1111,7 +1111,7 @@ function OrderStatusCard({ p, role }: { p: ProformaRow; role: string }) {
         {a.blocked > 0 && (
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse"
             style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}>
-            🚫 Blocked: {a.blocked}
+            QC Fail: {a.blocked}
           </span>
         )}
         {a.ready > 0 && (
