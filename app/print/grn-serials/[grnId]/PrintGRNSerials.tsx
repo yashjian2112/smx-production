@@ -29,8 +29,8 @@ function LabelBarcode({ value }: { value: string }) {
     if (!ref.current) return;
     JsBarcode(ref.current, value, {
       format: 'CODE128',
-      width: 1.4,
-      height: 38,
+      width: 1.3,
+      height: 28,
       displayValue: false,
       margin: 0,
       background: '#ffffff',
@@ -84,18 +84,19 @@ export default function PrintGRNSerials({ grn }: { grn: GRN }) {
 
         .label-code {
           font-family: 'Courier New', monospace;
-          font-size: 7.5pt;
+          font-size: 8pt;
           font-weight: bold;
-          letter-spacing: 0.3px;
-          margin-top: 1mm;
+          letter-spacing: 0.5px;
+          margin-top: 0.8mm;
           text-align: center;
+          color: #000;
         }
 
         .label-sub {
           font-family: Arial, sans-serif;
           font-size: 6pt;
           color: #444;
-          margin-top: 0.5mm;
+          margin-top: 0.4mm;
           text-align: center;
           white-space: nowrap;
           overflow: hidden;
