@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeCanvas } from '@/components/QRCode';
 
-type Product = { id: string; code: string; name: string; description: string | null; active: boolean };
+type Product = { id: string; code: string; name: string; description: string | null; productType?: string; active: boolean };
 
 type Component = {
   id: string;
@@ -258,6 +258,7 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [productType, setProductType] = useState<'MANUFACTURED' | 'TRADING'>('MANUFACTURED');
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -271,12 +272,12 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code.trim().toUpperCase(), name: name.trim(), description: description.trim() || undefined }),
+        body: JSON.stringify({ code: code.trim().toUpperCase(), name: name.trim(), description: description.trim() || undefined, productType }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error || 'Failed'); return; }
       setAdding(false);
-      setCode(''); setName(''); setDescription('');
+      setCode(''); setName(''); setDescription(''); setProductType('MANUFACTURED');
       router.refresh();
     } finally { setLoading(false); }
   }
@@ -340,6 +341,24 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
             <label className="block text-[11px] text-zinc-500 mb-1 uppercase tracking-wide">Description (optional)</label>
             <input value={description} onChange={(e) => setDescription(e.target.value)} className="input-field text-sm" />
           </div>
+          <div>
+            <label className="block text-[11px] text-zinc-500 mb-1 uppercase tracking-wide">Product Type</label>
+            <div className="flex gap-2">
+              {(['MANUFACTURED', 'TRADING'] as const).map(t => (
+                <button key={t} type="button" onClick={() => setProductType(t)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
+                    productType === t
+                      ? t === 'MANUFACTURED' ? 'bg-sky-600 text-white' : 'bg-amber-600 text-white'
+                      : 'text-zinc-400 border border-zinc-700 hover:text-white'
+                  }`}>
+                  {t === 'MANUFACTURED' ? 'Manufactured' : 'Trading (Buy & Sell)'}
+                </button>
+              ))}
+            </div>
+            {productType === 'TRADING' && (
+              <p className="text-amber-400/70 text-[10px] mt-1">Trading items skip production stages — units are ready for dispatch immediately after order creation</p>
+            )}
+          </div>
           <div className="flex gap-2">
             <button type="submit" disabled={loading} className="btn-primary py-2 px-4 text-sm">{loading ? 'Saving…' : 'Save'}</button>
             <button type="button" onClick={() => setAdding(false)} className="btn-ghost py-2 px-4 text-sm">Cancel</button>
@@ -366,6 +385,9 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs text-zinc-500 px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>{p.code}</span>
                       <span className="font-medium text-sm">{p.name}</span>
+                      {p.productType === 'TRADING' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 font-medium">Trading</span>
+                      )}
                       {!p.active && <span className="text-xs text-zinc-600">inactive</span>}
                     </div>
                     {p.description && <p className="text-zinc-500 text-xs mt-0.5">{p.description}</p>}
@@ -380,7 +402,10 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
                     </button>
                   </div>
                 </div>
-                <ComponentsPanel product={p} />
+                {p.productType !== 'TRADING' && <ComponentsPanel product={p} />}
+                {p.productType === 'TRADING' && (
+                  <p className="text-zinc-600 text-xs mt-2 italic">Trading items have no manufacturing components</p>
+                )}
               </>
             )}
           </div>

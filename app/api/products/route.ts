@@ -22,6 +22,7 @@ const createSchema = z.object({
   code: z.string().min(1).max(10).regex(/^[A-Za-z0-9]+$/, 'Product code must be alphanumeric only (e.g. CL350) — no spaces or special characters'),
   name: z.string().min(1).max(100),
   description: z.string().optional(),
+  productType: z.enum(['MANUFACTURED', 'TRADING']).default('MANUFACTURED'),
 });
 
 export async function POST(req: NextRequest) {
@@ -34,14 +35,14 @@ export async function POST(req: NextRequest) {
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { code, name, description } = parsed.data;
+    const { code, name, description, productType } = parsed.data;
 
     const existing = await prisma.product.findUnique({ where: { code } });
     if (existing)
       return NextResponse.json({ error: 'Product code already exists' }, { status: 400 });
 
     const product = await prisma.product.create({
-      data: { code, name, description: description ?? null },
+      data: { code, name, description: description ?? null, productType },
     });
     return NextResponse.json(product, { status: 201 });
   } catch (e) {

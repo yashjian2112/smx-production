@@ -106,6 +106,7 @@ model Product {
   code        String   @unique  // e.g. 1000 for SMX1000
   name        String
   description String?
+  productType String   @default("MANUFACTURED") @map("product_type") // MANUFACTURED | TRADING
   active      Boolean  @default(true)
   createdAt   DateTime @default(now()) @map("created_at")
 

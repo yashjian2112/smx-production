@@ -532,7 +532,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       )}
 
       {/* Stage breakdown */}
-      <OrderDetail orderId={order.id} stages={stages} isEmployee={isEmployee} role={session.role} totalUnits={total} />
+      <OrderDetail orderId={order.id} stages={stages} isEmployee={isEmployee} role={session.role} totalUnits={total} productType={order.product.productType ?? 'MANUFACTURED'} />
 
       {/* Notes thread — visible to SALES, PM, ADMIN, ACCOUNTS */}
       {canViewNotes && (

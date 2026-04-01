@@ -7,6 +7,7 @@ const updateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().optional(),
   active: z.boolean().optional(),
+  productType: z.enum(['MANUFACTURED', 'TRADING']).optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {

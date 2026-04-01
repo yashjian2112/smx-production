@@ -322,6 +322,7 @@ type Props = {
   isEmployee: boolean;
   role: string;
   totalUnits: number;
+  productType?: string;
 };
 
 /** Returns true if the given role can interact with (scan/tap) the given stage. */
@@ -632,7 +633,7 @@ function StageCard({
   );
 }
 
-export function OrderDetail({ orderId, stages, isEmployee, role, totalUnits }: Props) {
+export function OrderDetail({ orderId, stages, isEmployee, role, totalUnits, productType }: Props) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [scanning, setScanning] = useState<{ stageKey: string; stageLabel: string } | null>(null);
@@ -849,8 +850,22 @@ export function OrderDetail({ orderId, stages, isEmployee, role, totalUnits }: P
           </div>
         )}
 
+        {/* ── Trading Item — Ready for Dispatch ── */}
+        {productType === 'TRADING' && (
+          <div className="rounded-xl p-4" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-widest text-amber-500">Trading Item</span>
+              <div className="flex-1 h-px" style={{ background: 'rgba(245,158,11,0.15)' }} />
+            </div>
+            <p className="text-zinc-400 text-sm">
+              {totalUnits} unit{totalUnits !== 1 ? 's' : ''} ready for dispatch — no production stages required.
+              Create a Dispatch Order from the Shipping page to proceed.
+            </p>
+          </div>
+        )}
+
         {/* ── Manufacturing Phase (Parallel PS + BB) ── */}
-        {(psStage || bbStage) && (
+        {productType !== 'TRADING' && (psStage || bbStage) && (
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Manufacturing</span>
@@ -887,7 +902,7 @@ export function OrderDetail({ orderId, stages, isEmployee, role, totalUnits }: P
         )}
 
         {/* ── Sequential Production Flow ── */}
-        {sequential.length > 0 && (
+        {productType !== 'TRADING' && sequential.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Production Flow</span>
