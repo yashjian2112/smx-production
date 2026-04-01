@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 type Client  = { id: string; code: string; customerName: string; globalOrIndian: string | null; gstNumber: string | null; state: string | null };
-type Product = { id: string; code: string; name: string };
+type Product = { id: string; code: string; name: string; hsnCode?: string | null };
 
 type LineItem = {
   key:             number;
@@ -137,7 +137,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       updateItem(key, {
         productId,
         description: p.name,
-        hsnCode: '85371000',
+        hsnCode: p.hsnCode || '85371000',
       });
     } else {
       updateItem(key, { productId: '' });

@@ -23,6 +23,7 @@ const createSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().optional(),
   productType: z.enum(['MANUFACTURED', 'TRADING']).default('MANUFACTURED'),
+  hsnCode: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -41,8 +42,9 @@ export async function POST(req: NextRequest) {
     if (existing)
       return NextResponse.json({ error: 'Product code already exists' }, { status: 400 });
 
+    const { hsnCode } = parsed.data;
     const product = await prisma.product.create({
-      data: { code, name, description: description ?? null, productType },
+      data: { code, name, description: description ?? null, productType, hsnCode: hsnCode ?? null },
     });
     return NextResponse.json(product, { status: 201 });
   } catch (e) {

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeCanvas } from '@/components/QRCode';
 
-type Product = { id: string; code: string; name: string; description: string | null; productType?: string; active: boolean };
+type Product = { id: string; code: string; name: string; description: string | null; productType?: string; hsnCode?: string | null; active: boolean };
 
 type Component = {
   id: string;
@@ -259,6 +259,7 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [productType, setProductType] = useState<'MANUFACTURED' | 'TRADING'>('MANUFACTURED');
+  const [hsnCode, setHsnCode] = useState('85371000');
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -272,12 +273,12 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code.trim().toUpperCase(), name: name.trim(), description: description.trim() || undefined, productType }),
+        body: JSON.stringify({ code: code.trim().toUpperCase(), name: name.trim(), description: description.trim() || undefined, productType, hsnCode: hsnCode.trim() || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error || 'Failed'); return; }
       setAdding(false);
-      setCode(''); setName(''); setDescription(''); setProductType('MANUFACTURED');
+      setCode(''); setName(''); setDescription(''); setProductType('MANUFACTURED'); setHsnCode('85371000');
       router.refresh();
     } finally { setLoading(false); }
   }
@@ -345,7 +346,7 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
             <label className="block text-[11px] text-zinc-500 mb-1 uppercase tracking-wide">Product Type</label>
             <div className="flex gap-2">
               {(['MANUFACTURED', 'TRADING'] as const).map(t => (
-                <button key={t} type="button" onClick={() => setProductType(t)}
+                <button key={t} type="button" onClick={() => { setProductType(t); setHsnCode(t === 'TRADING' ? '85011090' : '85371000'); }}
                   className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
                     productType === t
                       ? t === 'MANUFACTURED' ? 'bg-sky-600 text-white' : 'bg-amber-600 text-white'
@@ -358,6 +359,13 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
             {productType === 'TRADING' && (
               <p className="text-amber-400/70 text-[10px] mt-1">Trading items skip production stages — units are ready for dispatch immediately after order creation</p>
             )}
+          </div>
+          <div>
+            <label className="block text-[11px] text-zinc-500 mb-1 uppercase tracking-wide">HSN Code</label>
+            <input value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} placeholder="e.g. 85371000" className="input-field text-sm font-mono" />
+            <p className="text-[10px] text-zinc-600 mt-0.5">
+              {hsnCode === '85371000' ? 'Motor Controller' : hsnCode === '85011090' ? 'Electric Motor' : 'Custom HSN'}
+            </p>
           </div>
           <div className="flex gap-2">
             <button type="submit" disabled={loading} className="btn-primary py-2 px-4 text-sm">{loading ? 'Saving…' : 'Save'}</button>
@@ -387,6 +395,9 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
                       <span className="font-medium text-sm">{p.name}</span>
                       {p.productType === 'TRADING' && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 font-medium">Trading</span>
+                      )}
+                      {p.hsnCode && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 font-mono">HSN {p.hsnCode}</span>
                       )}
                       {!p.active && <span className="text-xs text-zinc-600">inactive</span>}
                     </div>
