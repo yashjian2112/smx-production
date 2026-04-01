@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMX Production Tracker — Accounts Guide</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #1e293b; line-height: 1.6; background: #fff; max-width: 210mm; margin: 0 auto; padding: 20px 24px; }
+  .cover { text-align: center; padding: 60px 0 40px; border-bottom: 3px solid #6366f1; margin-bottom: 32px; }
+  .cover .logo { display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 16px; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: #fff; font-weight: 800; font-size: 20px; letter-spacing: 1px; margin-bottom: 16px; }
+  .cover h1 { font-size: 28px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+  .cover .subtitle { font-size: 16px; color: #64748b; }
+  .cover .role-badge { display: inline-block; margin-top: 16px; padding: 6px 20px; border-radius: 20px; background: #6366f1; color: #fff; font-weight: 600; font-size: 14px; }
+  h2 { font-size: 20px; font-weight: 700; color: #0f172a; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0; }
+  h3 { font-size: 16px; font-weight: 600; color: #334155; margin: 20px 0 8px; }
+  p { margin: 6px 0; font-size: 14px; color: #475569; }
+  .nav-bar { display: flex; gap: 0; background: #0f172a; border-radius: 12px; overflow: hidden; margin: 12px 0 20px; }
+  .nav-bar .tab { flex: 1; text-align: center; padding: 12px 8px; font-size: 12px; font-weight: 600; color: #94a3b8; border-bottom: 3px solid transparent; }
+  .nav-bar .tab.active { color: #0ea5e9; border-bottom-color: #0ea5e9; background: rgba(14,165,233,0.08); }
+  .flow { display: flex; flex-wrap: wrap; gap: 0; align-items: center; margin: 12px 0 16px; }
+  .flow .step { display: flex; align-items: center; gap: 0; }
+  .flow .step-box { padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #fff; white-space: nowrap; }
+  .flow .arrow { padding: 0 6px; color: #94a3b8; font-size: 16px; }
+  .bg-blue { background: #0ea5e9; } .bg-green { background: #22c55e; } .bg-amber { background: #f59e0b; } .bg-red { background: #ef4444; } .bg-purple { background: #8b5cf6; } .bg-slate { background: #64748b; } .bg-teal { background: #14b8a6; } .bg-indigo { background: #6366f1; }
+  .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 10px 0; }
+  .card h4 { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+  .card ul { padding-left: 18px; } .card li { font-size: 13px; color: #475569; margin: 3px 0; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+  .tip { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 13px; color: #1e40af; }
+  .warn { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 13px; color: #92400e; }
+  .screen { background: #0f172a; border-radius: 12px; padding: 16px; margin: 12px 0; color: #e2e8f0; }
+  .screen .title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+  .screen .stat-row { display: flex; gap: 10px; margin: 8px 0; }
+  .screen .stat { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; text-align: center; }
+  .screen .stat .num { font-size: 22px; font-weight: 700; color: #6366f1; }
+  .screen .stat .label { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .numbered-steps { counter-reset: step; list-style: none; padding: 0; }
+  .numbered-steps li { counter-increment: step; position: relative; padding: 12px 12px 12px 48px; margin: 8px 0; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 13px; color: #475569; }
+  .numbered-steps li::before { content: counter(step); position: absolute; left: 12px; top: 12px; width: 28px; height: 28px; border-radius: 50%; background: #6366f1; color: #fff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .page-break { page-break-before: always; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="logo">SMX</div>
+  <h1>SMX Drives Production Tracker</h1>
+  <p class="subtitle">User Guide</p>
+  <div class="role-badge">ACCOUNTS</div>
+</div>
+
+<h2>1. Overview</h2>
+<p>As <strong>Accounts</strong>, you are the financial gatekeeper. You approve proforma invoices, approve dispatch orders (which auto-generates tax invoices), manage tracking numbers, monitor accounts receivable, and configure company/invoice settings.</p>
+
+<h2>2. Your Navigation Bar</h2>
+<div class="nav-bar">
+  <div class="tab active">Shipping</div>
+  <div class="tab">Approvals</div>
+  <div class="tab">AR</div>
+  <div class="tab">Invoices</div>
+  <div class="tab">Settings</div>
+</div>
+
+<h2>3. Dashboard</h2>
+<div class="screen">
+  <div class="title">Accounts Dashboard</div>
+  <div class="stat-row">
+    <div class="stat"><div class="num">4</div><div class="label">Pending Approvals</div></div>
+    <div class="stat"><div class="num">Rs 8.5L</div><div class="label">Outstanding</div></div>
+    <div class="stat"><div class="num">2</div><div class="label">Overdue Invoices</div></div>
+  </div>
+</div>
+
+<h2>4. Approving Proforma Invoices</h2>
+<p>When Sales submits a PI for approval, it appears in your <strong>Approvals</strong> tab:</p>
+
+<ol class="numbered-steps">
+  <li>Go to <strong>Approvals</strong> tab</li>
+  <li>Click the pending proforma invoice to review it</li>
+  <li>Check: client details, products, quantities, pricing, GST, payment terms</li>
+  <li>Click <strong>Approve</strong> to approve — or <strong>Reject</strong> with a reason</li>
+  <li>Once approved, the PI can be <strong>Converted to Order</strong> (which creates the production order with serial numbers)</li>
+</ol>
+
+<div class="flow">
+  <div class="step"><span class="step-box bg-amber">PI Submitted</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-green">You Approve</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-blue">Convert to Order</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-purple">Production Starts</span></div>
+</div>
+
+<div class="page-break"></div>
+
+<h2>5. Approving Dispatch Orders (Packing Lists)</h2>
+<p>This is your most critical workflow. When the packing team finishes packing and submits a DO:</p>
+
+<ol class="numbered-steps">
+  <li>The DO appears in <strong>Shipping &gt; Pending Approval</strong> tab (or in Approvals)</li>
+  <li>Review: packed boxes, unit count, box photos, client details</li>
+  <li>Click <strong>Approve &amp; Invoice</strong> to approve</li>
+  <li>The system <strong>automatically generates tax invoices</strong> (one or two if split invoice is enabled)</li>
+  <li>Units are marked as dispatched and removed from the dispatch pool</li>
+</ol>
+
+<div class="warn"><strong>Important:</strong> Approving a DO is irreversible — it generates invoices and marks units as dispatched. Review carefully before approving.</div>
+
+<h3>Tax Invoice Auto-Generation</h3>
+<p>When you approve a DO, tax invoices are created automatically:</p>
+<div class="grid-2">
+  <div class="card">
+    <h4>Standard Invoice</h4>
+    <ul>
+      <li>One invoice for the full amount</li>
+      <li>Number format: TSM/ES/YY-YY/NNN (export) or TSM/DS/YY-YY/NNN (domestic)</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Split Invoice</h4>
+    <ul>
+      <li>Two invoices: Goods + Service</li>
+      <li>Split percentage set in the proforma</li>
+      <li>Consecutive invoice numbers</li>
+    </ul>
+  </div>
+</div>
+
+<h2>6. Shipping Tab</h2>
+<p>View all dispatch orders across 4 stages:</p>
+<div class="card">
+  <ul>
+    <li><strong>Ready</strong> — orders with completed units, waiting for packing</li>
+    <li><strong>Packing</strong> — currently being packed</li>
+    <li><strong>Pending Approval</strong> — packed and submitted, waiting for YOUR approval</li>
+    <li><strong>Completed</strong> — approved DOs with generated invoices</li>
+  </ul>
+</div>
+
+<h3>Adding Tracking Numbers</h3>
+<p>In the <strong>Completed</strong> tab, you can add/edit tracking numbers for each dispatched order:</p>
+<ol class="numbered-steps">
+  <li>Find the completed DO in the Completed tab</li>
+  <li>Click the tracking field next to the invoice</li>
+  <li>Enter the courier tracking number</li>
+  <li>The tracking number is saved and visible to the Sales team</li>
+</ol>
+
+<h2>7. Invoices Tab</h2>
+<p>The Invoices tab (accessible from the bottom nav) shows all tax invoices:</p>
+<div class="grid-2">
+  <div class="card">
+    <h4>Current (This Month)</h4>
+    <ul><li>All invoices from this calendar month</li><li>Grouped by Dispatch Order</li><li>Open by default</li></ul>
+  </div>
+  <div class="card">
+    <h4>History (Past Months)</h4>
+    <ul><li>All historical invoices</li><li>Grouped by month, then by DO</li><li>Searchable by client, invoice #, DO #</li></ul>
+  </div>
+</div>
+
+<h2>8. Accounts Receivable (AR)</h2>
+<p>Track outstanding and overdue invoices. View payment status for all tax invoices.</p>
+
+<h2>9. Settings</h2>
+<p>Configure company and invoice settings:</p>
+<div class="card">
+  <ul>
+    <li><strong>Company Details</strong> — name, address, GSTIN, state</li>
+    <li><strong>LUT Number</strong> — for export invoices (tax exemption)</li>
+    <li><strong>Bank Details</strong> — account number, IFSC, bank name (shown on invoices)</li>
+  </ul>
+</div>
+
+<div class="tip"><strong>Tip:</strong> These settings appear on all printed tax invoices. Make sure they're correct before approving your first dispatch order.</div>
+
+</body>
+</html>

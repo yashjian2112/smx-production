@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMX Production Tracker — Admin Guide</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #1e293b; line-height: 1.6; background: #fff; max-width: 210mm; margin: 0 auto; padding: 20px 24px; }
+
+  /* Cover */
+  .cover { text-align: center; padding: 60px 0 40px; border-bottom: 3px solid #0ea5e9; margin-bottom: 32px; }
+  .cover .logo { display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 16px; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: #fff; font-weight: 800; font-size: 20px; letter-spacing: 1px; margin-bottom: 16px; }
+  .cover h1 { font-size: 28px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+  .cover .subtitle { font-size: 16px; color: #64748b; }
+  .cover .role-badge { display: inline-block; margin-top: 16px; padding: 6px 20px; border-radius: 20px; background: #0ea5e9; color: #fff; font-weight: 600; font-size: 14px; letter-spacing: 0.5px; }
+
+  h2 { font-size: 20px; font-weight: 700; color: #0f172a; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0; }
+  h3 { font-size: 16px; font-weight: 600; color: #334155; margin: 20px 0 8px; }
+  p { margin: 6px 0; font-size: 14px; color: #475569; }
+
+  /* Nav bar mockup */
+  .nav-bar { display: flex; gap: 0; background: #0f172a; border-radius: 12px; overflow: hidden; margin: 12px 0 20px; }
+  .nav-bar .tab { flex: 1; text-align: center; padding: 12px 8px; font-size: 12px; font-weight: 600; color: #94a3b8; border-bottom: 3px solid transparent; }
+  .nav-bar .tab.active { color: #0ea5e9; border-bottom-color: #0ea5e9; background: rgba(14,165,233,0.08); }
+
+  /* Step flow */
+  .flow { display: flex; flex-wrap: wrap; gap: 0; align-items: center; margin: 12px 0 16px; }
+  .flow .step { display: flex; align-items: center; gap: 0; }
+  .flow .step-box { padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #fff; white-space: nowrap; }
+  .flow .arrow { padding: 0 6px; color: #94a3b8; font-size: 16px; }
+  .bg-blue { background: #0ea5e9; }
+  .bg-green { background: #22c55e; }
+  .bg-amber { background: #f59e0b; }
+  .bg-red { background: #ef4444; }
+  .bg-purple { background: #8b5cf6; }
+  .bg-slate { background: #64748b; }
+  .bg-teal { background: #14b8a6; }
+  .bg-indigo { background: #6366f1; }
+
+  /* Feature card */
+  .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 10px 0; }
+  .card h4 { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+  .card ul { padding-left: 18px; }
+  .card li { font-size: 13px; color: #475569; margin: 3px 0; }
+
+  /* Grid layout */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+
+  /* Tip box */
+  .tip { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 13px; color: #1e40af; }
+
+  /* Warning */
+  .warn { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 13px; color: #92400e; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  th { background: #f1f5f9; text-align: left; padding: 8px 12px; font-weight: 600; color: #334155; border-bottom: 2px solid #e2e8f0; }
+  td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #475569; }
+
+  /* Screen mockup */
+  .screen { background: #0f172a; border-radius: 12px; padding: 16px; margin: 12px 0; color: #e2e8f0; }
+  .screen .title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+  .screen .stat-row { display: flex; gap: 10px; margin: 8px 0; }
+  .screen .stat { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; text-align: center; }
+  .screen .stat .num { font-size: 22px; font-weight: 700; color: #0ea5e9; }
+  .screen .stat .label { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+  .page-break { page-break-before: always; }
+  @media print { body { padding: 0; } .page-break { page-break-before: always; } }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <div class="logo">SMX</div>
+  <h1>SMX Drives Production Tracker</h1>
+  <p class="subtitle">User Guide</p>
+  <div class="role-badge">ADMIN</div>
+</div>
+
+<!-- OVERVIEW -->
+<h2>1. Overview</h2>
+<p>As an <strong>Admin</strong>, you have <strong>full access</strong> to every module in the system. You are responsible for setting up the application, managing users, configuring products, and overseeing the entire manufacturing lifecycle from order creation to final dispatch.</p>
+
+<div class="tip"><strong>Tip:</strong> Bookmark the Dashboard page — it gives you a real-time snapshot of all production activity.</div>
+
+<!-- GETTING STARTED -->
+<h2>2. Getting Started</h2>
+<h3>Login</h3>
+<p>Open the app URL in your browser. Enter your email and password, then click <strong>Sign in</strong>.</p>
+<p>Your session lasts 7 days. After that, you'll need to log in again.</p>
+
+<h3>Your Navigation Bar</h3>
+<p>As Admin, you see 5 main tabs at the bottom of the screen:</p>
+<div class="nav-bar">
+  <div class="tab active">Dashboard</div>
+  <div class="tab">Orders</div>
+  <div class="tab">Purchase</div>
+  <div class="tab">Inventory</div>
+  <div class="tab">Admin</div>
+</div>
+
+<!-- DASHBOARD -->
+<h2>3. Dashboard</h2>
+<p>Your dashboard shows a real-time overview of all manufacturing activity:</p>
+<div class="screen">
+  <div class="title">Dashboard</div>
+  <div class="stat-row">
+    <div class="stat"><div class="num">12</div><div class="label">Active Orders</div></div>
+    <div class="stat"><div class="num">47</div><div class="label">Units in Production</div></div>
+    <div class="stat"><div class="num">8</div><div class="label">Today's Output</div></div>
+    <div class="stat"><div class="num">3</div><div class="label">QC Failures</div></div>
+  </div>
+  <div class="stat-row">
+    <div class="stat"><div class="num">5</div><div class="label">Rework Pending</div></div>
+    <div class="stat"><div class="num">2</div><div class="label">Blocked Units</div></div>
+  </div>
+</div>
+<p>Click any stat card to drill down into the details.</p>
+
+<div class="page-break"></div>
+
+<!-- ORDERS -->
+<h2>4. Orders</h2>
+<p>The Orders module is where manufacturing begins. You can view, create, and manage all production orders.</p>
+
+<h3>Order Status Flow</h3>
+<div class="flow">
+  <div class="step"><span class="step-box bg-slate">CREATED</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-blue">ACTIVE</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-amber">IN PROGRESS</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-green">COMPLETED</span></div>
+</div>
+
+<h3>Creating an Order</h3>
+<div class="card">
+  <h4>Steps:</h4>
+  <ul>
+    <li>Go to <strong>Orders</strong> tab</li>
+    <li>Click <strong>+ New Order</strong></li>
+    <li>Select the <strong>Product</strong>, <strong>Client</strong>, and enter <strong>Quantity</strong></li>
+    <li>Set <strong>Voltage</strong>, <strong>Motor Type</strong>, and <strong>Due Date</strong></li>
+    <li>Click <strong>Create</strong> — the system auto-generates serial numbers and barcodes for each unit</li>
+  </ul>
+</div>
+
+<h3>Order Detail Page</h3>
+<p>Click any order to see its full details:</p>
+<div class="card">
+  <ul>
+    <li><strong>Summary card</strong> — order number, client, product, quantity, due date, progress %</li>
+    <li><strong>Stage breakdown</strong> — units grouped by manufacturing stage with status badges</li>
+    <li><strong>Barcodes</strong> — barcode labels for each stage (PS, BB, AY, QC, FA)</li>
+    <li><strong>Dispatch status</strong> — which units are ready for shipping</li>
+  </ul>
+</div>
+
+<!-- PRODUCTION STAGES -->
+<h2>5. Production Stages</h2>
+<p>Every unit moves through 6 manufacturing stages:</p>
+<div class="flow">
+  <div class="step"><span class="step-box bg-blue">Powerstage Mfg</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-indigo">Brainboard Mfg</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-purple">Assembly</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-amber">QC &amp; Software</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-green">Final Assembly</span></div>
+</div>
+<p style="margin-top: 4px; font-size: 12px; color: #94a3b8;">Note: Powerstage and Brainboard run in parallel. If QC fails, unit goes to Rework then back to QC.</p>
+
+<h3>Unit Status Within Each Stage</h3>
+<div class="flow">
+  <div class="step"><span class="step-box bg-slate">PENDING</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-blue">IN PROGRESS</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-amber">COMPLETED</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-green">APPROVED</span></div>
+</div>
+
+<div class="page-break"></div>
+
+<!-- ADMIN PANEL -->
+<h2>6. Admin Panel</h2>
+<p>The Admin tab gives you access to all system configuration:</p>
+
+<div class="grid-2">
+  <div class="card">
+    <h4>Users</h4>
+    <ul>
+      <li>Create and manage user accounts</li>
+      <li>Assign roles (Admin, PM, Employee, Sales, etc.)</li>
+      <li>Enable/disable accounts</li>
+      <li>Enroll face verification for biometric login</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Products</h4>
+    <ul>
+      <li>Manage product catalogue</li>
+      <li>Set product codes (used in barcodes)</li>
+      <li>Activate/deactivate products</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Clients</h4>
+    <ul>
+      <li>Manage customer database</li>
+      <li>Set billing/shipping addresses</li>
+      <li>Configure GST numbers</li>
+      <li>Mark as Global or Indian (affects tax)</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>BOM (Bill of Materials)</h4>
+    <ul>
+      <li>Define materials needed per product per stage</li>
+      <li>Link raw materials to production stages</li>
+      <li>Set quantities per unit</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Checklists</h4>
+    <ul>
+      <li>Configure AI quality checks per stage</li>
+      <li>Define what photos are required</li>
+      <li>Set pass/fail criteria</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Vendors</h4>
+    <ul>
+      <li>Manage supplier database</li>
+      <li>Set vendor categories</li>
+      <li>Enable vendor portal access</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Box Sizes</h4>
+    <ul>
+      <li>Define packing box dimensions</li>
+      <li>Set box weights</li>
+      <li>Used by packing team during dispatch</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Settings</h4>
+    <ul>
+      <li>Company details (name, address, GSTIN)</li>
+      <li>LUT number for exports</li>
+      <li>Bank account for invoices</li>
+      <li>Price breakdown factors</li>
+    </ul>
+  </div>
+</div>
+
+<!-- PURCHASE -->
+<h2>7. Purchase Module</h2>
+<p>Manage the entire procurement lifecycle:</p>
+<div class="flow">
+  <div class="step"><span class="step-box bg-slate">Req. Order</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-blue">RFQ</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-purple">Vendor Quotes</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-amber">Purchase Order</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-teal">GAN</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-green">GRN</span></div>
+</div>
+
+<!-- INVENTORY -->
+<h2>8. Inventory Module</h2>
+<p>Track all raw materials, stock levels, and movements.</p>
+<div class="card">
+  <ul>
+    <li><strong>Materials</strong> — view all raw materials with current stock levels</li>
+    <li><strong>Low Stock Alerts</strong> — materials below minimum stock highlighted in red</li>
+    <li><strong>Stock Movements</strong> — track every IN/OUT with batch codes</li>
+    <li><strong>GRN</strong> — goods receipt from purchase orders</li>
+    <li><strong>Job Cards</strong> — material dispatch to production employees</li>
+  </ul>
+</div>
+
+<div class="page-break"></div>
+
+<!-- APPROVALS -->
+<h2>9. Approvals</h2>
+<p>As Admin, you can approve work at any manufacturing stage. Go to <strong>Approvals</strong> to see all units in <strong>WAITING_APPROVAL</strong> status. Click a unit to review and approve or reject the work.</p>
+
+<!-- SHIPPING & DISPATCH -->
+<h2>10. Shipping &amp; Dispatch</h2>
+<p>Monitor the full dispatch lifecycle:</p>
+<div class="flow">
+  <div class="step"><span class="step-box bg-green">FA Complete</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-blue">Create DO</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-purple">Pack Boxes</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-amber">Submit</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-green">Approve</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-teal">Invoice</span></div>
+</div>
+
+<!-- SALES -->
+<h2>11. Sales &amp; Invoicing</h2>
+<p>You have visibility over all proforma invoices, tax invoices, and payment tracking.</p>
+
+<h3>Invoice Flow</h3>
+<div class="flow">
+  <div class="step"><span class="step-box bg-slate">Draft PI</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-amber">Pending Approval</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-green">Approved</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-blue">Converted to Order</span></div>
+</div>
+
+<!-- ROLES -->
+<h2>12. User Roles Reference</h2>
+<table>
+  <tr><th>Role</th><th>Access Level</th></tr>
+  <tr><td>ADMIN</td><td>Full access to all modules</td></tr>
+  <tr><td>PRODUCTION_MANAGER</td><td>Orders, approvals, production oversight, reports</td></tr>
+  <tr><td>PRODUCTION_EMPLOYEE</td><td>Own tasks, orders (accept work), unit scanning</td></tr>
+  <tr><td>SALES</td><td>Proformas, invoices, clients, order status</td></tr>
+  <tr><td>ACCOUNTS</td><td>Approve proformas &amp; DOs, invoices, A/R, settings</td></tr>
+  <tr><td>PACKING</td><td>Pack dispatch orders, seal boxes</td></tr>
+  <tr><td>PURCHASE_MANAGER</td><td>Procurement: RO, RFQ, PO, vendor management</td></tr>
+  <tr><td>STORE_MANAGER</td><td>Inventory, GRN, stock adjustments, job cards</td></tr>
+</table>
+
+<div class="warn"><strong>Important:</strong> Only Admins can create new users, modify products, or change system settings. Handle these with care.</div>
+
+</body>
+</html>

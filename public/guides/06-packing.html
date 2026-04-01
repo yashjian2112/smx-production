@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMX Production Tracker — Packing Guide</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #1e293b; line-height: 1.6; background: #fff; max-width: 210mm; margin: 0 auto; padding: 20px 24px; }
+  .cover { text-align: center; padding: 60px 0 40px; border-bottom: 3px solid #14b8a6; margin-bottom: 32px; }
+  .cover .logo { display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 16px; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: #fff; font-weight: 800; font-size: 20px; letter-spacing: 1px; margin-bottom: 16px; }
+  .cover h1 { font-size: 28px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+  .cover .subtitle { font-size: 16px; color: #64748b; }
+  .cover .role-badge { display: inline-block; margin-top: 16px; padding: 6px 20px; border-radius: 20px; background: #14b8a6; color: #fff; font-weight: 600; font-size: 14px; }
+  h2 { font-size: 20px; font-weight: 700; color: #0f172a; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0; }
+  h3 { font-size: 16px; font-weight: 600; color: #334155; margin: 20px 0 8px; }
+  p { margin: 6px 0; font-size: 14px; color: #475569; }
+  .nav-bar { display: flex; gap: 0; background: #0f172a; border-radius: 12px; overflow: hidden; margin: 12px 0 20px; }
+  .nav-bar .tab { flex: 1; text-align: center; padding: 12px 8px; font-size: 12px; font-weight: 600; color: #94a3b8; border-bottom: 3px solid transparent; }
+  .nav-bar .tab.active { color: #0ea5e9; border-bottom-color: #0ea5e9; background: rgba(14,165,233,0.08); }
+  .flow { display: flex; flex-wrap: wrap; gap: 0; align-items: center; margin: 12px 0 16px; }
+  .flow .step { display: flex; align-items: center; gap: 0; }
+  .flow .step-box { padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #fff; white-space: nowrap; }
+  .flow .arrow { padding: 0 6px; color: #94a3b8; font-size: 16px; }
+  .bg-blue { background: #0ea5e9; } .bg-green { background: #22c55e; } .bg-amber { background: #f59e0b; } .bg-red { background: #ef4444; } .bg-purple { background: #8b5cf6; } .bg-slate { background: #64748b; } .bg-teal { background: #14b8a6; } .bg-indigo { background: #6366f1; }
+  .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 10px 0; }
+  .card h4 { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+  .card ul { padding-left: 18px; } .card li { font-size: 13px; color: #475569; margin: 3px 0; }
+  .tip { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 13px; color: #1e40af; }
+  .warn { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 13px; color: #92400e; }
+  .screen { background: #0f172a; border-radius: 12px; padding: 16px; margin: 12px 0; color: #e2e8f0; }
+  .screen .title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+  .screen .stat-row { display: flex; gap: 10px; margin: 8px 0; }
+  .screen .stat { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; text-align: center; }
+  .screen .stat .num { font-size: 22px; font-weight: 700; color: #14b8a6; }
+  .screen .stat .label { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .numbered-steps { counter-reset: step; list-style: none; padding: 0; }
+  .numbered-steps li { counter-increment: step; position: relative; padding: 12px 12px 12px 48px; margin: 8px 0; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 13px; color: #475569; }
+  .numbered-steps li::before { content: counter(step); position: absolute; left: 12px; top: 12px; width: 28px; height: 28px; border-radius: 50%; background: #14b8a6; color: #fff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .page-break { page-break-before: always; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="logo">SMX</div>
+  <h1>SMX Drives Production Tracker</h1>
+  <p class="subtitle">User Guide</p>
+  <div class="role-badge">PACKING</div>
+</div>
+
+<h2>1. Overview</h2>
+<p>As a <strong>Packing</strong> team member, your job is to pack completed controller units into boxes for dispatch. You create dispatch orders, scan units into boxes, seal boxes with photos, and submit the packed DO for approval.</p>
+
+<h2>2. Your Navigation Bar</h2>
+<div class="nav-bar">
+  <div class="tab active">Packing</div>
+  <div class="tab">Dashboard</div>
+</div>
+
+<h2>3. Dashboard</h2>
+<div class="screen">
+  <div class="title">Packing Dashboard</div>
+  <div class="stat-row">
+    <div class="stat"><div class="num">3</div><div class="label">Open DOs</div></div>
+    <div class="stat"><div class="num">2</div><div class="label">In Packing</div></div>
+    <div class="stat"><div class="num">1</div><div class="label">Submitted</div></div>
+    <div class="stat"><div class="num">8</div><div class="label">Boxes Sealed Today</div></div>
+  </div>
+</div>
+
+<h2>4. Complete Packing Workflow</h2>
+<p>This is your primary daily workflow, step by step:</p>
+
+<h3>Step 1: Find Ready Orders</h3>
+<p>Go to the <strong>Packing</strong> tab. The <strong>Ready</strong> section shows orders with units that have completed Final Assembly and are ready for dispatch.</p>
+
+<h3>Step 2: Create a Dispatch Order (DO)</h3>
+<ol class="numbered-steps">
+  <li>Click on a ready order</li>
+  <li>Click <strong>Create Dispatch Order</strong></li>
+  <li>A DO number is auto-generated (format: TSM/DO/YY-YY/NNN)</li>
+  <li>Select how many units to dispatch (can be partial — not all units need to ship together)</li>
+</ol>
+
+<div class="page-break"></div>
+
+<h3>Step 3: Set Box Count</h3>
+<ol class="numbered-steps">
+  <li>Open the DO and click <strong>Set Boxes</strong></li>
+  <li>Enter the number of boxes needed</li>
+  <li>Select a box size for each box (predefined by Admin)</li>
+  <li>Box labels are auto-generated: {DO Number}-BOX-1of3, BOX-2of3, etc.</li>
+</ol>
+
+<h3>Step 4: Scan Units into Boxes</h3>
+<ol class="numbered-steps">
+  <li>Open a box to start scanning</li>
+  <li><strong>Scan the unit's barcode</strong> using the barcode scanner</li>
+  <li>The system validates: Does the unit belong to this order? Has it completed FA? Is it already packed?</li>
+  <li>If valid, the unit is added to the box</li>
+  <li>Repeat for all units in this box</li>
+</ol>
+
+<div class="warn"><strong>Important:</strong> You can only scan units that belong to the correct order, have completed Final Assembly, and haven't been packed already. The system will reject invalid scans.</div>
+
+<h3>Step 5: Seal Boxes</h3>
+<ol class="numbered-steps">
+  <li>When a box is full, click <strong>Seal Box</strong></li>
+  <li><strong>Take a photo</strong> of the sealed box (required)</li>
+  <li>Upload the photo</li>
+  <li>The box is now sealed — you cannot add or remove units after sealing</li>
+</ol>
+
+<h3>Step 6: Submit for Approval</h3>
+<ol class="numbered-steps">
+  <li>Once <strong>all boxes are sealed</strong>, the Submit button becomes active</li>
+  <li>Click <strong>Submit</strong> — this generates a Packing List</li>
+  <li>The DO moves to <strong>SUBMITTED</strong> status</li>
+  <li>Accounts team will review and approve</li>
+</ol>
+
+<h3>Full DO Status Flow</h3>
+<div class="flow">
+  <div class="step"><span class="step-box bg-slate">OPEN</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-blue">PACKING</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-amber">SUBMITTED</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-green">APPROVED</span></div>
+</div>
+
+<div class="tip"><strong>Tip:</strong> You can print box labels from the DO detail page. Each label shows the DO number, box number, and box dimensions.</div>
+
+<h2>5. If a DO is Rejected</h2>
+<p>If Accounts rejects a DO, it goes back to PACKING status. You'll need to:</p>
+<div class="card">
+  <ul>
+    <li>Check the rejection reason from Accounts</li>
+    <li>Fix the issue (may need to unseal and rescan)</li>
+    <li>Re-submit for approval</li>
+  </ul>
+</div>
+
+</body>
+</html>

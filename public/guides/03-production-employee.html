@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMX Production Tracker — Production Employee Guide</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #1e293b; line-height: 1.6; background: #fff; max-width: 210mm; margin: 0 auto; padding: 20px 24px; }
+  .cover { text-align: center; padding: 60px 0 40px; border-bottom: 3px solid #22c55e; margin-bottom: 32px; }
+  .cover .logo { display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 16px; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: #fff; font-weight: 800; font-size: 20px; letter-spacing: 1px; margin-bottom: 16px; }
+  .cover h1 { font-size: 28px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+  .cover .subtitle { font-size: 16px; color: #64748b; }
+  .cover .role-badge { display: inline-block; margin-top: 16px; padding: 6px 20px; border-radius: 20px; background: #22c55e; color: #fff; font-weight: 600; font-size: 14px; }
+  h2 { font-size: 20px; font-weight: 700; color: #0f172a; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0; }
+  h3 { font-size: 16px; font-weight: 600; color: #334155; margin: 20px 0 8px; }
+  p { margin: 6px 0; font-size: 14px; color: #475569; }
+  .nav-bar { display: flex; gap: 0; background: #0f172a; border-radius: 12px; overflow: hidden; margin: 12px 0 20px; }
+  .nav-bar .tab { flex: 1; text-align: center; padding: 12px 8px; font-size: 12px; font-weight: 600; color: #94a3b8; border-bottom: 3px solid transparent; }
+  .nav-bar .tab.active { color: #0ea5e9; border-bottom-color: #0ea5e9; background: rgba(14,165,233,0.08); }
+  .flow { display: flex; flex-wrap: wrap; gap: 0; align-items: center; margin: 12px 0 16px; }
+  .flow .step { display: flex; align-items: center; gap: 0; }
+  .flow .step-box { padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #fff; white-space: nowrap; }
+  .flow .arrow { padding: 0 6px; color: #94a3b8; font-size: 16px; }
+  .bg-blue { background: #0ea5e9; } .bg-green { background: #22c55e; } .bg-amber { background: #f59e0b; } .bg-red { background: #ef4444; } .bg-purple { background: #8b5cf6; } .bg-slate { background: #64748b; } .bg-teal { background: #14b8a6; } .bg-indigo { background: #6366f1; }
+  .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 10px 0; }
+  .card h4 { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+  .card ul { padding-left: 18px; } .card li { font-size: 13px; color: #475569; margin: 3px 0; }
+  .tip { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 13px; color: #1e40af; }
+  .warn { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 13px; color: #92400e; }
+  .screen { background: #0f172a; border-radius: 12px; padding: 16px; margin: 12px 0; color: #e2e8f0; }
+  .screen .title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+  .screen .stat-row { display: flex; gap: 10px; margin: 8px 0; }
+  .screen .stat { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; text-align: center; }
+  .screen .stat .num { font-size: 22px; font-weight: 700; color: #22c55e; }
+  .screen .stat .label { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .numbered-steps { counter-reset: step; list-style: none; padding: 0; }
+  .numbered-steps li { counter-increment: step; position: relative; padding: 12px 12px 12px 48px; margin: 8px 0; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 13px; color: #475569; }
+  .numbered-steps li::before { content: counter(step); position: absolute; left: 12px; top: 12px; width: 28px; height: 28px; border-radius: 50%; background: #22c55e; color: #fff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .page-break { page-break-before: always; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="logo">SMX</div>
+  <h1>SMX Drives Production Tracker</h1>
+  <p class="subtitle">User Guide</p>
+  <div class="role-badge">PRODUCTION EMPLOYEE</div>
+</div>
+
+<h2>1. Overview</h2>
+<p>As a <strong>Production Employee</strong>, you work on manufacturing stages — building powerstages, brainboards, assembling controllers, running QC checks, and completing final assembly. The app tracks your work, shows your tasks, and records your output.</p>
+
+<h2>2. Getting Started</h2>
+<h3>Login</h3>
+<p>Open the app in your browser. Enter your email and password, then click <strong>Sign in</strong>.</p>
+<p>If face verification is enabled, you'll need to verify your face before starting work each shift (lasts 8 hours).</p>
+
+<h3>Your Navigation Bar</h3>
+<div class="nav-bar">
+  <div class="tab active">My Tasks</div>
+  <div class="tab">Orders</div>
+  <div class="tab">Dispatch</div>
+  <div class="tab">Rework</div>
+</div>
+
+<h2>3. Dashboard</h2>
+<div class="screen">
+  <div class="title">My Dashboard</div>
+  <div class="stat-row">
+    <div class="stat"><div class="num">3</div><div class="label">In Progress</div></div>
+    <div class="stat"><div class="num">7</div><div class="label">Completed Today</div></div>
+  </div>
+</div>
+<p>Your dashboard shows how many units you're currently working on and how many you've completed today.</p>
+
+<h2>4. Accepting Work (Orders Tab)</h2>
+<p>Before you can start building, you need to <strong>accept an order</strong>. This is how you get assigned work:</p>
+
+<ol class="numbered-steps">
+  <li>Go to the <strong>Orders</strong> tab</li>
+  <li>Look at the <strong>Pending</strong> tab — these are orders needing workers</li>
+  <li>Each order card shows: product name, stage needed, pending unit count, due date</li>
+  <li>Click <strong>Accept Order</strong> on an order you want to work on</li>
+  <li>A <strong>Job Card</strong> is created for you — the store team will dispatch materials</li>
+  <li>Once materials are dispatched, your job card status changes to <strong>DISPATCHED</strong> and you can start</li>
+</ol>
+
+<div class="tip"><strong>Tip:</strong> You can only work on one unit at a time per stage. Finish your current unit before picking up the next one.</div>
+
+<div class="page-break"></div>
+
+<h2>5. Working on a Unit (The Main Workflow)</h2>
+<p>This is your primary daily workflow — scanning a barcode and submitting your work:</p>
+
+<ol class="numbered-steps">
+  <li><strong>Scan the barcode</strong> — use the barcode scanner on the unit's label. The app identifies the unit and loads the correct stage.</li>
+  <li><strong>Start work</strong> — click the Start button. Your timer begins and the unit moves to IN_PROGRESS.</li>
+  <li><strong>Complete the checklist</strong> — follow the quality checklist items shown on screen. Check off each item as you complete it.</li>
+  <li><strong>Take photos</strong> — photograph the completed work as required (e.g., PCB board photo for AI quality check).</li>
+  <li><strong>Submit work</strong> — click Submit. Your work is recorded and the unit moves to COMPLETED or WAITING_APPROVAL.</li>
+  <li><strong>Wait for approval</strong> — the Production Manager reviews your work. If approved, the unit advances to the next stage. If rejected, you'll see it back in your tasks with feedback.</li>
+</ol>
+
+<h3>Unit Status Flow (What You'll See)</h3>
+<div class="flow">
+  <div class="step"><span class="step-box bg-slate">PENDING</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-blue">IN PROGRESS</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-amber">COMPLETED</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-green">APPROVED</span></div>
+</div>
+
+<h3>Production Stages</h3>
+<div class="flow">
+  <div class="step"><span class="step-box bg-blue">Powerstage</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-indigo">Brainboard</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-purple">Assembly</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-amber">QC &amp; Software</span><span class="arrow">&#8594;</span></div>
+  <div class="step"><span class="step-box bg-green">Final Assembly</span></div>
+</div>
+<p><strong>Powerstage</strong> and <strong>Brainboard</strong> happen in parallel — different employees work on each simultaneously.</p>
+
+<h2>6. My Tasks</h2>
+<p>The <strong>My Tasks</strong> tab shows all your currently active work:</p>
+<div class="card">
+  <ul>
+    <li>Units you've started but not yet submitted</li>
+    <li>Units rejected back to you by the PM (with feedback)</li>
+    <li>Filter by stage to focus on one type of work</li>
+    <li>Click any unit to continue working on it</li>
+  </ul>
+</div>
+
+<div class="warn"><strong>Important:</strong> If your work is rejected, read the PM's feedback carefully before re-doing it. The feedback appears on the unit detail page.</div>
+
+<h2>7. Barcode Types</h2>
+<p>Each stage has its own barcode format. Here's how to identify which stage a barcode belongs to:</p>
+<div class="card">
+  <ul>
+    <li><strong>PS</strong> in the code = Powerstage (e.g., C100PS2501)</li>
+    <li><strong>BB</strong> in the code = Brainboard (e.g., C100BB2501)</li>
+    <li><strong>AY</strong> in the code = Assembly (e.g., C100AY2501)</li>
+    <li><strong>QC</strong> in the code = QC &amp; Software (e.g., C100QC2501)</li>
+    <li>No stage prefix = Final Assembly (e.g., C10025A001)</li>
+  </ul>
+</div>
+
+<h2>8. My Performance</h2>
+<p>Track your productivity from the <strong>My Performance</strong> page:</p>
+<div class="card">
+  <ul>
+    <li>Units completed per day/week</li>
+    <li>Average build time per stage</li>
+    <li>Approval rate (how often your work passes first time)</li>
+  </ul>
+</div>
+
+<div class="tip"><strong>Tip:</strong> Aim for a high first-pass approval rate — this means fewer rework cycles and faster production.</div>
+
+</body>
+</html>
