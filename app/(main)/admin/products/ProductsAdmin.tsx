@@ -262,6 +262,8 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
   const [hsnCode, setHsnCode] = useState('85371000');
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editProductType, setEditProductType] = useState<'MANUFACTURED' | 'TRADING'>('MANUFACTURED');
+  const [editHsnCode, setEditHsnCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -290,7 +292,7 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
       const res = await fetch(`/api/products/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName.trim(), description: editDescription.trim() || undefined }),
+        body: JSON.stringify({ name: editName.trim(), description: editDescription.trim() || undefined, productType: editProductType, hsnCode: editHsnCode.trim() || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error || 'Failed'); return; }
@@ -312,6 +314,8 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
     setEditId(p.id);
     setEditName(p.name);
     setEditDescription(p.description ?? '');
+    setEditProductType((p.productType as 'MANUFACTURED' | 'TRADING') ?? 'MANUFACTURED');
+    setEditHsnCode(p.hsnCode ?? '');
   }
 
   return (
@@ -381,6 +385,25 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
               <div className="space-y-2">
                 <input value={editName} onChange={(e) => setEditName(e.target.value)} className="input-field text-sm" />
                 <input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Description (optional)" className="input-field text-sm" />
+                <div>
+                  <label className="block text-[11px] text-zinc-500 mb-1 uppercase tracking-wide">Product Type</label>
+                  <div className="flex gap-2">
+                    {(['MANUFACTURED', 'TRADING'] as const).map(t => (
+                      <button key={t} type="button" onClick={() => { setEditProductType(t); if (!editHsnCode || editHsnCode === '85371000' || editHsnCode === '85011090') setEditHsnCode(t === 'TRADING' ? '85011090' : '85371000'); }}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          editProductType === t
+                            ? t === 'MANUFACTURED' ? 'bg-sky-600 text-white' : 'bg-amber-600 text-white'
+                            : 'text-zinc-400 border border-zinc-700 hover:text-white'
+                        }`}>
+                        {t === 'MANUFACTURED' ? 'Manufactured' : 'Trading'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-zinc-500 mb-1 uppercase tracking-wide">HSN Code</label>
+                  <input value={editHsnCode} onChange={(e) => setEditHsnCode(e.target.value)} placeholder="e.g. 85371000" className="input-field text-sm font-mono" />
+                </div>
                 <div className="flex gap-2">
                   <button onClick={() => saveEdit(p.id)} disabled={loading} className="btn-primary py-1 px-3 text-xs">{loading ? 'Saving…' : 'Save'}</button>
                   <button onClick={() => setEditId(null)} className="btn-ghost py-1 px-3 text-xs">Cancel</button>
