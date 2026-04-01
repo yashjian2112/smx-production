@@ -1643,7 +1643,11 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
               {/* Min stock */}
               <div>
                 <label className="text-zinc-400 text-xs">
-                  Min Stock <span className="text-zinc-500">({parseInt(fPackSize) > 1 ? (fPurchaseUnit || fUnit) : fUnit})</span> *
+                  Min Stock * <span className="text-zinc-500">
+                    {parseInt(fPackSize) > 1
+                      ? `(in ${(fPurchaseUnit || fUnit).toLowerCase()}, 1 ${(fPurchaseUnit || fUnit).toLowerCase()} = ${fPackSize} ${fUnit})`
+                      : `(${fUnit})`}
+                  </span>
                 </label>
                 <input type="number" step="any" min="0" value={fMin} onChange={e => setFMin(e.target.value)} required
                   onWheel={e => (e.target as HTMLInputElement).blur()}
@@ -1686,11 +1690,15 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
               {!editMat && (
                 <div className="pt-2 border-t border-zinc-800">
                   <p className="text-zinc-400 text-xs mb-2">
-                    Opening Stock <span className="text-zinc-500">({parseInt(fPackSize) > 1 ? (fPurchaseUnit || fUnit) : fUnit})</span> *
+                    Opening Stock * <span className="text-zinc-500">
+                      {parseInt(fPackSize) > 1
+                        ? `(in ${(fPurchaseUnit || fUnit).toLowerCase()}, 1 ${(fPurchaseUnit || fUnit).toLowerCase()} = ${fPackSize} ${fUnit})`
+                        : `(${fUnit})`}
+                    </span>
                   </p>
                   <div>
                     <label className="text-zinc-500 text-xs">
-                      {parseInt(fPackSize) > 1 ? `No. of ${(fPurchaseUnit || fUnit).toLowerCase()} (each = ${fPackSize} ${fUnit})` : `Quantity in ${fUnit}`}
+                      {parseInt(fPackSize) > 1 ? `No. of ${(fPurchaseUnit || fUnit).toLowerCase()}` : `Quantity in ${fUnit}`}
                     </label>
                     <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
                       onWheel={(e) => e.currentTarget.blur()} required
