@@ -85,6 +85,11 @@ export async function POST(req: NextRequest) {
   });
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
 
+  // Trading items don't need job cards — no manufacturing materials
+  if (order.product.productType === 'TRADING') {
+    return NextResponse.json({ error: 'Trading items do not require job cards — no manufacturing stages' }, { status: 400 });
+  }
+
   const { voltage, quantity: orderQty, productId } = order;
 
   // Get BOM items for this product+voltage+stage (null stage = applies to all stages)
