@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Check, X, Package, ScanLine, ArrowLeft } from 'lucide-react';
+import { Check, X, Package, ScanLine, ArrowLeft, Printer, RefreshCw } from 'lucide-react';
+import { BarcodeScanner } from '@/components/BarcodeScanner';
 
 const TABS = ['Materials', 'GRN', 'Job Cards', 'Rework', 'Reports', 'Settings'] as const;
 type Tab = typeof TABS[number];
@@ -1126,6 +1127,199 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+// ─── Print → Confirm → Scan Modal ────────────────────────────────────────────
+interface SerialItem { id: string; barcode: string; status: string; quantity: number; }
+
+function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose }: {
+  materialId: string; materialName: string; labelCount: number; onClose: () => void;
+}) {
+  type Step = 'print' | 'scan' | 'done';
+  const [step, setStep] = useState<Step>('print');
+  const [printed, setPrinted] = useState(false);
+  const [serials, setSerials] = useState<SerialItem[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const [lastScanned, setLastScanned] = useState('');
+  const [confirming, setConfirming] = useState(false);
+
+  const confirmed = serials.filter(s => s.status === 'CONFIRMED').length;
+  const total = serials.length;
+  const allConfirmed = total > 0 && confirmed === total;
+
+  // Fetch serials when entering scan step
+  const loadSerials = useCallback(async () => {
+    const res = await fetch(`/api/procurement/material-serials?materialId=${materialId}&openingStock=1`);
+    if (res.ok) {
+      const data = await res.json();
+      setSerials(data.map((s: any) => ({ id: s.id, barcode: s.barcode, status: s.status, quantity: s.quantity })));
+    }
+  }, [materialId]);
+
+  async function handlePrintConfirmed() {
+    setConfirming(true);
+    // Bulk-confirm all PRINTED serials as print successful
+    await fetch('/api/procurement/material-serials', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ materialId }),
+    });
+    await loadSerials();
+    setConfirming(false);
+    setStep('scan');
+  }
+
+  async function handleScan(barcode: string) {
+    setScanError('');
+    setScanning(false);
+    try {
+      const res = await fetch('/api/procurement/material-serials/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setScanError(data.error || 'Scan failed'); return; }
+      if (data.alreadyConfirmed) { setScanError('Already scanned'); return; }
+      // Update local state
+      setSerials(prev => prev.map(s => s.id === data.id ? { ...s, status: 'CONFIRMED' } : s));
+      setLastScanned(barcode);
+      setScanError('');
+    } catch {
+      setScanError('Network error — try again');
+    }
+  }
+
+  // ── Step 1: Print ──
+  if (step === 'print') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
+        <div className="w-full max-w-sm rounded-2xl p-6 text-center" style={{ background: 'rgb(24,24,27)' }}>
+          <Package className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+          <h3 className="text-white font-semibold mb-1">Material Created</h3>
+          <p className="text-zinc-400 text-sm mb-1">{materialName}</p>
+          <p className="text-emerald-400 text-sm font-medium mb-5">{labelCount} barcode label{labelCount !== 1 ? 's' : ''} generated</p>
+
+          {!printed ? (
+            <>
+              <p className="text-zinc-500 text-xs mb-4">Print labels first, then scan each barcode to confirm</p>
+              <div className="flex gap-3">
+                <button onClick={onClose}
+                  className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                  Later
+                </button>
+                <a href={`/print/opening-stock/${materialId}`} target="_blank" rel="noreferrer"
+                  onClick={() => setPrinted(true)}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors text-center flex items-center justify-center gap-1.5">
+                  <Printer className="w-4 h-4" /> Print Labels
+                </a>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-zinc-300 text-sm mb-4">Did the labels print successfully?</p>
+              <div className="flex gap-3">
+                <a href={`/print/opening-stock/${materialId}`} target="_blank" rel="noreferrer"
+                  className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors flex items-center justify-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5" /> Re-print
+                </a>
+                <button onClick={handlePrintConfirmed} disabled={confirming}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+                  <Check className="w-4 h-4" /> {confirming ? 'Saving...' : 'Yes, Printed'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 2: Scan & Verify ──
+  if (step === 'scan') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
+        <div className="w-full max-w-md rounded-2xl p-5" style={{ background: 'rgb(24,24,27)' }}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-semibold text-sm">Scan Barcodes to Verify</h3>
+            <span className="text-xs px-2 py-0.5 rounded bg-sky-900/30 text-sky-400 font-medium">
+              {confirmed} / {total} verified
+            </span>
+          </div>
+
+          {/* Progress bar */}
+          <div className="w-full h-1.5 rounded-full bg-zinc-800 mb-4">
+            <div className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+              style={{ width: total > 0 ? `${(confirmed / total) * 100}%` : '0%' }} />
+          </div>
+
+          {/* Error / Last scanned */}
+          {scanError && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-red-900/20 border border-red-800/30">
+              <p className="text-red-400 text-xs">{scanError}</p>
+            </div>
+          )}
+          {lastScanned && !scanError && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-emerald-900/20 border border-emerald-800/30">
+              <p className="text-emerald-400 text-xs"><Check className="w-3 h-3 inline mr-1" />{lastScanned} confirmed</p>
+            </div>
+          )}
+
+          {/* Serial list */}
+          <div className="space-y-1 max-h-[40vh] overflow-y-auto mb-4">
+            {serials.map(s => (
+              <div key={s.id} className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs ${
+                s.status === 'CONFIRMED' ? 'bg-emerald-900/15 border border-emerald-800/20' : 'bg-zinc-800/50 border border-zinc-700/30'
+              }`}>
+                <span className="font-mono text-zinc-300">{s.barcode}</span>
+                <span className="flex items-center gap-1">
+                  {s.quantity > 1 && <span className="text-zinc-500">×{s.quantity}</span>}
+                  {s.status === 'CONFIRMED'
+                    ? <Check className="w-4 h-4 text-emerald-400" />
+                    : <span className="w-4 h-4 rounded-full border border-zinc-600" />
+                  }
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            {allConfirmed ? (
+              <button onClick={onClose}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors flex items-center justify-center gap-1.5">
+                <Check className="w-4 h-4" /> All Verified — Done
+              </button>
+            ) : (
+              <>
+                <button onClick={onClose}
+                  className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                  Skip for Now
+                </button>
+                <button onClick={() => { setScanError(''); setScanning(true); }}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors flex items-center justify-center gap-1.5">
+                  <ScanLine className="w-4 h-4" /> Scan Barcode
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Full-screen barcode scanner overlay */}
+        {scanning && (
+          <BarcodeScanner
+            title="Scan Serial Barcode"
+            hint="Point camera at barcode label"
+            onScan={handleScan}
+            onClose={() => setScanning(false)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ─── Materials Tab ────────────────────────────────────────────────────────────
 function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin: boolean }) {
   const [materials,    setMaterials]    = useState<RawMaterial[]>([]);
@@ -1780,26 +1974,12 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
 
       {/* Print Serial Labels after opening stock creation */}
       {printSerialMat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
-          <div className="w-full max-w-sm rounded-2xl p-6 text-center" style={{ background: 'rgb(24,24,27)' }}>
-            <Package className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
-            <h3 className="text-white font-semibold mb-1">Material Created</h3>
-            <p className="text-zinc-400 text-sm mb-1">{printSerialMat.name}</p>
-            <p className="text-emerald-400 text-sm font-medium mb-5">{printSerialMat.labelCount} barcode label{printSerialMat.labelCount !== 1 ? 's' : ''} generated</p>
-            <p className="text-zinc-500 text-xs mb-4">Print labels and scan each barcode to confirm stock</p>
-            <div className="flex gap-3">
-              <button onClick={() => setPrintSerialMat(null)}
-                className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
-                Later
-              </button>
-              <a href={`/print/opening-stock/${printSerialMat.id}`} target="_blank"
-                onClick={() => setPrintSerialMat(null)}
-                className="flex-1 py-2 rounded-lg text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors text-center">
-                Print Labels
-              </a>
-            </div>
-          </div>
-        </div>
+        <PrintConfirmScanModal
+          materialId={printSerialMat.id}
+          materialName={printSerialMat.name}
+          labelCount={printSerialMat.labelCount}
+          onClose={() => { setPrintSerialMat(null); load(); }}
+        />
       )}
 
       {showCatForm && (
