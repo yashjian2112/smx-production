@@ -18,19 +18,17 @@ export async function POST(
 ) {
   try {
     const session = await requireSession();
-    if (session.role === 'PRODUCTION_EMPLOYEE') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const { id } = await params;
     const order = await prisma.order.findUnique({
       where: { id },
       include: {
-        product: { select: { code: true } },
+        product: { select: { code: true, productType: true } },
         units: {
           select: {
             id: true,
             currentStage: true,
+            currentStatus: true,
             powerstageBarcode: true,
             brainboardBarcode: true,
             qcBarcode: true,
@@ -75,7 +73,20 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ ok: true, generated, total: order.units.length });
+    // For trading items: also approve all PENDING units (ready for dispatch)
+    let approved = 0;
+    if (order.product.productType === 'TRADING') {
+      const pendingIds = order.units.filter(u => u.currentStatus === 'PENDING').map(u => u.id);
+      if (pendingIds.length > 0) {
+        const result = await prisma.controllerUnit.updateMany({
+          where: { id: { in: pendingIds } },
+          data: { currentStatus: 'APPROVED' },
+        });
+        approved = result.count;
+      }
+    }
+
+    return NextResponse.json({ ok: true, generated, approved, total: order.units.length });
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

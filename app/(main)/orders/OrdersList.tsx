@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { Check, Clock } from 'lucide-react';
 
@@ -53,6 +54,7 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   isManager: boolean;
   sessionRole: string;
 }) {
+  const router = useRouter();
   const isEmployee = sessionRole === 'PRODUCTION_EMPLOYEE';
   const [tab, setTab] = useState<'pending' | 'processing' | 'completed'>(
     isEmployee ? 'pending' : 'processing'
@@ -228,7 +230,7 @@ export function OrdersList({ orders, isManager, sessionRole }: {
               )}
             </div>
           ) : (
-            (tab === 'processing' ? processing : completed).map((o) => <OrderCard key={o.id} order={o} />)
+            (tab === 'processing' ? processing : completed).map((o) => <OrderCard key={o.id} order={o} onRefresh={() => router.refresh()} />)
           )}
         </div>
       )}
@@ -236,7 +238,9 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   );
 }
 
-function OrderCard({ order }: { order: OrderItem }) {
+function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => void }) {
+  const [generating, setGenerating] = useState(false);
+  const [genDone, setGenDone] = useState(false);
   const total      = order._count.units;
   const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED').length;
   const inProgress = order.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
@@ -304,12 +308,30 @@ function OrderCard({ order }: { order: OrderItem }) {
       )}
 
       {order.product.productType === 'TRADING' && (
-        <div className="mt-3 pt-2 border-t border-zinc-800/50">
+        <div className="mt-3 pt-2 border-t border-zinc-800/50 flex gap-2 flex-wrap">
           <a href={`/print/work-order/${order.id}`} target="_blank" rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-amber-400 border border-amber-700/50 hover:bg-amber-900/20 transition-colors">
-            Download Work Order
+            Download WO
           </a>
+          {completed < total && !genDone ? (
+            <button
+              onClick={async (e) => {
+                e.preventDefault(); e.stopPropagation();
+                setGenerating(true);
+                const res = await fetch(`/api/orders/${order.id}/generate-barcodes`, { method: 'POST' });
+                setGenerating(false);
+                if (res.ok) { setGenDone(true); onRefresh?.(); }
+              }}
+              disabled={generating}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-400 border border-emerald-700/50 hover:bg-emerald-900/20 transition-colors disabled:opacity-50">
+              {generating ? 'Generating...' : 'Generate Barcodes'}
+            </button>
+          ) : completed >= total || genDone ? (
+            <span className="inline-flex items-center gap-1 px-3 py-1.5 text-xs text-emerald-400">
+              <Check className="w-3 h-3" /> Ready for Dispatch
+            </span>
+          ) : null}
         </div>
       )}
     </Link>
