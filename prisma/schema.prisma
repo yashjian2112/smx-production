@@ -1688,11 +1688,11 @@ model GANItem {
   @@map("gan_items")
 }
 
-// Material Serials — individual barcodes generated at GRN for every component
+// Material Serials — individual barcodes generated at GRN or opening stock for every component
 model MaterialSerial {
   id          String    @id @default(cuid())
   materialId  String    @map("material_id")
-  grnId       String    @map("grn_id")
+  grnId       String?   @map("grn_id")                 // null for opening stock serials
   stageType   String    @default("GN") @map("stage_type") // "PS" | "BB" | "GN" (general)
   barcode     String    @unique
   quantity    Int       @default(1)                    // units per pack (from material.packSize at GRN)
@@ -1704,7 +1704,7 @@ model MaterialSerial {
   createdAt   DateTime  @default(now()) @map("created_at")
 
   material    RawMaterial    @relation(fields: [materialId], references: [id])
-  grn         GoodsReceipt   @relation(fields: [grnId], references: [id])
+  grn         GoodsReceipt?  @relation(fields: [grnId], references: [id])
   jobCardItem JobCardItem?   @relation(fields: [jobCardItemId], references: [id])
 
   @@map("material_serials")
