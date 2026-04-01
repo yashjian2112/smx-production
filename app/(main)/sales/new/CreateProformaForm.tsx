@@ -20,9 +20,9 @@ type LineItem = {
 };
 
 const HSN_OPTIONS = [
-  { value: '85371000', label: '85371000 — Controller' },
-  { value: '85015290', label: '85015290 — Motor' },
-  { value: '85285200', label: '85285200 — Display' },
+  { value: '85371000', label: '85371000 — Motor Controller' },
+  { value: '85011090', label: '85011090 — Electric Motor' },
+  { value: '87089900', label: '87089900 — Vehicle Parts / Display' },
   { value: '9965',     label: '9965 — Shipping / Freight' },
   { value: 'custom',   label: 'Other (type below)' },
 ];
