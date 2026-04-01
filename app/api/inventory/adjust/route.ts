@@ -15,6 +15,8 @@ const adjustSchema = z.object({
   unitPrice:      z.number().min(0).default(0),
   expiryDate:     z.string().optional(), // ISO date string
   manufacturingDate: z.string().optional(),
+  packCount:      z.number().optional(),  // number of packs (for serial generation)
+  packSize:       z.number().optional(),  // units per pack
 });
 
 export async function POST(req: Request) {
@@ -74,7 +76,48 @@ export async function POST(req: Request) {
       batchId = batch.id;
     }
 
-    return { ...updated, batchId };
+    // 4. For OPENING with pack info, generate MaterialSerial barcodes
+    const serialIds: string[] = [];
+    if (data.type === 'OPENING' && data.packCount && data.packCount > 0) {
+      const mat = await tx.rawMaterial.findUnique({
+        where: { id: data.rawMaterialId },
+        include: { category: { select: { code: true } } },
+      });
+      const categoryCode = mat?.category?.code ?? 'MAT';
+      const year = String(new Date().getFullYear() % 100).padStart(2, '0');
+      const prefix = `${categoryCode.trim().toUpperCase()}GN${year}`;
+      const ps = data.packSize ?? 1;
+
+      // Find last sequence for this prefix
+      const last = await tx.materialSerial.findFirst({
+        where: { barcode: { startsWith: prefix } },
+        orderBy: { barcode: 'desc' },
+        select: { barcode: true },
+      });
+      let seq = 1;
+      if (last?.barcode) {
+        const seqPart = last.barcode.slice(prefix.length);
+        seq = (parseInt(seqPart, 10) || 0) + 1;
+      }
+
+      for (let i = 0; i < data.packCount; i++) {
+        const barcode = `${prefix}${String(seq + i).padStart(5, '0')}`;
+        const unitsInPack = Math.min(ps, data.quantity - i * ps);
+        const serial = await tx.materialSerial.create({
+          data: {
+            materialId: data.rawMaterialId,
+            grnId: null,
+            stageType: 'GN',
+            barcode,
+            quantity: unitsInPack > 0 ? unitsInPack : ps,
+            status: 'PRINTED',
+          },
+        });
+        serialIds.push(serial.id);
+      }
+    }
+
+    return { ...updated, batchId, serialIds };
   });
 
   // After deduction: check if stock dropped below reorder point → auto-create RO

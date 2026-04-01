@@ -1156,6 +1156,7 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
   const [fSaving,        setFSaving]        = useState(false);
   const [fError,         setFError]         = useState('');
   const [printMatId,     setPrintMatId]     = useState<string | null>(null);
+  const [printSerialMat, setPrintSerialMat] = useState<{ id: string; name: string; labelCount: number } | null>(null);
 
   const [vendors,      setVendors]      = useState<Vendor[]>([]);
   const [filterCat,    setFilterCat]    = useState('');
@@ -1230,14 +1231,15 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
       : await fetch('/api/inventory/materials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     setFSaving(false);
     if (!res.ok) { const e = await res.json(); setFError(e.error || 'Failed'); return; }
-    // For new material: if opening stock was entered, add it; then prompt to print label
+    // For new material: add opening stock + generate serial barcodes, then prompt to print
     if (!editMat) {
       const mat = await res.json();
       const inputQty = parseFloat(fOpenQty);
       const ps = parseInt(fPackSize) || 1;
       const totalQty = ps > 1 ? inputQty * ps : inputQty;
+      const packCount = ps > 1 ? inputQty : inputQty; // number of labels to generate
       if (!isNaN(totalQty) && totalQty > 0) {
-        await fetch('/api/inventory/adjust', {
+        const adjustRes = await fetch('/api/inventory/adjust', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1245,8 +1247,17 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
             type:     'OPENING',
             quantity: totalQty,
             reason:   ps > 1 ? `Opening stock: ${inputQty} packs × ${ps} = ${totalQty}` : 'Opening stock entry',
+            packCount: Math.ceil(packCount),
+            packSize: ps,
           }),
         });
+        const adjustData = await adjustRes.json();
+        if (adjustData.serialIds?.length > 0) {
+          // Has serials — show print serial labels prompt
+          setShowMatForm(false); load();
+          setPrintSerialMat({ id: mat.id, name: mat.name, labelCount: adjustData.serialIds.length });
+          return;
+        }
       }
       setShowMatForm(false); load();
       setPrintMatId(mat.id);
@@ -1694,6 +1705,30 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                 onClick={() => setPrintMatId(null)}
                 className="flex-1 py-2 rounded-lg text-sm font-medium bg-purple-700 hover:bg-purple-600 text-white transition-colors text-center">
                 Print Label
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print Serial Labels after opening stock creation */}
+      {printSerialMat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6 text-center" style={{ background: 'rgb(24,24,27)' }}>
+            <Package className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+            <h3 className="text-white font-semibold mb-1">Material Created</h3>
+            <p className="text-zinc-400 text-sm mb-1">{printSerialMat.name}</p>
+            <p className="text-emerald-400 text-sm font-medium mb-5">{printSerialMat.labelCount} barcode label{printSerialMat.labelCount !== 1 ? 's' : ''} generated</p>
+            <p className="text-zinc-500 text-xs mb-4">Print labels and scan each barcode to confirm stock</p>
+            <div className="flex gap-3">
+              <button onClick={() => setPrintSerialMat(null)}
+                className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                Later
+              </button>
+              <a href={`/print/opening-stock/${printSerialMat.id}`} target="_blank"
+                onClick={() => setPrintSerialMat(null)}
+                className="flex-1 py-2 rounded-lg text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors text-center">
+                Print Labels
               </a>
             </div>
           </div>
