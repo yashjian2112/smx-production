@@ -5,9 +5,9 @@ import PrintOpeningStockLabels from './PrintOpeningStockLabels';
 export default async function OpeningStockLabelsPage({ params }: { params: Promise<{ materialId: string }> }) {
   const { materialId } = await params;
 
-  // Get all serials for this material that have no GRN (opening stock)
+  // Get all serials for this material that have no GRN (opening stock) and valid barcodes
   const serials = await prisma.materialSerial.findMany({
-    where: { materialId, grnId: null },
+    where: { materialId, grnId: null, barcode: { not: '' } },
     include: { material: { select: { id: true, name: true, code: true, unit: true, packSize: true } } },
     orderBy: { barcode: 'asc' },
   });

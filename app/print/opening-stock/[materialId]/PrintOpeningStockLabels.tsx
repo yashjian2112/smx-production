@@ -31,7 +31,7 @@ export default function PrintOpeningStockLabels({ material, serials }: Props) {
     return () => clearTimeout(t);
   }, []);
 
-  const packLabel = material.packSize > 1 ? ` (Pack of ${material.packSize})` : '';
+  const packLabel = material.packSize > 1 ? ` (Pack of ${material.packSize} ${material.unit})` : '';
 
   return (
     <>
@@ -115,12 +115,12 @@ export default function PrintOpeningStockLabels({ material, serials }: Props) {
       `}</style>
 
       <div className="no-print">
-        <strong>Opening Stock: {material.name}</strong> &nbsp;·&nbsp;
-        {serials.length} labels &nbsp;·&nbsp;
+        <strong>Opening Stock: {material.name}{packLabel}</strong> &nbsp;·&nbsp;
+        {serials.filter(s => s.barcode && s.barcode.trim()).length} labels &nbsp;·&nbsp;
         50mm x 25mm &nbsp;·&nbsp; TVS LP46 Neo
       </div>
 
-      {serials.map(s => (
+      {serials.filter(s => s.barcode && s.barcode.trim()).map(s => (
         <div key={s.id} className="label">
           <div className="label-name">{material.name}{packLabel}</div>
           <div className="label-barcode">
