@@ -106,8 +106,21 @@ async function getDashboardData(role: string, userId: string) {
       return { role: 'purchase', pendingROs, openRFQs, activePOs, pendingPayments };
     }
 
-    // ── STORE MANAGER ─────────────────────────────────────────
-    if (role === 'STORE_MANAGER') {
+    // ── QC_USER ────────────────────────────────────────────────
+    if (role === 'QC_USER') {
+      const [qcPass, qcFail, pendingQC, myCompletedToday] = await Promise.all([
+        prisma.qCRecord.count({ where: { result: 'PASS', createdAt: { gte: today } } }),
+        prisma.qCRecord.count({ where: { result: 'FAIL', createdAt: { gte: today } } }),
+        prisma.controllerUnit.count({
+          where: { currentStage: 'QC_AND_SOFTWARE', currentStatus: { in: ['PENDING', 'IN_PROGRESS'] }, order: { status: 'ACTIVE' } },
+        }),
+        prisma.stageLog.count({ where: { userId, statusTo: 'COMPLETED', createdAt: { gte: today } } }),
+      ]);
+      return { role: 'qc', qcPass, qcFail, pendingQC, myCompletedToday };
+    }
+
+    // ── STORE MANAGER / INVENTORY MANAGER ─────────────────────
+    if (role === 'STORE_MANAGER' || role === 'INVENTORY_MANAGER') {
       const [allMaterials, pendingROs] = await Promise.all([
         prisma.rawMaterial.findMany({ select: { currentStock: true, minimumStock: true } }),
         prisma.requirementOrder.count({ where: { status: 'PENDING' } }),
@@ -151,7 +164,8 @@ async function getDashboardData(role: string, userId: string) {
     if (role === 'SALES') return { role: 'sales', draftPIs: 0, pendingPIs: 0, approvedPIs: 0, monthlyInvoiceCount: 0, monthlyRevenue: 0 };
     if (role === 'ACCOUNTS') return { role: 'accounts', pendingPIs: 0, submittedDOs: 0, overdueCount: 0, overdueAmount: 0, outstandingCount: 0, outstandingAmount: 0 };
     if (role === 'PURCHASE_MANAGER') return { role: 'purchase', pendingROs: 0, openRFQs: 0, activePOs: 0, pendingPayments: 0 };
-    if (role === 'STORE_MANAGER') return { role: 'store', lowStockCount: 0, totalMaterials: 0, pendingROs: 0 };
+    if (role === 'QC_USER') return { role: 'qc', qcPass: 0, qcFail: 0, pendingQC: 0, myCompletedToday: 0 };
+    if (role === 'STORE_MANAGER' || role === 'INVENTORY_MANAGER') return { role: 'store', lowStockCount: 0, totalMaterials: 0, pendingROs: 0 };
     return {
       role: 'manager',
       activeOrders: 0,
@@ -415,8 +429,30 @@ export default async function DashboardPage() {
     );
   }
 
-  // ── STORE MANAGER ─────────────────────────────────────────
-  if (session.role === 'STORE_MANAGER') {
+  // ── QC USER ────────────────────────────────────────────────
+  if (session.role === 'QC_USER') {
+    const qd = data as { qcPass: number; qcFail: number; pendingQC: number; myCompletedToday: number };
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-semibold">QC Dashboard</h2>
+          <p className="text-zinc-500 text-xs mt-0.5">{session.name}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="QC Pass Today" value={qd.qcPass} color="text-emerald-400" sub="Passed inspection" />
+          <StatCard label="QC Fail Today" value={qd.qcFail} color="text-red-400" sub="Failed / sent to rework" />
+          <StatCard label="Pending QC" value={qd.pendingQC} color="text-amber-400" sub="Awaiting inspection" />
+          <StatCard label="My Completed" value={qd.myCompletedToday} color="text-sky-400" sub="Units I completed today" />
+        </div>
+        <div className="space-y-3">
+          <QuickLink href="/production/floor" label="QC Floor" sub="Scan and inspect units" color="emerald" />
+        </div>
+      </div>
+    );
+  }
+
+  // ── STORE MANAGER / INVENTORY MANAGER ─────────────────────
+  if (session.role === 'STORE_MANAGER' || session.role === 'INVENTORY_MANAGER') {
     const sm = data as { lowStockCount: number; totalMaterials: number; pendingROs: number };
     return (
       <div className="space-y-6">
