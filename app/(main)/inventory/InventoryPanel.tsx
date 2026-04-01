@@ -1643,11 +1643,11 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
               {/* Min stock */}
               <div>
                 <label className="text-zinc-400 text-xs">
-                  Min Stock {parseInt(fPackSize) > 1 && <span className="text-zinc-500">({fPurchaseUnit || fUnit})</span>} *
+                  Min Stock <span className="text-zinc-500">({parseInt(fPackSize) > 1 ? (fPurchaseUnit || fUnit) : fUnit})</span> *
                 </label>
                 <input type="number" step="any" min="0" value={fMin} onChange={e => setFMin(e.target.value)} required
                   onWheel={e => (e.target as HTMLInputElement).blur()}
-                  placeholder={parseInt(fPackSize) > 1 ? `No. of ${(fPurchaseUnit || fUnit).toLowerCase()}` : '0'}
+                  placeholder={`No. of ${(parseInt(fPackSize) > 1 ? (fPurchaseUnit || fUnit) : fUnit).toLowerCase()}`}
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
                 {parseInt(fPackSize) > 1 && fMin && parseFloat(fMin) > 0 && (
@@ -1686,11 +1686,11 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
               {!editMat && (
                 <div className="pt-2 border-t border-zinc-800">
                   <p className="text-zinc-400 text-xs mb-2">
-                    Opening Stock {parseInt(fPackSize) > 1 && <span className="text-zinc-500">({fPurchaseUnit || fUnit})</span>} *
+                    Opening Stock <span className="text-zinc-500">({parseInt(fPackSize) > 1 ? (fPurchaseUnit || fUnit) : fUnit})</span> *
                   </p>
                   <div>
                     <label className="text-zinc-500 text-xs">
-                      {parseInt(fPackSize) > 1 ? `No. of ${(fPurchaseUnit || fUnit).toLowerCase()} (each = ${fPackSize} ${fUnit})` : 'Quantity'}
+                      {parseInt(fPackSize) > 1 ? `No. of ${(fPurchaseUnit || fUnit).toLowerCase()} (each = ${fPackSize} ${fUnit})` : `Quantity in ${fUnit}`}
                     </label>
                     <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
                       onWheel={(e) => e.currentTarget.blur()} required
