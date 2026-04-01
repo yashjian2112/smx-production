@@ -1215,55 +1215,62 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
 
   async function handleMatSubmit(e: React.FormEvent) {
     e.preventDefault(); setFError(''); setFSaving(true);
-    const body = {
-      name: fName, unit: fUnit, categoryId: fCatId || undefined,
-      description: fDesc || undefined,
-      minimumStock: (parseInt(fPackSize) > 1 ? (parseFloat(fMin) || 0) * parseInt(fPackSize) : parseFloat(fMin) || 0),
-      reorderPoint: (parseInt(fPackSize) > 1 ? (parseFloat(fMin) || 0) * parseInt(fPackSize) : parseFloat(fMin) || 0),
-      minimumOrderQty: parseFloat(fMoq) || 1,
-      packSize: parseInt(fPackSize) || 1,
-      purchaseUnit: fPurchaseUnit || undefined,
-      conversionFactor: fPurchaseUnit && fConvFactor ? parseFloat(fConvFactor) : undefined,
-      ...(!editMat && fBarcodePrefix.trim() ? { barcodePrefix: fBarcodePrefix.trim().toUpperCase() } : {}),
-    };
-    const res = editMat
-      ? await fetch(`/api/inventory/materials/${editMat.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      : await fetch('/api/inventory/materials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    setFSaving(false);
-    if (!res.ok) { const e = await res.json(); setFError(e.error || 'Failed'); return; }
-    // For new material: add opening stock + generate serial barcodes, then prompt to print
-    if (!editMat) {
-      const mat = await res.json();
-      const inputQty = parseFloat(fOpenQty);
-      const ps = parseInt(fPackSize) || 1;
-      const totalQty = ps > 1 ? inputQty * ps : inputQty;
-      const packCount = ps > 1 ? inputQty : inputQty; // number of labels to generate
-      if (!isNaN(totalQty) && totalQty > 0) {
-        const adjustRes = await fetch('/api/inventory/adjust', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            rawMaterialId: mat.id,
-            type:     'OPENING',
-            quantity: totalQty,
-            reason:   ps > 1 ? `Opening stock: ${inputQty} packs × ${ps} = ${totalQty}` : 'Opening stock entry',
-            packCount: Math.ceil(packCount),
-            packSize: ps,
-          }),
-        });
-        const adjustData = await adjustRes.json();
-        if (adjustData.serialIds?.length > 0) {
-          // Has serials — show print serial labels prompt
-          setShowMatForm(false); load();
-          setPrintSerialMat({ id: mat.id, name: mat.name, labelCount: adjustData.serialIds.length });
-          return;
+    try {
+      const body = {
+        name: fName, unit: fUnit, categoryId: fCatId || undefined,
+        description: fDesc || undefined,
+        minimumStock: (parseInt(fPackSize) > 1 ? (parseFloat(fMin) || 0) * parseInt(fPackSize) : parseFloat(fMin) || 0),
+        reorderPoint: (parseInt(fPackSize) > 1 ? (parseFloat(fMin) || 0) * parseInt(fPackSize) : parseFloat(fMin) || 0),
+        minimumOrderQty: 1,
+        packSize: parseInt(fPackSize) || 1,
+        purchaseUnit: fPurchaseUnit || undefined,
+        conversionFactor: fPurchaseUnit && fConvFactor ? parseFloat(fConvFactor) : undefined,
+        ...(!editMat && fBarcodePrefix.trim() ? { barcodePrefix: fBarcodePrefix.trim().toUpperCase() } : {}),
+      };
+      const res = editMat
+        ? await fetch(`/api/inventory/materials/${editMat.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        : await fetch('/api/inventory/materials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); setFSaving(false); setFError(e.error || 'Failed to save material'); return; }
+      // For new material: add opening stock + generate serial barcodes, then prompt to print
+      if (!editMat) {
+        const mat = await res.json();
+        const inputQty = parseFloat(fOpenQty) || 0;
+        const ps = parseInt(fPackSize) || 1;
+        const totalQty = ps > 1 ? inputQty * ps : inputQty;
+        const packCount = Math.ceil(inputQty);
+        if (totalQty > 0) {
+          try {
+            const adjustRes = await fetch('/api/inventory/adjust', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                rawMaterialId: mat.id,
+                type:     'OPENING',
+                quantity: totalQty,
+                reason:   ps > 1 ? `Opening stock: ${inputQty} packs × ${ps} = ${totalQty}` : 'Opening stock entry',
+                packCount,
+                packSize: ps,
+              }),
+            });
+            const adjustData = await adjustRes.json().catch(() => ({}));
+            if (adjustData.serialIds?.length > 0) {
+              setFSaving(false); setShowMatForm(false); load();
+              setPrintSerialMat({ id: mat.id, name: mat.name, labelCount: adjustData.serialIds.length });
+              return;
+            }
+          } catch {
+            // Adjust failed but material was created — continue
+          }
         }
+        setFSaving(false); setShowMatForm(false); load();
+        setPrintMatId(mat.id);
+        return;
       }
-      setShowMatForm(false); load();
-      setPrintMatId(mat.id);
-      return;
+      setFSaving(false); setShowMatForm(false); load();
+    } catch (err) {
+      setFSaving(false);
+      setFError('Network error — please try again');
     }
-    setShowMatForm(false); load();
   }
 
   async function toggleActive(m: RawMaterial) {
@@ -1327,16 +1334,16 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-white font-medium">Raw Materials ({materials.length})</h3>
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <h3 className="text-white font-medium text-sm sm:text-base">Raw Materials ({materials.length})</h3>
         {isAdmin && (
-          <div className="flex gap-2">
+          <div className="flex gap-1.5 sm:gap-2 shrink-0">
             <button onClick={() => setShowCatForm(true)}
-              className="px-3 py-1.5 rounded-lg text-xs text-zinc-300 border border-zinc-700 hover:border-sky-500 hover:text-sky-400 transition-colors">
+              className="px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs text-zinc-300 border border-zinc-700 hover:border-sky-500 hover:text-sky-400 transition-colors">
               + Category
             </button>
             <button onClick={openNewMat}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors">
+              className="px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors">
               + Material
             </button>
           </div>
@@ -1403,51 +1410,68 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
         }).map(m => (
           <div key={m.id} className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
             {/* Main row */}
-            <div className="p-4 flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-white font-medium">{m.name}</span>
-                  <span className="text-zinc-500 text-xs font-mono">{m.barcode ?? m.code}</span>
-                  {m.category && <Badge color="sky">{m.category.name}</Badge>}
-                  {m.isCritical && <Badge color="red">Critical</Badge>}
-                  {!m.isCritical && m.isLowStock && <Badge color="yellow">Low Stock</Badge>}
-                  {!m.active && <Badge color="zinc">Inactive</Badge>}
-                  {(m.variants?.length ?? 0) > 0 && <Badge color="purple">{m.variants!.length} Variants</Badge>}
+            <div className="p-3 sm:p-4">
+              <div className="flex items-start justify-between gap-2 sm:gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                    <span className="text-white font-medium text-sm sm:text-base">{m.name}</span>
+                    <span className="text-zinc-500 text-[10px] sm:text-xs font-mono">{m.barcode ?? m.code}</span>
+                    {m.category && <Badge color="sky">{m.category.name}</Badge>}
+                    {m.isCritical && <Badge color="red">Critical</Badge>}
+                    {!m.isCritical && m.isLowStock && <Badge color="yellow">Low Stock</Badge>}
+                    {!m.active && <Badge color="zinc">Inactive</Badge>}
+                    {(m.variants?.length ?? 0) > 0 && <Badge color="purple">{m.variants!.length} Variants</Badge>}
+                  </div>
+                  <div className="flex items-center gap-2 sm:gap-3 mt-1.5 flex-wrap">
+                    <span className="text-zinc-400 text-[11px] sm:text-xs">
+                      On Hand: <span className={`font-medium ${m.isCritical ? 'text-red-400' : m.isLowStock ? 'text-yellow-400' : 'text-emerald-400'}`}>{fmt(m.currentStock)} {m.unit}</span>
+                    </span>
+                    {(m.committedStock ?? 0) > 0 && (
+                      <span className="text-zinc-500 text-[11px] sm:text-xs">Committed: <span className="text-amber-400 font-medium">{fmt(m.committedStock!)} {m.unit}</span></span>
+                    )}
+                    {(m.committedStock ?? 0) > 0 && (
+                      <span className="text-zinc-500 text-[11px] sm:text-xs">Available: <span className="text-sky-400 font-medium">{fmt(m.availableStock!)} {m.unit}</span></span>
+                    )}
+                    {m.purchaseUnit && m.conversionFactor && (
+                      <span className="text-zinc-600 text-[11px] sm:text-xs">1 {m.purchaseUnit} = {m.conversionFactor} {m.unit}</span>
+                    )}
+                    {m.preferredVendor && <span className="text-zinc-500 text-[11px] sm:text-xs">Vendor: <span className="text-zinc-300">{m.preferredVendor.name}</span></span>}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                  <span className="text-zinc-400 text-xs">
-                    On Hand: <span className={`font-medium ${m.isCritical ? 'text-red-400' : m.isLowStock ? 'text-yellow-400' : 'text-emerald-400'}`}>{fmt(m.currentStock)} {m.unit}</span>
-                  </span>
-                  {(m.committedStock ?? 0) > 0 && (
-                    <span className="text-zinc-500 text-xs">Committed: <span className="text-amber-400 font-medium">{fmt(m.committedStock!)} {m.unit}</span></span>
+                <div className="hidden sm:flex gap-1.5 shrink-0 flex-wrap justify-end items-center">
+                  {isAdmin && (
+                    <button onClick={() => setExpandedMat(expandedMat === m.id ? null : m.id)}
+                      className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                      {expandedMat === m.id ? '▲ Less' : '▼ Variants'}
+                    </button>
                   )}
-                  {(m.committedStock ?? 0) > 0 && (
-                    <span className="text-zinc-500 text-xs">Available: <span className="text-sky-400 font-medium">{fmt(m.availableStock!)} {m.unit}</span></span>
+                  {isAdmin && (
+                    <>
+                      <button onClick={() => openEditMat(m)}
+                        className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Edit</button>
+                      <button onClick={() => toggleActive(m)}
+                        className={`px-2 py-1 rounded-lg text-xs border transition-colors ${m.active ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'}`}>
+                        {m.active ? 'Deactivate' : 'Activate'}
+                      </button>
+                    </>
                   )}
-                  {m.purchaseUnit && m.conversionFactor && (
-                    <span className="text-zinc-600 text-xs">1 {m.purchaseUnit} = {m.conversionFactor} {m.unit}</span>
-                  )}
-                  {m.preferredVendor && <span className="text-zinc-500 text-xs">Vendor: <span className="text-zinc-300">{m.preferredVendor.name}</span></span>}
                 </div>
               </div>
-              <div className="flex gap-1.5 shrink-0 flex-wrap justify-end items-center">
-                {isAdmin && (
+              {/* Mobile action buttons */}
+              {isAdmin && (
+                <div className="flex sm:hidden gap-1.5 mt-2 flex-wrap">
                   <button onClick={() => setExpandedMat(expandedMat === m.id ? null : m.id)}
                     className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
                     {expandedMat === m.id ? '▲ Less' : '▼ Variants'}
                   </button>
-                )}
-                {isAdmin && (
-                  <>
-                    <button onClick={() => openEditMat(m)}
-                      className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Edit</button>
-                    <button onClick={() => toggleActive(m)}
-                      className={`px-2 py-1 rounded-lg text-xs border transition-colors ${m.active ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'}`}>
-                      {m.active ? 'Deactivate' : 'Activate'}
-                    </button>
-                  </>
-                )}
-              </div>
+                  <button onClick={() => openEditMat(m)}
+                    className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Edit</button>
+                  <button onClick={() => toggleActive(m)}
+                    className={`px-2 py-1 rounded-lg text-xs border transition-colors ${m.active ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'}`}>
+                    {m.active ? 'Deactivate' : 'Activate'}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Variants section */}
@@ -2878,10 +2902,10 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
   return (
     <div>
       {/* Tab bar */}
-      <div className="flex gap-1 p-1 rounded-xl mb-6" style={{ background: 'rgba(255,255,255,0.04)' }}>
+      <div className="flex gap-1 p-1 rounded-xl mb-6 overflow-x-auto no-scrollbar" style={{ background: 'rgba(255,255,255,0.04)' }}>
         {visibleTabs.map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+            className={`flex-1 min-w-fit px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
               activeTab === tab ? 'bg-sky-600 text-white shadow-lg' : 'text-zinc-400 hover:text-white'
             }`}>
             {tab}
