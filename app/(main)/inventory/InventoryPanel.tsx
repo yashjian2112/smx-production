@@ -1154,6 +1154,7 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
   const [fBarcodePrefix, setFBarcodePrefix] = useState('');
   const [fPackSize,      setFPackSize]      = useState('1');
   const [fSaving,        setFSaving]        = useState(false);
+  const submitLock = useRef(false);
   const [fError,         setFError]         = useState('');
   const [printMatId,     setPrintMatId]     = useState<string | null>(null);
   const [printSerialMat, setPrintSerialMat] = useState<{ id: string; name: string; labelCount: number } | null>(null);
@@ -1214,7 +1215,10 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
   }
 
   async function handleMatSubmit(e: React.FormEvent) {
-    e.preventDefault(); setFError(''); setFSaving(true);
+    e.preventDefault();
+    if (submitLock.current) return; // prevent double-submit
+    submitLock.current = true;
+    setFError(''); setFSaving(true);
     try {
       const body = {
         name: fName, unit: fUnit, categoryId: fCatId || undefined,
@@ -1230,14 +1234,15 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
       const res = editMat
         ? await fetch(`/api/inventory/materials/${editMat.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         : await fetch('/api/inventory/materials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); setFSaving(false); setFError(e.error || 'Failed to save material'); return; }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); setFSaving(false); submitLock.current = false; setFError(e.error || 'Failed to save material'); return; }
       // For new material: add opening stock + generate serial barcodes, then prompt to print
       if (!editMat) {
         const mat = await res.json();
         const inputQty = parseFloat(fOpenQty) || 0;
         const ps = parseInt(fPackSize) || 1;
         const totalQty = ps > 1 ? inputQty * ps : inputQty;
-        const packCount = Math.ceil(inputQty);
+        // Only generate serial barcodes when packSize > 1 (actual packs to track)
+        const packCount = ps > 1 ? Math.ceil(inputQty) : 0;
         if (totalQty > 0) {
           try {
             const adjustRes = await fetch('/api/inventory/adjust', {
@@ -1248,13 +1253,12 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                 type:     'OPENING',
                 quantity: totalQty,
                 reason:   ps > 1 ? `Opening stock: ${inputQty} packs × ${ps} = ${totalQty}` : 'Opening stock entry',
-                packCount,
-                packSize: ps,
+                ...(packCount > 0 ? { packCount, packSize: ps } : {}),
               }),
             });
             const adjustData = await adjustRes.json().catch(() => ({}));
             if (adjustData.serialIds?.length > 0) {
-              setFSaving(false); setShowMatForm(false); load();
+              setFSaving(false); submitLock.current = false; setShowMatForm(false); load();
               setPrintSerialMat({ id: mat.id, name: mat.name, labelCount: adjustData.serialIds.length });
               return;
             }
@@ -1262,13 +1266,13 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
             // Adjust failed but material was created — continue
           }
         }
-        setFSaving(false); setShowMatForm(false); load();
+        setFSaving(false); submitLock.current = false; setShowMatForm(false); load();
         setPrintMatId(mat.id);
         return;
       }
-      setFSaving(false); setShowMatForm(false); load();
+      setFSaving(false); submitLock.current = false; setShowMatForm(false); load();
     } catch (err) {
-      setFSaving(false);
+      setFSaving(false); submitLock.current = false;
       setFError('Network error — please try again');
     }
   }
@@ -1638,17 +1642,16 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
               {/* Min stock */}
               <div>
                 <label className="text-zinc-400 text-xs">
-                  Min Stock * <span className="text-zinc-600">
-                    ({parseInt(fPackSize) > 1 ? `in packs of ${fPackSize} ${fUnit}` : 'reorder trigger'})
-                  </span>
+                  Min Stock {parseInt(fPackSize) > 1 && <span className="text-zinc-500">({fPurchaseUnit || fUnit})</span>} *
                 </label>
                 <input type="number" step="any" min="0" value={fMin} onChange={e => setFMin(e.target.value)} required
                   onWheel={e => (e.target as HTMLInputElement).blur()}
+                  placeholder={parseInt(fPackSize) > 1 ? `No. of ${(fPurchaseUnit || fUnit).toLowerCase()}` : '0'}
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
                 {parseInt(fPackSize) > 1 && fMin && parseFloat(fMin) > 0 && (
                   <p className="text-zinc-500 text-xs mt-1">
-                    Reorder when stock falls below <span className="text-amber-400 font-medium">{parseFloat(fMin) * parseInt(fPackSize)} {fUnit}</span> ({fMin} packs)
+                    {fMin} {(fPurchaseUnit || fUnit).toLowerCase()} = <span className="text-amber-400 font-medium">{parseFloat(fMin) * parseInt(fPackSize)} {fUnit}</span>
                   </p>
                 )}
               </div>
@@ -1681,10 +1684,12 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
               {/* Opening stock — mandatory for new materials */}
               {!editMat && (
                 <div className="pt-2 border-t border-zinc-800">
-                  <p className="text-zinc-400 text-xs mb-2">Opening Stock *</p>
+                  <p className="text-zinc-400 text-xs mb-2">
+                    Opening Stock {parseInt(fPackSize) > 1 && <span className="text-zinc-500">({fPurchaseUnit || fUnit})</span>} *
+                  </p>
                   <div>
                     <label className="text-zinc-500 text-xs">
-                      {parseInt(fPackSize) > 1 ? `No. of packs (each pack = ${fPackSize} ${fUnit})` : 'Quantity'}
+                      {parseInt(fPackSize) > 1 ? `No. of ${(fPurchaseUnit || fUnit).toLowerCase()} (each = ${fPackSize} ${fUnit})` : 'Quantity'}
                     </label>
                     <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
                       onWheel={(e) => e.currentTarget.blur()} required
@@ -1692,7 +1697,7 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                       style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
                     {parseInt(fPackSize) > 1 && fOpenQty && parseFloat(fOpenQty) > 0 && (
                       <p className="text-zinc-500 text-xs mt-1">
-                        {fOpenQty} packs × {fPackSize} {fUnit} = <span className="text-emerald-400 font-medium">{parseFloat(fOpenQty) * parseInt(fPackSize)} {fUnit} total</span>
+                        {fOpenQty} {(fPurchaseUnit || fUnit).toLowerCase()} × {fPackSize} {fUnit} = <span className="text-emerald-400 font-medium">{parseFloat(fOpenQty) * parseInt(fPackSize)} {fUnit} total</span>
                       </p>
                     )}
                   </div>
