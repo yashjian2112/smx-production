@@ -327,11 +327,18 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-400 border border-emerald-700/50 hover:bg-emerald-900/20 transition-colors disabled:opacity-50">
               {generating ? 'Generating...' : 'Generate Barcodes'}
             </button>
-          ) : completed >= total || genDone ? (
-            <span className="inline-flex items-center gap-1 px-3 py-1.5 text-xs text-emerald-400">
-              <Check className="w-3 h-3" /> Ready for Dispatch
-            </span>
-          ) : null}
+          ) : (
+            <>
+              <a href={`/print/order-barcodes/${order.id}`} target="_blank" rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-sky-400 border border-sky-700/50 hover:bg-sky-900/20 transition-colors">
+                Print Barcodes
+              </a>
+              <span className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-emerald-400">
+                <Check className="w-3 h-3" /> Ready for Dispatch
+              </span>
+            </>
+          )}
         </div>
       )}
     </Link>
