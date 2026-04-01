@@ -1637,22 +1637,13 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                 )}
               </div>
 
-              {/* Min stock + MOQ */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-zinc-400 text-xs">Min Stock <span className="text-zinc-600">(reorder trigger)</span></label>
-                  <input type="number" step="any" min="0" value={fMin} onChange={e => setFMin(e.target.value)}
-                    onWheel={e => (e.target as HTMLInputElement).blur()}
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
-                <div>
-                  <label className="text-zinc-400 text-xs">Min Order Qty</label>
-                  <input type="number" step="any" min="1" value={fMoq} onChange={e => setFMoq(e.target.value)}
-                    onWheel={e => (e.target as HTMLInputElement).blur()}
-                    className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                    style={{ background: 'rgb(39,39,42)' }} />
-                </div>
+              {/* Min stock */}
+              <div>
+                <label className="text-zinc-400 text-xs">Min Stock <span className="text-zinc-600">(reorder trigger)</span></label>
+                <input type="number" step="any" min="0" value={fMin} onChange={e => setFMin(e.target.value)}
+                  onWheel={e => (e.target as HTMLInputElement).blur()}
+                  className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
+                  style={{ background: 'rgb(39,39,42)' }} />
               </div>
 
               {/* Pack Size — admin only */}
