@@ -102,14 +102,13 @@ export async function POST(req: Request) {
 
       for (let i = 0; i < data.packCount; i++) {
         const barcode = `${prefix}${String(seq + i).padStart(5, '0')}`;
-        const unitsInPack = Math.min(ps, data.quantity - i * ps);
         const serial = await tx.materialSerial.create({
           data: {
             materialId: data.rawMaterialId,
             grnId: null,
             stageType: 'GN',
             barcode,
-            quantity: unitsInPack > 0 ? unitsInPack : ps,
+            quantity: ps,
             status: 'PRINTED',
           },
         });

@@ -1252,18 +1252,27 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                 type:     'OPENING',
                 quantity: inputQty,
                 reason:   ps > 1 ? `Opening stock: ${inputQty} ${(fPurchaseUnit || fUnit).toLowerCase()}` : `Opening stock: ${inputQty} ${fUnit}`,
-                packCount,
+                packCount: Math.max(packCount, 1),
                 packSize: ps,
               }),
             });
+            if (!adjustRes.ok) {
+              const errData = await adjustRes.json().catch(() => ({}));
+              console.error('Adjust failed:', errData);
+              setFSaving(false); submitLock.current = false;
+              setFError(`Material created but stock adjustment failed: ${errData.error || 'Unknown error'}`);
+              load();
+              return;
+            }
             const adjustData = await adjustRes.json().catch(() => ({}));
             if (adjustData.serialIds?.length > 0) {
               setFSaving(false); submitLock.current = false; setShowMatForm(false); load();
               setPrintSerialMat({ id: mat.id, name: mat.name, labelCount: adjustData.serialIds.length });
               return;
             }
-          } catch {
-            // Adjust failed but material was created — continue
+          } catch (err) {
+            console.error('Adjust network error:', err);
+            // Material was created — show it but warn
           }
         }
         setFSaving(false); submitLock.current = false; setShowMatForm(false); load();
@@ -1643,19 +1652,26 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
               <div>
                 <label className="text-zinc-400 text-xs">
                   Min Stock * <span className="text-zinc-500">
-                    {parseInt(fPackSize) > 1
-                      ? `(in ${(fPurchaseUnit || fUnit).toLowerCase()}, 1 ${(fPurchaseUnit || fUnit).toLowerCase()} = ${fPackSize} ${fUnit})`
-                      : `(${fUnit})`}
+                    {fPurchaseUnit
+                      ? `(in ${fPurchaseUnit}, 1 ${fPurchaseUnit} = ${fConvFactor || '?'} ${fUnit})`
+                      : parseInt(fPackSize) > 1
+                        ? `(in packs of ${fPackSize} ${fUnit})`
+                        : `(${fUnit})`}
                   </span>
                 </label>
                 <input type="number" step="any" min="0" value={fMin} onChange={e => setFMin(e.target.value)} required
                   onWheel={e => (e.target as HTMLInputElement).blur()}
-                  placeholder={`No. of ${(parseInt(fPackSize) > 1 ? (fPurchaseUnit || fUnit) : fUnit).toLowerCase()}`}
+                  placeholder={fPurchaseUnit ? `No. of ${fPurchaseUnit}` : parseInt(fPackSize) > 1 ? `No. of packs` : `Quantity in ${fUnit}`}
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
-                {parseInt(fPackSize) > 1 && fMin && parseFloat(fMin) > 0 && (
+                {fPurchaseUnit && fConvFactor && fMin && parseFloat(fMin) > 0 && (
                   <p className="text-zinc-500 text-xs mt-1">
-                    {fMin} {(fPurchaseUnit || fUnit).toLowerCase()} = <span className="text-amber-400 font-medium">{parseFloat(fMin) * parseInt(fPackSize)} {fUnit}</span>
+                    {fMin} {fPurchaseUnit} = <span className="text-amber-400 font-medium">{parseFloat(fMin) * parseFloat(fConvFactor)} {fUnit}</span>
+                  </p>
+                )}
+                {!fPurchaseUnit && parseInt(fPackSize) > 1 && fMin && parseFloat(fMin) > 0 && (
+                  <p className="text-zinc-500 text-xs mt-1">
+                    {fMin} packs = <span className="text-amber-400 font-medium">{parseFloat(fMin) * parseInt(fPackSize)} {fUnit}</span>
                   </p>
                 )}
               </div>
@@ -1690,22 +1706,36 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                 <div className="pt-2 border-t border-zinc-800">
                   <p className="text-zinc-400 text-xs mb-2">
                     Opening Stock * <span className="text-zinc-500">
-                      {parseInt(fPackSize) > 1
-                        ? `(in ${(fPurchaseUnit || fUnit).toLowerCase()}, 1 ${(fPurchaseUnit || fUnit).toLowerCase()} = ${fPackSize} ${fUnit})`
-                        : `(${fUnit})`}
+                      {fPurchaseUnit
+                        ? `(in ${fPurchaseUnit}, 1 ${fPurchaseUnit} = ${fConvFactor || '?'} ${fUnit})`
+                        : parseInt(fPackSize) > 1
+                          ? `(in packs of ${fPackSize} ${fUnit})`
+                          : `(${fUnit})`}
                     </span>
                   </p>
                   <div>
                     <label className="text-zinc-500 text-xs">
-                      {parseInt(fPackSize) > 1 ? `No. of ${(fPurchaseUnit || fUnit).toLowerCase()}` : `Quantity in ${fUnit}`}
+                      {fPurchaseUnit ? `No. of ${fPurchaseUnit}` : parseInt(fPackSize) > 1 ? `No. of packs` : `Quantity in ${fUnit}`}
                     </label>
                     <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
                       onWheel={(e) => e.currentTarget.blur()} required
                       className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
                       style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
-                    {parseInt(fPackSize) > 1 && fOpenQty && parseFloat(fOpenQty) > 0 && (
+                    {fPurchaseUnit && fConvFactor && fOpenQty && parseFloat(fOpenQty) > 0 && (
                       <p className="text-zinc-500 text-xs mt-1">
-                        {fOpenQty} {(fPurchaseUnit || fUnit).toLowerCase()} × {fPackSize} {fUnit} = <span className="text-emerald-400 font-medium">{parseFloat(fOpenQty) * parseInt(fPackSize)} {fUnit} total</span>
+                        {fOpenQty} {fPurchaseUnit} × {fConvFactor} {fUnit} = <span className="text-emerald-400 font-medium">{parseFloat(fOpenQty) * parseFloat(fConvFactor)} {fUnit} total</span>
+                        {' · '}<span className="text-sky-400">{Math.ceil(parseFloat(fOpenQty))} barcodes will be generated</span>
+                      </p>
+                    )}
+                    {!fPurchaseUnit && parseInt(fPackSize) > 1 && fOpenQty && parseFloat(fOpenQty) > 0 && (
+                      <p className="text-zinc-500 text-xs mt-1">
+                        {fOpenQty} packs × {fPackSize} {fUnit} = <span className="text-emerald-400 font-medium">{parseFloat(fOpenQty) * parseInt(fPackSize)} {fUnit} total</span>
+                        {' · '}<span className="text-sky-400">{Math.ceil(parseFloat(fOpenQty))} barcodes will be generated</span>
+                      </p>
+                    )}
+                    {!fPurchaseUnit && parseInt(fPackSize) <= 1 && fOpenQty && parseFloat(fOpenQty) > 0 && (
+                      <p className="text-zinc-500 text-xs mt-1">
+                        <span className="text-sky-400">{Math.ceil(parseFloat(fOpenQty))} barcodes will be generated</span>
                       </p>
                     )}
                   </div>
