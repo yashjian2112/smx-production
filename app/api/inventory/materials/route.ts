@@ -87,6 +87,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Material "${existingName.name}" already exists (code: ${existingName.code})` }, { status: 409 });
   }
 
+  // Check for duplicate barcode prefix
+  const prefix = data.barcodePrefix.trim().toUpperCase();
+  const existingPrefix = await prisma.rawMaterial.findFirst({
+    where: { barcode: { startsWith: prefix } },
+    select: { name: true, barcode: true },
+  });
+  if (existingPrefix) {
+    return NextResponse.json({ error: `Barcode prefix "${prefix}" is already used by "${existingPrefix.name}"` }, { status: 409 });
+  }
+
   const code    = data.code || await generateNextMaterialCode();
   const barcode = await generateMaterialBarcode(data.categoryId, data.barcodePrefix);
 
