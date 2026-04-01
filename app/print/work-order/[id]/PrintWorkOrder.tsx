@@ -14,7 +14,6 @@ interface Props {
     createdBy: string;
     piNumber: string | null;
     clientPO: string | null;
-    units: { serialNumber: string; barcode: string; status: string }[];
   };
 }
 
@@ -107,30 +106,11 @@ export default function PrintWorkOrder({ order }: Props) {
           </tbody>
         </table>
 
-        {/* Unit Serial Numbers */}
-        <h3 style={{ fontSize: '10pt', fontWeight: 'bold', marginBottom: '8px', borderBottom: '1px solid #ddd', paddingBottom: '4px' }}>
-          Unit Serial Numbers ({order.units.length})
-        </h3>
-        <table style={{ width: '100%', fontSize: '9pt', borderCollapse: 'collapse', marginBottom: '24px' }}>
-          <thead>
-            <tr style={{ background: '#f5f5f5' }}>
-              <th style={{ padding: '4px 8px', border: '1px solid #ddd', textAlign: 'left', width: '10%' }}>#</th>
-              <th style={{ padding: '4px 8px', border: '1px solid #ddd', textAlign: 'left', width: '45%' }}>Serial Number</th>
-              <th style={{ padding: '4px 8px', border: '1px solid #ddd', textAlign: 'left', width: '30%' }}>Barcode</th>
-              <th style={{ padding: '4px 8px', border: '1px solid #ddd', textAlign: 'left', width: '15%' }}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {order.units.map((u, i) => (
-              <tr key={u.serialNumber}>
-                <td style={{ padding: '3px 8px', border: '1px solid #ddd' }}>{i + 1}</td>
-                <td style={{ padding: '3px 8px', border: '1px solid #ddd', fontFamily: 'Courier New, monospace' }}>{u.serialNumber}</td>
-                <td style={{ padding: '3px 8px', border: '1px solid #ddd', fontFamily: 'Courier New, monospace' }}>{u.barcode || '—'}</td>
-                <td style={{ padding: '3px 8px', border: '1px solid #ddd' }}>{u.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {/* Order Summary */}
+        <div style={{ padding: '12px', border: '2px solid #000', borderRadius: '4px', marginBottom: '24px', textAlign: 'center' }}>
+          <p style={{ fontSize: '14pt', fontWeight: 'bold', marginBottom: '4px' }}>{order.product.name}</p>
+          <p style={{ fontSize: '12pt' }}>Quantity: <strong>{order.quantity}</strong> unit{order.quantity !== 1 ? 's' : ''}</p>
+        </div>
 
         {/* Signature */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px', fontSize: '9pt' }}>

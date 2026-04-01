@@ -12,10 +12,6 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
         product: true,
         client: true,
         proformaInvoice: { select: { invoiceNumber: true, clientPONumber: true } },
-        units: {
-          select: { serialNumber: true, finalAssemblyBarcode: true, currentStatus: true },
-          orderBy: { serialNumber: 'asc' },
-        },
       },
     }),
     prisma.order.findUnique({ where: { id }, select: { createdById: true } }).then(async o =>
@@ -38,11 +34,6 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
         createdBy: createdByUser?.name ?? '—',
         piNumber: order.proformaInvoice?.invoiceNumber ?? null,
         clientPO: order.proformaInvoice?.clientPONumber ?? null,
-        units: order.units.map(u => ({
-          serialNumber: u.serialNumber,
-          barcode: u.finalAssemblyBarcode ?? '',
-          status: u.currentStatus,
-        })),
       }}
     />
   );
