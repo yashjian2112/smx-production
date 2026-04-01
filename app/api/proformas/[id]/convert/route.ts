@@ -3,7 +3,7 @@ import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
 import { generateNextSerial } from '@/lib/serial';
-import { generateNextPowerstageBarcode, generateNextBrainboardBarcode, generateNextQCBarcode } from '@/lib/barcode';
+import { generateNextPowerstageBarcode, generateNextBrainboardBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
 import { StageType } from '@prisma/client';
 import { z } from 'zod';
 
@@ -100,58 +100,80 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     for (const targetItem of productItems) {
       const product = targetItem.product!;
       const qty = targetItem.quantity;
+      const isTrading = product.productType === 'TRADING';
 
-      // Try to allocate PS and BB barcodes from MaterialSerial inventory
-      const availablePS = await prisma.materialSerial.findMany({
-        where: { stageType: 'PS', status: 'CONFIRMED' },
-        orderBy: { createdAt: 'asc' },
-        take: qty,
-      });
-      const availableBB = await prisma.materialSerial.findMany({
-        where: { stageType: 'BB', status: 'CONFIRMED' },
-        orderBy: { createdAt: 'asc' },
-        take: qty,
-      });
-      const useInventoryPS = availablePS.length >= qty;
-      const useInventoryBB = availableBB.length >= qty;
+      if (isTrading) {
+        // ── TRADING ITEMS: units start at FINAL_ASSEMBLY / APPROVED (ready for dispatch) ──
+        for (let i = 0; i < qty; i++) {
+          const serial = await generateNextSerial(product.code);
+          const finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(product.code);
 
-      for (let i = 0; i < qty; i++) {
-        const serial    = await generateNextSerial(product.code);
-        const qcBarcode = await generateNextQCBarcode(product.code);
-        const powerstageBarcode = useInventoryPS
-          ? availablePS[i].barcode
-          : await generateNextPowerstageBarcode(product.code);
-        const brainboardBarcode = useInventoryBB
-          ? availableBB[i].barcode
-          : await generateNextBrainboardBarcode(product.code);
-
-        await prisma.controllerUnit.create({
-          data: {
-            serialNumber: serial,
-            orderId:     order.id,
-            productId:   product.id,
-            currentStage:  StageType.POWERSTAGE_MANUFACTURING,
-            currentStatus: 'PENDING',
-            powerstageBarcode,
-            brainboardBarcode,
-            qcBarcode,
-            returnRequestId: linkedReturn?.id ?? undefined,
-          },
+          await prisma.controllerUnit.create({
+            data: {
+              serialNumber: serial,
+              orderId:     order.id,
+              productId:   product.id,
+              currentStage:  StageType.FINAL_ASSEMBLY,
+              currentStatus: 'APPROVED',
+              readyForDispatch: false,
+              finalAssemblyBarcode,
+              returnRequestId: linkedReturn?.id ?? undefined,
+            },
+          });
+        }
+      } else {
+        // ── MANUFACTURED ITEMS: units start at POWERSTAGE / PENDING ──
+        const availablePS = await prisma.materialSerial.findMany({
+          where: { stageType: 'PS', status: 'CONFIRMED' },
+          orderBy: { createdAt: 'asc' },
+          take: qty,
         });
-      }
+        const availableBB = await prisma.materialSerial.findMany({
+          where: { stageType: 'BB', status: 'CONFIRMED' },
+          orderBy: { createdAt: 'asc' },
+          take: qty,
+        });
+        const useInventoryPS = availablePS.length >= qty;
+        const useInventoryBB = availableBB.length >= qty;
 
-      // Mark allocated MaterialSerials
-      if (useInventoryPS) {
-        await prisma.materialSerial.updateMany({
-          where: { id: { in: availablePS.slice(0, qty).map(s => s.id) } },
-          data: { status: 'ALLOCATED', allocatedToOrderId: order.id },
-        });
-      }
-      if (useInventoryBB) {
-        await prisma.materialSerial.updateMany({
-          where: { id: { in: availableBB.slice(0, qty).map(s => s.id) } },
-          data: { status: 'ALLOCATED', allocatedToOrderId: order.id },
-        });
+        for (let i = 0; i < qty; i++) {
+          const serial    = await generateNextSerial(product.code);
+          const qcBarcode = await generateNextQCBarcode(product.code);
+          const powerstageBarcode = useInventoryPS
+            ? availablePS[i].barcode
+            : await generateNextPowerstageBarcode(product.code);
+          const brainboardBarcode = useInventoryBB
+            ? availableBB[i].barcode
+            : await generateNextBrainboardBarcode(product.code);
+
+          await prisma.controllerUnit.create({
+            data: {
+              serialNumber: serial,
+              orderId:     order.id,
+              productId:   product.id,
+              currentStage:  StageType.POWERSTAGE_MANUFACTURING,
+              currentStatus: 'PENDING',
+              powerstageBarcode,
+              brainboardBarcode,
+              qcBarcode,
+              returnRequestId: linkedReturn?.id ?? undefined,
+            },
+          });
+        }
+
+        // Mark allocated MaterialSerials
+        if (useInventoryPS) {
+          await prisma.materialSerial.updateMany({
+            where: { id: { in: availablePS.slice(0, qty).map(s => s.id) } },
+            data: { status: 'ALLOCATED', allocatedToOrderId: order.id },
+          });
+        }
+        if (useInventoryBB) {
+          await prisma.materialSerial.updateMany({
+            where: { id: { in: availableBB.slice(0, qty).map(s => s.id) } },
+            data: { status: 'ALLOCATED', allocatedToOrderId: order.id },
+          });
+        }
       }
     }
 
