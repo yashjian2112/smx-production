@@ -67,6 +67,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
     { key: 1, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', includeHarness: false },
   ]);
   const [hsnInputs, setHsnInputs] = useState<Record<number, string>>({});  // custom HSN per item
+  const [productSearches, setProductSearches] = useState<Record<number, string>>({});
 
   const [exchangeRate,     setExchangeRate]     = useState<number | ''>('');
   const [rateLoading,      setRateLoading]      = useState(false);
@@ -387,8 +388,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           )}
         </div>
 
-        {/* Exchange rate — shown for USD (export) and USD-INR dual mode */}
-        {(dualCurrency || currency === 'USD') && (
+        {/* Exchange rate — shown for USD-INR dual mode only (not for global/export clients) */}
+        {(dualCurrency || (currency === 'USD' && !isGlobal)) && (
           <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.15)' }}>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-sky-400">USD → INR Rate</span>
@@ -541,13 +542,40 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                 )}
               </div>
 
-              {/* Product select */}
+              {/* Product select with search */}
               <div>
                 <label className={lCls}>Product (from catalogue)</label>
-                <select value={item.productId} onChange={(e) => handleProductSelect(item.key, e.target.value)} className={sCls}>
-                  <option value="">— Custom / manual entry —</option>
-                  {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search products or type to filter..."
+                    value={item.productId ? products.find(p => p.id === item.productId)?.name ?? '' : (productSearches[item.key] ?? '')}
+                    onChange={(e) => {
+                      setProductSearches(prev => ({ ...prev, [item.key]: e.target.value }));
+                      if (item.productId) handleProductSelect(item.key, '');
+                    }}
+                    onFocus={() => setProductSearches(prev => ({ ...prev, [item.key]: prev[item.key] ?? '' }))}
+                    className={iCls}
+                  />
+                  {(productSearches[item.key] !== undefined && !item.productId) && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-lg border border-zinc-700" style={{ background: 'rgb(30,30,34)' }}>
+                      <button type="button" onClick={() => { handleProductSelect(item.key, ''); setProductSearches(prev => { const n = { ...prev }; delete n[item.key]; return n; }); }}
+                        className="w-full text-left px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-700/50 border-b border-zinc-800">
+                        — Custom / manual entry —
+                      </button>
+                      {products
+                        .filter(p => !productSearches[item.key] || p.name.toLowerCase().includes((productSearches[item.key] ?? '').toLowerCase()) || p.code.toLowerCase().includes((productSearches[item.key] ?? '').toLowerCase()))
+                        .map(p => (
+                          <button key={p.id} type="button" onClick={() => { handleProductSelect(item.key, p.id); setProductSearches(prev => { const n = { ...prev }; delete n[item.key]; return n; }); }}
+                            className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-700/50 flex items-center justify-between">
+                            <span>{p.name}</span>
+                            <span className="text-zinc-600 font-mono text-[10px]">{p.code}</span>
+                          </button>
+                        ))
+                      }
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Description */}
@@ -598,7 +626,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                 </div>
               </div>
 
-              {/* Harness checkbox */}
+              {/* Harness checkbox — only for controller products (HSN 85371000) */}
+              {item.hsnCode === '85371000' && (
               <label className="flex items-center gap-2.5 cursor-pointer select-none py-1">
                 <div
                   className="relative w-9 h-[18px] rounded-full transition-colors shrink-0"
@@ -614,6 +643,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                   {item.includeHarness ? 'Harness included (same qty)' : 'Add Harness'}
                 </span>
               </label>
+              )}
 
               {/* Price + Discount + Amount */}
               <div className="grid grid-cols-3 gap-3">

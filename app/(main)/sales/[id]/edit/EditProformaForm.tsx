@@ -424,8 +424,8 @@ export function EditProformaForm({
         </div>
       </div>
 
-      {/* Exchange Rate (USD export + USD-INR dual) */}
-      {(dualCurrency || currency === 'USD') && (
+      {/* Exchange Rate (USD-INR dual only — not for global/export clients) */}
+      {(dualCurrency || (currency === 'USD' && !isExport)) && (
         <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
           <div className="flex items-center justify-between">
             <label className={lCls} style={{ marginBottom: 0 }}>Exchange Rate (1 USD = ₹ ?)</label>
@@ -557,7 +557,8 @@ export function EditProformaForm({
                 </div>
               </div>
 
-              {/* Harness checkbox */}
+              {/* Harness checkbox — only for controller products (HSN 85371000) */}
+              {item.hsnCode === '85371000' && (
               <label className="flex items-center gap-2.5 cursor-pointer select-none py-1">
                 <div
                   className="relative w-9 h-[18px] rounded-full transition-colors shrink-0"
@@ -573,6 +574,7 @@ export function EditProformaForm({
                   {item.includeHarness ? 'Harness included (same qty)' : 'Add Harness'}
                 </span>
               </label>
+              )}
 
               {/* Price + Discount + Amount */}
               <div className="grid grid-cols-3 gap-3">
