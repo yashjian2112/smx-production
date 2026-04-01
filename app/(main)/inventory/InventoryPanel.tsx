@@ -1637,7 +1637,7 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                   <p className="text-zinc-400 text-xs mb-2">Opening Stock *</p>
                   <div>
                     <label className="text-zinc-500 text-xs">
-                      {parseInt(fPackSize) > 1 ? `No. of packs (each pack = ${fPackSize} ${fUnit})` : `Qty (${fUnit})`}
+                      {parseInt(fPackSize) > 1 ? `No. of packs (each pack = ${fPackSize} ${fUnit})` : 'Quantity'}
                     </label>
                     <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
                       onWheel={(e) => e.currentTarget.blur()} required
