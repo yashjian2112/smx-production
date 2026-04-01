@@ -1409,13 +1409,17 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
     submitLock.current = true;
     setFError(''); setFSaving(true);
     try {
+      // Auto-sync packSize from conversion factor when purchase unit is set
+      const effectivePackSize = fPurchaseUnit && fConvFactor
+        ? Math.round(parseFloat(fConvFactor)) || 1
+        : parseInt(fPackSize) || 1;
       const body = {
         name: fName, unit: fUnit, categoryId: fCatId || undefined,
         description: fDesc || undefined,
         minimumStock: parseFloat(fMin) || 0,
         reorderPoint: parseFloat(fMin) || 0,
         minimumOrderQty: 1,
-        packSize: parseInt(fPackSize) || 1,
+        packSize: effectivePackSize,
         purchaseUnit: fPurchaseUnit || undefined,
         conversionFactor: fPurchaseUnit && fConvFactor ? parseFloat(fConvFactor) : undefined,
         ...(!editMat && fBarcodePrefix.trim() ? { barcodePrefix: fBarcodePrefix.trim().toUpperCase() } : {}),
@@ -1428,7 +1432,7 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
       if (!editMat) {
         const mat = await res.json();
         const inputQty = parseFloat(fOpenQty) || 0;
-        const ps = parseInt(fPackSize) || 1;
+        const ps = effectivePackSize;
         // Store in pack units (reels, boxes, etc.) — NOT multiplied to PCS
         const packCount = Math.ceil(inputQty);
         if (inputQty > 0) {
