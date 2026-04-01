@@ -55,13 +55,25 @@ export async function GET() {
     committedMap[item.rawMaterialId] = (committedMap[item.rawMaterialId] ?? 0) + pending;
   }
 
-  // Attach low-stock flag + committed
+  // Count unverified (PRINTED) serials per material for pending verification badge
+  const unverifiedSerials = await prisma.materialSerial.groupBy({
+    by: ['materialId'],
+    where: { status: 'PRINTED' },
+    _count: { id: true },
+  });
+  const unverifiedMap: Record<string, number> = {};
+  for (const row of unverifiedSerials) {
+    unverifiedMap[row.materialId] = row._count.id;
+  }
+
+  // Attach low-stock flag + committed + unverified count
   const result = materials.map(m => ({
     ...m,
     committedStock: committedMap[m.id] ?? 0,
     availableStock: m.currentStock - (committedMap[m.id] ?? 0),
     isLowStock:     m.currentStock <= m.reorderPoint,
     isCritical:     m.currentStock <= m.minimumStock,
+    unverifiedSerials: unverifiedMap[m.id] ?? 0,
   }));
 
   return NextResponse.json(result);

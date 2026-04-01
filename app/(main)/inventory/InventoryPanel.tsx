@@ -15,7 +15,7 @@ interface RawMaterial {
   description?: string | null; hsnCode?: string | null;
   purchasePrice?: number; leadTimeDays?: number;
   currentStock: number; minimumStock: number; reorderPoint: number; minimumOrderQty?: number; packSize?: number;
-  committedStock?: number; availableStock?: number;
+  committedStock?: number; availableStock?: number; unverifiedSerials?: number;
   category?: { id: string; name: string } | null;
   preferredVendor?: { id: string; name: string } | null;
   variants?: MaterialVariant[];
@@ -1130,11 +1130,11 @@ function GRNTab({ isAdmin }: { isAdmin: boolean }) {
 // ─── Print → Confirm → Scan Modal ────────────────────────────────────────────
 interface SerialItem { id: string; barcode: string; status: string; quantity: number; }
 
-function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose }: {
-  materialId: string; materialName: string; labelCount: number; onClose: () => void;
+function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose, startAtScan }: {
+  materialId: string; materialName: string; labelCount: number; onClose: () => void; startAtScan?: boolean;
 }) {
   type Step = 'print' | 'scan' | 'done';
-  const [step, setStep] = useState<Step>('print');
+  const [step, setStep] = useState<Step>(startAtScan ? 'scan' : 'print');
   const [printed, setPrinted] = useState(false);
   const [serials, setSerials] = useState<SerialItem[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -1154,6 +1154,9 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose }
       setSerials(data.map((s: any) => ({ id: s.id, barcode: s.barcode, status: s.status, quantity: s.quantity })));
     }
   }, [materialId]);
+
+  // Auto-load serials when starting at scan step (resume flow)
+  useEffect(() => { if (startAtScan) loadSerials(); }, [startAtScan, loadSerials]);
 
   async function handlePrintConfirmed() {
     setConfirming(true);
@@ -1341,6 +1344,7 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
   const [fError,         setFError]         = useState('');
   const [printMatId,     setPrintMatId]     = useState<string | null>(null);
   const [printSerialMat, setPrintSerialMat] = useState<{ id: string; name: string; labelCount: number } | null>(null);
+  const [verifyMat,      setVerifyMat]      = useState<{ id: string; name: string; count: number } | null>(null);
 
   const [vendors,      setVendors]      = useState<Vendor[]>([]);
   const [filterCat,    setFilterCat]    = useState('');
@@ -1585,6 +1589,29 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
         </div>
       </div>
 
+      {/* Pending verification banner */}
+      {(() => {
+        const unverified = materials.filter(m => (m.unverifiedSerials ?? 0) > 0);
+        if (unverified.length === 0) return null;
+        const totalCount = unverified.reduce((sum, m) => sum + (m.unverifiedSerials ?? 0), 0);
+        return (
+          <div className="mb-3 px-3 py-2.5 rounded-xl border border-amber-800/30" style={{ background: 'rgba(245,158,11,0.06)' }}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <ScanLine className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="text-amber-400 text-xs font-medium">{totalCount} barcode{totalCount !== 1 ? 's' : ''} pending verification</span>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {unverified.map(m => (
+                <button key={m.id} onClick={() => setVerifyMat({ id: m.id, name: m.name, count: m.unverifiedSerials! })}
+                  className="px-2.5 py-1 rounded-lg text-[11px] text-amber-300 border border-amber-800/40 hover:bg-amber-900/20 transition-colors">
+                  {m.name} ({m.unverifiedSerials})
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {materials.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-dashed border-zinc-700" style={{ background: 'rgba(255,255,255,0.02)' }}>
           <div className="text-5xl mb-4">🗂️</div>
@@ -1639,6 +1666,12 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                   </div>
                 </div>
                 <div className="hidden sm:flex gap-1.5 shrink-0 flex-wrap justify-end items-center">
+                  {(m.unverifiedSerials ?? 0) > 0 && (
+                    <button onClick={() => setVerifyMat({ id: m.id, name: m.name, count: m.unverifiedSerials! })}
+                      className="px-2 py-1 rounded-lg text-xs font-medium border border-amber-700 text-amber-400 hover:bg-amber-900/20 transition-colors flex items-center gap-1">
+                      <ScanLine className="w-3 h-3" /> Verify ({m.unverifiedSerials})
+                    </button>
+                  )}
                   {isAdmin && (
                     <button onClick={() => setExpandedMat(expandedMat === m.id ? null : m.id)}
                       className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
@@ -1658,20 +1691,28 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                 </div>
               </div>
               {/* Mobile action buttons */}
-              {isAdmin && (
-                <div className="flex sm:hidden gap-1.5 mt-2 flex-wrap">
-                  <button onClick={() => setExpandedMat(expandedMat === m.id ? null : m.id)}
-                    className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
-                    {expandedMat === m.id ? '▲ Less' : '▼ Variants'}
+              <div className="flex sm:hidden gap-1.5 mt-2 flex-wrap">
+                {(m.unverifiedSerials ?? 0) > 0 && (
+                  <button onClick={() => setVerifyMat({ id: m.id, name: m.name, count: m.unverifiedSerials! })}
+                    className="px-2 py-1 rounded-lg text-xs font-medium border border-amber-700 text-amber-400 hover:bg-amber-900/20 transition-colors flex items-center gap-1">
+                    <ScanLine className="w-3 h-3" /> Verify ({m.unverifiedSerials})
                   </button>
-                  <button onClick={() => openEditMat(m)}
-                    className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Edit</button>
-                  <button onClick={() => toggleActive(m)}
-                    className={`px-2 py-1 rounded-lg text-xs border transition-colors ${m.active ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'}`}>
-                    {m.active ? 'Deactivate' : 'Activate'}
-                  </button>
-                </div>
-              )}
+                )}
+                {isAdmin && (
+                  <>
+                    <button onClick={() => setExpandedMat(expandedMat === m.id ? null : m.id)}
+                      className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                      {expandedMat === m.id ? '▲ Less' : '▼ Variants'}
+                    </button>
+                    <button onClick={() => openEditMat(m)}
+                      className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:text-white transition-colors">Edit</button>
+                    <button onClick={() => toggleActive(m)}
+                      className={`px-2 py-1 rounded-lg text-xs border transition-colors ${m.active ? 'border-red-800 text-red-400 hover:bg-red-900/20' : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'}`}>
+                      {m.active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Variants section */}
@@ -1972,6 +2013,17 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
           materialName={printSerialMat.name}
           labelCount={printSerialMat.labelCount}
           onClose={() => { setPrintSerialMat(null); load(); }}
+        />
+      )}
+
+      {/* Resume verification for existing materials with unscanned serials */}
+      {verifyMat && (
+        <PrintConfirmScanModal
+          materialId={verifyMat.id}
+          materialName={verifyMat.name}
+          labelCount={verifyMat.count}
+          onClose={() => { setVerifyMat(null); load(); }}
+          startAtScan
         />
       )}
 
