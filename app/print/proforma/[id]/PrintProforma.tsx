@@ -266,7 +266,6 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
           <div className="hdr-right">
             <div className="doc-title">{typeLabel}</div>
             {isExport && isFinalInvoice && <div className="doc-subtitle">Supply under LUT/Bond — Zero Rated Export</div>}
-        {isExport && !isFinalInvoice && <div className="doc-subtitle">Supply under LUT/Bond (Export)</div>}
             <div className="doc-subtitle">FY {fy}</div>
             {proforma.invoiceType !== 'SALE' && (
               <div className="doc-type-badge" style={
@@ -307,13 +306,7 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
           </div>
         </div>
 
-        {/* ── LUT BAR (export only) ── */}
-        {isExport && (s('lut_number') || s('lut_from')) && (
-          <div className="lut-bar">
-            Supply under Bond/LUT without payment of IGST — LUT No.: <strong>{s('lut_number')}</strong>
-            &nbsp; Valid: <strong>{s('lut_from')}</strong> to <strong>{s('lut_to')}</strong>
-          </div>
-        )}
+        {/* LUT BAR removed from PI — only shown on final Tax Invoice */}
 
         {/* ── TERMS (below info bar) ── */}
         <div className="terms-row terms-3col">
