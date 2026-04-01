@@ -122,12 +122,18 @@ export default function PrintOpeningStockLabels({ material, serials }: Props) {
         }
       `}</style>
 
-      <div className="no-print">
-        <strong>Opening Stock: {material.name}</strong>
-        {material.packSize > 1 && <span> (Pack of {material.packSize} {material.unit})</span>}
-        &nbsp;·&nbsp;
-        {validSerials.length} labels &nbsp;·&nbsp;
-        50mm x 25mm &nbsp;·&nbsp; TVS LP46 Neo
+      <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <div>
+          <strong>Opening Stock: {material.name}</strong>
+          {material.packSize > 1 && <span> (Pack of {material.packSize} {material.unit})</span>}
+          &nbsp;·&nbsp;
+          {validSerials.length} labels &nbsp;·&nbsp;
+          50mm x 25mm &nbsp;·&nbsp; TVS LP46 Neo
+        </div>
+        <button onClick={() => window.print()}
+          style={{ padding: '6px 16px', background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+          Print
+        </button>
       </div>
 
       {validSerials.map(s => (
