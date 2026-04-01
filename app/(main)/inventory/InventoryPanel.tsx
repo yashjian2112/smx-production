@@ -1241,8 +1241,8 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
         const inputQty = parseFloat(fOpenQty) || 0;
         const ps = parseInt(fPackSize) || 1;
         const totalQty = ps > 1 ? inputQty * ps : inputQty;
-        // Only generate serial barcodes when packSize > 1 (actual packs to track)
-        const packCount = ps > 1 ? Math.ceil(inputQty) : 0;
+        // Always generate serial barcodes equal to opening stock count
+        const packCount = Math.ceil(inputQty);
         if (totalQty > 0) {
           try {
             const adjustRes = await fetch('/api/inventory/adjust', {
@@ -1252,8 +1252,9 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                 rawMaterialId: mat.id,
                 type:     'OPENING',
                 quantity: totalQty,
-                reason:   ps > 1 ? `Opening stock: ${inputQty} packs × ${ps} = ${totalQty}` : 'Opening stock entry',
-                ...(packCount > 0 ? { packCount, packSize: ps } : {}),
+                reason:   ps > 1 ? `Opening stock: ${inputQty} ${(fPurchaseUnit || fUnit).toLowerCase()} × ${ps} = ${totalQty}` : `Opening stock: ${totalQty} ${fUnit}`,
+                packCount,
+                packSize: ps,
               }),
             });
             const adjustData = await adjustRes.json().catch(() => ({}));
