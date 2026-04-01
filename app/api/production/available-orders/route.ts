@@ -12,8 +12,12 @@ export async function GET() {
   }
 
   // Find all units that are PENDING (not yet started by anyone)
+  // Exclude trading items — they skip production entirely
   const pendingUnits = await prisma.controllerUnit.findMany({
-    where: { currentStatus: 'PENDING' },
+    where: {
+      currentStatus: 'PENDING',
+      product: { productType: { not: 'TRADING' } },
+    },
     include: {
       order: {
         select: {
