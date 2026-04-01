@@ -51,7 +51,7 @@ export default async function OrdersPage() {
     status: o.status,
     createdAt: o.createdAt.toISOString(),
     voltage: o.voltage ?? null,
-    product: { name: o.product.name, code: o.product.code },
+    product: { name: o.product.name, code: o.product.code, productType: o.product.productType ?? 'MANUFACTURED' },
     client: o.client ? { id: o.client.id, code: o.client.code, customerName: o.client.customerName } : null,
     _count: { units: o._count.units },
     units: o.units.map((u) => ({ currentStatus: u.currentStatus, currentStage: u.currentStage })),
