@@ -1285,16 +1285,10 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose }
                 <Check className="w-4 h-4" /> All Verified — Done
               </button>
             ) : (
-              <>
-                <button onClick={onClose}
-                  className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
-                  Skip for Now
-                </button>
-                <button onClick={() => { setScanError(''); setScanning(true); }}
-                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors flex items-center justify-center gap-1.5">
-                  <ScanLine className="w-4 h-4" /> Scan Barcode
-                </button>
-              </>
+              <button onClick={() => { setScanError(''); setScanning(true); }}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors flex items-center justify-center gap-1.5">
+                <ScanLine className="w-4 h-4" /> Scan Barcode
+              </button>
             )}
           </div>
         </div>
