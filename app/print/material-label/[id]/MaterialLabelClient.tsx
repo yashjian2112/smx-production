@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import JsBarcode from 'jsbarcode';
 
 interface Props {
-  material: { id: string; code: string; name: string; unit: string; barcode: string; category: string | null };
+  material: { id: string; code: string; name: string; unit: string; barcode: string; category: string | null; packSize: number };
 }
 
 function LabelBarcode({ value }: { value: string }) {
@@ -14,7 +14,7 @@ function LabelBarcode({ value }: { value: string }) {
     JsBarcode(ref.current, value, {
       format: 'CODE128',
       width: 1.3,
-      height: 28,
+      height: 26,
       displayValue: false,
       margin: 0,
       background: '#ffffff',
@@ -29,6 +29,8 @@ export default function MaterialLabelClient({ material }: Props) {
     const t = setTimeout(() => window.print(), 800);
     return () => clearTimeout(t);
   }, []);
+
+  const packLabel = material.packSize > 1 ? ` (Pack of ${material.packSize})` : '';
 
   return (
     <>
@@ -57,6 +59,20 @@ export default function MaterialLabelClient({ material }: Props) {
           background: #fff;
         }
 
+        .label-name {
+          font-family: Arial, sans-serif;
+          font-size: 8pt;
+          font-weight: bold;
+          text-align: center;
+          color: #000;
+          max-width: 46mm;
+          line-height: 1.2;
+          margin-bottom: 0.5mm;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
         .label-barcode {
           width: 100%;
           flex-shrink: 0;
@@ -64,24 +80,12 @@ export default function MaterialLabelClient({ material }: Props) {
 
         .label-code {
           font-family: 'Courier New', monospace;
-          font-size: 8pt;
+          font-size: 9pt;
           font-weight: bold;
           letter-spacing: 0.5px;
           margin-top: 0.8mm;
           text-align: center;
           color: #000;
-        }
-
-        .label-sub {
-          font-family: Arial, sans-serif;
-          font-size: 6pt;
-          color: #444;
-          margin-top: 0.4mm;
-          text-align: center;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 46mm;
         }
 
         @media screen {
@@ -107,18 +111,16 @@ export default function MaterialLabelClient({ material }: Props) {
 
       <div className="no-print">
         <strong>Material: {material.code}</strong> &nbsp;·&nbsp;
-        {material.name} &nbsp;·&nbsp;
+        {material.name}{packLabel} &nbsp;·&nbsp;
         50mm × 25mm &nbsp;·&nbsp; TVS LP46 Neo
       </div>
 
       <div className="label">
+        <div className="label-name">{material.name}{packLabel}</div>
         <div className="label-barcode">
           <LabelBarcode value={material.barcode} />
         </div>
         <div className="label-code">{material.barcode}</div>
-        <div className="label-sub">
-          {material.name}{material.category ? ` · ${material.category}` : ''} · {material.unit}
-        </div>
       </div>
     </>
   );

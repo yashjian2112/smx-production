@@ -16,5 +16,6 @@ export default async function MaterialLabelPage({ params }: { params: Promise<{ 
     unit: material.unit,
     barcode: material.barcode ?? material.code,
     category: material.category?.name ?? null,
+    packSize: material.packSize ?? 1,
   }} />;
 }

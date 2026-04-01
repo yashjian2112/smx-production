@@ -1215,7 +1215,6 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
     const body = {
       name: fName, unit: fUnit, categoryId: fCatId || undefined,
       description: fDesc || undefined,
-      preferredVendorId: fVendorId || undefined,
       minimumStock: parseFloat(fMin) || 0, reorderPoint: parseFloat(fMin) || 0,
       minimumOrderQty: parseFloat(fMoq) || 1,
       packSize: parseInt(fPackSize) || 1,
@@ -1231,16 +1230,18 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
     // For new material: if opening stock was entered, add it; then prompt to print label
     if (!editMat) {
       const mat = await res.json();
-      const openQty = parseFloat(fOpenQty);
-      if (!isNaN(openQty) && openQty > 0) {
+      const inputQty = parseFloat(fOpenQty);
+      const ps = parseInt(fPackSize) || 1;
+      const totalQty = ps > 1 ? inputQty * ps : inputQty;
+      if (!isNaN(totalQty) && totalQty > 0) {
         await fetch('/api/inventory/adjust', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             rawMaterialId: mat.id,
             type:     'OPENING',
-            quantity: openQty,
-            reason:   'Opening stock entry',
+            quantity: totalQty,
+            reason:   ps > 1 ? `Opening stock: ${inputQty} packs × ${ps} = ${totalQty}` : 'Opening stock entry',
           }),
         });
       }
@@ -1558,7 +1559,7 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
               {/* Category with inline create */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-zinc-400 text-xs">Category</label>
+                  <label className="text-zinc-400 text-xs">Category *</label>
                   {!showInlineCat && (
                     <button type="button" onClick={() => setShowInlineCat(true)}
                       className="text-[10px] text-sky-400 hover:text-sky-300">+ Create new</button>
@@ -1587,60 +1588,19 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                     </div>
                   </div>
                 ) : (
-                  <select value={fCatId} onChange={e => setFCatId(e.target.value)}
+                  <select value={fCatId} onChange={e => setFCatId(e.target.value)} required
                     className="w-full px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
                     style={{ background: 'rgb(39,39,42)' }}>
-                    <option value="">None</option>
+                    <option value="">Select category</option>
                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                )}
-              </div>
-
-              {/* Preferred Vendor with inline create */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-zinc-400 text-xs">Preferred Vendor</label>
-                  {!showInlineVendor && (
-                    <button type="button" onClick={() => setShowInlineVendor(true)}
-                      className="text-[10px] text-sky-400 hover:text-sky-300">+ Create new</button>
-                  )}
-                </div>
-                {showInlineVendor ? (
-                  <div className="p-2 rounded-lg space-y-2" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
-                    <input value={vName} onChange={e => setVName(e.target.value)} placeholder="Vendor name *" autoFocus
-                      className="w-full px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                      style={{ background: 'rgb(39,39,42)' }} />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input value={vPhone} onChange={e => setVPhone(e.target.value)} placeholder="Phone (optional)"
-                        className="px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                        style={{ background: 'rgb(39,39,42)' }} />
-                      <input value={vEmail} onChange={e => setVEmail(e.target.value)} placeholder="Email (optional)"
-                        className="px-3 py-1.5 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
-                        style={{ background: 'rgb(39,39,42)' }} />
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={saveInlineVendor} disabled={vSaving || !vName.trim()}
-                        className="px-3 py-1 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40">
-                        {vSaving ? 'Saving…' : 'Save'}
-                      </button>
-                      <button type="button" onClick={() => { setShowInlineVendor(false); setVName(''); setVPhone(''); setVEmail(''); }}
-                        className="px-3 py-1 rounded-lg text-xs text-zinc-400 hover:text-white">Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <select value={fVendorId} onChange={e => setFVendorId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm text-white border border-zinc-700"
-                    style={{ background: 'rgb(39,39,42)' }}>
-                    <option value="">None</option>
-                    {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({v.code})</option>)}
                   </select>
                 )}
               </div>
 
               {/* Min stock */}
               <div>
-                <label className="text-zinc-400 text-xs">Min Stock <span className="text-zinc-600">(reorder trigger)</span></label>
-                <input type="number" step="any" min="0" value={fMin} onChange={e => setFMin(e.target.value)}
+                <label className="text-zinc-400 text-xs">Min Stock * <span className="text-zinc-600">(reorder trigger)</span></label>
+                <input type="number" step="any" min="0" value={fMin} onChange={e => setFMin(e.target.value)} required
                   onWheel={e => (e.target as HTMLInputElement).blur()}
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
@@ -1671,16 +1631,23 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
                   style={{ background: 'rgb(39,39,42)' }} />
               </div>
 
-              {/* Opening stock — only for new materials */}
+              {/* Opening stock — mandatory for new materials */}
               {!editMat && (
                 <div className="pt-2 border-t border-zinc-800">
-                  <p className="text-zinc-400 text-xs mb-2">Opening Stock <span className="text-zinc-600">(optional — enter if stock already exists)</span></p>
+                  <p className="text-zinc-400 text-xs mb-2">Opening Stock *</p>
                   <div>
-                    <label className="text-zinc-500 text-xs">Qty ({fUnit})</label>
+                    <label className="text-zinc-500 text-xs">
+                      {parseInt(fPackSize) > 1 ? `No. of packs (each pack = ${fPackSize} ${fUnit})` : `Qty (${fUnit})`}
+                    </label>
                     <input type="number" step="any" min="0" value={fOpenQty} onChange={e => setFOpenQty(e.target.value)}
-                      onWheel={(e) => e.currentTarget.blur()}
+                      onWheel={(e) => e.currentTarget.blur()} required
                       className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-emerald-500"
                       style={{ background: 'rgb(39,39,42)' }} placeholder="0" />
+                    {parseInt(fPackSize) > 1 && fOpenQty && parseFloat(fOpenQty) > 0 && (
+                      <p className="text-zinc-500 text-xs mt-1">
+                        {fOpenQty} packs × {fPackSize} {fUnit} = <span className="text-emerald-400 font-medium">{parseFloat(fOpenQty) * parseInt(fPackSize)} {fUnit} total</span>
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
