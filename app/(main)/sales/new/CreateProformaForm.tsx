@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 type Client  = { id: string; code: string; customerName: string; globalOrIndian: string | null; gstNumber: string | null; state: string | null };
-type Product = { id: string; code: string; name: string; hsnCode?: string | null };
+type Product = { id: string; code: string; name: string; hsnCode?: string | null; colors?: string[] };
 
 type LineItem = {
   key:             number;
@@ -577,6 +577,34 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                   )}
                 </div>
               </div>
+
+              {/* Color selector — only when product has colors */}
+              {(() => {
+                const selectedProduct = products.find(p => p.id === item.productId);
+                if (!selectedProduct?.colors?.length) return null;
+                return (
+                  <div>
+                    <label className={lCls}>Color</label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {selectedProduct.colors.map(c => {
+                        const isSelected = item.description.includes(`(${c})`);
+                        return (
+                          <button key={c} type="button"
+                            onClick={() => {
+                              const baseName = item.description.replace(/\s*\(.*?\)\s*$/, '').trim();
+                              updateItem(item.key, { description: `${baseName} (${c})` });
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
+                              isSelected ? 'bg-purple-600 text-white' : 'text-zinc-400 border border-zinc-700 hover:text-white'
+                            }`}>
+                            {c}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Description */}
               <div>

@@ -24,6 +24,7 @@ const createSchema = z.object({
   description: z.string().optional(),
   productType: z.enum(['MANUFACTURED', 'TRADING']).default('MANUFACTURED'),
   hsnCode: z.string().optional(),
+  colors: z.array(z.string()).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -42,9 +43,9 @@ export async function POST(req: NextRequest) {
     if (existing)
       return NextResponse.json({ error: 'Product code already exists' }, { status: 400 });
 
-    const { hsnCode } = parsed.data;
+    const { hsnCode, colors } = parsed.data;
     const product = await prisma.product.create({
-      data: { code, name, description: description ?? null, productType, hsnCode: hsnCode ?? null },
+      data: { code, name, description: description ?? null, productType, hsnCode: hsnCode ?? null, colors: colors ?? [] },
     });
     return NextResponse.json(product, { status: 201 });
   } catch (e) {

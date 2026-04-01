@@ -108,6 +108,7 @@ model Product {
   description String?
   productType String   @default("MANUFACTURED") @map("product_type") // MANUFACTURED | TRADING
   hsnCode     String?  @map("hsn_code") // e.g. 85371000 (controllers), 85011090 (motors)
+  colors      String[] @default([])    // available colors e.g. ["Black", "Silver", "White"]
   active      Boolean  @default(true)
   createdAt   DateTime @default(now()) @map("created_at")
 

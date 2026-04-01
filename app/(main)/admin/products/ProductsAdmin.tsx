@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeCanvas } from '@/components/QRCode';
 
-type Product = { id: string; code: string; name: string; description: string | null; productType?: string; hsnCode?: string | null; active: boolean };
+type Product = { id: string; code: string; name: string; description: string | null; productType?: string; hsnCode?: string | null; colors?: string[]; active: boolean };
 
 type Component = {
   id: string;
@@ -260,10 +260,14 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
   const [description, setDescription] = useState('');
   const [productType, setProductType] = useState<'MANUFACTURED' | 'TRADING'>('MANUFACTURED');
   const [hsnCode, setHsnCode] = useState('85371000');
+  const [colors, setColors] = useState<string[]>([]);
+  const [newColor, setNewColor] = useState('');
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editProductType, setEditProductType] = useState<'MANUFACTURED' | 'TRADING'>('MANUFACTURED');
   const [editHsnCode, setEditHsnCode] = useState('');
+  const [editColors, setEditColors] = useState<string[]>([]);
+  const [editNewColor, setEditNewColor] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -275,12 +279,12 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code.trim().toUpperCase(), name: name.trim(), description: description.trim() || undefined, productType, hsnCode: hsnCode.trim() || undefined }),
+        body: JSON.stringify({ code: code.trim().toUpperCase(), name: name.trim(), description: description.trim() || undefined, productType, hsnCode: hsnCode.trim() || undefined, colors: colors.length > 0 ? colors : undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error || 'Failed'); return; }
       setAdding(false);
-      setCode(''); setName(''); setDescription(''); setProductType('MANUFACTURED'); setHsnCode('85371000');
+      setCode(''); setName(''); setDescription(''); setProductType('MANUFACTURED'); setHsnCode('85371000'); setColors([]); setNewColor('');
       router.refresh();
     } finally { setLoading(false); }
   }
@@ -292,7 +296,7 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
       const res = await fetch(`/api/products/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName.trim(), description: editDescription.trim() || undefined, productType: editProductType, hsnCode: editHsnCode.trim() || undefined }),
+        body: JSON.stringify({ name: editName.trim(), description: editDescription.trim() || undefined, productType: editProductType, hsnCode: editHsnCode.trim() || undefined, colors: editColors }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error || 'Failed'); return; }
@@ -316,6 +320,8 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
     setEditDescription(p.description ?? '');
     setEditProductType((p.productType as 'MANUFACTURED' | 'TRADING') ?? 'MANUFACTURED');
     setEditHsnCode(p.hsnCode ?? '');
+    setEditColors(p.colors ?? []);
+    setEditNewColor('');
   }
 
   return (
@@ -371,6 +377,24 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
               {hsnCode === '85371000' ? 'Motor Controller' : hsnCode === '85011090' ? 'Electric Motor' : 'Custom HSN'}
             </p>
           </div>
+          <div>
+            <label className="block text-[11px] text-zinc-500 mb-1 uppercase tracking-wide">Colors (optional)</label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {colors.map(c => (
+                <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-zinc-800 text-zinc-300 border border-zinc-700">
+                  {c}
+                  <button type="button" onClick={() => setColors(prev => prev.filter(x => x !== c))} className="text-zinc-500 hover:text-red-400">×</button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input value={newColor} onChange={(e) => setNewColor(e.target.value)} placeholder="e.g. Black, Silver, White"
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (newColor.trim() && !colors.includes(newColor.trim())) { setColors(prev => [...prev, newColor.trim()]); setNewColor(''); } } }}
+                className="input-field text-sm flex-1" />
+              <button type="button" onClick={() => { if (newColor.trim() && !colors.includes(newColor.trim())) { setColors(prev => [...prev, newColor.trim()]); setNewColor(''); } }}
+                className="btn-ghost py-1 px-3 text-xs">Add</button>
+            </div>
+          </div>
           <div className="flex gap-2">
             <button type="submit" disabled={loading} className="btn-primary py-2 px-4 text-sm">{loading ? 'Saving…' : 'Save'}</button>
             <button type="button" onClick={() => setAdding(false)} className="btn-ghost py-2 px-4 text-sm">Cancel</button>
@@ -404,6 +428,24 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
                   <label className="block text-[11px] text-zinc-500 mb-1 uppercase tracking-wide">HSN Code</label>
                   <input value={editHsnCode} onChange={(e) => setEditHsnCode(e.target.value)} placeholder="e.g. 85371000" className="input-field text-sm font-mono" />
                 </div>
+                <div>
+                  <label className="block text-[11px] text-zinc-500 mb-1 uppercase tracking-wide">Colors</label>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {editColors.map(c => (
+                      <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-zinc-800 text-zinc-300 border border-zinc-700">
+                        {c}
+                        <button type="button" onClick={() => setEditColors(prev => prev.filter(x => x !== c))} className="text-zinc-500 hover:text-red-400">×</button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input value={editNewColor} onChange={(e) => setEditNewColor(e.target.value)} placeholder="e.g. Black, Silver"
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (editNewColor.trim() && !editColors.includes(editNewColor.trim())) { setEditColors(prev => [...prev, editNewColor.trim()]); setEditNewColor(''); } } }}
+                      className="input-field text-sm flex-1" />
+                    <button type="button" onClick={() => { if (editNewColor.trim() && !editColors.includes(editNewColor.trim())) { setEditColors(prev => [...prev, editNewColor.trim()]); setEditNewColor(''); } }}
+                      className="btn-ghost py-1 px-3 text-xs">Add</button>
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <button onClick={() => saveEdit(p.id)} disabled={loading} className="btn-primary py-1 px-3 text-xs">{loading ? 'Saving…' : 'Save'}</button>
                   <button onClick={() => setEditId(null)} className="btn-ghost py-1 px-3 text-xs">Cancel</button>
@@ -421,6 +463,9 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
                       )}
                       {p.hsnCode && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 font-mono">HSN {p.hsnCode}</span>
+                      )}
+                      {(p.colors?.length ?? 0) > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-400">{p.colors!.join(', ')}</span>
                       )}
                       {!p.active && <span className="text-xs text-zinc-600">inactive</span>}
                     </div>
