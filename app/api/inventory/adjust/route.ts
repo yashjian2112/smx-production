@@ -109,8 +109,36 @@ export async function POST(req: Request) {
       // 4. For OPENING with pack info, generate MaterialSerial barcodes
       const serialIds: string[] = [];
       if (data.type === 'OPENING' && data.packCount && data.packCount > 0 && serialPrefix) {
+        // Re-check sequence inside transaction to prevent duplicates
+        const lastInTx = await tx.materialSerial.findFirst({
+          where: { barcode: { startsWith: serialPrefix } },
+          orderBy: { barcode: 'desc' },
+          select: { barcode: true },
+        });
+        let seq = serialSeqStart;
+        if (lastInTx?.barcode) {
+          const seqPart = lastInTx.barcode.slice(serialPrefix.length);
+          const dbSeq = (parseInt(seqPart, 10) || 0) + 1;
+          if (dbSeq > seq) seq = dbSeq;
+        }
+
         for (let i = 0; i < data.packCount; i++) {
-          const barcode = `${serialPrefix}${String(serialSeqStart + i).padStart(5, '0')}`;
+          const barcode = `${serialPrefix}${String(seq + i).padStart(5, '0')}`;
+          // Check for existing barcode before creating
+          const existing = await tx.materialSerial.findUnique({ where: { barcode } });
+          if (existing) {
+            // Skip ahead to find next available
+            const lastAgain = await tx.materialSerial.findFirst({
+              where: { barcode: { startsWith: serialPrefix } },
+              orderBy: { barcode: 'desc' },
+              select: { barcode: true },
+            });
+            const jumpSeq = lastAgain ? (parseInt(lastAgain.barcode.slice(serialPrefix.length), 10) || 0) + 1 : seq + i + 1;
+            seq = jumpSeq;
+            i = -1; // restart loop with new seq
+            serialIds.length = 0;
+            continue;
+          }
           const serial = await tx.materialSerial.create({
             data: {
               materialId: data.rawMaterialId,

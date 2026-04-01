@@ -79,6 +79,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   const data = parsed.data;
 
+  // Check for duplicate material name
+  const existingName = await prisma.rawMaterial.findFirst({
+    where: { name: { equals: data.name.trim(), mode: 'insensitive' } },
+  });
+  if (existingName) {
+    return NextResponse.json({ error: `Material "${existingName.name}" already exists (code: ${existingName.code})` }, { status: 409 });
+  }
+
   const code    = data.code || await generateNextMaterialCode();
   const barcode = await generateMaterialBarcode(data.categoryId, data.barcodePrefix);
 
