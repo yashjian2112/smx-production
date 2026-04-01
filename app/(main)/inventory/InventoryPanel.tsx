@@ -1157,12 +1157,7 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose }
 
   async function handlePrintConfirmed() {
     setConfirming(true);
-    // Bulk-confirm all PRINTED serials as print successful
-    await fetch('/api/procurement/material-serials', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ materialId }),
-    });
+    // Load serials (still PRINTED status) — user must scan each one to confirm
     await loadSerials();
     setConfirming(false);
     setStep('scan');
