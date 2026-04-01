@@ -16,6 +16,7 @@ type LineItem = {
   discountPercent: number;
   voltageFrom:     string;
   voltageTo:       string;
+  includeHarness:  boolean;
 };
 
 const HSN_OPTIONS = [
@@ -31,7 +32,7 @@ const PAYMENT_PRESETS = ['100% ADVANCE', '50% Advance, 50% on delivery', '30 day
 let keyCounter = 3;
 
 function newItem(): LineItem {
-  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '' };
+  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', includeHarness: false };
 }
 
 function calcAmount(item: LineItem) {
@@ -63,7 +64,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   const [problemDesc,      setProblemDesc]      = useState('');
 
   const [items, setItems] = useState<LineItem[]>([
-    { key: 1, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '' },
+    { key: 1, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', includeHarness: false },
   ]);
   const [hsnInputs, setHsnInputs] = useState<Record<number, string>>({});  // custom HSN per item
 
@@ -96,10 +97,10 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
     const c = clients.find((x) => x.id === id);
     if (c) {
       if (c.globalOrIndian === 'Global') {
-        // Export client → USD only (no dual)
+        // Export client → USD, auto-fetch exchange rate
         setCurrency('USD');
         setDualCurrency(false);
-        setExchangeRate('');
+        if (!exchangeRate) fetchLiveRate();
       } else {
         // Domestic client → INR default
         setCurrency('INR');
@@ -202,18 +203,34 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       finalNotes = `[REPLACEMENT]\nSerial: ${unitSerial.trim()}\nProblem: ${problemDesc.trim()}${finalNotes ? '\n' + finalNotes : ''}`;
     }
 
-    // Build items (add shipping as line item if > 0)
-    const submitItems = items.map((item, i) => ({
-      description:     item.description,
-      productId:       item.productId || undefined,
-      hsnCode:         item.hsnCode,
-      quantity:        item.quantity,
-      unitPrice:       item.unitPrice,
-      discountPercent: item.discountPercent,
-      voltageFrom:     item.voltageFrom || undefined,
-      voltageTo:       item.voltageTo || undefined,
-      sortOrder:       i,
-    }));
+    // Build items (add harness lines + shipping as line items)
+    const submitItems: { description: string; productId: string | undefined; hsnCode: string; quantity: number; unitPrice: number; discountPercent: number; voltageFrom: string | undefined; voltageTo: string | undefined; sortOrder: number }[] = [];
+    items.forEach((item) => {
+      submitItems.push({
+        description:     item.description,
+        productId:       item.productId || undefined,
+        hsnCode:         item.hsnCode,
+        quantity:        item.quantity,
+        unitPrice:       item.unitPrice,
+        discountPercent: item.discountPercent,
+        voltageFrom:     item.voltageFrom || undefined,
+        voltageTo:       item.voltageTo || undefined,
+        sortOrder:       submitItems.length,
+      });
+      if (item.includeHarness) {
+        submitItems.push({
+          description:     `Harness for ${item.description || 'Controller'}`,
+          productId:       undefined,
+          hsnCode:         '85371000',
+          quantity:        item.quantity,
+          unitPrice:       0,
+          discountPercent: 0,
+          voltageFrom:     undefined,
+          voltageTo:       undefined,
+          sortOrder:       submitItems.length,
+        });
+      }
+    });
     if (shipping > 0) {
       submitItems.push({
         description:     'Freight & Forwarding Charges',
@@ -370,8 +387,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           )}
         </div>
 
-        {/* Exchange rate — only in USD-INR dual mode */}
-        {dualCurrency && (
+        {/* Exchange rate — shown for USD (export) and USD-INR dual mode */}
+        {(dualCurrency || currency === 'USD') && (
           <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.15)' }}>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-sky-400">USD → INR Rate</span>
@@ -580,6 +597,23 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                   <span className="text-zinc-500 text-xs shrink-0">V</span>
                 </div>
               </div>
+
+              {/* Harness checkbox */}
+              <label className="flex items-center gap-2.5 cursor-pointer select-none py-1">
+                <div
+                  className="relative w-9 h-[18px] rounded-full transition-colors shrink-0"
+                  style={{ background: item.includeHarness ? 'rgba(34,197,94,0.6)' : 'rgba(255,255,255,0.1)' }}
+                  onClick={() => updateItem(item.key, { includeHarness: !item.includeHarness })}
+                >
+                  <div
+                    className="absolute top-[1px] w-4 h-4 rounded-full bg-white transition-transform"
+                    style={{ transform: item.includeHarness ? 'translateX(20px)' : 'translateX(1px)' }}
+                  />
+                </div>
+                <span className="text-xs text-zinc-400">
+                  {item.includeHarness ? 'Harness included (same qty)' : 'Add Harness'}
+                </span>
+              </label>
 
               {/* Price + Discount + Amount */}
               <div className="grid grid-cols-3 gap-3">
