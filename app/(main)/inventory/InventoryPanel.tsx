@@ -1200,12 +1200,14 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
   }
 
   function openEditMat(m: RawMaterial) {
+    const ps = m.packSize ?? 1;
     setEditMat(m); setFName(m.name); setFUnit(m.unit); setFCatId(m.category?.id ?? '');
-    setFMin(String(m.minimumStock)); setFReord(String(m.reorderPoint)); setFMoq(String(m.minimumOrderQty ?? 1));
+    setFMin(String(ps > 1 ? Math.round(m.minimumStock / ps) : m.minimumStock));
+    setFReord(String(m.reorderPoint)); setFMoq(String(m.minimumOrderQty ?? 1));
     setFDesc(m.description ?? '');
     setFVendorId(m.preferredVendor?.id ?? '');
     setFPurchaseUnit(m.purchaseUnit ?? ''); setFConvFactor(m.conversionFactor ? String(m.conversionFactor) : '');
-    setFPackSize(String(m.packSize ?? 1)); setFError('');
+    setFPackSize(String(ps)); setFError('');
     setShowInlineCat(false); setShowInlineVendor(false);
     setShowMatForm(true);
   }
@@ -1215,7 +1217,8 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
     const body = {
       name: fName, unit: fUnit, categoryId: fCatId || undefined,
       description: fDesc || undefined,
-      minimumStock: parseFloat(fMin) || 0, reorderPoint: parseFloat(fMin) || 0,
+      minimumStock: (parseInt(fPackSize) > 1 ? (parseFloat(fMin) || 0) * parseInt(fPackSize) : parseFloat(fMin) || 0),
+      reorderPoint: (parseInt(fPackSize) > 1 ? (parseFloat(fMin) || 0) * parseInt(fPackSize) : parseFloat(fMin) || 0),
       minimumOrderQty: parseFloat(fMoq) || 1,
       packSize: parseInt(fPackSize) || 1,
       purchaseUnit: fPurchaseUnit || undefined,
@@ -1599,11 +1602,20 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
 
               {/* Min stock */}
               <div>
-                <label className="text-zinc-400 text-xs">Min Stock * <span className="text-zinc-600">(reorder trigger)</span></label>
+                <label className="text-zinc-400 text-xs">
+                  Min Stock * <span className="text-zinc-600">
+                    ({parseInt(fPackSize) > 1 ? `in packs of ${fPackSize} ${fUnit}` : 'reorder trigger'})
+                  </span>
+                </label>
                 <input type="number" step="any" min="0" value={fMin} onChange={e => setFMin(e.target.value)} required
                   onWheel={e => (e.target as HTMLInputElement).blur()}
                   className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white border border-zinc-700 outline-none focus:border-sky-500"
                   style={{ background: 'rgb(39,39,42)' }} />
+                {parseInt(fPackSize) > 1 && fMin && parseFloat(fMin) > 0 && (
+                  <p className="text-zinc-500 text-xs mt-1">
+                    Reorder when stock falls below <span className="text-amber-400 font-medium">{parseFloat(fMin) * parseInt(fPackSize)} {fUnit}</span> ({fMin} packs)
+                  </p>
+                )}
               </div>
 
               {/* Pack Size — admin only */}
