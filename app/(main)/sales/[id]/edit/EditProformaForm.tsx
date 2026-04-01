@@ -267,8 +267,8 @@ export function EditProformaForm({
       setError('Fill in all line items (HSN code, price)');
       return;
     }
-    if (items.some((i) => !i.voltageFrom || !i.voltageTo)) {
-      setError('Please enter voltage range (From and To) for all line items');
+    if (items.some((i) => i.hsnCode === '85371000' && (!i.voltageFrom || !i.voltageTo))) {
+      setError('Please enter voltage range (From and To) for controller items');
       return;
     }
     if (isReplacement && (!unitSerial.trim() || !problemDesc.trim())) {
@@ -546,7 +546,8 @@ export function EditProformaForm({
                 </div>
               </div>
 
-              {/* Voltage Range */}
+              {/* Voltage Range — only for controllers (HSN 85371000) */}
+              {item.hsnCode === '85371000' && (
               <div>
                 <label className={lCls}>Voltage Range <span className="text-red-400">*</span></label>
                 <div className="flex items-center gap-2">
@@ -556,6 +557,7 @@ export function EditProformaForm({
                   <span className="text-zinc-500 text-xs shrink-0">V</span>
                 </div>
               </div>
+              )}
 
               {/* Harness checkbox — only for controller products (HSN 85371000) */}
               {item.hsnCode === '85371000' && (
