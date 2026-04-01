@@ -32,6 +32,7 @@ type Proforma = {
   deliveryDays: number | null;
   termsOfDelivery: string | null;
   shippingRoute: string | null;
+  clientPONumber: string | null;
 } | null;
 
 type RelatedInvoice = {
@@ -330,6 +331,12 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
                 )}
               </div>
             </div>
+            {invoice.proforma?.clientPONumber && (
+              <div className="info-cell">
+                <div className="info-label">Client PO No.</div>
+                <div className="info-value">{invoice.proforma.clientPONumber}</div>
+              </div>
+            )}
           </div>
           <div className="info-row">
             <div className="info-cell">

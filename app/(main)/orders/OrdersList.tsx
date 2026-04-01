@@ -12,7 +12,7 @@ export type OrderItem = {
   status: string;
   createdAt: string;
   voltage?: string | null;
-  product: { name: string; code: string };
+  product: { name: string; code: string; productType?: string };
   client?: { id: string; code: string; customerName: string } | null;
   _count: { units: number };
   units: UnitSummary[];
@@ -100,6 +100,8 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   const processing = orders.filter((o) => {
     if (o.status !== 'ACTIVE') return false;
     if (allUnitsDone(o)) return false;
+    // Trading items always show in Processing (they don't need job cards)
+    if (o.product.productType === 'TRADING') return true;
     // For employees: show in Processing if they accepted the order (have job card)
     // OR if any unit has started work
     if (isEmployee) return o.hasMyJobCard || o.units.some(u => u.currentStatus !== 'PENDING');
@@ -253,6 +255,12 @@ function OrderCard({ order }: { order: OrderItem }) {
               NEW
             </span>
           )}
+          {order.product.productType === 'TRADING' && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.25)' }}>
+              TRADING
+            </span>
+          )}
           {blocked > 0 && (
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
               style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}>
@@ -292,6 +300,16 @@ function OrderCard({ order }: { order: OrderItem }) {
                   : 'linear-gradient(90deg,#6366f1,#38bdf8)',
               }} />
           </div>
+        </div>
+      )}
+
+      {order.product.productType === 'TRADING' && (
+        <div className="mt-3 pt-2 border-t border-zinc-800/50">
+          <a href={`/print/work-order/${order.id}`} target="_blank" rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-amber-400 border border-amber-700/50 hover:bg-amber-900/20 transition-colors">
+            Download Work Order
+          </a>
         </div>
       )}
     </Link>

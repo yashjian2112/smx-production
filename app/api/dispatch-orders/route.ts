@@ -122,23 +122,34 @@ export async function POST(req: NextRequest) {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
+        product: { select: { productType: true } },
         units: {
           where: {
             currentStage:     'FINAL_ASSEMBLY',
-            currentStatus:    { in: ['APPROVED', 'COMPLETED'] },
+            currentStatus:    { in: ['APPROVED', 'COMPLETED', 'PENDING'] },
             readyForDispatch: false,
             packingBoxItem:   null, // exclude units already packed in other DOs
           },
-          select: { id: true },
+          select: { id: true, currentStatus: true },
         },
       },
     });
     if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     if (order.status !== 'ACTIVE')
       return NextResponse.json({ error: 'Order must be ACTIVE to create a dispatch order' }, { status: 400 });
-    if (order.units.length === 0)
+
+    const isTrading = order.product.productType === 'TRADING';
+
+    // For manufactured items, only count APPROVED/COMPLETED units
+    const availableUnits = isTrading
+      ? order.units
+      : order.units.filter(u => u.currentStatus === 'APPROVED' || u.currentStatus === 'COMPLETED');
+
+    if (availableUnits.length === 0)
       return NextResponse.json(
-        { error: 'Order must have at least 1 unit in FINAL_ASSEMBLY with status APPROVED and not yet dispatched' },
+        { error: isTrading
+          ? 'No units available for dispatch'
+          : 'Order must have at least 1 unit in FINAL_ASSEMBLY with status APPROVED and not yet dispatched' },
         { status: 400 }
       );
     // Subtract units already claimed by OPEN/PACKING DOs (not yet packed but reserved)
@@ -147,7 +158,7 @@ export async function POST(req: NextRequest) {
       select: { dispatchQty: true },
     });
     const claimedQty = pendingDOs.reduce((sum, d) => sum + d.dispatchQty, 0);
-    const trueAvailable = order.units.length - claimedQty;
+    const trueAvailable = availableUnits.length - claimedQty;
 
     if (trueAvailable <= 0)
       return NextResponse.json(
@@ -181,6 +192,17 @@ export async function POST(req: NextRequest) {
         boxes: true,
       },
     });
+
+    // For trading items: auto-approve all PENDING units so they become dispatchable
+    if (isTrading) {
+      const pendingUnitIds = availableUnits.filter(u => u.currentStatus === 'PENDING').map(u => u.id);
+      if (pendingUnitIds.length > 0) {
+        await prisma.controllerUnit.updateMany({
+          where: { id: { in: pendingUnitIds } },
+          data: { currentStatus: 'APPROVED' },
+        });
+      }
+    }
 
     return NextResponse.json(dispatchOrder, { status: 201 });
   } catch (e) {

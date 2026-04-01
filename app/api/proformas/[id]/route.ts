@@ -31,6 +31,7 @@ const patchSchema = z.object({
   shippingRoute:       z.enum(['AIR', 'LAND']).optional().nullable(),
   rejectedReason:      z.string().optional(),
   declaredAmount:      z.number().min(0).optional().nullable(),
+  clientPONumber:      z.string().optional().nullable(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {

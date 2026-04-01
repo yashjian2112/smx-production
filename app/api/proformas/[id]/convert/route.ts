@@ -103,7 +103,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const isTrading = product.productType === 'TRADING';
 
       if (isTrading) {
-        // ── TRADING ITEMS: units start at FINAL_ASSEMBLY / APPROVED (ready for dispatch) ──
+        // ── TRADING ITEMS: units start at FINAL_ASSEMBLY / PENDING (approved on DO creation) ──
         for (let i = 0; i < qty; i++) {
           const serial = await generateNextSerial(product.code);
           const finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(product.code);
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               orderId:     order.id,
               productId:   product.id,
               currentStage:  StageType.FINAL_ASSEMBLY,
-              currentStatus: 'APPROVED',
+              currentStatus: 'PENDING',
               readyForDispatch: false,
               finalAssemblyBarcode,
               returnRequestId: linkedReturn?.id ?? undefined,

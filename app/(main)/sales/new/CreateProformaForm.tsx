@@ -52,6 +52,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   const [clientId,         setClientId]         = useState('');
   const [currency,         setCurrency]         = useState<'INR' | 'USD'>('INR');
   const [termsOfPayment,   setTermsOfPayment]   = useState('100% ADVANCE');
+  const [clientPONumber,   setClientPONumber]   = useState('');
   const [deliveryDays,     setDeliveryDays]     = useState('');
   const [notes,            setNotes]            = useState('');
   const [shippingCharges,  setShippingCharges]  = useState('');
@@ -259,6 +260,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           termsOfPayment:  termsOfPayment || undefined,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : undefined,
           shippingRoute:   shippingRoute || undefined,
+          clientPONumber:  clientPONumber.trim() || undefined,
           notes:           finalNotes || undefined,
           items:           submitItems,
           splitInvoice:    splitInvoice || undefined,
@@ -424,6 +426,12 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
             )}
           </div>
         )}
+      </div>
+
+      {/* Client PO Number */}
+      <div>
+        <label className={lCls}>Client PO Number <span className="normal-case text-zinc-600 font-normal text-[10px]">(optional)</span></label>
+        <input value={clientPONumber} onChange={(e) => setClientPONumber(e.target.value)} className={iCls} placeholder="e.g. PO-12345" />
       </div>
 
       {/* Terms of Payment */}

@@ -37,6 +37,7 @@ type Proforma = {
   termsOfDelivery: string | null;
   notes: string | null;
   shippingRoute: string | null;
+  clientPONumber: string | null;
   client: Client;
   items: Item[];
   createdBy?: { id: string; name: string };
@@ -280,7 +281,7 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
         </div>
 
         {/* ── INFO BAR ── */}
-        <div className="info-bar">
+        <div className="info-bar" style={proforma.clientPONumber ? { gridTemplateColumns: '1fr 1fr 1fr 1fr' } : undefined}>
           <div className="info-cell">
             <div className="info-label">Invoice No.</div>
             <div className="info-value">{proforma.invoiceNumber}</div>
@@ -289,6 +290,12 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
             <div className="info-label">Date</div>
             <div className="info-value">{fmtDate(proforma.invoiceDate)}</div>
           </div>
+          {proforma.clientPONumber && (
+            <div className="info-cell">
+              <div className="info-label">Client PO No.</div>
+              <div className="info-value">{proforma.clientPONumber}</div>
+            </div>
+          )}
           <div className="info-cell">
             <div className="info-label">Currency</div>
             <div className="info-value">

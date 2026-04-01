@@ -31,6 +31,7 @@ type InitialProforma = {
   termsOfDelivery: string | null;
   shippingRoute: string | null;
   notes: string | null;
+  clientPONumber: string | null;
   items: InitialItem[];
 };
 
@@ -158,6 +159,7 @@ export function EditProformaForm({
   const [exchangeRate,   setExchangeRate]   = useState<number | ''>(proforma.exchangeRate ?? '');
   const [rateLoading,    setRateLoading]    = useState(false);
   const [termsOfPayment, setTermsOfPayment] = useState(proforma.termsOfPayment ?? '');
+  const [clientPONumber, setClientPONumber] = useState(proforma.clientPONumber ?? '');
   const [deliveryDays,   setDeliveryDays]   = useState(proforma.deliveryDays?.toString() ?? '');
   const [shippingRoute,  setShippingRoute]  = useState<'AIR' | 'LAND' | ''>(
     (proforma.shippingRoute === 'AIR' || proforma.shippingRoute === 'LAND') ? proforma.shippingRoute : ''
@@ -335,6 +337,7 @@ export function EditProformaForm({
           currency,
           exchangeRate:    currency === 'USD' && rate > 0 ? rate : null,
           termsOfPayment:  termsOfPayment  || undefined,
+          clientPONumber:  clientPONumber.trim() || null,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : null,
           shippingRoute:   shippingRoute || null,
           notes:           finalNotes    || undefined,
@@ -437,6 +440,12 @@ export function EditProformaForm({
           <input type="number" min={0} step="0.01" value={exchangeRate} onChange={(e) => setExchangeRate(parseFloat(e.target.value) || '')} onWheel={(e) => e.currentTarget.blur()} className={iCls} placeholder="e.g. 84.50" />
         </div>
       )}
+
+      {/* Client PO Number */}
+      <div>
+        <label className={lCls}>Client PO Number <span className="normal-case text-zinc-600 font-normal text-[10px]">(optional)</span></label>
+        <input value={clientPONumber} onChange={(e) => setClientPONumber(e.target.value)} className={iCls} placeholder="e.g. PO-12345" />
+      </div>
 
       {/* Terms of Payment */}
       <div>
