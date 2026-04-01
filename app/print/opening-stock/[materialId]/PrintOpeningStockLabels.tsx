@@ -31,7 +31,7 @@ export default function PrintOpeningStockLabels({ material, serials }: Props) {
     return () => clearTimeout(t);
   }, []);
 
-  const packLabel = material.packSize > 1 ? ` (Pack of ${material.packSize} ${material.unit})` : '';
+  const validSerials = serials.filter(s => s.barcode && s.barcode.trim());
 
   return (
     <>
@@ -66,16 +66,24 @@ export default function PrintOpeningStockLabels({ material, serials }: Props) {
 
         .label-name {
           font-family: Arial, sans-serif;
-          font-size: 8pt;
+          font-size: 7.5pt;
           font-weight: bold;
           text-align: center;
           color: #000;
           max-width: 46mm;
           line-height: 1.2;
-          margin-bottom: 0.5mm;
+          margin-bottom: 0.3mm;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+
+        .label-pack {
+          font-family: Arial, sans-serif;
+          font-size: 6.5pt;
+          text-align: center;
+          color: #000;
+          margin-bottom: 0.5mm;
         }
 
         .label-barcode {
@@ -115,14 +123,19 @@ export default function PrintOpeningStockLabels({ material, serials }: Props) {
       `}</style>
 
       <div className="no-print">
-        <strong>Opening Stock: {material.name}{packLabel}</strong> &nbsp;·&nbsp;
-        {serials.filter(s => s.barcode && s.barcode.trim()).length} labels &nbsp;·&nbsp;
+        <strong>Opening Stock: {material.name}</strong>
+        {material.packSize > 1 && <span> (Pack of {material.packSize} {material.unit})</span>}
+        &nbsp;·&nbsp;
+        {validSerials.length} labels &nbsp;·&nbsp;
         50mm x 25mm &nbsp;·&nbsp; TVS LP46 Neo
       </div>
 
-      {serials.filter(s => s.barcode && s.barcode.trim()).map(s => (
+      {validSerials.map(s => (
         <div key={s.id} className="label">
-          <div className="label-name">{material.name}{packLabel}</div>
+          <div className="label-name">{material.name}</div>
+          {s.quantity > 1 && (
+            <div className="label-pack">(Pack of {s.quantity} {material.unit})</div>
+          )}
           <div className="label-barcode">
             <LabelBarcode value={s.barcode} />
           </div>
