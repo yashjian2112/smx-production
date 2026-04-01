@@ -172,6 +172,8 @@ const managerNav: NavItem[] = [
 const adminNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'Dashboard' },
   { href: '/orders',    label: 'Orders',    icon: 'Orders'    },
+  { href: '/sales',     label: 'Sales',     icon: 'Invoice'   },
+  { href: '/shipping',  label: 'Shipping',  icon: 'Shipping'  },
   { href: '/purchase',  label: 'Purchase',  icon: 'Purchase'  },
   { href: '/inventory', label: 'Inventory', icon: 'Inventory' },
   { href: '/admin',     label: 'Admin',     icon: 'Admin'     },
