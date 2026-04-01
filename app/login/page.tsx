@@ -122,9 +122,6 @@ export default function LoginPage() {
           <LoginForm />
         </Suspense>
 
-        <p className="text-center text-zinc-700 text-xs mt-5 font-light">
-          admin · manager · emp @smx.com
-        </p>
       </div>
     </div>
   );
