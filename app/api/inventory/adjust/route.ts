@@ -36,111 +36,127 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Adjustment would result in negative stock' }, { status: 400 });
   }
 
-  const result = await prisma.$transaction(async (tx) => {
-    // 1. Update RawMaterial.currentStock
-    const updated = await tx.rawMaterial.update({
+  // Generate batch code OUTSIDE transaction to avoid lock conflicts
+  let batchCode: string | null = null;
+  if (data.quantity > 0) {
+    batchCode = await generateNextBatchCode();
+  }
+
+  // Find last serial sequence OUTSIDE transaction to avoid lock issues
+  let serialPrefix = '';
+  let serialSeqStart = 1;
+  const ps = data.packSize ?? 1;
+  if (data.type === 'OPENING' && data.packCount && data.packCount > 0) {
+    const mat = await prisma.rawMaterial.findUnique({
       where: { id: data.rawMaterialId },
-      data:  { currentStock: newStock },
+      include: { category: { select: { code: true } } },
     });
+    const categoryCode = mat?.category?.code ?? 'MAT';
+    const year = String(new Date().getFullYear() % 100).padStart(2, '0');
+    serialPrefix = `${categoryCode.trim().toUpperCase()}GN${year}`;
 
-    // 2. Create StockMovement audit record
-    await tx.stockMovement.create({
-      data: {
-        rawMaterialId:  data.rawMaterialId,
-        type:           'ADJUSTMENT',
-        quantity:       data.quantity,
-        reference:      data.type,
-        adjustmentType: data.adjustmentType ?? data.type,
-        notes:          data.reason,
-        createdById:    session.id,
-      },
+    const last = await prisma.materialSerial.findFirst({
+      where: { barcode: { startsWith: serialPrefix } },
+      orderBy: { barcode: 'desc' },
+      select: { barcode: true },
     });
-
-    // 3. For positive adjustments (opening stock / add), create a batch
-    let batchId: string | null = null;
-    if (data.quantity > 0) {
-      const batchCode = await generateNextBatchCode();
-      const batch = await tx.inventoryBatch.create({
-        data: {
-          batchCode,
-          rawMaterialId:    data.rawMaterialId,
-          quantity:         data.quantity,
-          remainingQty:     data.quantity,
-          unitPrice:        data.unitPrice,
-          condition:        'GOOD',
-          expiryDate:       data.expiryDate ? new Date(data.expiryDate) : null,
-          manufacturingDate: data.manufacturingDate ? new Date(data.manufacturingDate) : null,
-          notes:            `${data.type}: ${data.reason}`,
-        },
-      });
-      batchId = batch.id;
-    }
-
-    // 4. For OPENING with pack info, generate MaterialSerial barcodes
-    const serialIds: string[] = [];
-    if (data.type === 'OPENING' && data.packCount && data.packCount > 0) {
-      const mat = await tx.rawMaterial.findUnique({
-        where: { id: data.rawMaterialId },
-        include: { category: { select: { code: true } } },
-      });
-      const categoryCode = mat?.category?.code ?? 'MAT';
-      const year = String(new Date().getFullYear() % 100).padStart(2, '0');
-      const prefix = `${categoryCode.trim().toUpperCase()}GN${year}`;
-      const ps = data.packSize ?? 1;
-
-      // Find last sequence for this prefix
-      const last = await tx.materialSerial.findFirst({
-        where: { barcode: { startsWith: prefix } },
-        orderBy: { barcode: 'desc' },
-        select: { barcode: true },
-      });
-      let seq = 1;
-      if (last?.barcode) {
-        const seqPart = last.barcode.slice(prefix.length);
-        seq = (parseInt(seqPart, 10) || 0) + 1;
-      }
-
-      for (let i = 0; i < data.packCount; i++) {
-        const barcode = `${prefix}${String(seq + i).padStart(5, '0')}`;
-        const serial = await tx.materialSerial.create({
-          data: {
-            materialId: data.rawMaterialId,
-            grnId: null,
-            stageType: 'GN',
-            barcode,
-            quantity: ps,
-            status: 'PRINTED',
-          },
-        });
-        serialIds.push(serial.id);
-      }
-    }
-
-    return { ...updated, batchId, serialIds };
-  });
-
-  // After deduction: check if stock dropped below reorder point → auto-create RO
-  if (data.quantity < 0) {
-    const updated = await prisma.rawMaterial.findUnique({
-      where: { id: data.rawMaterialId },
-      select: { id: true, currentStock: true, reorderPoint: true, minimumOrderQty: true },
-    });
-    if (updated && updated.currentStock <= updated.reorderPoint && updated.minimumOrderQty > 0) {
-      const { autoCreateRO } = await import('@/lib/requirement-order');
-      try {
-        await autoCreateRO({
-          trigger: 'LOW_STOCK',
-          items: [{
-            materialId: updated.id,
-            qtyRequired: updated.minimumOrderQty,
-            notes: `Auto: stock ${updated.currentStock} ≤ reorder point ${updated.reorderPoint}`,
-          }],
-        });
-      } catch (roErr) {
-        console.error('Auto-RO creation failed:', roErr);
-      }
+    if (last?.barcode) {
+      const seqPart = last.barcode.slice(serialPrefix.length);
+      serialSeqStart = (parseInt(seqPart, 10) || 0) + 1;
     }
   }
 
-  return NextResponse.json(result, { status: 201 });
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Update RawMaterial.currentStock
+      const updated = await tx.rawMaterial.update({
+        where: { id: data.rawMaterialId },
+        data:  { currentStock: newStock },
+      });
+
+      // 2. Create StockMovement audit record
+      await tx.stockMovement.create({
+        data: {
+          rawMaterialId:  data.rawMaterialId,
+          type:           'ADJUSTMENT',
+          quantity:       data.quantity,
+          reference:      data.type,
+          adjustmentType: data.adjustmentType ?? data.type,
+          notes:          data.reason,
+          createdById:    session.id,
+        },
+      });
+
+      // 3. For positive adjustments (opening stock / add), create a batch
+      let batchId: string | null = null;
+      if (data.quantity > 0 && batchCode) {
+        const batch = await tx.inventoryBatch.create({
+          data: {
+            batchCode,
+            rawMaterialId:    data.rawMaterialId,
+            quantity:         data.quantity,
+            remainingQty:     data.quantity,
+            unitPrice:        data.unitPrice,
+            condition:        'GOOD',
+            expiryDate:       data.expiryDate ? new Date(data.expiryDate) : null,
+            manufacturingDate: data.manufacturingDate ? new Date(data.manufacturingDate) : null,
+            notes:            `${data.type}: ${data.reason}`,
+          },
+        });
+        batchId = batch.id;
+      }
+
+      // 4. For OPENING with pack info, generate MaterialSerial barcodes
+      const serialIds: string[] = [];
+      if (data.type === 'OPENING' && data.packCount && data.packCount > 0 && serialPrefix) {
+        for (let i = 0; i < data.packCount; i++) {
+          const barcode = `${serialPrefix}${String(serialSeqStart + i).padStart(5, '0')}`;
+          const serial = await tx.materialSerial.create({
+            data: {
+              materialId: data.rawMaterialId,
+              grnId: null,
+              stageType: 'GN',
+              barcode,
+              quantity: ps,
+              status: 'PRINTED',
+            },
+          });
+          serialIds.push(serial.id);
+        }
+      }
+
+      return { ...updated, batchId, serialIds };
+    });
+
+    // After deduction: check if stock dropped below reorder point → auto-create RO
+    if (data.quantity < 0) {
+      const updated = await prisma.rawMaterial.findUnique({
+        where: { id: data.rawMaterialId },
+        select: { id: true, currentStock: true, reorderPoint: true, minimumOrderQty: true },
+      });
+      if (updated && updated.currentStock <= updated.reorderPoint && updated.minimumOrderQty > 0) {
+        const { autoCreateRO } = await import('@/lib/requirement-order');
+        try {
+          await autoCreateRO({
+            trigger: 'LOW_STOCK',
+            items: [{
+              materialId: updated.id,
+              qtyRequired: updated.minimumOrderQty,
+              notes: `Auto: stock ${updated.currentStock} ≤ reorder point ${updated.reorderPoint}`,
+            }],
+          });
+        } catch (roErr) {
+          console.error('Auto-RO creation failed:', roErr);
+        }
+      }
+    }
+
+    return NextResponse.json(result, { status: 201 });
+  } catch (err: any) {
+    console.error('Adjust transaction failed:', err);
+    const msg = err?.message?.includes('Unique constraint')
+      ? 'Barcode collision — a serial with this prefix already exists. Try again.'
+      : (err?.message || 'Transaction failed');
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }
