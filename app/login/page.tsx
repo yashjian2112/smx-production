@@ -111,6 +111,11 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-semibold text-white tracking-tight">SMX Drives</h1>
           <p className="text-zinc-600 text-sm mt-1 font-light">Production Tracker</p>
+          {process.env.NEXT_PUBLIC_APP_URL?.includes('testing') && (
+            <div className="mt-3 inline-block px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase bg-amber-500/15 text-amber-400 border border-amber-500/30">
+              Testing Environment
+            </div>
+          )}
         </div>
 
         <Suspense fallback={<div className="text-zinc-700 text-center text-sm">Loading…</div>}>
