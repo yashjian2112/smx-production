@@ -472,7 +472,7 @@ export function ClientsAdmin({ clients: initial }: { clients: ClientRow[] }) {
 
 function Drawer({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70">
       <div
         className="w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-2xl p-5 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}

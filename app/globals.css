@@ -89,6 +89,10 @@ button, a {
     background-size: 1rem;
     padding-right: 2.5rem;
   }
+  .select-field option {
+    background: #18181b;
+    color: #e4e4e7;
+  }
 }
 
 /* ── Touch targets ──────────────────────────────── */
