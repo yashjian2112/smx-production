@@ -12,6 +12,7 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: 'SMX Drives | Production Tracker',
   description: 'Manufacturing traceability and workforce performance',
+  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {
