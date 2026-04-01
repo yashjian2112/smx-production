@@ -1204,7 +1204,7 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
   function openEditMat(m: RawMaterial) {
     const ps = m.packSize ?? 1;
     setEditMat(m); setFName(m.name); setFUnit(m.unit); setFCatId(m.category?.id ?? '');
-    setFMin(String(ps > 1 ? Math.round(m.minimumStock / ps) : m.minimumStock));
+    setFMin(String(m.minimumStock));
     setFReord(String(m.reorderPoint)); setFMoq(String(m.minimumOrderQty ?? 1));
     setFDesc(m.description ?? '');
     setFVendorId(m.preferredVendor?.id ?? '');
@@ -1223,8 +1223,8 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
       const body = {
         name: fName, unit: fUnit, categoryId: fCatId || undefined,
         description: fDesc || undefined,
-        minimumStock: (parseInt(fPackSize) > 1 ? (parseFloat(fMin) || 0) * parseInt(fPackSize) : parseFloat(fMin) || 0),
-        reorderPoint: (parseInt(fPackSize) > 1 ? (parseFloat(fMin) || 0) * parseInt(fPackSize) : parseFloat(fMin) || 0),
+        minimumStock: parseFloat(fMin) || 0,
+        reorderPoint: parseFloat(fMin) || 0,
         minimumOrderQty: 1,
         packSize: parseInt(fPackSize) || 1,
         purchaseUnit: fPurchaseUnit || undefined,
@@ -1240,10 +1240,9 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
         const mat = await res.json();
         const inputQty = parseFloat(fOpenQty) || 0;
         const ps = parseInt(fPackSize) || 1;
-        const totalQty = ps > 1 ? inputQty * ps : inputQty;
-        // Always generate serial barcodes equal to opening stock count
+        // Store in pack units (reels, boxes, etc.) — NOT multiplied to PCS
         const packCount = Math.ceil(inputQty);
-        if (totalQty > 0) {
+        if (inputQty > 0) {
           try {
             const adjustRes = await fetch('/api/inventory/adjust', {
               method: 'POST',
@@ -1251,8 +1250,8 @@ function MaterialsTab({ isAdmin, isRealAdmin }: { isAdmin: boolean; isRealAdmin:
               body: JSON.stringify({
                 rawMaterialId: mat.id,
                 type:     'OPENING',
-                quantity: totalQty,
-                reason:   ps > 1 ? `Opening stock: ${inputQty} ${(fPurchaseUnit || fUnit).toLowerCase()} × ${ps} = ${totalQty}` : `Opening stock: ${totalQty} ${fUnit}`,
+                quantity: inputQty,
+                reason:   ps > 1 ? `Opening stock: ${inputQty} ${(fPurchaseUnit || fUnit).toLowerCase()}` : `Opening stock: ${inputQty} ${fUnit}`,
                 packCount,
                 packSize: ps,
               }),
