@@ -126,11 +126,10 @@ export default function PrintOrderBarcodes({ orderNumber, productName, units }: 
       {units.map(u => (
         <div key={u.serialNumber} className="label">
           <div className="label-name">{productName}</div>
-          <div className="label-serial">S/N: {u.serialNumber}</div>
           <div className="label-barcode">
-            <LabelBarcode value={u.barcode} />
+            <LabelBarcode value={u.serialNumber} />
           </div>
-          <div className="label-code">{u.barcode}</div>
+          <div className="label-code">{u.serialNumber}</div>
         </div>
       ))}
     </>

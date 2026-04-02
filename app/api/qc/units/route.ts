@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
-import { generateNextFinalAssemblyBarcode } from '@/lib/barcode';
+// FA barcode = serial number (no separate generation needed)
 import { StageType, UnitStatus } from '@prisma/client';
 
 /**
@@ -19,14 +19,11 @@ export async function GET() {
     // ── Auto-approve any WAITING_APPROVAL units stuck at QC stage ─────────────
     const stuckUnits = await prisma.controllerUnit.findMany({
       where: { currentStage: 'QC_AND_SOFTWARE', currentStatus: 'WAITING_APPROVAL' },
-      select: { id: true, qcBarcode: true, product: { select: { code: true } } },
+      select: { id: true, serialNumber: true, qcBarcode: true, product: { select: { code: true } } },
     });
 
     for (const u of stuckUnits) {
-      let faBarcode = undefined;
-      if (u.product?.code) {
-        faBarcode = await generateNextFinalAssemblyBarcode(u.product.code);
-      }
+      const faBarcode = u.serialNumber; // FA barcode = serial number
       await prisma.controllerUnit.update({
         where: { id: u.id },
         data: {

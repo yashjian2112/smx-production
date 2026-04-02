@@ -3,7 +3,7 @@ import { requireSession, requireRole, isManager } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
 import { generateNextSerial } from '@/lib/serial';
-import { generateNextPowerstageBarcode, generateNextBrainboardBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
+import { generateNextPowerstageBarcode, generateNextBrainboardBarcode, generateNextQCBarcode } from '@/lib/barcode';
 import { StageType } from '@prisma/client';
 import { z } from 'zod';
 
@@ -94,7 +94,6 @@ export async function POST(req: NextRequest) {
       // ── TRADING ITEMS: units start at FINAL_ASSEMBLY / PENDING (approved on DO creation) ──
       for (let i = 0; i < quantity; i++) {
         const serial = await generateNextSerial(product.code);
-        const finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(product.code);
 
         const unit = await prisma.controllerUnit.create({
           data: {
@@ -104,7 +103,7 @@ export async function POST(req: NextRequest) {
             currentStage: StageType.FINAL_ASSEMBLY,
             currentStatus: 'PENDING',
             readyForDispatch: false,
-            finalAssemblyBarcode,
+            finalAssemblyBarcode: serial, // FA barcode = serial number
           },
         });
 
@@ -162,6 +161,7 @@ export async function POST(req: NextRequest) {
             powerstageBarcode,
             brainboardBarcode,
             qcBarcode,
+            finalAssemblyBarcode: serial, // FA barcode = serial number
           },
         });
       }

@@ -3,7 +3,7 @@ import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
 import { notify } from '@/lib/notify';
-import { generateNextAssemblyBarcode, generateNextBrainboardBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
+import { generateNextAssemblyBarcode, generateNextBrainboardBarcode, generateNextQCBarcode } from '@/lib/barcode';
 import { StageType, UnitStatus } from '@prisma/client';
 
 const STAGE_ORDER: StageType[] = [
@@ -142,8 +142,8 @@ export async function POST(
     }
     // QC barcode is NOT pre-generated — it is assigned when the QC test actually starts
     // (POST /api/units/[id]/work when stage = QC_AND_SOFTWARE)
-    if (next === StageType.FINAL_ASSEMBLY && product) {
-      updateData.finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(product.code);
+    if (next === StageType.FINAL_ASSEMBLY) {
+      updateData.finalAssemblyBarcode = unit.serialNumber; // FA barcode = serial number
     }
 
     await prisma.controllerUnit.update({

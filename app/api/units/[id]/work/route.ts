@@ -6,7 +6,7 @@ import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
 import { notify, notifyMany } from '@/lib/notify';
-import { generateNextAssemblyBarcode, generateNextQCBarcode, generateNextFinalAssemblyBarcode } from '@/lib/barcode';
+import { generateNextAssemblyBarcode, generateNextQCBarcode } from '@/lib/barcode';
 import { put } from '@vercel/blob';
 import { StageType, UnitStatus } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
@@ -234,6 +234,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const unit = await prisma.controllerUnit.findUnique({
     where: { id },
     select: {
+      serialNumber: true,
       currentStage: true,
       currentStatus: true,
       assemblyBarcode: true,
@@ -345,7 +346,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         }
         // QC barcode is NOT pre-generated here — it is assigned when QC test starts (POST handler)
         if (next === StageType.FINAL_ASSEMBLY && !unit.finalAssemblyBarcode) {
-          stageBarcode.finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(productCode);
+          stageBarcode.finalAssemblyBarcode = unit.serialNumber; // FA barcode = serial number
         }
       }
 

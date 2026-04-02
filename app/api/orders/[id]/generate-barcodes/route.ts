@@ -5,7 +5,6 @@ import {
   generateNextPowerstageBarcode,
   generateNextBrainboardBarcode,
   generateNextQCBarcode,
-  generateNextFinalAssemblyBarcode,
 } from '@/lib/barcode';
 
 /** POST /api/orders/[id]/generate-barcodes
@@ -27,6 +26,7 @@ export async function POST(
         units: {
           select: {
             id: true,
+            serialNumber: true,
             currentStage: true,
             currentStatus: true,
             powerstageBarcode: true,
@@ -56,15 +56,9 @@ export async function POST(
       if (!unit.qcBarcode)
         updates.qcBarcode = await generateNextQCBarcode(modelCode);
 
-      if (unitStageIdx >= FA_STAGE_IDX) {
-        // Unit is at or past FA — generate FA barcode if missing
-        if (!unit.finalAssemblyBarcode)
-          updates.finalAssemblyBarcode = await generateNextFinalAssemblyBarcode(modelCode);
-      } else {
-        // Unit hasn't reached FA yet — clear any wrongly pre-assigned FA barcode
-        // so it will receive a fresh barcode in the correct format when it enters FA
-        if (unit.finalAssemblyBarcode)
-          updates.finalAssemblyBarcode = null;
+      // FA barcode = serial number (always)
+      if (!unit.finalAssemblyBarcode || unit.finalAssemblyBarcode !== unit.serialNumber) {
+        updates.finalAssemblyBarcode = unit.serialNumber;
       }
 
       if (Object.keys(updates).length > 0) {
