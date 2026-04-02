@@ -3,9 +3,30 @@ import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 /**
+ * Check if an order has trading items (by order product OR unit products)
+ */
+async function getTradingUnitIds(orderId: string): Promise<string[]> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { product: { select: { productType: true } } },
+  });
+  const orderIsTrading = order?.product.productType === 'TRADING';
+
+  const units = await prisma.controllerUnit.findMany({
+    where: { orderId },
+    select: { id: true, product: { select: { productType: true } } },
+  });
+
+  // A unit is trading if its own product is TRADING, or if the order's product is TRADING
+  return units
+    .filter(u => u.product.productType === 'TRADING' || orderIsTrading)
+    .map(u => u.id);
+}
+
+/**
  * POST /api/orders/[id]/verify-barcode
  * Scan a barcode to verify it belongs to a trading unit in this order.
- * Sets barcodeVerified = true on the unit.
+ * Sets barcodeVerified = true and currentStatus = COMPLETED.
  * Body: { barcode: string }
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -18,11 +39,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const code = barcode.trim().toUpperCase();
+  const tradingIds = await getTradingUnitIds(id);
 
   // Find unit by serial number (FA barcode = serial) in this order
   const unit = await prisma.controllerUnit.findFirst({
     where: {
       orderId: id,
+      id: { in: tradingIds },
       OR: [
         { serialNumber: code },
         { finalAssemblyBarcode: code },
@@ -33,10 +56,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   if (!unit) {
     return NextResponse.json({ error: 'Barcode not found in this order' }, { status: 404 });
-  }
-
-  if (unit.product.productType !== 'TRADING') {
-    return NextResponse.json({ error: 'This unit is a manufactured product — not a trading item' }, { status: 400 });
   }
 
   if (unit.barcodeVerified) {
@@ -52,7 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Check if ALL trading units in this order are now verified
   const remaining = await prisma.controllerUnit.count({
-    where: { orderId: id, product: { productType: 'TRADING' }, barcodeVerified: false },
+    where: { id: { in: tradingIds }, barcodeVerified: false },
   });
 
   return NextResponse.json({ ...updated, allVerified: remaining === 0 });
@@ -67,8 +86,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   await requireSession();
   const { id } = await params;
 
+  const tradingIds = await getTradingUnitIds(id);
+
   const units = await prisma.controllerUnit.findMany({
-    where: { orderId: id, product: { productType: 'TRADING' } },
+    where: { id: { in: tradingIds } },
     select: { id: true, serialNumber: true, barcodeVerified: true, currentStatus: true, product: { select: { name: true } } },
     orderBy: { serialNumber: 'asc' },
   });
@@ -78,12 +99,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const anyStuck = units.some(u => u.barcodeVerified && u.currentStatus !== 'COMPLETED' && u.currentStatus !== 'APPROVED');
   if (allVerified && anyStuck) {
     await prisma.controllerUnit.updateMany({
-      where: { orderId: id, product: { productType: 'TRADING' }, currentStatus: { notIn: ['COMPLETED', 'BLOCKED'] } },
+      where: { id: { in: tradingIds }, currentStatus: { notIn: ['COMPLETED', 'BLOCKED'] } },
       data: { currentStatus: 'COMPLETED' },
     });
-    // Return updated data
     const updated = await prisma.controllerUnit.findMany({
-      where: { orderId: id, product: { productType: 'TRADING' } },
+      where: { id: { in: tradingIds } },
       select: { id: true, serialNumber: true, barcodeVerified: true, currentStatus: true, product: { select: { name: true } } },
       orderBy: { serialNumber: 'asc' },
     });
