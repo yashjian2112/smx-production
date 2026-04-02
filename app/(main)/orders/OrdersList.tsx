@@ -416,15 +416,24 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
             <BarcodeScanner
               title="Scan Unit Barcode"
               hint="Scan the printed barcode label"
-              onScan={(code) => {
+              onScan={async (code) => {
                 setScanning(false);
                 setScanError('');
-                // Check if this barcode belongs to a trading unit in this order
-                const isValid = order.units.some(u => u.isTrading);
-                if (!isValid) { setScanError('No trading units in this order'); return; }
                 if (scannedSerials.has(code)) { setScanError('Already scanned'); return; }
-                setScannedSerials(prev => { const n = new Set(Array.from(prev)); n.add(code); return n; });
-                setLastScanned(code);
+                try {
+                  const res = await fetch(`/api/orders/${order.id}/verify-barcode`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ barcode: code }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) { setScanError(data.error || 'Verification failed'); return; }
+                  if (data.alreadyVerified) { setScanError('Already verified'); return; }
+                  setScannedSerials(prev => { const n = new Set(Array.from(prev)); n.add(code); return n; });
+                  setLastScanned(code);
+                } catch {
+                  setScanError('Network error — try again');
+                }
               }}
               onClose={() => setScanning(false)}
             />

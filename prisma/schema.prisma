@@ -255,6 +255,7 @@ model ControllerUnit {
   firmwareVersion String?   @map("firmware_version")
   softwareVersion String?   @map("software_version")
   readyForDispatch Boolean  @default(false) @map("ready_for_dispatch")
+  barcodeVerified  Boolean  @default(false) @map("barcode_verified") // trading items: true after barcode scan confirmation
   // Stage-wise barcodes
   powerstageBarcode    String?  @unique @map("powerstage_barcode")
   brainboardBarcode    String?  @unique @map("brainboard_barcode")

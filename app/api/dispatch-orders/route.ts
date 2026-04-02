@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
             readyForDispatch: false,
             packingBoxItem:   null, // exclude units already packed in other DOs
           },
-          select: { id: true, currentStatus: true },
+          select: { id: true, currentStatus: true, barcodeVerified: true, product: { select: { productType: true } } },
         },
       },
     });
@@ -152,6 +152,15 @@ export async function POST(req: NextRequest) {
           : 'Order must have at least 1 unit in FINAL_ASSEMBLY with status APPROVED and not yet dispatched' },
         { status: 400 }
       );
+
+    // Block dispatch if any trading units are not barcode-verified
+    const unverifiedTrading = availableUnits.filter(u => u.product?.productType === 'TRADING' && !u.barcodeVerified);
+    if (unverifiedTrading.length > 0) {
+      return NextResponse.json(
+        { error: `${unverifiedTrading.length} trading unit${unverifiedTrading.length !== 1 ? 's have' : ' has'} not been barcode-verified. Please scan and confirm all trading barcodes before creating a dispatch order.` },
+        { status: 400 }
+      );
+    }
     // Subtract units already claimed by OPEN/PACKING DOs (not yet packed but reserved)
     const pendingDOs = await prisma.dispatchOrder.findMany({
       where: { orderId, status: { in: ['OPEN', 'PACKING'] } },
