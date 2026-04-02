@@ -10,7 +10,7 @@ export default async function OrderBarcodesPage({ params }: { params: Promise<{ 
     include: {
       product: { select: { name: true, code: true } },
       units: {
-        select: { id: true, serialNumber: true, finalAssemblyBarcode: true },
+        select: { id: true, serialNumber: true, finalAssemblyBarcode: true, product: { select: { name: true, productType: true } } },
         orderBy: { serialNumber: 'asc' },
       },
     },
@@ -18,13 +18,18 @@ export default async function OrderBarcodesPage({ params }: { params: Promise<{ 
 
   if (!order) return notFound();
 
+  // Only print barcodes for trading units
+  const tradingUnits = order.units.filter(u => u.product.productType === 'TRADING');
+  const units = tradingUnits.length > 0 ? tradingUnits : order.units;
+
   return (
     <PrintOrderBarcodes
       orderNumber={order.orderNumber}
       productName={order.product.name}
-      units={order.units.map(u => ({
+      units={units.map(u => ({
         serialNumber: u.serialNumber,
         barcode: u.finalAssemblyBarcode ?? u.serialNumber,
+        productName: u.product.name,
       }))}
     />
   );

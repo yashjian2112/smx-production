@@ -2,6 +2,13 @@
 
 import { useEffect } from 'react';
 
+interface ProductGroup {
+  name: string;
+  code: string;
+  productType: string;
+  serials: string[];
+}
+
 interface Props {
   order: {
     orderNumber: string;
@@ -9,11 +16,11 @@ interface Props {
     quantity: number;
     voltage: string | null;
     dueDate: string | null;
-    product: { name: string; code: string };
     client: { customerName: string; code: string } | null;
     createdBy: string;
     piNumber: string | null;
     clientPO: string | null;
+    products: ProductGroup[];
   };
 }
 
@@ -82,14 +89,8 @@ export default function PrintWorkOrder({ order }: Props) {
             <tr>
               <td style={{ padding: '4px 8px', fontWeight: 'bold', width: '25%', background: '#f5f5f5', border: '1px solid #ddd' }}>Customer</td>
               <td style={{ padding: '4px 8px', width: '25%', border: '1px solid #ddd' }}>{order.client?.customerName ?? '—'}</td>
-              <td style={{ padding: '4px 8px', fontWeight: 'bold', width: '25%', background: '#f5f5f5', border: '1px solid #ddd' }}>Product</td>
-              <td style={{ padding: '4px 8px', width: '25%', border: '1px solid #ddd' }}>{order.product.name}</td>
-            </tr>
-            <tr>
-              <td style={{ padding: '4px 8px', fontWeight: 'bold', background: '#f5f5f5', border: '1px solid #ddd' }}>Quantity</td>
-              <td style={{ padding: '4px 8px', border: '1px solid #ddd' }}>{order.quantity} units</td>
-              <td style={{ padding: '4px 8px', fontWeight: 'bold', background: '#f5f5f5', border: '1px solid #ddd' }}>Due Date</td>
-              <td style={{ padding: '4px 8px', border: '1px solid #ddd' }}>{order.dueDate ? fmtDate(order.dueDate) : '—'}</td>
+              <td style={{ padding: '4px 8px', fontWeight: 'bold', width: '25%', background: '#f5f5f5', border: '1px solid #ddd' }}>Trading Items</td>
+              <td style={{ padding: '4px 8px', width: '25%', border: '1px solid #ddd' }}>{order.products.reduce((s, p) => s + p.serials.length, 0)} units</td>
             </tr>
             <tr>
               <td style={{ padding: '4px 8px', fontWeight: 'bold', background: '#f5f5f5', border: '1px solid #ddd' }}>PI Number</td>
@@ -98,19 +99,42 @@ export default function PrintWorkOrder({ order }: Props) {
               <td style={{ padding: '4px 8px', border: '1px solid #ddd' }}>{order.clientPO ?? '—'}</td>
             </tr>
             <tr>
+              <td style={{ padding: '4px 8px', fontWeight: 'bold', background: '#f5f5f5', border: '1px solid #ddd' }}>Due Date</td>
+              <td style={{ padding: '4px 8px', border: '1px solid #ddd' }}>{order.dueDate ? fmtDate(order.dueDate) : '—'}</td>
               <td style={{ padding: '4px 8px', fontWeight: 'bold', background: '#f5f5f5', border: '1px solid #ddd' }}>Created By</td>
               <td style={{ padding: '4px 8px', border: '1px solid #ddd' }}>{order.createdBy}</td>
-              <td style={{ padding: '4px 8px', fontWeight: 'bold', background: '#f5f5f5', border: '1px solid #ddd' }}>Product Code</td>
-              <td style={{ padding: '4px 8px', border: '1px solid #ddd' }}>{order.product.code}</td>
             </tr>
           </tbody>
         </table>
 
-        {/* Order Summary */}
-        <div style={{ padding: '12px', border: '2px solid #000', borderRadius: '4px', marginBottom: '24px', textAlign: 'center' }}>
-          <p style={{ fontSize: '14pt', fontWeight: 'bold', marginBottom: '4px' }}>{order.product.name}</p>
-          <p style={{ fontSize: '12pt' }}>Quantity: <strong>{order.quantity}</strong> unit{order.quantity !== 1 ? 's' : ''}</p>
-        </div>
+        {/* Product-wise breakdown */}
+        {order.products.map((p, idx) => (
+          <div key={p.code} style={{ marginBottom: '16px' }}>
+            <div style={{ padding: '8px 12px', border: '2px solid #000', borderRadius: '4px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <p style={{ fontSize: '12pt', fontWeight: 'bold' }}>{idx + 1}. {p.name}</p>
+                <p style={{ fontSize: '10pt' }}>Qty: <strong>{p.serials.length}</strong></p>
+              </div>
+              <p style={{ fontSize: '8pt', color: '#666' }}>Code: {p.code}</p>
+            </div>
+            <table style={{ width: '100%', fontSize: '9pt', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f5f5f5' }}>
+                  <th style={{ padding: '3px 8px', border: '1px solid #ddd', textAlign: 'left', width: '10%' }}>#</th>
+                  <th style={{ padding: '3px 8px', border: '1px solid #ddd', textAlign: 'left' }}>Serial / Barcode</th>
+                </tr>
+              </thead>
+              <tbody>
+                {p.serials.map((s, i) => (
+                  <tr key={s}>
+                    <td style={{ padding: '2px 8px', border: '1px solid #ddd' }}>{i + 1}</td>
+                    <td style={{ padding: '2px 8px', border: '1px solid #ddd', fontFamily: 'Courier New, monospace' }}>{s}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
 
         {/* Signature */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px', fontSize: '9pt' }}>

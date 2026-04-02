@@ -12,6 +12,13 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
         product: true,
         client: true,
         proformaInvoice: { select: { invoiceNumber: true, clientPONumber: true } },
+        units: {
+          select: {
+            serialNumber: true,
+            product: { select: { name: true, code: true, productType: true } },
+          },
+          orderBy: { serialNumber: 'asc' },
+        },
       },
     }),
     prisma.order.findUnique({ where: { id }, select: { createdById: true } }).then(async o =>
@@ -21,6 +28,17 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
 
   if (!order) return notFound();
 
+  // Group only TRADING units by product (manufactured units have their own production flow)
+  const tradingUnits = order.units.filter(u => u.product.productType === 'TRADING');
+  const productGroups: Record<string, { name: string; code: string; productType: string; serials: string[] }> = {};
+  for (const u of tradingUnits) {
+    const key = u.product.code;
+    if (!productGroups[key]) {
+      productGroups[key] = { name: u.product.name, code: u.product.code, productType: 'TRADING', serials: [] };
+    }
+    productGroups[key].serials.push(u.serialNumber);
+  }
+
   return (
     <PrintWorkOrder
       order={{
@@ -29,11 +47,11 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
         quantity: order.quantity,
         voltage: order.voltage,
         dueDate: order.dueDate?.toISOString() ?? null,
-        product: { name: order.product.name, code: order.product.code },
         client: order.client ? { customerName: order.client.customerName, code: order.client.code } : null,
         createdBy: createdByUser?.name ?? '—',
         piNumber: order.proformaInvoice?.invoiceNumber ?? null,
         clientPO: order.proformaInvoice?.clientPONumber ?? null,
+        products: Object.values(productGroups),
       }}
     />
   );

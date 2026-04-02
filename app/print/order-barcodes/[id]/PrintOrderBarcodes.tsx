@@ -6,7 +6,7 @@ import JsBarcode from 'jsbarcode';
 interface Props {
   orderNumber: string;
   productName: string;
-  units: { serialNumber: string; barcode: string }[];
+  units: { serialNumber: string; barcode: string; productName?: string }[];
 }
 
 function LabelBarcode({ value }: { value: string }) {
@@ -125,7 +125,7 @@ export default function PrintOrderBarcodes({ orderNumber, productName, units }: 
 
       {units.map(u => (
         <div key={u.serialNumber} className="label">
-          <div className="label-name">{productName}</div>
+          <div className="label-name">{u.productName || productName}</div>
           <div className="label-barcode">
             <LabelBarcode value={u.serialNumber} />
           </div>
