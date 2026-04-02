@@ -399,15 +399,21 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
 
             <div className="flex gap-3">
               {allScanned ? (
-                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanMode(false); }}
+                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanMode(false); onRefresh?.(); }}
                   className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors flex items-center justify-center gap-1.5">
                   <Check className="w-4 h-4" /> All Verified — Done
                 </button>
               ) : (
-                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanError(''); setScanning(true); }}
-                  className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-purple-600 hover:bg-purple-500 text-white transition-colors flex items-center justify-center gap-1.5">
-                  <ScanLine className="w-4 h-4" /> Scan Barcode
-                </button>
+                <>
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanMode(false); }}
+                    className="flex-1 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                    Close
+                  </button>
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanError(''); setScanning(true); }}
+                    className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-purple-600 hover:bg-purple-500 text-white transition-colors flex items-center justify-center gap-1.5">
+                    <ScanLine className="w-4 h-4" /> Scan Barcode
+                  </button>
+                </>
               )}
             </div>
           </div>
