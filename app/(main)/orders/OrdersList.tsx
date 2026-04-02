@@ -80,27 +80,17 @@ export function OrdersList({ orders, isManager, sessionRole }: {
 
   const [acceptError, setAcceptError] = useState('');
 
-  async function acceptOrder(orderId: string, stage: string, isTrading: boolean) {
+  async function acceptOrder(orderId: string, stage: string) {
     setAcceptError('');
     setAccepting(`${orderId}:${stage}`);
-
-    let res: Response;
-    if (isTrading) {
-      // Trading orders: lightweight accept — updates units to IN_PROGRESS
-      res = await fetch(`/api/orders/${orderId}/accept-trading`, { method: 'POST' });
-    } else {
-      // Manufactured orders: create job card with BOM
-      res = await fetch('/api/inventory/job-cards', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, stage }),
-      });
-    }
-
+    const res = await fetch('/api/inventory/job-cards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, stage }),
+    });
     setAccepting(null);
     if (res.ok) {
       await loadPending();
-      if (isTrading) router.refresh(); // refresh server data so Processing tab picks it up
     } else {
       const data = await res.json().catch(() => ({ error: 'Failed to accept order' }));
       setAcceptError(data.error || 'Failed to accept order');
@@ -114,20 +104,8 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   const processing = orders.filter((o) => {
     if (o.status !== 'ACTIVE') return false;
     if (allUnitsDone(o)) return false;
-    const hasTrading = o.product.productType === 'TRADING' || o.units.some(u => u.isTrading);
-    if (hasTrading) {
-      // Trading orders: only show in Processing after accepted (units no longer PENDING)
-      const tradingUnits = o.units.filter(u => u.isTrading);
-      const anyAccepted = tradingUnits.some(u => u.currentStatus !== 'PENDING');
-      if (anyAccepted) return true;
-      // Mixed order: check manufactured units too
-      const mfgUnits = o.units.filter(u => !u.isTrading);
-      if (mfgUnits.length > 0) {
-        if (isEmployee) return o.hasMyJobCard || mfgUnits.some(u => u.currentStatus !== 'PENDING');
-        return true;
-      }
-      return false; // pure trading, not yet accepted
-    }
+    // Trading orders always show in Processing (with Accept gate on the card)
+    if (o.product.productType === 'TRADING' || o.units.some(u => u.isTrading)) return true;
     // For employees: show in Processing if they accepted the order (have job card)
     if (isEmployee) return o.hasMyJobCard || o.units.some(u => u.currentStatus !== 'PENDING');
     return true;
@@ -189,13 +167,7 @@ export function OrdersList({ orders, isManager, sessionRole }: {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-semibold text-sm">{order.orderNumber}</span>
-                        {order.isTrading && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                            style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.25)' }}>
-                            TRADING
-                          </span>
-                        )}
-                        {jcInfo && !order.isTrading && (
+                        {jcInfo && (
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                             style={{ background: 'rgba(255,255,255,0.06)', color: jcInfo.color }}>
                             {jcInfo.label}
@@ -217,18 +189,12 @@ export function OrdersList({ orders, isManager, sessionRole }: {
                     <div className="shrink-0">
                       {!order.alreadyAccepted ? (
                         <button
-                          onClick={() => acceptOrder(order.orderId, order.stage, order.isTrading)}
+                          onClick={() => acceptOrder(order.orderId, order.stage)}
                           disabled={isLoading}
                           className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
                           style={{ background: isLoading ? 'rgba(14,165,233,0.3)' : 'rgba(14,165,233,0.8)' }}>
                           {isLoading ? 'Accepting…' : 'Accept Order'}
                         </button>
-                      ) : order.isTrading ? (
-                        <Link href={`/orders/${order.orderId}`}
-                          className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white text-center block"
-                          style={{ background: 'rgba(34,197,94,0.8)' }}>
-                          Start Work →
-                        </Link>
                       ) : jc?.status === 'DISPATCHED' ? (
                         <Link href={`/orders/${order.orderId}`}
                           className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white text-center block"
@@ -281,9 +247,12 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
   const [scannedSerials, setScannedSerials] = useState<Set<string>>(new Set());
   const [scanError, setScanError] = useState('');
   const [lastScanned, setLastScanned] = useState('');
+  const [acceptingTrading, setAcceptingTrading] = useState(false);
 
   // Trading units for this order
-  const tradingSerials = order.units.filter(u => u.isTrading).length;
+  const tradingUnits = order.units.filter(u => u.isTrading);
+  const tradingSerials = tradingUnits.length;
+  const tradingAccepted = tradingUnits.length > 0 && tradingUnits.some(u => u.currentStatus !== 'PENDING');
   const allScanned = tradingSerials > 0 && scannedSerials.size >= tradingSerials;
   const total      = order._count.units;
   const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED').length;
@@ -291,7 +260,7 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
   const blocked    = order.units.filter((u) => u.currentStatus === 'BLOCKED').length;
   const pct        = total > 0 ? Math.round((completed / total) * 100) : 0;
   const isNew      = Date.now() - new Date(order.createdAt).getTime() < 24 * 60 * 60 * 1000;
-  const hasTrading = order.product.productType === 'TRADING' || order.units.some(u => u.isTrading);
+  const hasTrading = order.product.productType === 'TRADING' || tradingUnits.length > 0;
 
   return (
     <Link href={`/orders/${order.id}`} className="card-interactive block p-4">
@@ -354,41 +323,59 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
 
       {hasTrading && (
         <div className="mt-3 pt-2 border-t border-zinc-800/50 flex gap-2 flex-wrap">
-          <a href={`/print/work-order/${order.id}`} target="_blank" rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-amber-400 border border-amber-700/50 hover:bg-amber-900/20 transition-colors">
-            Download WO
-          </a>
-          {completed < total && !genDone ? (
+          {!tradingAccepted ? (
             <button
               onClick={async (e) => {
                 e.preventDefault(); e.stopPropagation();
-                setGenerating(true);
-                const res = await fetch(`/api/orders/${order.id}/generate-barcodes`, { method: 'POST' });
-                setGenerating(false);
-                if (res.ok) { setGenDone(true); onRefresh?.(); }
+                setAcceptingTrading(true);
+                const res = await fetch(`/api/orders/${order.id}/accept-trading`, { method: 'POST' });
+                setAcceptingTrading(false);
+                if (res.ok) onRefresh?.();
               }}
-              disabled={generating}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-400 border border-emerald-700/50 hover:bg-emerald-900/20 transition-colors disabled:opacity-50">
-              {generating ? 'Generating...' : 'Generate Barcodes'}
+              disabled={acceptingTrading}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all disabled:opacity-50"
+              style={{ background: acceptingTrading ? 'rgba(14,165,233,0.3)' : 'rgba(14,165,233,0.8)' }}>
+              {acceptingTrading ? 'Accepting...' : 'Accept Order'}
             </button>
           ) : (
             <>
-              <a href={`/print/order-barcodes/${order.id}`} target="_blank" rel="noreferrer"
+              <a href={`/print/work-order/${order.id}`} target="_blank" rel="noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-sky-400 border border-sky-700/50 hover:bg-sky-900/20 transition-colors">
-                Print Barcodes
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-amber-400 border border-amber-700/50 hover:bg-amber-900/20 transition-colors">
+                Download WO
               </a>
-              {!allScanned ? (
+              {completed < total && !genDone ? (
                 <button
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanMode(true); }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-purple-400 border border-purple-700/50 hover:bg-purple-900/20 transition-colors">
-                  Scan to Confirm ({scannedSerials.size}/{tradingSerials})
+                  onClick={async (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    setGenerating(true);
+                    const res = await fetch(`/api/orders/${order.id}/generate-barcodes`, { method: 'POST' });
+                    setGenerating(false);
+                    if (res.ok) { setGenDone(true); onRefresh?.(); }
+                  }}
+                  disabled={generating}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-400 border border-emerald-700/50 hover:bg-emerald-900/20 transition-colors disabled:opacity-50">
+                  {generating ? 'Generating...' : 'Generate Barcodes'}
                 </button>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-emerald-400">
-                  <Check className="w-3 h-3" /> Verified — Ready for Dispatch
-                </span>
+                <>
+                  <a href={`/print/order-barcodes/${order.id}`} target="_blank" rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-sky-400 border border-sky-700/50 hover:bg-sky-900/20 transition-colors">
+                    Print Barcodes
+                  </a>
+                  {!allScanned ? (
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanMode(true); }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-purple-400 border border-purple-700/50 hover:bg-purple-900/20 transition-colors">
+                      Scan to Confirm ({scannedSerials.size}/{tradingSerials})
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-emerald-400">
+                      <Check className="w-3 h-3" /> Verified — Ready for Dispatch
+                    </span>
+                  )}
+                </>
               )}
             </>
           )}

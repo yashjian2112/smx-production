@@ -12,11 +12,13 @@ export async function GET() {
   }
 
   // Find all units that are PENDING (not yet started by anyone)
-  // Includes both manufactured and trading items
+  // Exclude trading items — they go directly to Processing tab
   const pendingUnits = await prisma.controllerUnit.findMany({
-    where: { currentStatus: 'PENDING' },
+    where: {
+      currentStatus: 'PENDING',
+      product: { productType: { not: 'TRADING' } },
+    },
     include: {
-      product: { select: { productType: true } },
       order: {
         select: {
           id: true,
@@ -25,7 +27,7 @@ export async function GET() {
           status: true,
           dueDate: true,
           voltage: true,
-          product: { select: { id: true, name: true, code: true, productType: true } },
+          product: { select: { id: true, name: true, code: true } },
         }
       }
     }
@@ -38,30 +40,20 @@ export async function GET() {
     quantity: number;
     dueDate: string | null;
     voltage: string | null;
-    product: { id: string; name: string; code: string; productType: string };
+    product: { id: string; name: string; code: string };
     pendingUnitCount: number;
     stage: string;
-    isTrading: boolean;
   }> = {};
 
   for (const unit of pendingUnits) {
     const { order } = unit;
-    const isTrading = (unit.product?.productType ?? order.product.productType) === 'TRADING';
-
     if (!orderMap[order.id]) {
-      let stage: string;
-      if (isTrading) {
-        // Trading items are always at FINAL_ASSEMBLY
-        stage = 'FINAL_ASSEMBLY';
-      } else {
-        // Determine what stage these units are at (check existing assignments for this order)
-        const jobCard = await prisma.jobCard.findFirst({
-          where: { orderId: order.id },
-          orderBy: { createdAt: 'desc' },
-          select: { stage: true, status: true }
-        });
-        stage = jobCard?.stage ?? 'POWERSTAGE_MANUFACTURING';
-      }
+      const jobCard = await prisma.jobCard.findFirst({
+        where: { orderId: order.id },
+        orderBy: { createdAt: 'desc' },
+        select: { stage: true, status: true }
+      });
+      const stage = jobCard?.stage ?? 'POWERSTAGE_MANUFACTURING';
 
       orderMap[order.id] = {
         orderId: order.id,
@@ -69,10 +61,9 @@ export async function GET() {
         quantity: order.quantity,
         dueDate: order.dueDate ? order.dueDate.toISOString() : null,
         voltage: order.voltage,
-        product: { ...order.product, productType: order.product.productType ?? 'MANUFACTURED' },
+        product: order.product,
         pendingUnitCount: 0,
         stage,
-        isTrading,
       };
     }
     orderMap[order.id].pendingUnitCount++;
@@ -85,22 +76,14 @@ export async function GET() {
   });
   const myJobCardKeys = new Set(myJobCards.map(jc => `${jc.orderId}:${jc.stage}`));
 
-  // Filter out orders already accepted and in progress
+  // Filter out orders where the employee already accepted AND materials dispatched
   const result = Object.values(orderMap)
     .map(order => {
-      // Trading orders: they show in Pending as long as units are PENDING
-      // Once accepted (units set to IN_PROGRESS), they won't appear here anymore
-      if (order.isTrading) {
-        return { ...order, alreadyAccepted: false, myJobCard: null };
-      }
       const accepted = myJobCardKeys.has(`${order.orderId}:${order.stage}`);
       const jc = myJobCards.find(jc => jc.orderId === order.orderId) ?? null;
       return { ...order, alreadyAccepted: accepted, myJobCard: jc };
     })
     .filter(order => {
-      // Trading: always show (they only have PENDING units here by definition)
-      if (order.isTrading) return true;
-      // Manufactured: hide if accepted and materials dispatched/in-progress
       if (order.alreadyAccepted && order.myJobCard?.status && ['DISPATCHED', 'COMPLETED', 'IN_PROGRESS'].includes(order.myJobCard.status)) return false;
       return true;
     });
