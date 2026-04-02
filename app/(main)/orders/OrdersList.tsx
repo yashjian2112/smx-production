@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { Check, Clock, ScanLine } from 'lucide-react';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 
-type UnitSummary = { currentStatus: string; currentStage: string; isTrading?: boolean };
+type UnitSummary = { currentStatus: string; currentStage: string; isTrading?: boolean; productName?: string };
 
 export type OrderItem = {
   id: string;
@@ -321,9 +321,13 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
       </div>
 
       <p className="text-zinc-500 text-sm">
-        {order.product.name}
-        {order.voltage ? ` · ${order.voltage}` : ''}
-        {' · '}{total} unit{total !== 1 ? 's' : ''}
+        {(() => {
+          const grouped: Record<string, number> = {};
+          order.units.forEach(u => { const name = u.productName || order.product.name; grouped[name] = (grouped[name] || 0) + 1; });
+          const entries = Object.entries(grouped);
+          if (entries.length <= 1) return <>{order.product.name}{order.voltage ? ` · ${order.voltage}` : ''}{' · '}{total} unit{total !== 1 ? 's' : ''}</>;
+          return entries.map(([name, count], i) => <span key={name}>{i > 0 ? ' · ' : ''}{count}x {name}</span>);
+        })()}
       </p>
 
       {total > 0 && (
