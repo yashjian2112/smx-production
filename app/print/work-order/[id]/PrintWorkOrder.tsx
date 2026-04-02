@@ -109,30 +109,12 @@ export default function PrintWorkOrder({ order }: Props) {
 
         {/* Product-wise breakdown */}
         {order.products.map((p, idx) => (
-          <div key={p.code} style={{ marginBottom: '16px' }}>
-            <div style={{ padding: '8px 12px', border: '2px solid #000', borderRadius: '4px', marginBottom: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <p style={{ fontSize: '12pt', fontWeight: 'bold' }}>{idx + 1}. {p.name}</p>
-                <p style={{ fontSize: '10pt' }}>Qty: <strong>{p.serials.length}</strong></p>
-              </div>
-              <p style={{ fontSize: '8pt', color: '#666' }}>Code: {p.code}</p>
+          <div key={p.code} style={{ padding: '12px', border: '2px solid #000', borderRadius: '4px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ fontSize: '14pt', fontWeight: 'bold' }}>{idx + 1}. {p.name}</p>
+              <p style={{ fontSize: '12pt' }}>Qty: <strong>{p.serials.length}</strong></p>
             </div>
-            <table style={{ width: '100%', fontSize: '9pt', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#f5f5f5' }}>
-                  <th style={{ padding: '3px 8px', border: '1px solid #ddd', textAlign: 'left', width: '10%' }}>#</th>
-                  <th style={{ padding: '3px 8px', border: '1px solid #ddd', textAlign: 'left' }}>Serial / Barcode</th>
-                </tr>
-              </thead>
-              <tbody>
-                {p.serials.map((s, i) => (
-                  <tr key={s}>
-                    <td style={{ padding: '2px 8px', border: '1px solid #ddd' }}>{i + 1}</td>
-                    <td style={{ padding: '2px 8px', border: '1px solid #ddd', fontFamily: 'Courier New, monospace' }}>{s}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <p style={{ fontSize: '8pt', color: '#666' }}>Code: {p.code}</p>
           </div>
         ))}
 
