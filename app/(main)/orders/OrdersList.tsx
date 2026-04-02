@@ -27,9 +27,10 @@ interface AvailableOrder {
   quantity: number;
   dueDate: string | null;
   voltage: string | null;
-  product: { id: string; name: string; code: string };
+  product: { id: string; name: string; code: string; productType?: string };
   pendingUnitCount: number;
   stage: string;
+  isTrading: boolean;
   alreadyAccepted: boolean;
   myJobCard: { id: string; orderId: string; stage: string; status: string } | null;
 }
@@ -79,17 +80,27 @@ export function OrdersList({ orders, isManager, sessionRole }: {
 
   const [acceptError, setAcceptError] = useState('');
 
-  async function acceptOrder(orderId: string, stage: string) {
+  async function acceptOrder(orderId: string, stage: string, isTrading: boolean) {
     setAcceptError('');
     setAccepting(`${orderId}:${stage}`);
-    const res = await fetch('/api/inventory/job-cards', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId, stage }),
-    });
+
+    let res: Response;
+    if (isTrading) {
+      // Trading orders: lightweight accept — updates units to IN_PROGRESS
+      res = await fetch(`/api/orders/${orderId}/accept-trading`, { method: 'POST' });
+    } else {
+      // Manufactured orders: create job card with BOM
+      res = await fetch('/api/inventory/job-cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, stage }),
+      });
+    }
+
     setAccepting(null);
     if (res.ok) {
       await loadPending();
+      if (isTrading) router.refresh(); // refresh server data so Processing tab picks it up
     } else {
       const data = await res.json().catch(() => ({ error: 'Failed to accept order' }));
       setAcceptError(data.error || 'Failed to accept order');
@@ -103,10 +114,21 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   const processing = orders.filter((o) => {
     if (o.status !== 'ACTIVE') return false;
     if (allUnitsDone(o)) return false;
-    // Orders with any trading units show in Processing (they don't need job cards)
-    if (o.product.productType === 'TRADING' || o.units.some(u => u.isTrading)) return true;
+    const hasTrading = o.product.productType === 'TRADING' || o.units.some(u => u.isTrading);
+    if (hasTrading) {
+      // Trading orders: only show in Processing after accepted (units no longer PENDING)
+      const tradingUnits = o.units.filter(u => u.isTrading);
+      const anyAccepted = tradingUnits.some(u => u.currentStatus !== 'PENDING');
+      if (anyAccepted) return true;
+      // Mixed order: check manufactured units too
+      const mfgUnits = o.units.filter(u => !u.isTrading);
+      if (mfgUnits.length > 0) {
+        if (isEmployee) return o.hasMyJobCard || mfgUnits.some(u => u.currentStatus !== 'PENDING');
+        return true;
+      }
+      return false; // pure trading, not yet accepted
+    }
     // For employees: show in Processing if they accepted the order (have job card)
-    // OR if any unit has started work
     if (isEmployee) return o.hasMyJobCard || o.units.some(u => u.currentStatus !== 'PENDING');
     return true;
   });
@@ -167,7 +189,13 @@ export function OrdersList({ orders, isManager, sessionRole }: {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-semibold text-sm">{order.orderNumber}</span>
-                        {jcInfo && (
+                        {order.isTrading && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                            style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.25)' }}>
+                            TRADING
+                          </span>
+                        )}
+                        {jcInfo && !order.isTrading && (
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                             style={{ background: 'rgba(255,255,255,0.06)', color: jcInfo.color }}>
                             {jcInfo.label}
@@ -189,12 +217,18 @@ export function OrdersList({ orders, isManager, sessionRole }: {
                     <div className="shrink-0">
                       {!order.alreadyAccepted ? (
                         <button
-                          onClick={() => acceptOrder(order.orderId, order.stage)}
+                          onClick={() => acceptOrder(order.orderId, order.stage, order.isTrading)}
                           disabled={isLoading}
                           className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
                           style={{ background: isLoading ? 'rgba(14,165,233,0.3)' : 'rgba(14,165,233,0.8)' }}>
                           {isLoading ? 'Accepting…' : 'Accept Order'}
                         </button>
+                      ) : order.isTrading ? (
+                        <Link href={`/orders/${order.orderId}`}
+                          className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white text-center block"
+                          style={{ background: 'rgba(34,197,94,0.8)' }}>
+                          Start Work →
+                        </Link>
                       ) : jc?.status === 'DISPATCHED' ? (
                         <Link href={`/orders/${order.orderId}`}
                           className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white text-center block"
