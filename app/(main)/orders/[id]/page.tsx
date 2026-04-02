@@ -96,6 +96,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           finalAssemblyBarcode: true,
           readyForDispatch: true,
           dispatchedAt: true,
+          product: { select: { name: true, productType: true } },
           _count: { select: { reworkRecords: true } },
         },
         orderBy: { serialNumber: 'asc' },
@@ -321,11 +322,17 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
    *
    * REWORK stage is the only exception: shows only units currently in rework.
    */
+  // Separate manufactured vs trading units using product type
+  const manufacturedUnits = order.units.filter(u => u.product.productType !== 'TRADING');
+  const tradingUnits = order.units.filter(u => u.product.productType === 'TRADING');
+
   const stages: StageGroup[] = STAGE_CONFIG.map(({ key, label }) => {
     const unitsForStage =
       key === 'REWORK'
         ? order.units.filter((u) => u.currentStage === 'REWORK')
-        : order.units;
+        : key === 'FINAL_ASSEMBLY'
+          ? order.units // FA shows all units (both manufactured that reached FA + trading)
+          : manufacturedUnits; // Other stages: only manufactured units
 
     return {
       key,
@@ -532,7 +539,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       )}
 
       {/* Stage breakdown */}
-      <OrderDetail orderId={order.id} stages={stages} isEmployee={isEmployee} role={session.role} totalUnits={total} productType={order.product.productType ?? 'MANUFACTURED'} />
+      <OrderDetail orderId={order.id} stages={stages} isEmployee={isEmployee} role={session.role} totalUnits={total} productType={order.product.productType ?? 'MANUFACTURED'}
+        tradingUnits={tradingUnits.map(u => ({ serialNumber: u.serialNumber, productName: u.product.name, status: u.currentStatus }))} />
 
       {/* Notes thread — visible to SALES, PM, ADMIN, ACCOUNTS */}
       {canViewNotes && (
