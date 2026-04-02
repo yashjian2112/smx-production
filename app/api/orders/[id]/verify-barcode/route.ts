@@ -54,10 +54,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: { orderId: id, product: { productType: 'TRADING' }, barcodeVerified: false },
   });
 
-  // If all verified → mark trading units as COMPLETED
+  // If all verified → mark trading units as COMPLETED and ready for dispatch
   if (remaining === 0) {
     await prisma.controllerUnit.updateMany({
-      where: { orderId: id, product: { productType: 'TRADING' }, currentStatus: { in: ['PENDING', 'APPROVED'] } },
+      where: { orderId: id, product: { productType: 'TRADING' }, currentStatus: { notIn: ['COMPLETED', 'BLOCKED'] } },
       data: { currentStatus: 'COMPLETED' },
     });
   }

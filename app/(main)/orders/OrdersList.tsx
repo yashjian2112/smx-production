@@ -239,28 +239,47 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   );
 }
 
+type VerifiedUnit = { id: string; serialNumber: string; barcodeVerified: boolean; product: { name: string } };
+
 function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => void }) {
   const [generating, setGenerating] = useState(false);
   const [genDone, setGenDone] = useState(false);
   const [scanMode, setScanMode] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [scannedSerials, setScannedSerials] = useState<Set<string>>(new Set());
   const [scanError, setScanError] = useState('');
   const [lastScanned, setLastScanned] = useState('');
   const [acceptingTrading, setAcceptingTrading] = useState(false);
+  // DB-sourced verification state
+  const [verifiedUnits, setVerifiedUnits] = useState<VerifiedUnit[]>([]);
+  const [loadingVerification, setLoadingVerification] = useState(false);
 
   // Trading units for this order
   const tradingUnits = order.units.filter(u => u.isTrading);
-  const tradingSerials = tradingUnits.length;
-  const tradingAccepted = tradingUnits.length > 0 && tradingUnits.some(u => u.currentStatus !== 'PENDING');
-  const allScanned = tradingSerials > 0 && scannedSerials.size >= tradingSerials;
+  const tradingCount = tradingUnits.length;
+  const tradingAccepted = tradingCount > 0 && tradingUnits.some(u => u.currentStatus !== 'PENDING');
+  const tradingAllDone = tradingCount > 0 && tradingUnits.every(u => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED');
+  const verifiedCount = verifiedUnits.filter(u => u.barcodeVerified).length;
+  const allVerified = tradingCount > 0 && verifiedCount >= tradingCount;
   const total      = order._count.units;
   const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED').length;
   const inProgress = order.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
   const blocked    = order.units.filter((u) => u.currentStatus === 'BLOCKED').length;
   const pct        = total > 0 ? Math.round((completed / total) * 100) : 0;
   const isNew      = Date.now() - new Date(order.createdAt).getTime() < 24 * 60 * 60 * 1000;
-  const hasTrading = order.product.productType === 'TRADING' || tradingUnits.length > 0;
+  const hasTrading = order.product.productType === 'TRADING' || tradingCount > 0;
+
+  // Fetch verification status from DB
+  const loadVerification = useCallback(async () => {
+    setLoadingVerification(true);
+    const res = await fetch(`/api/orders/${order.id}/verify-barcode`);
+    if (res.ok) setVerifiedUnits(await res.json());
+    setLoadingVerification(false);
+  }, [order.id]);
+
+  // Load verification status when scan modal opens or on mount for trading orders
+  useEffect(() => {
+    if (hasTrading && tradingAccepted) loadVerification();
+  }, [hasTrading, tradingAccepted, loadVerification]);
 
   return (
     <Link href={`/orders/${order.id}`} className="card-interactive block p-4">
@@ -337,6 +356,10 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
               style={{ background: acceptingTrading ? 'rgba(14,165,233,0.3)' : 'rgba(14,165,233,0.8)' }}>
               {acceptingTrading ? 'Accepting...' : 'Accept Order'}
             </button>
+          ) : tradingAllDone ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-emerald-400">
+              <Check className="w-3 h-3" /> Verified — Ready for Dispatch
+            </span>
           ) : (
             <>
               <a href={`/print/work-order/${order.id}`} target="_blank" rel="noreferrer"
@@ -344,38 +367,36 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-amber-400 border border-amber-700/50 hover:bg-amber-900/20 transition-colors">
                 Download WO
               </a>
-              {completed < total && !genDone ? (
+              {!allVerified && !genDone ? (
                 <button
                   onClick={async (e) => {
                     e.preventDefault(); e.stopPropagation();
                     setGenerating(true);
                     const res = await fetch(`/api/orders/${order.id}/generate-barcodes`, { method: 'POST' });
                     setGenerating(false);
-                    if (res.ok) { setGenDone(true); onRefresh?.(); }
+                    if (res.ok) { setGenDone(true); await loadVerification(); onRefresh?.(); }
                   }}
                   disabled={generating}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-400 border border-emerald-700/50 hover:bg-emerald-900/20 transition-colors disabled:opacity-50">
                   {generating ? 'Generating...' : 'Generate Barcodes'}
                 </button>
-              ) : (
+              ) : !allVerified ? (
                 <>
                   <a href={`/print/order-barcodes/${order.id}`} target="_blank" rel="noreferrer"
                     onClick={(e) => e.stopPropagation()}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-sky-400 border border-sky-700/50 hover:bg-sky-900/20 transition-colors">
                     Print Barcodes
                   </a>
-                  {!allScanned ? (
-                    <button
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanMode(true); }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-purple-400 border border-purple-700/50 hover:bg-purple-900/20 transition-colors">
-                      Scan to Confirm ({scannedSerials.size}/{tradingSerials})
-                    </button>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-emerald-400">
-                      <Check className="w-3 h-3" /> Verified — Ready for Dispatch
-                    </span>
-                  )}
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanMode(true); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-purple-400 border border-purple-700/50 hover:bg-purple-900/20 transition-colors">
+                    Scan to Confirm ({verifiedCount}/{tradingCount})
+                  </button>
                 </>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-emerald-400">
+                  <Check className="w-3 h-3" /> Verified — Ready for Dispatch
+                </span>
               )}
             </>
           )}
@@ -390,13 +411,13 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white font-semibold text-sm">Scan Barcodes to Confirm</h3>
               <span className="text-xs px-2 py-0.5 rounded bg-purple-900/30 text-purple-400 font-medium">
-                {scannedSerials.size} / {tradingSerials}
+                {verifiedCount} / {tradingCount}
               </span>
             </div>
 
             <div className="w-full h-1.5 rounded-full bg-zinc-800 mb-4">
               <div className="h-full rounded-full bg-purple-500 transition-all duration-300"
-                style={{ width: tradingSerials > 0 ? `${(scannedSerials.size / tradingSerials) * 100}%` : '0%' }} />
+                style={{ width: tradingCount > 0 ? `${(verifiedCount / tradingCount) * 100}%` : '0%' }} />
             </div>
 
             {scanError && (
@@ -410,16 +431,31 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
               </div>
             )}
 
-            <div className="space-y-1 max-h-[40vh] overflow-y-auto mb-4">
-              {order.units.filter(u => u.isTrading).map((u, i) => {
-                const confirmed = scannedSerials.has(u.currentStage + '_' + i.toString()) || scannedSerials.has(order.id + '_' + i.toString());
-                // We track by index since we don't have serial in UnitSummary
-                return null; // placeholder
-              })}
-            </div>
+            {loadingVerification ? (
+              <div className="flex justify-center py-4">
+                <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-[40vh] overflow-y-auto mb-4">
+                {verifiedUnits.map((u) => (
+                  <div key={u.id} className="flex items-center justify-between px-3 py-2 rounded-lg"
+                    style={{ background: u.barcodeVerified ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)' }}>
+                    <div>
+                      <p className="text-xs text-zinc-300 font-mono">{u.serialNumber}</p>
+                      <p className="text-[10px] text-zinc-500">{u.product.name}</p>
+                    </div>
+                    {u.barcodeVerified ? (
+                      <Check className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <span className="text-[10px] text-zinc-600">Pending</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="flex gap-3">
-              {allScanned ? (
+              {allVerified ? (
                 <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanMode(false); onRefresh?.(); }}
                   className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors flex items-center justify-center gap-1.5">
                   <Check className="w-4 h-4" /> All Verified — Done
@@ -446,7 +482,6 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
               onScan={async (code) => {
                 setScanning(false);
                 setScanError('');
-                if (scannedSerials.has(code)) { setScanError('Already scanned'); return; }
                 try {
                   const res = await fetch(`/api/orders/${order.id}/verify-barcode`, {
                     method: 'POST',
@@ -456,8 +491,9 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
                   const data = await res.json();
                   if (!res.ok) { setScanError(data.error || 'Verification failed'); return; }
                   if (data.alreadyVerified) { setScanError('Already verified'); return; }
-                  setScannedSerials(prev => { const n = new Set(Array.from(prev)); n.add(code); return n; });
                   setLastScanned(code);
+                  await loadVerification(); // refresh from DB
+                  if (data.allVerified) onRefresh?.(); // refresh order data
                 } catch {
                   setScanError('Network error — try again');
                 }

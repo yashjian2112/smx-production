@@ -95,6 +95,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           qcBarcode: true,
           finalAssemblyBarcode: true,
           readyForDispatch: true,
+          barcodeVerified: true,
           dispatchedAt: true,
           product: { select: { name: true, productType: true } },
           _count: { select: { reworkRecords: true } },

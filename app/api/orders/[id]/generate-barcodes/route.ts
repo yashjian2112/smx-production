@@ -50,13 +50,9 @@ export async function POST(
       const updates: Record<string, string | null> = {};
 
       if (isTrading) {
-        // Trading units: only need FA barcode = serial number + approve
+        // Trading units: only need FA barcode = serial number (no status change)
         if (!unit.finalAssemblyBarcode || unit.finalAssemblyBarcode !== unit.serialNumber) {
           updates.finalAssemblyBarcode = unit.serialNumber;
-        }
-        if (unit.currentStatus === 'PENDING') {
-          updates.currentStatus = 'APPROVED';
-          approved++;
         }
       } else {
         // Manufactured units: generate missing stage barcodes
