@@ -44,7 +44,7 @@ type ReadyOrder = {
   packedCount: number;
   client: { customerName: string } | null;
   product: { code: string; name: string };
-  units: { id: string; serialNumber: string }[];
+  units: { id: string; serialNumber: string; productName?: string }[];
   dispatchHistory: DispatchHistoryItem[];
 };
 
@@ -129,10 +129,15 @@ function ReadyCard({ order, onCreateDO, creating }: {
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-mono text-sm text-sky-400">{order.orderNumber}</p>
-          <p className="text-sm font-medium text-white mt-0.5">{order.product.name}</p>
-          {order.client && (
-            <p className="text-xs text-slate-400 mt-0.5">{order.client.customerName}</p>
-          )}
+          {(() => {
+            const grouped: Record<string, number> = {};
+            order.units.forEach(u => { const name = u.productName || order.product.name; grouped[name] = (grouped[name] || 0) + 1; });
+            const entries = Object.entries(grouped);
+            if (entries.length <= 1) return <p className="text-sm font-medium text-white mt-0.5">{order.product.name}</p>;
+            return entries.map(([name, count]) => (
+              <p key={name} className="text-sm font-medium text-white mt-0.5">{count}x {name}</p>
+            ));
+          })()}
         </div>
         <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
           Ready for Dispatch
@@ -386,9 +391,6 @@ function OrderGroupCard({ group, canPack }: { group: OrderGroup; canPack: boolea
             )}
           </div>
           <p className="text-sm font-medium text-white mt-0.5">{group.product.name}</p>
-          {group.client && (
-            <p className="text-xs text-slate-400 mt-0.5">{group.client.customerName}</p>
-          )}
         </div>
         <div className="text-right shrink-0">
           <p className="text-xs text-slate-500">Total Qty</p>

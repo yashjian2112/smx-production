@@ -32,7 +32,7 @@ export async function GET() {
             readyForDispatch: false,
             packingBoxItem:   null, // not yet assigned to any box
           },
-          select: { id: true, serialNumber: true },
+          select: { id: true, serialNumber: true, product: { select: { name: true } } },
           orderBy: { serialNumber: 'asc' },
         },
       },
@@ -87,7 +87,7 @@ export async function GET() {
         packedCount,
         client: o.client ? { customerName: o.client.customerName } : null,
         product: { code: o.product.code, name: o.product.name },
-        units: o.units.map((u) => ({ id: u.id, serialNumber: u.serialNumber })),
+        units: o.units.map((u) => ({ id: u.id, serialNumber: u.serialNumber, productName: u.product.name })),
         dispatchHistory: dos.map((d) => ({
           id: d.id,
           doNumber: d.doNumber,
