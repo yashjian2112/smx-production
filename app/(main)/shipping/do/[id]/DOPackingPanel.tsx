@@ -952,8 +952,8 @@ export function DOPackingPanel({
           </div>
           <div className="text-sm text-zinc-400 mt-0.5">
             {doData.order
-              ? `${doData.order.client?.customerName ?? '—'} · Order #${doData.order.orderNumber} · ${doData.order.product.name}`
-              : `${doData.returnRequest?.client?.customerName ?? '—'} · ${doData.returnRequest?.returnNumber ?? '—'}`}
+              ? `Order #${doData.order.orderNumber} · ${doData.order.product.name}`
+              : doData.returnRequest?.returnNumber ?? '—'}
           </div>
         </div>
       </div>

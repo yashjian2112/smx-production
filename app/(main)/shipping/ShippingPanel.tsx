@@ -424,7 +424,7 @@ export function ShippingPanel({
                       <PartialBadge dispatchQty={d.dispatchQty} orderQty={doOrderQty(d)} />
                     </div>
                     <div className="text-sm text-zinc-400 mt-0.5">
-                      {doClientName(d)} · {doRefLabel(d)}
+                      {doRefLabel(d)}
                     </div>
                     <div className="text-xs text-zinc-500 mt-0.5">
                       {doProductName(d)}
@@ -469,7 +469,7 @@ export function ShippingPanel({
                       <PartialBadge dispatchQty={d.dispatchQty} orderQty={doOrderQty(d)} />
                     </div>
                     <div className="text-sm text-zinc-400 mt-0.5">
-                      {doClientName(d)} · {doRefLabel(d)}
+                      {doRefLabel(d)}
                     </div>
                     <div className="text-xs text-zinc-500 mt-0.5">
                       {doProductName(d)} · {boxCount} box{boxCount !== 1 ? 'es' : ''} · {unitCount} unit{unitCount !== 1 ? 's' : ''} · Submitted {fmtDate(d.submittedAt)}
@@ -537,7 +537,7 @@ export function ShippingPanel({
                       <PartialBadge dispatchQty={d.dispatchQty} orderQty={doOrderQty(d)} />
                     </div>
                     <div className="text-sm text-zinc-400 mt-0.5">
-                      {doClientName(d)} · {doRefLabel(d)}
+                      {doRefLabel(d)}
                     </div>
                     <div className="text-xs text-zinc-500 mt-0.5">
                       {doProductName(d)} · {boxCount} box{boxCount !== 1 ? 'es' : ''} · {unitCount} unit{unitCount !== 1 ? 's' : ''} · {fmtDate(d.approvedAt ?? d.submittedAt)}
