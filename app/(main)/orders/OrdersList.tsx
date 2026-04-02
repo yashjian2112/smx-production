@@ -11,6 +11,7 @@ type UnitSummary = { currentStatus: string; currentStage: string; isTrading?: bo
 export type OrderItem = {
   id: string;
   orderNumber: string;
+  quantity: number;
   status: string;
   createdAt: string;
   voltage?: string | null;
@@ -260,7 +261,7 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
   const tradingAllDone = tradingCount > 0 && tradingUnits.every(u => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED');
   const verifiedCount = verifiedUnits.filter(u => u.barcodeVerified).length;
   const allVerified = tradingCount > 0 && verifiedCount >= tradingCount;
-  const total      = order._count.units;
+  const total      = order.quantity;
   const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED').length;
   const inProgress = order.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
   const blocked    = order.units.filter((u) => u.currentStatus === 'BLOCKED').length;
@@ -323,7 +324,6 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
         {order.product.name}
         {order.voltage ? ` · ${order.voltage}` : ''}
         {' · '}{total} unit{total !== 1 ? 's' : ''}
-        {order.client ? ` · ${order.client.customerName}` : ''}
       </p>
 
       {total > 0 && (
