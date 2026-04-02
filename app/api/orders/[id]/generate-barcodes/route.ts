@@ -33,6 +33,7 @@ export async function POST(
             brainboardBarcode: true,
             qcBarcode: true,
             finalAssemblyBarcode: true,
+            product: { select: { code: true, productType: true } },
           },
         },
       },
@@ -40,43 +41,39 @@ export async function POST(
 
     if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
 
-    const modelCode = order.product.code;
     let generated = 0;
-
-    const FA_STAGE_IDX = ['POWERSTAGE_MANUFACTURING','BRAINBOARD_MANUFACTURING','CONTROLLER_ASSEMBLY','QC_AND_SOFTWARE','FINAL_ASSEMBLY'].indexOf('FINAL_ASSEMBLY');
+    let approved = 0;
 
     for (const unit of order.units) {
+      const isTrading = unit.product.productType === 'TRADING';
+      const unitCode = unit.product.code;
       const updates: Record<string, string | null> = {};
-      const unitStageIdx = ['POWERSTAGE_MANUFACTURING','BRAINBOARD_MANUFACTURING','CONTROLLER_ASSEMBLY','QC_AND_SOFTWARE','FINAL_ASSEMBLY'].indexOf(unit.currentStage);
 
-      if (!unit.powerstageBarcode)
-        updates.powerstageBarcode = await generateNextPowerstageBarcode(modelCode);
-      if (!unit.brainboardBarcode)
-        updates.brainboardBarcode = await generateNextBrainboardBarcode(modelCode);
-      if (!unit.qcBarcode)
-        updates.qcBarcode = await generateNextQCBarcode(modelCode);
-
-      // FA barcode = serial number (always)
-      if (!unit.finalAssemblyBarcode || unit.finalAssemblyBarcode !== unit.serialNumber) {
-        updates.finalAssemblyBarcode = unit.serialNumber;
+      if (isTrading) {
+        // Trading units: only need FA barcode = serial number + approve
+        if (!unit.finalAssemblyBarcode || unit.finalAssemblyBarcode !== unit.serialNumber) {
+          updates.finalAssemblyBarcode = unit.serialNumber;
+        }
+        if (unit.currentStatus === 'PENDING') {
+          updates.currentStatus = 'APPROVED';
+          approved++;
+        }
+      } else {
+        // Manufactured units: generate missing stage barcodes
+        if (!unit.powerstageBarcode)
+          updates.powerstageBarcode = await generateNextPowerstageBarcode(unitCode);
+        if (!unit.brainboardBarcode)
+          updates.brainboardBarcode = await generateNextBrainboardBarcode(unitCode);
+        if (!unit.qcBarcode)
+          updates.qcBarcode = await generateNextQCBarcode(unitCode);
+        if (!unit.finalAssemblyBarcode || unit.finalAssemblyBarcode !== unit.serialNumber) {
+          updates.finalAssemblyBarcode = unit.serialNumber;
+        }
       }
 
       if (Object.keys(updates).length > 0) {
         await prisma.controllerUnit.update({ where: { id: unit.id }, data: updates });
         generated++;
-      }
-    }
-
-    // For trading items: also approve all PENDING units (ready for dispatch)
-    let approved = 0;
-    if (order.product.productType === 'TRADING') {
-      const pendingIds = order.units.filter(u => u.currentStatus === 'PENDING').map(u => u.id);
-      if (pendingIds.length > 0) {
-        const result = await prisma.controllerUnit.updateMany({
-          where: { id: { in: pendingIds } },
-          data: { currentStatus: 'APPROVED' },
-        });
-        approved = result.count;
       }
     }
 
