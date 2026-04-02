@@ -18,8 +18,7 @@ export function Header({ title, user }: { title: string; user: { name: string; r
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-    router.refresh();
+    window.location.href = '/login';
   }
 
   return (
