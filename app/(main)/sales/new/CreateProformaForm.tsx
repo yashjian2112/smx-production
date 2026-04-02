@@ -554,34 +554,45 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
               <div>
                 <label className={lCls}>Product (from catalogue)</label>
                 <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search products or type to filter..."
-                    value={item.productId ? products.find(p => p.id === item.productId)?.name ?? '' : (productSearches[item.key] ?? '')}
-                    onChange={(e) => {
-                      setProductSearches(prev => ({ ...prev, [item.key]: e.target.value }));
-                      if (item.productId) handleProductSelect(item.key, '');
-                    }}
-                    onFocus={() => setProductSearches(prev => ({ ...prev, [item.key]: prev[item.key] ?? '' }))}
-                    className={iCls}
-                  />
-                  {(productSearches[item.key] !== undefined && !item.productId) && (
-                    <div className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-lg border border-zinc-700" style={{ background: 'rgb(30,30,34)' }}>
-                      <button type="button" onClick={() => { handleProductSelect(item.key, ''); setProductSearches(prev => { const n = { ...prev }; delete n[item.key]; return n; }); }}
-                        className="w-full text-left px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-700/50 border-b border-zinc-800">
-                        — Custom / manual entry —
-                      </button>
-                      {products
-                        .filter(p => !productSearches[item.key] || p.name.toLowerCase().includes((productSearches[item.key] ?? '').toLowerCase()) || p.code.toLowerCase().includes((productSearches[item.key] ?? '').toLowerCase()))
-                        .map(p => (
-                          <button key={p.id} type="button" onClick={() => { handleProductSelect(item.key, p.id); setProductSearches(prev => { const n = { ...prev }; delete n[item.key]; return n; }); }}
-                            className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-700/50 flex items-center justify-between">
-                            <span>{p.name}</span>
-                            <span className="text-zinc-600 font-mono text-[10px]">{p.code}</span>
-                          </button>
-                        ))
-                      }
+                  {item.productId ? (
+                    <div className="flex items-center gap-2">
+                      <div className={`${iCls} flex-1 flex items-center justify-between`}>
+                        <span>{products.find(p => p.id === item.productId)?.name ?? 'Selected'}</span>
+                      </div>
+                      <button type="button" onClick={() => { handleProductSelect(item.key, ''); updateItem(item.key, { description: '', hsnCode: '85371000' }); }}
+                        className="text-xs text-zinc-500 hover:text-red-400 shrink-0 px-2">Clear</button>
                     </div>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="Search products..."
+                        value={productSearches[item.key] ?? ''}
+                        onChange={(e) => setProductSearches(prev => ({ ...prev, [item.key]: e.target.value }))}
+                        onFocus={() => setProductSearches(prev => ({ ...prev, [item.key]: prev[item.key] ?? '' }))}
+                        onBlur={() => setTimeout(() => setProductSearches(prev => { const n = { ...prev }; delete n[item.key]; return n; }), 200)}
+                        className={iCls}
+                      />
+                      {productSearches[item.key] !== undefined && (
+                        <div className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-lg border border-zinc-700" style={{ background: 'rgb(30,30,34)' }}>
+                          {products
+                            .filter(p => !productSearches[item.key] || p.name.toLowerCase().includes((productSearches[item.key] ?? '').toLowerCase()) || p.code.toLowerCase().includes((productSearches[item.key] ?? '').toLowerCase()))
+                            .map(p => (
+                              <button key={p.id} type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => { handleProductSelect(item.key, p.id); setProductSearches(prev => { const n = { ...prev }; delete n[item.key]; return n; }); }}
+                                className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-700/50 flex items-center justify-between">
+                                <span>{p.name}</span>
+                                <span className="text-zinc-600 font-mono text-[10px]">{p.code}</span>
+                              </button>
+                            ))
+                          }
+                          {products.filter(p => !productSearches[item.key] || p.name.toLowerCase().includes((productSearches[item.key] ?? '').toLowerCase()) || p.code.toLowerCase().includes((productSearches[item.key] ?? '').toLowerCase())).length === 0 && (
+                            <p className="px-3 py-2 text-xs text-zinc-500">No products found</p>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
