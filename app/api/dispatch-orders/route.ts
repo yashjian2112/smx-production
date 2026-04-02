@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
         units: {
           where: {
             currentStage:     'FINAL_ASSEMBLY',
-            currentStatus:    { in: ['APPROVED', 'COMPLETED', 'PENDING'] },
+            currentStatus:    { in: ['APPROVED', 'COMPLETED', 'PENDING', 'IN_PROGRESS'] },
             readyForDispatch: false,
             packingBoxItem:   null, // exclude units already packed in other DOs
           },
@@ -201,17 +201,6 @@ export async function POST(req: NextRequest) {
         boxes: true,
       },
     });
-
-    // For trading items: auto-approve all PENDING units so they become dispatchable
-    if (isTrading) {
-      const pendingUnitIds = availableUnits.filter(u => u.currentStatus === 'PENDING').map(u => u.id);
-      if (pendingUnitIds.length > 0) {
-        await prisma.controllerUnit.updateMany({
-          where: { id: { in: pendingUnitIds } },
-          data: { currentStatus: 'APPROVED' },
-        });
-      }
-    }
 
     return NextResponse.json(dispatchOrder, { status: 201 });
   } catch (e) {

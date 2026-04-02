@@ -43,9 +43,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ ...unit, alreadyVerified: true });
   }
 
+  // Mark this unit as verified AND completed in one update
   const updated = await prisma.controllerUnit.update({
     where: { id: unit.id },
-    data: { barcodeVerified: true },
+    data: { barcodeVerified: true, currentStatus: 'COMPLETED' },
     include: { product: { select: { name: true, productType: true } } },
   });
 
@@ -53,14 +54,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const remaining = await prisma.controllerUnit.count({
     where: { orderId: id, product: { productType: 'TRADING' }, barcodeVerified: false },
   });
-
-  // If all verified → mark trading units as COMPLETED and ready for dispatch
-  if (remaining === 0) {
-    await prisma.controllerUnit.updateMany({
-      where: { orderId: id, product: { productType: 'TRADING' }, currentStatus: { notIn: ['COMPLETED', 'BLOCKED'] } },
-      data: { currentStatus: 'COMPLETED' },
-    });
-  }
 
   return NextResponse.json({ ...updated, allVerified: remaining === 0 });
 }
