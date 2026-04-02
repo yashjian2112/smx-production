@@ -49,7 +49,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     include: { product: { select: { name: true, productType: true } } },
   });
 
-  return NextResponse.json(updated);
+  // Check if ALL trading units in this order are now verified
+  const remaining = await prisma.controllerUnit.count({
+    where: { orderId: id, product: { productType: 'TRADING' }, barcodeVerified: false },
+  });
+
+  // If all verified → mark trading units as COMPLETED
+  if (remaining === 0) {
+    await prisma.controllerUnit.updateMany({
+      where: { orderId: id, product: { productType: 'TRADING' }, currentStatus: { in: ['PENDING', 'APPROVED'] } },
+      data: { currentStatus: 'COMPLETED' },
+    });
+  }
+
+  return NextResponse.json({ ...updated, allVerified: remaining === 0 });
 }
 
 /**
