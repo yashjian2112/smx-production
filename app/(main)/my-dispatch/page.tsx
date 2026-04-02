@@ -133,7 +133,6 @@ function ReadyCard({ order, onCreateDO, creating }: {
             const grouped: Record<string, number> = {};
             order.units.forEach(u => { const name = u.productName || order.product.name; grouped[name] = (grouped[name] || 0) + 1; });
             const entries = Object.entries(grouped);
-            if (entries.length <= 1) return <p className="text-sm font-medium text-white mt-0.5">{order.product.name}</p>;
             return entries.map(([name, count]) => (
               <p key={name} className="text-sm font-medium text-white mt-0.5">{count}x {name}</p>
             ));

@@ -325,7 +325,10 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
           const grouped: Record<string, number> = {};
           order.units.forEach(u => { const name = u.productName || order.product.name; grouped[name] = (grouped[name] || 0) + 1; });
           const entries = Object.entries(grouped);
-          if (entries.length <= 1) return <>{order.product.name}{order.voltage ? ` · ${order.voltage}` : ''}{' · '}{total} unit{total !== 1 ? 's' : ''}</>;
+          if (entries.length <= 1) {
+            const name = entries.length === 1 ? entries[0][0] : order.product.name;
+            return <>{name}{order.voltage ? ` · ${order.voltage}` : ''}{' · '}{total} unit{total !== 1 ? 's' : ''}</>;
+          }
           return entries.map(([name, count], i) => <span key={name}>{i > 0 ? ' · ' : ''}{count}x {name}</span>);
         })()}
       </p>
