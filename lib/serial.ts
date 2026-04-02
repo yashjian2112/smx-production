@@ -35,10 +35,10 @@ export async function generateNextSerial(modelCode: string): Promise<string> {
   if (last?.serialNumber) {
     const seqPart = last.serialNumber.slice(prefix.length);
     nextSeq = (parseInt(seqPart, 10) || 0) + 1;
-    if (nextSeq > 999) throw new Error('Serial sequence exhausted for this quarter');
+    if (nextSeq > 9999) throw new Error('Serial sequence exhausted for this quarter');
   }
 
-  const serial = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+  const serial = `${prefix}${String(nextSeq).padStart(4, '0')}`;
 
   const exists = await prisma.controllerUnit.findUnique({ where: { serialNumber: serial } });
   if (exists) throw new Error('Serial collision');
