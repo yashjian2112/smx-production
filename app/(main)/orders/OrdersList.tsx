@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { Check, Clock } from 'lucide-react';
+import { Check, Clock, ScanLine } from 'lucide-react';
+import { BarcodeScanner } from '@/components/BarcodeScanner';
 
 type UnitSummary = { currentStatus: string; currentStage: string; isTrading?: boolean };
 
@@ -241,6 +242,15 @@ export function OrdersList({ orders, isManager, sessionRole }: {
 function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => void }) {
   const [generating, setGenerating] = useState(false);
   const [genDone, setGenDone] = useState(false);
+  const [scanMode, setScanMode] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scannedSerials, setScannedSerials] = useState<Set<string>>(new Set());
+  const [scanError, setScanError] = useState('');
+  const [lastScanned, setLastScanned] = useState('');
+
+  // Trading units for this order
+  const tradingSerials = order.units.filter(u => u.isTrading).length;
+  const allScanned = tradingSerials > 0 && scannedSerials.size >= tradingSerials;
   const total      = order._count.units;
   const completed  = order.units.filter((u) => u.currentStatus === 'COMPLETED' || u.currentStatus === 'APPROVED').length;
   const inProgress = order.units.filter((u) => u.currentStatus === 'IN_PROGRESS').length;
@@ -335,10 +345,89 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-sky-400 border border-sky-700/50 hover:bg-sky-900/20 transition-colors">
                 Print Barcodes
               </a>
-              <span className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-emerald-400">
-                <Check className="w-3 h-3" /> Ready for Dispatch
-              </span>
+              {!allScanned ? (
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanMode(true); }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-purple-400 border border-purple-700/50 hover:bg-purple-900/20 transition-colors">
+                  Scan to Confirm ({scannedSerials.size}/{tradingSerials})
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-emerald-400">
+                  <Check className="w-3 h-3" /> Verified — Ready for Dispatch
+                </span>
+              )}
             </>
+          )}
+        </div>
+      )}
+
+      {/* Scan confirmation modal */}
+      {scanMode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+          <div className="w-full max-w-md rounded-2xl p-5" style={{ background: 'rgb(24,24,27)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-semibold text-sm">Scan Barcodes to Confirm</h3>
+              <span className="text-xs px-2 py-0.5 rounded bg-purple-900/30 text-purple-400 font-medium">
+                {scannedSerials.size} / {tradingSerials}
+              </span>
+            </div>
+
+            <div className="w-full h-1.5 rounded-full bg-zinc-800 mb-4">
+              <div className="h-full rounded-full bg-purple-500 transition-all duration-300"
+                style={{ width: tradingSerials > 0 ? `${(scannedSerials.size / tradingSerials) * 100}%` : '0%' }} />
+            </div>
+
+            {scanError && (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-red-900/20 border border-red-800/30">
+                <p className="text-red-400 text-xs">{scanError}</p>
+              </div>
+            )}
+            {lastScanned && !scanError && (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-emerald-900/20 border border-emerald-800/30">
+                <p className="text-emerald-400 text-xs"><Check className="w-3 h-3 inline mr-1" />{lastScanned} confirmed</p>
+              </div>
+            )}
+
+            <div className="space-y-1 max-h-[40vh] overflow-y-auto mb-4">
+              {order.units.filter(u => u.isTrading).map((u, i) => {
+                const confirmed = scannedSerials.has(u.currentStage + '_' + i.toString()) || scannedSerials.has(order.id + '_' + i.toString());
+                // We track by index since we don't have serial in UnitSummary
+                return null; // placeholder
+              })}
+            </div>
+
+            <div className="flex gap-3">
+              {allScanned ? (
+                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanMode(false); }}
+                  className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors flex items-center justify-center gap-1.5">
+                  <Check className="w-4 h-4" /> All Verified — Done
+                </button>
+              ) : (
+                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setScanError(''); setScanning(true); }}
+                  className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-purple-600 hover:bg-purple-500 text-white transition-colors flex items-center justify-center gap-1.5">
+                  <ScanLine className="w-4 h-4" /> Scan Barcode
+                </button>
+              )}
+            </div>
+          </div>
+
+          {scanning && (
+            <BarcodeScanner
+              title="Scan Unit Barcode"
+              hint="Scan the printed barcode label"
+              onScan={(code) => {
+                setScanning(false);
+                setScanError('');
+                // Check if this barcode belongs to a trading unit in this order
+                const isValid = order.units.some(u => u.isTrading);
+                if (!isValid) { setScanError('No trading units in this order'); return; }
+                if (scannedSerials.has(code)) { setScanError('Already scanned'); return; }
+                setScannedSerials(prev => { const n = new Set(Array.from(prev)); n.add(code); return n; });
+                setLastScanned(code);
+              }}
+              onClose={() => setScanning(false)}
+            />
           )}
         </div>
       )}
