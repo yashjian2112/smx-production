@@ -11,7 +11,7 @@ type BoxSizeInfo = {
 
 type BoxItem = {
   id: string;
-  unit: { serialNumber: string };
+  unit: { serialNumber: string; product?: { name: string; code: string } };
 };
 
 type Box = {
@@ -164,6 +164,46 @@ export function PrintPackingList({
             </div>
           ))}
         </div>
+
+        {/* Product Details — grouped by product with serial numbers */}
+        {(() => {
+          const allItems = boxes.flatMap(b => b.items);
+          const groups: Record<string, { name: string; code: string; serials: string[] }> = {};
+          for (const item of allItems) {
+            const pName = item.unit.product?.name ?? order.product.name;
+            const pCode = item.unit.product?.code ?? order.product.code;
+            if (!groups[pCode]) groups[pCode] = { name: pName, code: pCode, serials: [] };
+            groups[pCode].serials.push(item.unit.serialNumber);
+          }
+          const productList = Object.values(groups);
+          return (
+            <table style={{ marginBottom: 14 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: '45%' }}>Product</th>
+                  <th>Serial Numbers</th>
+                  <th style={{ width: 50 }}>Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productList.map(p => (
+                  <tr key={p.code}>
+                    <td style={{ fontWeight: 700, verticalAlign: 'top' }}>
+                      <div>{p.name}</div>
+                      <div style={{ fontSize: 8, color: '#666', fontWeight: 400 }}>{p.code}</div>
+                    </td>
+                    <td style={{ fontFamily: 'monospace', fontSize: 9, lineHeight: 1.8, verticalAlign: 'top' }}>
+                      {p.serials.map((s, i) => (
+                        <div key={s}>{s}</div>
+                      ))}
+                    </td>
+                    <td style={{ textAlign: 'center', fontWeight: 700, verticalAlign: 'top', fontSize: 14 }}>{p.serials.length}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          );
+        })()}
 
         {/* Box-by-box table */}
         <table style={{ marginBottom: 14 }}>

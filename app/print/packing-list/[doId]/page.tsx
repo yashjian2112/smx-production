@@ -17,7 +17,7 @@ export default async function PrintPackingListPage({ params }: { params: { doId:
         include: {
           boxSize: true,
           items: {
-            include: { unit: { select: { serialNumber: true, finalAssemblyBarcode: true } } },
+            include: { unit: { select: { serialNumber: true, finalAssemblyBarcode: true, product: { select: { name: true, code: true } } } } },
           },
         },
       },
