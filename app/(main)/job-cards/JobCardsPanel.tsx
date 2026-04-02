@@ -300,7 +300,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) {
-  const [tab,      setTab]      = useState<'pending' | 'dispatched' | 'completed'>('pending');
+  const [tab,      setTab]      = useState<'pending' | 'dispatched'>('pending');
   const [cards,    setCards]    = useState<JobCard[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -326,7 +326,6 @@ export default function JobCardsPanel({ sessionRole }: { sessionRole: string }) 
   const tabs: { key: typeof tab; label: string }[] = [
     { key: 'pending',    label: 'Pending' },
     { key: 'dispatched', label: 'Dispatched' },
-    { key: 'completed',  label: 'Completed' },
   ];
 
   return (
