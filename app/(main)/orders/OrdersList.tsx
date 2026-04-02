@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { Check, Clock } from 'lucide-react';
 
-type UnitSummary = { currentStatus: string; currentStage: string };
+type UnitSummary = { currentStatus: string; currentStage: string; isTrading?: boolean };
 
 export type OrderItem = {
   id: string;
@@ -102,8 +102,8 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   const processing = orders.filter((o) => {
     if (o.status !== 'ACTIVE') return false;
     if (allUnitsDone(o)) return false;
-    // Trading items always show in Processing (they don't need job cards)
-    if (o.product.productType === 'TRADING') return true;
+    // Orders with any trading units show in Processing (they don't need job cards)
+    if (o.product.productType === 'TRADING' || o.units.some(u => u.isTrading)) return true;
     // For employees: show in Processing if they accepted the order (have job card)
     // OR if any unit has started work
     if (isEmployee) return o.hasMyJobCard || o.units.some(u => u.currentStatus !== 'PENDING');
@@ -247,6 +247,7 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
   const blocked    = order.units.filter((u) => u.currentStatus === 'BLOCKED').length;
   const pct        = total > 0 ? Math.round((completed / total) * 100) : 0;
   const isNew      = Date.now() - new Date(order.createdAt).getTime() < 24 * 60 * 60 * 1000;
+  const hasTrading = order.product.productType === 'TRADING' || order.units.some(u => u.isTrading);
 
   return (
     <Link href={`/orders/${order.id}`} className="card-interactive block p-4">
@@ -259,7 +260,7 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
               NEW
             </span>
           )}
-          {order.product.productType === 'TRADING' && (
+          {hasTrading && (
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
               style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.25)' }}>
               TRADING
@@ -307,7 +308,7 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
         </div>
       )}
 
-      {order.product.productType === 'TRADING' && (
+      {hasTrading && (
         <div className="mt-3 pt-2 border-t border-zinc-800/50 flex gap-2 flex-wrap">
           <a href={`/print/work-order/${order.id}`} target="_blank" rel="noreferrer"
             onClick={(e) => e.stopPropagation()}

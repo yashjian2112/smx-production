@@ -21,7 +21,7 @@ export default async function OrdersPage() {
         product: true,
         client: { select: { id: true, code: true, customerName: true } },
         _count: { select: { units: true } },
-        units: { select: { currentStatus: true, currentStage: true } },
+        units: { select: { currentStatus: true, currentStage: true, product: { select: { productType: true } } } },
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -54,7 +54,7 @@ export default async function OrdersPage() {
     product: { name: o.product.name, code: o.product.code, productType: o.product.productType ?? 'MANUFACTURED' },
     client: o.client ? { id: o.client.id, code: o.client.code, customerName: o.client.customerName } : null,
     _count: { units: o._count.units },
-    units: o.units.map((u) => ({ currentStatus: u.currentStatus, currentStage: u.currentStage })),
+    units: o.units.map((u) => ({ currentStatus: u.currentStatus, currentStage: u.currentStage, isTrading: u.product?.productType === 'TRADING' })),
     hasMyJobCard: acceptedOrderIds.has(o.id),
   }));
 
