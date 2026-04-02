@@ -35,6 +35,7 @@ export default function PrintOrderBarcodes({ orderNumber, productName, units }: 
   return (
     <>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #fff; }
 
@@ -59,7 +60,7 @@ export default function PrintOrderBarcodes({ orderNumber, productName, units }: 
         .label:last-child { page-break-after: auto; }
 
         .label-name {
-          font-family: Arial, sans-serif;
+          font-family: 'Poppins', Arial, sans-serif;
           font-size: 7pt;
           font-weight: bold;
           text-align: center;
@@ -80,10 +81,10 @@ export default function PrintOrderBarcodes({ orderNumber, productName, units }: 
         }
         .label-barcode { width: 100%; flex-shrink: 0; }
         .label-code {
-          font-family: 'Courier New', monospace;
-          font-size: 9pt;
-          font-weight: bold;
-          letter-spacing: 0.5px;
+          font-family: 'Poppins', Arial, sans-serif;
+          font-size: 8pt;
+          font-weight: 600;
+          letter-spacing: 0.3px;
           margin-top: 0.8mm;
           text-align: center;
           color: #000;
