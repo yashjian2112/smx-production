@@ -239,7 +239,7 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   );
 }
 
-type VerifiedUnit = { id: string; serialNumber: string; barcodeVerified: boolean; product: { name: string } };
+type VerifiedUnit = { id: string; serialNumber: string; barcodeVerified: boolean; currentStatus?: string; product: { name: string } };
 
 function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => void }) {
   const [generating, setGenerating] = useState(false);
@@ -268,15 +268,21 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
   const isNew      = Date.now() - new Date(order.createdAt).getTime() < 24 * 60 * 60 * 1000;
   const hasTrading = order.product.productType === 'TRADING' || tradingCount > 0;
 
-  // Fetch verification status from DB
+  // Fetch verification status from DB (auto-fixes stale data server-side)
   const loadVerification = useCallback(async () => {
     setLoadingVerification(true);
     const res = await fetch(`/api/orders/${order.id}/verify-barcode`);
-    if (res.ok) setVerifiedUnits(await res.json());
+    if (res.ok) {
+      const data: VerifiedUnit[] = await res.json();
+      setVerifiedUnits(data);
+      // If all verified and auto-fixed, refresh page to update order status
+      const allDone = data.length > 0 && data.every(u => u.barcodeVerified);
+      if (allDone && !tradingAllDone) onRefresh?.();
+    }
     setLoadingVerification(false);
-  }, [order.id]);
+  }, [order.id, tradingAllDone, onRefresh]);
 
-  // Load verification status when scan modal opens or on mount for trading orders
+  // Load verification status on mount for trading orders
   useEffect(() => {
     if (hasTrading && tradingAccepted) loadVerification();
   }, [hasTrading, tradingAccepted, loadVerification]);

@@ -68,6 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 /**
  * GET /api/orders/[id]/verify-barcode
  * Get verification status of all trading units in this order.
+ * Auto-fixes stale data: if all verified but units not COMPLETED, marks them COMPLETED.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireSession();
@@ -75,9 +76,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const units = await prisma.controllerUnit.findMany({
     where: { orderId: id, product: { productType: 'TRADING' } },
-    select: { id: true, serialNumber: true, barcodeVerified: true, product: { select: { name: true } } },
+    select: { id: true, serialNumber: true, barcodeVerified: true, currentStatus: true, product: { select: { name: true } } },
     orderBy: { serialNumber: 'asc' },
   });
+
+  // Auto-fix: if all verified but units still not COMPLETED, complete them now
+  const allVerified = units.length > 0 && units.every(u => u.barcodeVerified);
+  const anyStuck = units.some(u => u.barcodeVerified && u.currentStatus !== 'COMPLETED' && u.currentStatus !== 'APPROVED');
+  if (allVerified && anyStuck) {
+    await prisma.controllerUnit.updateMany({
+      where: { orderId: id, product: { productType: 'TRADING' }, currentStatus: { notIn: ['COMPLETED', 'BLOCKED'] } },
+      data: { currentStatus: 'COMPLETED' },
+    });
+    // Return updated data
+    const updated = await prisma.controllerUnit.findMany({
+      where: { orderId: id, product: { productType: 'TRADING' } },
+      select: { id: true, serialNumber: true, barcodeVerified: true, currentStatus: true, product: { select: { name: true } } },
+      orderBy: { serialNumber: 'asc' },
+    });
+    return NextResponse.json(updated);
+  }
 
   return NextResponse.json(units);
 }
