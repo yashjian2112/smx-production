@@ -14,7 +14,7 @@ import { StageType, UnitStatus } from '@prisma/client';
 export async function GET() {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'QC_USER');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'QC_USER', 'PRODUCTION_EMPLOYEE');
 
     // ── Auto-approve any WAITING_APPROVAL units stuck at QC stage ─────────────
     const stuckUnits = await prisma.controllerUnit.findMany({
@@ -57,9 +57,10 @@ export async function GET() {
       select: {
         id: true, serialNumber: true, currentStatus: true, updatedAt: true,
         readyForDispatch: true,
+        productId: true,
         assemblyBarcode: true,
         qcBarcode: true,
-        order: { select: { id: true, orderNumber: true, product: { select: { name: true, code: true } } } },
+        order: { select: { id: true, orderNumber: true, product: { select: { id: true, name: true, code: true } } } },
         assignments: {
           where: { stage: 'QC_AND_SOFTWARE' },
           select: { user: { select: { id: true, name: true } } },

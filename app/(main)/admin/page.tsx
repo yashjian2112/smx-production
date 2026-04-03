@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Building2, Package, ClipboardList, BarChart3, Settings, User, CheckSquare, Factory, Landmark, TrendingUp } from 'lucide-react';
+import { Building2, Package, ClipboardList, BarChart3, Settings, User, CheckSquare, Factory, Landmark, TrendingUp, FlaskConical } from 'lucide-react';
 
 /** Auto-run any pending DB enum migrations so Vercel deploys self-heal */
 async function runPendingMigrations() {
@@ -55,6 +55,11 @@ export default async function AdminPage() {
           <div className="text-3xl mb-2 flex justify-center"><CheckSquare className="w-5 h-5" /></div>
           <p className="font-medium">Checklists</p>
           <p className="text-slate-400 text-xs mt-1">AI quality checks per stage</p>
+        </Link>
+        <Link href="/admin/qc-tests" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center">
+          <div className="text-3xl mb-2 flex justify-center"><FlaskConical className="w-5 h-5" /></div>
+          <p className="font-medium">QC Tests</p>
+          <p className="text-slate-400 text-xs mt-1">Configure QC checklist per product</p>
         </Link>
         <Link href="/admin/box-sizes" className="block p-6 rounded-xl bg-smx-surface border border-slate-600 hover:border-sky-500 text-center">
           <div className="text-3xl mb-2 flex justify-center"><Package className="w-5 h-5" /></div>

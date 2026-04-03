@@ -12,7 +12,7 @@ export async function POST(
 ) {
   try {
     const session = await requireSession();
-    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'QC_USER');
+    requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'QC_USER', 'PRODUCTION_EMPLOYEE');
     const { id } = await params;
     const body = await req.json();
     const {
@@ -23,6 +23,7 @@ export async function POST(
       firmwareVersion,
       softwareVersion,
       checklistData,
+      bluetoothCode,
     } = body as {
       result: 'PASS' | 'FAIL';
       sourceStage?: string;
@@ -30,7 +31,8 @@ export async function POST(
       remarks?: string;
       firmwareVersion?: string;
       softwareVersion?: string;
-      checklistData?: Record<string, { status: string; value: string }>;
+      checklistData?: Record<string, unknown>;
+      bluetoothCode?: string;
     };
 
     if (!result || !['PASS', 'FAIL'].includes(result)) {
@@ -53,6 +55,14 @@ export async function POST(
       await prisma.controllerUnit.update({ where: { id }, data: { qcBarcode } });
     }
 
+    // Save Bluetooth code if captured during QC
+    if (bluetoothCode) {
+      await prisma.controllerUnit.update({
+        where: { id },
+        data: { bluetoothCode: bluetoothCode.trim() },
+      });
+    }
+
     await prisma.qCRecord.create({
       data: {
         unitId: id,
@@ -64,7 +74,7 @@ export async function POST(
         remarks: remarks || undefined,
         firmwareVersion: firmwareVersion ?? unit.firmwareVersion,
         softwareVersion: softwareVersion ?? unit.softwareVersion,
-        checklistData: checklistData ?? undefined,
+        checklistData: checklistData ? JSON.parse(JSON.stringify(checklistData)) : undefined,
       },
     });
 

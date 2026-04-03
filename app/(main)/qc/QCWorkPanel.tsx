@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, X, ChevronRight, Clock, Printer, ChevronDown } from 'lucide-react';
+import { Check, X, ChevronRight, Clock, Printer, ChevronDown, Camera, Bot, Bluetooth, Upload, AlertTriangle, Loader2 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -13,45 +13,59 @@ type QCUnit = {
   updatedAt: string;
   assemblyBarcode: string | null;
   qcBarcode: string | null;
+  productId: string;
   assignedTo: { id: string; name: string } | null;
   reworkRecord: { id: string; cycleCount: number; createdAt: string } | null;
   order: {
     id: string;
     orderNumber: string;
-    product: { name: string; code: string };
+    product: { id: string; name: string; code: string };
   } | null;
 };
-
-type ChecklistData = Record<string, { status: string; value: string }>;
 
 type CompletedUnit = QCUnit & {
   qcResult:        'PASS' | 'FAIL';
   qcPassedBy:     { id: string; name: string } | null;
   firmwareVersion: string | null;
   softwareVersion: string | null;
-  checklistData:   ChecklistData | null;
+  checklistData:   Record<string, unknown> | null;
   hadRework:       boolean;
 };
 
-// ─── QC Item definitions ──────────────────────────────────────────────────────
+// ─── Dynamic QC Test Item types ──────────────────────────────────────────────
 
-const QC_ITEMS = [
-  { key: 'vin',         label: 'VIN'         },
-  { key: 'aux_supply',  label: 'AUX Supply'  },
-  { key: 'resolver',    label: 'Resolver'    },
-  { key: 'kill_switch', label: 'Kill Switch' },
-  { key: 'mode',        label: 'Mode'        },
-  { key: 'can',         label: 'CAN'         },
-  { key: 'hall',        label: 'Hall'        },
-  { key: 'throttle',    label: 'Throttle'    },
-  { key: 'cruise',      label: 'Cruise'      },
-  { key: 'usb',         label: 'USB'         },
-  { key: 'vincos',      label: 'VINCOS'      },
-] as const;
+type QCTestParam = {
+  id: string;
+  name: string;
+  label: string | null;
+  unit: string | null;
+  minValue: number | null;
+  maxValue: number | null;
+  matchTolerance: number | null;
+  matchParamId: string | null;
+  isWriteParam: boolean;
+  hardBlock: boolean;
+  sortOrder: number;
+};
 
-type ItemKey = typeof QC_ITEMS[number]['key'];
-type CheckResult = { status: 'PASS' | 'FAIL' | 'NA'; value: string };
-type Checks = Partial<Record<ItemKey, CheckResult>>;
+type QCTestItem = {
+  id: string;
+  productId: string;
+  name: string;
+  sortOrder: number;
+  requirePhoto: boolean;
+  aiExtract: boolean;
+  params: QCTestParam[];
+};
+
+type TestItemResult = {
+  testItemId: string;
+  status: 'PASS' | 'FAIL' | null;
+  photoUrl: string | null;
+  paramValues: Record<string, number | string | null>;
+  bluetoothCode?: string;
+};
+
 type Phase = 'verify' | 'idle' | 'starting' | 'checklist' | 'summary' | 'submitting' | 'done';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -72,7 +86,7 @@ const STATUS_BADGE: Record<string, { label: string; color: string; bg: string }>
   REJECTED_BACK: { label: 'Rework',      color: '#f87171', bg: 'rgba(248,113,113,0.10)' },
 };
 
-// ─── Inline QC Checklist ─────────────────────────────────────────────────────
+// ─── Issue/Fail types ─────────────────────────────────────────────────────────
 
 type IssueCategory = { id: string; code: string; name: string };
 
@@ -83,40 +97,254 @@ const SOURCE_STAGE_OPTIONS = [
   { value: 'QC_AND_SOFTWARE',          label: 'QC & Software'            },
 ];
 
-function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void }) {
-  const router   = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
+// ─── Bluetooth Helper ─────────────────────────────────────────────────────────
 
-  const [phase, setPhase]                     = useState<Phase>(
+async function scanBluetooth(): Promise<string | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bt = (navigator as any).bluetooth;
+    if (!bt) return null;
+    const device = await bt.requestDevice({
+      acceptAllDevices: true,
+    });
+    const name = device.name ?? device.id ?? '';
+    // Extract last 4 characters as the Bluetooth code
+    return name.slice(-4) || name;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Tolerance validation ─────────────────────────────────────────────────────
+
+function validateParam(
+  param: QCTestParam,
+  value: number | string | null,
+  allValues: Record<string, number | string | null>
+): { ok: boolean; reason?: string } {
+  if (value === null || value === '' || value === undefined) {
+    return { ok: true }; // empty = not checked
+  }
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(num)) return { ok: true };
+
+  // Range check
+  if (param.minValue != null && num < param.minValue) {
+    return { ok: false, reason: `Below min ${param.minValue}${param.unit ? ' ' + param.unit : ''}` };
+  }
+  if (param.maxValue != null && num > param.maxValue) {
+    return { ok: false, reason: `Above max ${param.maxValue}${param.unit ? ' ' + param.unit : ''}` };
+  }
+
+  // Match tolerance check (e.g. R must match Motor Resistance ±0.50)
+  if (param.matchTolerance != null && param.matchParamId) {
+    const matchVal = allValues[param.matchParamId];
+    if (matchVal !== null && matchVal !== '' && matchVal !== undefined) {
+      const matchNum = typeof matchVal === 'string' ? parseFloat(matchVal) : matchVal;
+      if (!isNaN(matchNum) && Math.abs(num - matchNum) > param.matchTolerance) {
+        return { ok: false, reason: `Differs from matched param by ${Math.abs(num - matchNum).toFixed(2)} (max ±${param.matchTolerance})` };
+      }
+    }
+  }
+
+  return { ok: true };
+}
+
+// ─── Inline QC Checklist (new dynamic version) ──────────────────────────────
+
+function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void }) {
+  const router = useRouter();
+
+  // Phase management
+  const [phase, setPhase] = useState<Phase>(
     unit.currentStatus === 'IN_PROGRESS' ? 'checklist' : 'verify'
   );
-  const [scanInput,  setScanInput]  = useState('');
-  const [scanError,  setScanError]  = useState<string | null>(null);
+  const [scanInput, setScanInput] = useState('');
+  const [scanError, setScanError] = useState<string | null>(null);
   const scanRef = useRef<HTMLInputElement>(null);
-  const [currentIdx, setCurrentIdx]           = useState(0);
-  const [checks, setChecks]                   = useState<Checks>({});
-  const [inputValue, setInputValue]           = useState('');
+
+  // Dynamic test items from API
+  const [testItems, setTestItems] = useState<QCTestItem[]>([]);
+  const [loadingItems, setLoadingItems] = useState(true);
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [results, setResults] = useState<Record<string, TestItemResult>>({});
+
+  // Photo upload state
+  const [uploading, setUploading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Fail details
   const [firmwareVersion, setFirmwareVersion] = useState('');
-  const [error, setError]                     = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [issueCategories, setIssueCategories] = useState<IssueCategory[]>([]);
   const [issueCategoryId, setIssueCategoryId] = useState('');
-  const [sourceStage, setSourceStage]         = useState('');
-  const [failRemarks, setFailRemarks]         = useState('');
+  const [sourceStage, setSourceStage] = useState('');
+  const [failRemarks, setFailRemarks] = useState('');
 
+  // Bluetooth state
+  const [btScanning, setBtScanning] = useState(false);
+
+  // Load test items for this product
+  useEffect(() => {
+    const productId = unit.order?.product?.id ?? unit.productId;
+    if (!productId) { setLoadingItems(false); return; }
+    fetch(`/api/admin/qc-tests?productId=${productId}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((items: QCTestItem[]) => setTestItems(items))
+      .catch(() => {})
+      .finally(() => setLoadingItems(false));
+  }, [unit.order?.product?.id, unit.productId]);
+
+  // Load issue categories
   useEffect(() => {
     fetch('/api/qc/issue-categories')
-      .then((r) => r.ok ? r.json() : [])
+      .then(r => r.ok ? r.json() : [])
       .then((d: IssueCategory[]) => setIssueCategories(d))
       .catch(() => {});
   }, []);
 
-  const completedCount = QC_ITEMS.filter((i) => checks[i.key]).length;
-  const currentItem    = QC_ITEMS[currentIdx];
+  const currentItem = testItems[currentIdx] ?? null;
+  const completedCount = Object.keys(results).length;
 
-  useEffect(() => {
-    if (phase === 'checklist') setTimeout(() => inputRef.current?.focus(), 80);
-  }, [phase, currentIdx]);
+  // Get or create result for current item
+  const getCurrentResult = (): TestItemResult => {
+    if (!currentItem) return { testItemId: '', status: null, photoUrl: null, paramValues: {} };
+    return results[currentItem.id] ?? {
+      testItemId: currentItem.id,
+      status: null,
+      photoUrl: null,
+      paramValues: {},
+    };
+  };
 
+  const updateResult = (itemId: string, updates: Partial<TestItemResult>) => {
+    setResults(prev => ({
+      ...prev,
+      [itemId]: { ...getCurrentResult(), ...prev[itemId], ...updates, testItemId: itemId },
+    }));
+  };
+
+  // All param values across all items (for match tolerance)
+  const allParamValues: Record<string, number | string | null> = {};
+  Object.values(results).forEach(r => {
+    Object.entries(r.paramValues).forEach(([k, v]) => { allParamValues[k] = v; });
+  });
+
+  // Photo upload + AI extraction
+  const handlePhotoUpload = async (file: File) => {
+    if (!currentItem) return;
+    setUploading(true);
+    setExtracting(currentItem.aiExtract);
+    try {
+      const form = new FormData();
+      form.append('image', file);
+      form.append('testItemId', currentItem.id);
+
+      const res = await fetch(`/api/units/${unit.id}/qc-photo`, { method: 'POST', body: form });
+      if (!res.ok) throw new Error('Upload failed');
+
+      const data = await res.json() as {
+        photoUrl: string;
+        extractedValues: Record<string, number | null> | null;
+        confidence?: string;
+      };
+
+      // Update result with photo URL and AI-extracted values
+      const updates: Partial<TestItemResult> = { photoUrl: data.photoUrl };
+      if (data.extractedValues) {
+        const existing = results[currentItem.id]?.paramValues ?? {};
+        const merged = { ...existing };
+        // Map extracted values to param IDs
+        for (const param of currentItem.params) {
+          if (data.extractedValues[param.name] !== undefined) {
+            merged[param.id] = data.extractedValues[param.name];
+          }
+        }
+        updates.paramValues = merged;
+      }
+      updateResult(currentItem.id, updates);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Photo upload failed');
+    } finally {
+      setUploading(false);
+      setExtracting(false);
+    }
+  };
+
+  // Bluetooth scan
+  const handleBluetoothScan = async () => {
+    if (!currentItem) return;
+    setBtScanning(true);
+    try {
+      const code = await scanBluetooth();
+      if (code) {
+        updateResult(currentItem.id, { bluetoothCode: code });
+      } else {
+        setError('Could not read Bluetooth device');
+      }
+    } catch {
+      setError('Bluetooth scan failed — check browser support');
+    } finally {
+      setBtScanning(false);
+    }
+  };
+
+  // Validate current item has all required data
+  const validateCurrentItem = (): { valid: boolean; hardFails: string[] } => {
+    if (!currentItem) return { valid: false, hardFails: [] };
+    const result = getCurrentResult();
+    const hardFails: string[] = [];
+
+    // Check photo required
+    if (currentItem.requirePhoto && !result.photoUrl) {
+      return { valid: false, hardFails: ['Photo required'] };
+    }
+
+    // Check each param
+    for (const param of currentItem.params) {
+      const val = result.paramValues[param.id];
+      if (param.isWriteParam && (val === null || val === '' || val === undefined)) {
+        return { valid: false, hardFails: [`"${param.label || param.name}" value required (write param)`] };
+      }
+      const check = validateParam(param, val, allParamValues);
+      if (!check.ok && param.hardBlock) {
+        hardFails.push(`${param.label || param.name}: ${check.reason}`);
+      }
+    }
+
+    return { valid: true, hardFails };
+  };
+
+  // Mark current item pass/fail and move to next
+  const markCurrentItem = (status: 'PASS' | 'FAIL') => {
+    if (!currentItem) return;
+    const { valid, hardFails } = validateCurrentItem();
+    if (!valid) {
+      setError(hardFails[0] || 'Complete all required fields');
+      return;
+    }
+
+    // If hard blocks exist, force FAIL
+    const finalStatus = hardFails.length > 0 ? 'FAIL' : status;
+    updateResult(currentItem.id, { status: finalStatus });
+    setError(null);
+
+    if (currentIdx < testItems.length - 1) {
+      setCurrentIdx(i => i + 1);
+    } else {
+      setPhase('summary');
+    }
+  };
+
+  // Edit a previous item
+  const editItem = (idx: number) => {
+    setCurrentIdx(idx);
+    setPhase('checklist');
+    setError(null);
+  };
+
+  // Start QC
   async function startQC() {
     setPhase('starting');
     setError(null);
@@ -137,55 +365,48 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
     }
   }
 
-  const markCurrent = useCallback(
-    (result: 'PASS' | 'FAIL' | 'NA') => {
-      const val = result === 'NA' ? 'N/A' : inputValue.trim();
-      if (result === 'PASS' && !val) {
-        setError('Enter a value before marking pass');
-        inputRef.current?.focus();
-        return;
-      }
-      setError(null);
-      const newChecks: Checks = { ...checks, [currentItem.key]: { status: result, value: val } };
-      setChecks(newChecks);
-      setInputValue('');
-      if (currentIdx < QC_ITEMS.length - 1) {
-        setCurrentIdx((i) => i + 1);
-      } else {
-        setPhase('summary');
-      }
-    },
-    [inputValue, checks, currentItem, currentIdx]
-  );
-
-  function editItem(idx: number) {
-    const existing = checks[QC_ITEMS[idx].key];
-    setInputValue(existing?.value === 'N/A' ? '' : (existing?.value ?? ''));
-    const trimmed: Checks = {};
-    QC_ITEMS.slice(0, idx).forEach((item) => { if (checks[item.key]) trimmed[item.key] = checks[item.key]; });
-    setChecks(trimmed);
-    setCurrentIdx(idx);
-    setPhase('checklist');
-  }
-
+  // Submit final result
   async function submitResult(result: 'PASS' | 'FAIL') {
     if (result === 'FAIL') {
-      if (!issueCategoryId)        { setError('Select an error code before submitting FAIL'); return; }
-      if (!sourceStage)            { setError('Select the defect origin stage before submitting FAIL'); return; }
-      if (!failRemarks.trim())     { setError('Describe the defect before submitting FAIL'); return; }
+      if (!issueCategoryId) { setError('Select an error code before submitting FAIL'); return; }
+      if (!sourceStage)     { setError('Select the defect origin stage before submitting FAIL'); return; }
+      if (!failRemarks.trim()) { setError('Describe the defect before submitting FAIL'); return; }
     }
     setPhase('submitting');
     setError(null);
+
+    // Build checklistData in new format
+    const checklistData: Record<string, unknown> = {};
+    for (const item of testItems) {
+      const r = results[item.id];
+      if (r) {
+        checklistData[item.id] = {
+          name: item.name,
+          status: r.status,
+          photoUrl: r.photoUrl,
+          paramValues: r.paramValues,
+          bluetoothCode: r.bluetoothCode,
+        };
+      }
+    }
+
+    // Collect bluetooth code from any Bluetooth test item
+    let btCode: string | undefined;
+    for (const r of Object.values(results)) {
+      if (r.bluetoothCode) { btCode = r.bluetoothCode; break; }
+    }
+
     try {
       const res = await fetch(`/api/units/${unit.id}/qc`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           result,
-          checklistData: checks,
+          checklistData,
           firmwareVersion: firmwareVersion || undefined,
-          issueCategoryId: result === 'FAIL' ? issueCategoryId    : undefined,
-          sourceStage:     result === 'FAIL' ? sourceStage        : undefined,
+          bluetoothCode: btCode,
+          issueCategoryId: result === 'FAIL' ? issueCategoryId : undefined,
+          sourceStage:     result === 'FAIL' ? sourceStage : undefined,
           remarks:         result === 'FAIL' ? failRemarks.trim() : undefined,
         }),
       });
@@ -209,6 +430,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
     padding: 20,
   };
 
+  // ── Done phase ──
   if (phase === 'done') {
     return (
       <div style={card} className="text-center py-6">
@@ -226,10 +448,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
     );
   }
 
-  // ── Barcode scan verification ─────────────────────────────────────────────
-  // Rework units already have a QC barcode sticker → scan that.
-  // Fresh units have an assembly barcode sticker → scan that.
-  // Manual-entry (replacement) units have no barcodes → scan serial number.
+  // ── Barcode scan verification ──
   const isReworkUnit = unit.currentStatus === 'REJECTED_BACK';
   const isManualEntry = !unit.assemblyBarcode && !unit.qcBarcode;
   const expectedBarcode = isManualEntry
@@ -306,21 +525,40 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
     );
   }
 
+  // ── Idle / Starting ──
   if (phase === 'idle' || phase === 'starting') {
     const isRework = unit.currentStatus === 'REJECTED_BACK';
     return (
       <div style={card}>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400 mb-3">QC &amp; Software Test</p>
         <h3 className="text-base font-semibold text-white mb-1">Quality Control Checklist</h3>
-        <p className="text-zinc-500 text-sm mb-4">{QC_ITEMS.length} test items · Enter measured value or mark N/A</p>
-        <div className="grid grid-cols-2 gap-y-1.5 gap-x-3 mb-5">
-          {QC_ITEMS.map((item) => (
-            <div key={item.key} className="flex items-center gap-1.5 text-xs text-zinc-600">
-              <div className="w-1 h-1 rounded-full bg-zinc-700 shrink-0" />
-              {item.label}
+        {loadingItems ? (
+          <div className="flex items-center gap-2 text-zinc-500 text-sm py-4">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading test items...
+          </div>
+        ) : testItems.length === 0 ? (
+          <p className="text-amber-400 text-sm py-4">
+            No QC test items configured for this product. Ask admin to set up QC tests.
+          </p>
+        ) : (
+          <>
+            <p className="text-zinc-500 text-sm mb-4">{testItems.length} test item{testItems.length !== 1 ? 's' : ''}</p>
+            <div className="space-y-1.5 mb-5">
+              {testItems.map((item, i) => (
+                <div key={item.id} className="flex items-center gap-2 text-xs text-zinc-500">
+                  <span className="text-zinc-600 w-5 text-right">{i + 1}.</span>
+                  <span className="text-zinc-300">{item.name}</span>
+                  <div className="flex items-center gap-1 ml-auto">
+                    {item.requirePhoto && <Camera className="w-3 h-3 text-sky-400" />}
+                    {item.aiExtract && <Bot className="w-3 h-3 text-violet-400" />}
+                    <span className="text-zinc-600">{item.params.length}p</span>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
+
         <div className="rounded-xl p-3 mb-4"
           style={{
             background: isRework ? 'rgba(239,68,68,0.06)' : 'rgba(34,197,94,0.05)',
@@ -342,7 +580,7 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
           </div>
         </div>
         {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
-        <button onClick={startQC} disabled={phase === 'starting'}
+        <button onClick={startQC} disabled={phase === 'starting' || testItems.length === 0}
           className="w-full py-3 rounded-xl text-sm font-semibold disabled:opacity-50 transition-opacity"
           style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}>
           {phase === 'starting' ? 'Starting…' : isRework ? 'Re-run QC Test' : 'Start QC Test'}
@@ -351,56 +589,222 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
     );
   }
 
-  if (phase === 'checklist') {
+  // ── Checklist phase — one test item at a time ──
+  if (phase === 'checklist' && currentItem) {
+    const result = getCurrentResult();
+    const isBluetooth = currentItem.name.toLowerCase().includes('bluetooth');
+    const { hardFails } = validateCurrentItem();
+
     return (
       <div style={card}>
+        {/* Progress */}
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-zinc-500">{completedCount + 1} / {QC_ITEMS.length}</span>
+          <span className="text-xs text-zinc-500">{currentIdx + 1} / {testItems.length}</span>
           <span className="text-xs text-zinc-600">QC in progress</span>
         </div>
         <div className="h-1.5 rounded-full mb-5 overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
           <div className="h-full rounded-full transition-all duration-300"
-            style={{ width: `${(completedCount / QC_ITEMS.length) * 100}%`, background: '#38bdf8' }} />
+            style={{ width: `${(currentIdx / testItems.length) * 100}%`, background: '#38bdf8' }} />
         </div>
+
+        {/* Test item name */}
         <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Test Item</p>
-        <p className="text-2xl font-bold text-white mb-4">{currentItem.label}</p>
-        <label className="block text-xs text-zinc-500 mb-1.5">Measured Value</label>
-        <input ref={inputRef} type="text" value={inputValue}
-          onChange={(e) => { setInputValue(e.target.value); setError(null); }}
-          onKeyDown={(e) => { if (e.key === 'Enter') markCurrent('PASS'); }}
-          placeholder="Enter value…"
-          className="w-full px-3 py-3 rounded-xl text-sm text-white placeholder-zinc-700 outline-none mb-3"
-          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+        <p className="text-2xl font-bold text-white mb-1">{currentItem.name}</p>
+        <div className="flex items-center gap-2 mb-4">
+          {currentItem.requirePhoto && (
+            <span className="flex items-center gap-1 text-[10px] text-sky-400">
+              <Camera className="w-3 h-3" /> Photo required
+            </span>
+          )}
+          {currentItem.aiExtract && (
+            <span className="flex items-center gap-1 text-[10px] text-violet-400">
+              <Bot className="w-3 h-3" /> AI auto-fill
+            </span>
+          )}
+        </div>
+
+        {/* Photo upload section */}
+        {currentItem.requirePhoto && (
+          <div className="mb-4">
+            {result.photoUrl ? (
+              <div className="flex items-center gap-3 p-3 rounded-xl"
+                style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                <Check className="w-4 h-4 text-green-400 shrink-0" />
+                <span className="text-sm text-green-400">Photo uploaded</span>
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="ml-auto text-xs text-sky-400 hover:text-sky-300"
+                >
+                  Replace
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="w-full py-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                style={{ background: 'rgba(14,165,233,0.08)', border: '1px dashed rgba(14,165,233,0.3)', color: '#38bdf8' }}
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {extracting ? 'AI reading values...' : 'Uploading...'}
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" /> Upload Photo
+                  </>
+                )}
+              </button>
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handlePhotoUpload(f);
+                e.target.value = '';
+              }}
+            />
+          </div>
+        )}
+
+        {/* Bluetooth scan section */}
+        {isBluetooth && (
+          <div className="mb-4">
+            {result.bluetoothCode ? (
+              <div className="flex items-center gap-3 p-3 rounded-xl"
+                style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)' }}>
+                <Bluetooth className="w-4 h-4 text-blue-400 shrink-0" />
+                <span className="text-sm text-white font-mono">{result.bluetoothCode}</span>
+                <button onClick={handleBluetoothScan} disabled={btScanning}
+                  className="ml-auto text-xs text-sky-400 hover:text-sky-300">
+                  Re-scan
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleBluetoothScan}
+                disabled={btScanning}
+                className="w-full py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)', color: '#60a5fa' }}
+              >
+                {btScanning ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Scanning...</>
+                ) : (
+                  <><Bluetooth className="w-4 h-4" /> Scan Bluetooth Device</>
+                )}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Parameter fields */}
+        {currentItem.params.length > 0 && (
+          <div className="space-y-3 mb-4">
+            {currentItem.params.map(param => {
+              const val = result.paramValues[param.id] ?? '';
+              const validation = validateParam(param, val, allParamValues);
+              const isWrite = param.isWriteParam;
+              return (
+                <div key={param.id}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="text-xs text-zinc-400">
+                      {param.label || param.name}
+                      {param.unit && <span className="text-zinc-600 ml-1">({param.unit})</span>}
+                    </label>
+                    {isWrite && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        WRITE
+                      </span>
+                    )}
+                    {param.hardBlock && (
+                      <AlertTriangle className="w-3 h-3 text-amber-400" />
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    value={val === null ? '' : val}
+                    onChange={e => {
+                      const v = e.target.value;
+                      updateResult(currentItem.id, {
+                        paramValues: { ...result.paramValues, [param.id]: v === '' ? null : v },
+                      });
+                      setError(null);
+                    }}
+                    onWheel={e => (e.target as HTMLElement).blur()}
+                    placeholder={
+                      param.minValue != null && param.maxValue != null
+                        ? `${param.minValue} – ${param.maxValue}`
+                        : 'Enter value…'
+                    }
+                    className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-zinc-700 outline-none font-mono"
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${!validation.ok ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                    }}
+                  />
+                  {!validation.ok && (
+                    <p className="text-red-400 text-[10px] mt-1 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> {validation.reason}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Hard block warnings */}
+        {hardFails.length > 0 && (
+          <div className="rounded-xl p-3 mb-4"
+            style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-red-400 mb-1">Hard Block</p>
+            {hardFails.map((f, i) => (
+              <p key={i} className="text-xs text-red-300">{f}</p>
+            ))}
+          </div>
+        )}
+
         {error && <p className="text-red-400 text-xs mb-3">{error}</p>}
+
+        {/* Pass / Fail buttons */}
         <div className="flex gap-2 mb-5">
-          <button onClick={() => markCurrent('PASS')}
-            className="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5"
+          <button
+            onClick={() => markCurrentItem('PASS')}
+            disabled={hardFails.length > 0}
+            className="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5 disabled:opacity-30"
             style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
             <Check className="w-4 h-4" /> Pass
           </button>
-          <button onClick={() => markCurrent('FAIL')}
+          <button
+            onClick={() => markCurrentItem('FAIL')}
             className="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5"
             style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
             <X className="w-4 h-4" /> Fail
           </button>
-          <button onClick={() => markCurrent('NA')}
-            className="py-3 px-4 rounded-xl text-sm font-semibold"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-            N/A
-          </button>
         </div>
-        {completedCount > 0 && (
+
+        {/* Completed items below */}
+        {currentIdx > 0 && (
           <div className="space-y-1">
             <p className="text-[10px] text-zinc-600 uppercase tracking-wide mb-1">Completed</p>
-            {QC_ITEMS.slice(0, completedCount).map((item, idx) => {
-              const r = checks[item.key];
+            {testItems.slice(0, currentIdx).map((item, idx) => {
+              const r = results[item.id];
               return (
-                <button key={item.key} onClick={() => editItem(idx)}
+                <button key={item.id} onClick={() => editItem(idx)}
                   className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs hover:bg-white/5"
                   style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <span className="text-zinc-400">{item.label}</span>
+                  <span className="text-zinc-400">{item.name}</span>
                   <div className="flex items-center gap-2">
-                    <span className={r?.status === 'NA' ? 'text-zinc-500' : r?.status === 'FAIL' ? 'text-red-400 font-mono' : 'text-green-400 font-mono'}>{r?.value || (r?.status === 'FAIL' ? 'FAIL' : '—')}</span>
+                    {r?.photoUrl && <Camera className="w-3 h-3 text-sky-400" />}
+                    <span className={r?.status === 'FAIL' ? 'text-red-400 font-semibold' : 'text-green-400 font-semibold'}>
+                      {r?.status ?? '—'}
+                    </span>
                     <span className="text-[10px] text-zinc-600">edit</span>
                   </div>
                 </button>
@@ -412,40 +816,61 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
     );
   }
 
+  // ── Summary / Submitting ──
   if (phase === 'summary' || phase === 'submitting') {
-    const failCount = QC_ITEMS.filter((i) => { const r = checks[i.key]; return r?.status === 'FAIL'; }).length;
+    const failCount = testItems.filter(i => results[i.id]?.status === 'FAIL').length;
     const hasFailItems = failCount > 0;
     const canSubmitFail = issueCategoryId && sourceStage && failRemarks.trim();
 
     return (
       <div style={card}>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-4">Review &amp; Submit</p>
-        <div className="space-y-3 mb-4">
-          <div>
-            <label className="block text-xs mb-1" style={{ color: firmwareVersion.trim() ? '#94a3b8' : '#f87171' }}>
-              Firmware Version <span className="text-red-400">*</span>
-            </label>
-            <input type="text" value={firmwareVersion} onChange={(e) => setFirmwareVersion(e.target.value)}
-              placeholder="e.g. v2.4.1" className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-zinc-700 outline-none"
-              style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${firmwareVersion.trim() ? 'rgba(255,255,255,0.1)' : 'rgba(239,68,68,0.4)'}` }} />
-          </div>
+
+        {/* Firmware version */}
+        <div className="mb-4">
+          <label className="block text-xs mb-1" style={{ color: firmwareVersion.trim() ? '#94a3b8' : '#f87171' }}>
+            Firmware Version <span className="text-red-400">*</span>
+          </label>
+          <input type="text" value={firmwareVersion} onChange={(e) => setFirmwareVersion(e.target.value)}
+            placeholder="e.g. v2.4.1" className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-zinc-700 outline-none"
+            style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${firmwareVersion.trim() ? 'rgba(255,255,255,0.1)' : 'rgba(239,68,68,0.4)'}` }} />
         </div>
+
+        {/* Test items summary */}
         <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
-          {QC_ITEMS.map((item, idx) => {
-            const r = checks[item.key];
-            const pass = r?.status === 'PASS';
+          {testItems.map((item, idx) => {
+            const r = results[item.id];
+            const status = r?.status;
             return (
-              <div key={item.key}
-                className={`flex items-center justify-between px-3 py-2 text-xs ${idx > 0 ? 'border-t' : ''}`}
+              <div key={item.id}
+                className={`flex items-center justify-between px-3 py-2.5 text-xs ${idx > 0 ? 'border-t' : ''}`}
                 style={idx > 0 ? { borderColor: 'rgba(255,255,255,0.05)' } : undefined}>
-                <button onClick={() => editItem(idx)} className="text-zinc-400 hover:text-white transition-colors text-left">{item.label}</button>
-                <span className={pass ? 'text-green-400 font-mono' : r?.status === 'NA' ? 'text-zinc-500' : r?.status === 'FAIL' ? 'text-red-400 font-mono' : 'text-zinc-600'}>{r?.value || (r?.status === 'FAIL' ? 'FAIL' : '—')}</span>
+                <button onClick={() => editItem(idx)} className="text-zinc-400 hover:text-white transition-colors text-left flex items-center gap-2">
+                  {item.name}
+                  {r?.photoUrl && <Camera className="w-3 h-3 text-sky-400" />}
+                  {r?.bluetoothCode && <Bluetooth className="w-3 h-3 text-blue-400" />}
+                </button>
+                <div className="flex items-center gap-2">
+                  {/* Show param summary */}
+                  {item.params.length > 0 && r && (
+                    <span className="text-[10px] text-zinc-600">
+                      {item.params.filter(p => r.paramValues[p.id] != null && r.paramValues[p.id] !== '').length}/{item.params.length}
+                    </span>
+                  )}
+                  <span className={
+                    status === 'PASS' ? 'text-green-400 font-semibold' :
+                    status === 'FAIL' ? 'text-red-400 font-semibold' :
+                    'text-zinc-600'
+                  }>
+                    {status ?? '—'}
+                  </span>
+                </div>
               </div>
             );
           })}
         </div>
 
-        {/* ── FAIL details — mandatory when any item failed ── */}
+        {/* Fail details — mandatory when any item failed */}
         {hasFailItems && (
           <div className="rounded-xl p-4 mb-4 space-y-3"
             style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)' }}>
@@ -453,7 +878,6 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
               Fail Details — Required
             </p>
 
-            {/* Error code */}
             <div>
               <label className="block text-xs mb-1.5" style={{ color: issueCategoryId ? '#94a3b8' : '#f87171' }}>
                 Error Code <span className="text-red-400">*</span>
@@ -471,12 +895,11 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
               </select>
             </div>
 
-            {/* Defect source stage */}
             <div>
               <label className="block text-xs mb-1" style={{ color: sourceStage ? '#94a3b8' : '#f87171' }}>
                 Defect Origin Stage <span className="text-red-400">*</span>
               </label>
-              <p className="text-[10px] text-zinc-600 mb-1.5">Which stage introduced this defect? (for reporting only — unit always returns to Assembly)</p>
+              <p className="text-[10px] text-zinc-600 mb-1.5">Which stage introduced this defect?</p>
               <select value={sourceStage} onChange={(e) => { setSourceStage(e.target.value); setError(null); }}
                 className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none appearance-none"
                 style={{
@@ -490,7 +913,6 @@ function InlineQCChecklist({ unit, onDone }: { unit: QCUnit; onDone: () => void 
               </select>
             </div>
 
-            {/* Defect description */}
             <div>
               <label className="block text-xs mb-1.5" style={{ color: failRemarks.trim() ? '#94a3b8' : '#f87171' }}>
                 Defect Description <span className="text-red-400">*</span>
@@ -609,7 +1031,6 @@ function UnitRow({ unit, onSelect }: { unit: QCUnit; onSelect: (u: QCUnit) => vo
   const isActive = unit.currentStatus === 'IN_PROGRESS';
   const accentColor = isRework ? '#f87171' : isActive ? '#38bdf8' : '#94a3b8';
   const badge = STATUS_BADGE[unit.currentStatus] ?? STATUS_BADGE.PENDING;
-  // For rework units show the rework record short ID, otherwise show serial
   const reworkShortId = unit.reworkRecord
     ? 'RW-' + unit.reworkRecord.id.slice(-6).toUpperCase()
     : null;
@@ -701,24 +1122,26 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
   const accentBorder = isFail ? 'rgba(239,68,68,0.2)'  : 'rgba(34,197,94,0.18)';
   const dividerColor = isFail ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
 
-  const passCount = unit.checklistData
-    ? QC_ITEMS.filter((i) => unit.checklistData![i.key]?.status === 'PASS').length
-    : null;
-  const failCount = unit.checklistData
-    ? QC_ITEMS.filter((i) => unit.checklistData![i.key]?.status === 'FAIL').length
-    : null;
+  // Count pass/fail from new or old checklist data format
+  const checklistEntries = unit.checklistData ? Object.entries(unit.checklistData) : [];
+  let passCount = 0;
+  let failCountItems = 0;
+  for (const [, val] of checklistEntries) {
+    const v = val as Record<string, unknown>;
+    const status = v?.status as string;
+    if (status === 'PASS') passCount++;
+    else if (status === 'FAIL') failCountItems++;
+  }
 
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: accentBg, border: `1px solid ${accentBorder}` }}>
 
-      {/* ── Summary row ── */}
+      {/* Summary row */}
       <button type="button" onClick={() => setExpanded((v) => !v)}
         className="w-full text-left p-4 hover:bg-white/[0.02] transition-colors">
         <div className="flex items-start gap-3">
           <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: accentColor }} />
           <div className="flex-1 min-w-0">
-
-            {/* Serial + badges */}
             <div className="flex items-center gap-2 flex-wrap">
               <p className="font-mono text-sm font-semibold text-white leading-tight">{unit.serialNumber}</p>
               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
@@ -732,13 +1155,9 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
                 </span>
               )}
             </div>
-
-            {/* Product / order */}
             <p className="text-xs text-zinc-400 mt-0.5">
               {unit.order?.product.name ?? '—'} · <span className="text-zinc-500">{unit.order?.orderNumber ?? '—'}</span>
             </p>
-
-            {/* Meta row */}
             <div className="flex items-center gap-3 mt-1.5 flex-wrap">
               {unit.qcPassedBy && <p className="text-[10px] text-zinc-500">By {unit.qcPassedBy.name}</p>}
               {unit.firmwareVersion && (
@@ -747,9 +1166,9 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
                   FW {unit.firmwareVersion}
                 </span>
               )}
-              {passCount !== null && failCount !== null && (
+              {checklistEntries.length > 0 && (
                 <span className="text-[10px] text-zinc-500">
-                  {passCount} pass · <span style={{ color: failCount > 0 ? '#f87171' : '#71717a' }}>{failCount} fail</span>
+                  {passCount} pass · <span style={{ color: failCountItems > 0 ? '#f87171' : '#71717a' }}>{failCountItems} fail</span>
                 </span>
               )}
               <div className="ml-auto flex items-center gap-1.5 text-[10px] text-zinc-600">
@@ -761,11 +1180,9 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
         </div>
       </button>
 
-      {/* ── Expanded: full test results + print ── */}
+      {/* Expanded: full test results + print */}
       {expanded && (
         <div className="border-t" style={{ borderColor: dividerColor }}>
-
-          {/* Print PDF button */}
           <div className="px-4 pt-3 pb-2">
             <a href={`/print/qc/${unit.id}`} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
@@ -774,43 +1191,49 @@ function CompletedCard({ unit }: { unit: CompletedUnit }) {
             </a>
           </div>
 
-          {/* Checklist results table */}
-          {unit.checklistData ? (
+          {checklistEntries.length > 0 ? (
             <div className="mx-4 mb-4 rounded-xl overflow-hidden"
               style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
               <div className="grid grid-cols-3 px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500"
                 style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                 <span>Test Item</span>
                 <span className="text-center">Result</span>
-                <span className="text-right">Value</span>
+                <span className="text-right">Details</span>
               </div>
-              {QC_ITEMS.map((item, idx) => {
-                const r       = unit.checklistData![item.key];
-                const isPass  = r?.status === 'PASS';
-                const isNA    = r?.status === 'NA' || r?.value === 'N/A';
-                const isFItem = r?.status === 'FAIL';
+              {checklistEntries.map(([key, val], idx) => {
+                const v = val as Record<string, unknown>;
+                const name = (v?.name as string) || key;
+                const status = (v?.status as string) || '—';
+                const isPass = status === 'PASS';
+                const isFItem = status === 'FAIL';
+                const paramValues = (v?.paramValues as Record<string, unknown>) ?? {};
+                const paramCount = Object.keys(paramValues).filter(k => paramValues[k] != null && paramValues[k] !== '').length;
+
                 return (
-                  <div key={item.key}
+                  <div key={key}
                     className={`grid grid-cols-3 items-center px-3 py-2 text-xs ${idx > 0 ? 'border-t' : ''}`}
                     style={idx > 0 ? { borderColor: 'rgba(255,255,255,0.04)' } : undefined}>
-                    <span className="text-zinc-300 font-medium">{item.label}</span>
+                    <span className="text-zinc-300 font-medium flex items-center gap-1">
+                      {name}
+                      {!!v?.photoUrl && <Camera className="w-3 h-3 text-sky-400" />}
+                    </span>
                     <span className="text-center">
-                      {isNA ? (
-                        <span className="text-zinc-600 text-[10px]">N/A</span>
-                      ) : isPass ? (
+                      {isPass ? (
                         <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded"
                           style={{ color: '#4ade80', background: 'rgba(34,197,94,0.12)' }}>
                           <Check className="w-2.5 h-2.5" /> PASS
                         </span>
-                      ) : (
+                      ) : isFItem ? (
                         <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded"
                           style={{ color: '#f87171', background: 'rgba(239,68,68,0.12)' }}>
-                          <X className="w-2.5 h-2.5" /> {isFItem ? 'FAIL' : '—'}
+                          <X className="w-2.5 h-2.5" /> FAIL
                         </span>
+                      ) : (
+                        <span className="text-zinc-600 text-[10px]">—</span>
                       )}
                     </span>
-                    <span className={`text-right font-mono text-xs ${isNA ? 'text-zinc-600' : isPass ? 'text-green-400' : 'text-red-400'}`}>
-                      {r?.value || (isFItem ? 'FAIL' : '—')}
+                    <span className="text-right text-zinc-500 text-[10px]">
+                      {paramCount > 0 ? `${paramCount} values` : '—'}
                     </span>
                   </div>
                 );
@@ -892,7 +1315,6 @@ export function QCWorkPanel({ role }: { role: string }) {
   const tabUnits      = tab === 'pending' ? pending : processing;
   const showCompleted = tab === 'completed';
 
-  // Tab definitions
   const tabs = [
     { key: 'pending'    as const, label: 'Pending',    count: pending.length        },
     { key: 'processing' as const, label: 'Processing', count: processing.length     },
@@ -914,7 +1336,7 @@ export function QCWorkPanel({ role }: { role: string }) {
         </button>
       </div>
 
-      {/* Tabs — full-width style matching orders page */}
+      {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-xl mb-5 max-w-4xl mx-auto"
         style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
         {tabs.map((t) => (

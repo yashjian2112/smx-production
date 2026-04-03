@@ -119,6 +119,7 @@ model Product {
   proformaItems   ProformaInvoiceItem[]
   bomItems        BOMItem[]
   sampleRequests  SampleRequest[]
+  qcTestItems     QCTestItem[]
 }
 
 // ----- Product Components (BOM per model) -----
@@ -267,6 +268,7 @@ model ControllerUnit {
   warrantyMonths       Int?      @map("warranty_months")      // 12 for retail, 36 for OEM
   dispatchedAt         DateTime? @map("dispatched_at")
   returnRequestId      String?   @map("return_request_id")  // links replacement units to their ReturnRequest
+  bluetoothCode        String?   @map("bluetooth_code")     // last 4 digits of BLE device, captured during QC
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -362,6 +364,45 @@ model QCRecord {
 enum QCResult {
   PASS
   FAIL
+}
+
+// ----- QC Test Checklist Config (per product) -----
+model QCTestItem {
+  id          String   @id @default(cuid())
+  productId   String   @map("product_id")
+  name        String                         // e.g. "Offset", "Motor Parameter", "Temp", "Bluetooth"
+  sortOrder   Int      @default(0) @map("sort_order")
+  requirePhoto Boolean @default(false) @map("require_photo")  // must upload photo for this item
+  aiExtract   Boolean  @default(false) @map("ai_extract")     // AI auto-extracts param values from photo
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  product  Product       @relation(fields: [productId], references: [id])
+  params   QCTestParam[]
+
+  @@map("qc_test_items")
+}
+
+model QCTestParam {
+  id          String   @id @default(cuid())
+  testItemId  String   @map("test_item_id")
+  name        String                         // e.g. "mcconf_foc_offsets_voltage_undriven", "R (mΩ)"
+  label       String?                        // short display label, e.g. "Voltage Undriven"
+  unit        String?                        // e.g. "mΩ", "°C", "%"
+  minValue    Float?   @map("min_value")     // acceptable range min (null = no lower bound)
+  maxValue    Float?   @map("max_value")     // acceptable range max (null = no upper bound)
+  matchTolerance Float? @map("match_tolerance") // ±tolerance vs written value (e.g. 0.50 for R vs Motor Resistance)
+  matchParamId   String? @map("match_param_id") // ID of param this must match within tolerance
+  isWriteParam   Boolean @default(false) @map("is_write_param") // value written to controller (not read)
+  hardBlock      Boolean @default(false) @map("hard_block")     // fail entire QC if out of range
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  testItem    QCTestItem  @relation(fields: [testItemId], references: [id], onDelete: Cascade)
+  matchParam  QCTestParam? @relation("ParamMatch", fields: [matchParamId], references: [id])
+  matchedBy   QCTestParam[] @relation("ParamMatch")
+
+  @@map("qc_test_params")
 }
 
 // ----- Rework -----
