@@ -57,28 +57,42 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   // Order-level accept
   const [acceptingOrder, setAcceptingOrder] = useState<string | null>(null);
 
+  const [error, setError] = useState('');
+
   const fetchUnits = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const statuses = STATUS_MAP[tab].join(',');
       const res = await fetch(`/api/harness?status=${statuses}`);
-      if (res.ok) {
-        let data: HarnessUnit[] = await res.json();
-        // For completed tab, only show last 14 days
-        if (tab === 'completed') {
-          const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
-          data = data.filter(u => new Date(u.updatedAt).getTime() >= cutoff);
-        }
-        setUnits(data);
+      if (!res.ok) {
+        setError('Failed to load data. Tap refresh to retry.');
+        setUnits([]);
+        return;
       }
-    } catch (e) {
-      console.error(e);
+      let data: HarnessUnit[] = await res.json();
+      // For completed tab, only show last 14 days
+      if (tab === 'completed') {
+        const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+        data = data.filter(u => new Date(u.updatedAt).getTime() >= cutoff);
+      }
+      setUnits(data);
+    } catch {
+      setError('Network error. Check your connection and retry.');
+      setUnits([]);
     } finally {
       setLoading(false);
     }
   }, [tab]);
 
-  useEffect(() => { fetchUnits(); }, [fetchUnits]);
+  // Clear stale data immediately on tab switch, then fetch
+  useEffect(() => {
+    setUnits([]);
+    setJobCardUnit(null);
+    setQcUnitId(null);
+    setQcScanVerified(false);
+    fetchUnits();
+  }, [fetchUnits]);
 
   // ── Per-unit Actions ──
   async function doAction(unitId: string, action: string, extra?: Record<string, unknown>) {
@@ -233,6 +247,13 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
       {/* Content */}
       {loading ? (
         <div className="py-12 text-center text-slate-500 text-sm">Loading...</div>
+      ) : error ? (
+        <div className="py-12 text-center space-y-3">
+          <p className="text-red-400 text-sm">{error}</p>
+          <button onClick={fetchUnits} className="px-4 py-2 rounded-lg bg-slate-700 text-slate-200 text-sm hover:bg-slate-600">
+            Retry
+          </button>
+        </div>
       ) : units.length === 0 ? (
         <div className="py-12 text-center text-slate-500 text-sm">
           {tab === 'completed' ? 'No completed harness units in the last 14 days' : 'No harness units in this category'}
