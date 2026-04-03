@@ -23,7 +23,6 @@ type HarnessUnit = {
   pairedController: { id: string; serialNumber: string } | null;
 };
 
-const HARNESS_MODELS = ['Ultra Bee', 'Light Bee'];
 
 type Connector = {
   id: string;
@@ -56,9 +55,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   // Job card expanded
   const [jobCardUnit, setJobCardUnit] = useState<string | null>(null);
   // Order-level accept
-  const [acceptOrderId, setAcceptOrderId] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string>('');
-  const [acceptingOrder, setAcceptingOrder] = useState(false);
+  const [acceptingOrder, setAcceptingOrder] = useState<string | null>(null);
 
   const fetchUnits = useCallback(async () => {
     setLoading(true);
@@ -110,26 +107,23 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
 
   // ── Accept entire order ──
   async function acceptOrder(orderId: string) {
-    if (!selectedModel) { alert('Please select a model'); return; }
-    setAcceptingOrder(true);
+    setAcceptingOrder(orderId);
     try {
       const res = await fetch('/api/harness/accept-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, harnessModel: selectedModel }),
+        body: JSON.stringify({ orderId }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(err.error || 'Failed to accept order');
         return;
       }
-      setAcceptOrderId(null);
-      setSelectedModel('');
       fetchUnits();
     } catch (e) {
       console.error(e);
     } finally {
-      setAcceptingOrder(false);
+      setAcceptingOrder(null);
     }
   }
 
@@ -268,52 +262,16 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                     {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                   </button>
                   {/* Order-level Accept button (only on pending tab) */}
-                  {isPendingTab && acceptOrderId !== orderId && (
+                  {isPendingTab && (
                     <button
-                      onClick={() => { setAcceptOrderId(orderId); setSelectedModel(''); }}
-                      className="ml-2 px-4 py-2 rounded-lg border text-sm font-medium bg-sky-600/20 text-sky-400 border-sky-600/40 hover:bg-sky-600/30 shrink-0"
+                      onClick={() => acceptOrder(orderId)}
+                      disabled={acceptingOrder === orderId}
+                      className="ml-2 px-4 py-2 rounded-lg border text-sm font-medium bg-sky-600/20 text-sky-400 border-sky-600/40 hover:bg-sky-600/30 shrink-0 disabled:opacity-40"
                     >
-                      Accept Order
+                      {acceptingOrder === orderId ? '...' : 'Accept Order'}
                     </button>
                   )}
                 </div>
-
-                {/* Model selection panel for order-level accept */}
-                {isPendingTab && acceptOrderId === orderId && (
-                  <div className="mx-4 mb-3 p-3 rounded-lg bg-smx-bg border border-sky-600/30 space-y-3">
-                    <p className="text-xs font-medium text-sky-400">Select Harness Model for {orderNum}</p>
-                    <div className="flex gap-2">
-                      {HARNESS_MODELS.map(m => (
-                        <button
-                          key={m}
-                          onClick={() => setSelectedModel(m)}
-                          className={`flex-1 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
-                            selectedModel === m
-                              ? 'bg-sky-600/20 text-sky-300 border-sky-500'
-                              : 'bg-slate-700/30 text-slate-400 border-slate-600 hover:border-slate-500'
-                          }`}
-                        >
-                          {m}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => setAcceptOrderId(null)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-700 text-slate-200 text-xs hover:bg-slate-600"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => acceptOrder(orderId)}
-                        disabled={!selectedModel || acceptingOrder}
-                        className="px-4 py-1.5 rounded-lg bg-sky-600/20 text-sky-400 border border-sky-600/40 hover:bg-sky-600/30 text-xs font-medium disabled:opacity-40"
-                      >
-                        {acceptingOrder ? '...' : `Accept All ${group.length} Units`}
-                      </button>
-                    </div>
-                  </div>
-                )}
 
                 {isExpanded && (
                   <div className="border-t border-slate-700 divide-y divide-slate-700/50">

@@ -29,6 +29,7 @@ const patchSchema = z.object({
   splitInvoice:        z.boolean().optional(),
   splitServicePercent: z.number().min(0).max(100).optional().nullable(),
   shippingRoute:       z.enum(['AIR', 'LAND']).optional().nullable(),
+  harnessModel:        z.string().optional().nullable(),
   rejectedReason:      z.string().optional(),
   declaredAmount:      z.number().min(0).optional().nullable(),
   clientPONumber:      z.string().optional().nullable(),
@@ -129,6 +130,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         ...(rest.splitServicePercent  !== undefined && { splitServicePercent: rest.splitServicePercent }),
         ...(rest.declaredAmount       !== undefined && { declaredAmount: rest.declaredAmount }),
         ...(rest.shippingRoute       !== undefined && { shippingRoute: rest.shippingRoute }),
+        ...(rest.harnessModel        !== undefined && { harnessModel: rest.harnessModel }),
         ...(items !== undefined && {
           items: {
             deleteMany: {},

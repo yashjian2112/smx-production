@@ -6,20 +6,18 @@ import { appendTimeline } from '@/lib/timeline';
 /**
  * POST /api/harness/accept-order
  * Accept all PENDING harness units in an order at once.
- * Body: { orderId: string, harnessModel: string }
+ * Body: { orderId: string }
+ * harnessModel is already set on units from PI conversion.
  */
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
     requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'HARNESS_PRODUCTION');
 
-    const { orderId, harnessModel } = (await req.json()) as {
-      orderId: string;
-      harnessModel: string;
-    };
+    const { orderId } = (await req.json()) as { orderId: string };
 
-    if (!orderId || !harnessModel) {
-      return NextResponse.json({ error: 'orderId and harnessModel are required' }, { status: 400 });
+    if (!orderId) {
+      return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
     }
 
     const pendingUnits = await prisma.harnessUnit.findMany({
@@ -38,7 +36,6 @@ export async function POST(req: NextRequest) {
       data: {
         status: 'ACCEPTED',
         assignedUserId: session.id,
-        harnessModel,
       },
     });
 
@@ -46,7 +43,7 @@ export async function POST(req: NextRequest) {
       orderId,
       userId: session.id,
       action: 'harness_accepted',
-      remarks: `Accepted ${unitIds.length} harness units — model: ${harnessModel}`,
+      remarks: `Accepted ${unitIds.length} harness units`,
     });
 
     return NextResponse.json({ accepted: unitIds.length });

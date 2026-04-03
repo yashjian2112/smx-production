@@ -30,6 +30,7 @@ type InitialProforma = {
   deliveryDays: number | null;
   termsOfDelivery: string | null;
   shippingRoute: string | null;
+  harnessModel: string | null;
   notes: string | null;
   clientPONumber: string | null;
   items: InitialItem[];
@@ -180,6 +181,8 @@ export function EditProformaForm({
   // Replacement-specific
   const [unitSerial,  setUnitSerial]  = useState(() => isReplacement ? parseReplacementNotes(proforma.notes, 'serial') : '');
   const [problemDesc, setProblemDesc] = useState(() => isReplacement ? parseReplacementNotes(proforma.notes, 'problem') : '');
+  // Harness model
+  const [harnessModel, setHarnessModel] = useState(proforma.harnessModel ?? '');
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
@@ -288,6 +291,10 @@ export function EditProformaForm({
       setError('Please select "With Harness" or "Without Harness" for every controller item');
       return;
     }
+    if (items.some((i) => i.harnessChoice === 'yes') && !harnessModel) {
+      setError('Please select a harness model (Ultra Bee, Light Bee, or DIY)');
+      return;
+    }
     if (isReplacement && (!unitSerial.trim() || !problemDesc.trim())) {
       setError('Please fill in Unit Serial Number and Problem Description for replacement');
       return;
@@ -355,6 +362,7 @@ export function EditProformaForm({
           clientPONumber:  clientPONumber.trim() || null,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : null,
           shippingRoute:   shippingRoute || null,
+          harnessModel:    harnessModel || null,
           notes:           finalNotes    || undefined,
           items:           submitItems,
         }),
@@ -641,6 +649,32 @@ export function EditProformaForm({
           ))}
         </div>
       </div>
+
+      {/* Harness Model — shown when any item has harness */}
+      {items.some((i) => i.harnessChoice === 'yes') && (
+        <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.15)' }}>
+          <label className={lCls}>Harness Model <span className="text-red-400">*</span></label>
+          <div className="flex gap-2">
+            {['Ultra Bee', 'Light Bee', 'DIY'].map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setHarnessModel(m)}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all"
+                style={harnessModel === m
+                  ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }
+                }
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          {!harnessModel && (
+            <p className="text-[10px] text-amber-400">Please select a harness model</p>
+          )}
+        </div>
+      )}
 
       {/* Shipping Charges */}
       <div>

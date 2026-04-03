@@ -187,13 +187,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     // ── Create HarnessUnits if harness is required ──
     // Barcode + serial are NOT assigned here — generated on "Start Crimping"
+    // harnessModel comes from the proforma (selected by Sales)
     if (harnessRequired && harnessQty > 0) {
       for (let i = 0; i < harnessQty; i++) {
         await prisma.harnessUnit.create({
           data: {
-            orderId:   order.id,
-            productId: primaryProduct.id,
-            status:    'PENDING',
+            orderId:      order.id,
+            productId:    primaryProduct.id,
+            status:       'PENDING',
+            harnessModel: proforma.harnessModel ?? null,
           },
         });
       }

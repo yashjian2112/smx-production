@@ -31,6 +31,7 @@ const createSchema = z.object({
   splitInvoice:        z.boolean().optional(),
   splitServicePercent: z.number().min(0).max(100).optional(),
   shippingRoute:       z.enum(['AIR', 'LAND']).optional(),
+  harnessModel:        z.string().optional(),
   returnRequestId:     z.string().optional(),
   clientPONumber:      z.string().optional(),
 });
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
     const { clientId, documentType, invoiceType, currency, exchangeRate, termsOfPayment, deliveryDays,
-            termsOfDelivery, notes, relatedInvoiceId, items, splitInvoice, splitServicePercent, shippingRoute, returnRequestId, clientPONumber } = parsed.data;
+            termsOfDelivery, notes, relatedInvoiceId, items, splitInvoice, splitServicePercent, shippingRoute, harnessModel, returnRequestId, clientPONumber } = parsed.data;
 
     const client = await prisma.client.findUnique({ where: { id: clientId } });
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 400 });
@@ -130,6 +131,7 @@ export async function POST(req: NextRequest) {
         splitInvoice:    splitInvoice    ?? false,
         splitServicePercent: splitServicePercent ?? null,
         shippingRoute:   shippingRoute   ?? null,
+        harnessModel:    harnessModel   ?? null,
         clientPONumber:  clientPONumber ?? null,
         createdById:     session.id,
         items: {
