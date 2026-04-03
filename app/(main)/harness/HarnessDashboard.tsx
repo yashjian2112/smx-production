@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Cable, Package, CheckCircle2, XCircle, Clock, Play, Zap, RefreshCw, ChevronDown, ChevronUp, Printer, ScanLine, Hash, User, Calendar } from 'lucide-react';
+import { Cable, Package, CheckCircle2, XCircle, Clock, Play, Zap, RefreshCw, ChevronDown, ChevronUp, Printer, ScanLine, Hash, User, Calendar, Check } from 'lucide-react';
 import { ScanInput } from '@/components/ScanInput';
 
 type HarnessUnit = {
@@ -33,12 +33,13 @@ type Connector = {
   sortOrder: number;
 };
 
-type Tab = 'pending' | 'in_progress' | 'qc';
+type Tab = 'pending' | 'in_progress' | 'qc' | 'completed';
 
 const STATUS_MAP: Record<Tab, string[]> = {
   pending:     ['PENDING'],
   in_progress: ['ACCEPTED', 'CRIMPING'],
   qc:          ['QC_PENDING'],
+  completed:   ['QC_PASSED', 'READY'],
 };
 
 export default function HarnessDashboard({ role, userId }: { role: string; userId: string }) {
@@ -54,16 +55,25 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   // Job card expanded
   const [jobCardUnit, setJobCardUnit] = useState<string | null>(null);
-  // Model selection for accept
-  const [acceptUnitId, setAcceptUnitId] = useState<string | null>(null);
+  // Order-level accept
+  const [acceptOrderId, setAcceptOrderId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>('');
+  const [acceptingOrder, setAcceptingOrder] = useState(false);
 
   const fetchUnits = useCallback(async () => {
     setLoading(true);
     try {
       const statuses = STATUS_MAP[tab].join(',');
       const res = await fetch(`/api/harness?status=${statuses}`);
-      if (res.ok) setUnits(await res.json());
+      if (res.ok) {
+        let data: HarnessUnit[] = await res.json();
+        // For completed tab, only show last 14 days
+        if (tab === 'completed') {
+          const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+          data = data.filter(u => new Date(u.updatedAt).getTime() >= cutoff);
+        }
+        setUnits(data);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -73,7 +83,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
 
   useEffect(() => { fetchUnits(); }, [fetchUnits]);
 
-  // ── Actions ──
+  // ── Per-unit Actions ──
   async function doAction(unitId: string, action: string, extra?: Record<string, unknown>) {
     setActing(unitId);
     try {
@@ -87,7 +97,6 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
         alert(err.error || 'Action failed');
         return;
       }
-      // If start_crimping, open print window (barcode is now generated)
       if (action === 'start_crimping') {
         window.open(`/print/harness/${unitId}`, '_blank');
       }
@@ -96,6 +105,31 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
       console.error(e);
     } finally {
       setActing(null);
+    }
+  }
+
+  // ── Accept entire order ──
+  async function acceptOrder(orderId: string) {
+    if (!selectedModel) { alert('Please select a model'); return; }
+    setAcceptingOrder(true);
+    try {
+      const res = await fetch('/api/harness/accept-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, harnessModel: selectedModel }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to accept order');
+        return;
+      }
+      setAcceptOrderId(null);
+      setSelectedModel('');
+      fetchUnits();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setAcceptingOrder(false);
     }
   }
 
@@ -144,7 +178,6 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
       .map(c => c.name);
     const remarks = allPass ? 'All connectors passed' : `Failed: ${failedNames.join(', ')}`;
 
-    // Include connector names in qcData for QC report display
     const qcDataWithNames: Record<string, { status: string; remarks: string; name: string }> = {};
     for (const c of connectors) {
       const result = qcResults[c.id];
@@ -171,6 +204,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
     { key: 'pending',     label: 'Pending',     icon: <Clock className="w-4 h-4" /> },
     { key: 'in_progress', label: 'In Progress', icon: <Play className="w-4 h-4" /> },
     { key: 'qc',          label: 'QC',          icon: <Zap className="w-4 h-4" /> },
+    { key: 'completed',   label: 'Completed',   icon: <Check className="w-4 h-4" /> },
   ];
 
   return (
@@ -206,27 +240,81 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
       {loading ? (
         <div className="py-12 text-center text-slate-500 text-sm">Loading...</div>
       ) : units.length === 0 ? (
-        <div className="py-12 text-center text-slate-500 text-sm">No harness units in this category</div>
+        <div className="py-12 text-center text-slate-500 text-sm">
+          {tab === 'completed' ? 'No completed harness units in the last 14 days' : 'No harness units in this category'}
+        </div>
       ) : (
         <div className="space-y-3">
           {orderKeys.map(orderNum => {
             const group = orderGroups[orderNum];
             const isExpanded = expandedOrder === orderNum || orderKeys.length === 1;
+            const isPendingTab = tab === 'pending';
+            const isCompletedTab = tab === 'completed';
+            const orderId = group[0].orderId;
+
             return (
               <div key={orderNum} className="rounded-xl bg-smx-surface border border-slate-700 overflow-hidden">
-                <button
-                  onClick={() => setExpandedOrder(isExpanded ? null : orderNum)}
-                  className="w-full flex items-center justify-between px-4 py-3 text-left"
-                >
-                  <div className="flex items-center gap-2">
-                    <Package className="w-4 h-4 text-slate-400" />
+                {/* Order header */}
+                <div className="flex items-center justify-between px-4 py-3">
+                  <button
+                    onClick={() => setExpandedOrder(isExpanded ? null : orderNum)}
+                    className="flex items-center gap-2 text-left flex-1 min-w-0"
+                  >
+                    <Package className="w-4 h-4 text-slate-400 shrink-0" />
                     <span className="font-medium text-sm">{orderNum}</span>
                     <span className="text-slate-500 text-xs">{group[0].product.code}</span>
                     <span className="text-slate-600 text-[10px]">Qty: {group[0].order.quantity}</span>
                     <span className="bg-slate-700/50 text-slate-400 px-1.5 py-0.5 rounded text-[10px]">{group.length} harness</span>
+                    {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                  </button>
+                  {/* Order-level Accept button (only on pending tab) */}
+                  {isPendingTab && acceptOrderId !== orderId && (
+                    <button
+                      onClick={() => { setAcceptOrderId(orderId); setSelectedModel(''); }}
+                      className="ml-2 px-4 py-2 rounded-lg border text-sm font-medium bg-sky-600/20 text-sky-400 border-sky-600/40 hover:bg-sky-600/30 shrink-0"
+                    >
+                      Accept Order
+                    </button>
+                  )}
+                </div>
+
+                {/* Model selection panel for order-level accept */}
+                {isPendingTab && acceptOrderId === orderId && (
+                  <div className="mx-4 mb-3 p-3 rounded-lg bg-smx-bg border border-sky-600/30 space-y-3">
+                    <p className="text-xs font-medium text-sky-400">Select Harness Model for {orderNum}</p>
+                    <div className="flex gap-2">
+                      {HARNESS_MODELS.map(m => (
+                        <button
+                          key={m}
+                          onClick={() => setSelectedModel(m)}
+                          className={`flex-1 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                            selectedModel === m
+                              ? 'bg-sky-600/20 text-sky-300 border-sky-500'
+                              : 'bg-slate-700/30 text-slate-400 border-slate-600 hover:border-slate-500'
+                          }`}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setAcceptOrderId(null)}
+                        className="px-3 py-1.5 rounded-lg bg-slate-700 text-slate-200 text-xs hover:bg-slate-600"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => acceptOrder(orderId)}
+                        disabled={!selectedModel || acceptingOrder}
+                        className="px-4 py-1.5 rounded-lg bg-sky-600/20 text-sky-400 border border-sky-600/40 hover:bg-sky-600/30 text-xs font-medium disabled:opacity-40"
+                      >
+                        {acceptingOrder ? '...' : `Accept All ${group.length} Units`}
+                      </button>
+                    </div>
                   </div>
-                  {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                </button>
+                )}
+
                 {isExpanded && (
                   <div className="border-t border-slate-700 divide-y divide-slate-700/50">
                     {group.map((unit, idx) => (
@@ -263,8 +351,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                             >
                               <Hash className="w-4 h-4" />
                             </button>
-                            {/* Print barcode button — only if barcode exists */}
-                            {unit.barcode && (unit.status === 'CRIMPING' || unit.status === 'QC_PENDING') && (
+                            {/* Print barcode button */}
+                            {unit.barcode && (unit.status === 'CRIMPING' || unit.status === 'QC_PENDING' || unit.status === 'QC_PASSED' || unit.status === 'READY') && (
                               <button
                                 onClick={() => window.open(`/print/harness/${unit.id}`, '_blank')}
                                 className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50"
@@ -273,10 +361,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                 <Printer className="w-4 h-4" />
                               </button>
                             )}
-                            {/* Action buttons based on status */}
-                            {unit.status === 'PENDING' && acceptUnitId !== unit.id && (
-                              <ActionBtn label="Accept" color="sky" loading={acting === unit.id} onClick={() => { setAcceptUnitId(unit.id); setSelectedModel(''); }} />
-                            )}
+                            {/* Action buttons based on status (no Accept — that's order-level now) */}
                             {unit.status === 'ACCEPTED' && (
                               <ActionBtn label="Start Crimping" color="amber" loading={acting === unit.id} onClick={() => doAction(unit.id, 'start_crimping')} />
                             )}
@@ -288,47 +373,6 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                             )}
                           </div>
                         </div>
-
-                        {/* Model selection for accept */}
-                        {acceptUnitId === unit.id && (
-                          <div className="mt-3 p-3 rounded-lg bg-smx-bg border border-sky-600/30 space-y-3">
-                            <p className="text-xs font-medium text-sky-400">Select Harness Model</p>
-                            <div className="flex gap-2">
-                              {HARNESS_MODELS.map(m => (
-                                <button
-                                  key={m}
-                                  onClick={() => setSelectedModel(m)}
-                                  className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                                    selectedModel === m
-                                      ? 'bg-sky-600/20 text-sky-300 border-sky-500'
-                                      : 'bg-slate-700/30 text-slate-400 border-slate-600 hover:border-slate-500'
-                                  }`}
-                                >
-                                  {m}
-                                </button>
-                              ))}
-                            </div>
-                            <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() => setAcceptUnitId(null)}
-                                className="px-3 py-1.5 rounded-lg bg-slate-700 text-slate-200 text-xs hover:bg-slate-600"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (!selectedModel) { alert('Please select a model'); return; }
-                                  doAction(unit.id, 'accept', { harnessModel: selectedModel });
-                                  setAcceptUnitId(null);
-                                }}
-                                disabled={!selectedModel || acting === unit.id}
-                                className="px-3 py-1.5 rounded-lg bg-sky-600/20 text-sky-400 border border-sky-600/40 hover:bg-sky-600/30 text-xs font-medium disabled:opacity-40"
-                              >
-                                {acting === unit.id ? '...' : 'Confirm Accept'}
-                              </button>
-                            </div>
-                          </div>
-                        )}
 
                         {/* Job card */}
                         {jobCardUnit === unit.id && (
@@ -413,12 +457,9 @@ function JobCard({ unit, index }: { unit: HarnessUnit; index: number }) {
 
   return (
     <div className="mt-3 p-4 rounded-lg bg-smx-bg border border-slate-600/50 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Cable className="w-4 h-4 text-sky-400" />
-          <span className="text-sm font-semibold text-sky-300">Job Card</span>
-        </div>
-        <span className="text-[10px] text-slate-500 font-mono">{unit.id.slice(0, 8)}</span>
+      <div className="flex items-center gap-2">
+        <Cable className="w-4 h-4 text-sky-400" />
+        <span className="text-sm font-semibold text-sky-300">Job Card</span>
       </div>
 
       <div className="grid grid-cols-2 gap-3 text-xs">
@@ -454,12 +495,6 @@ function JobCard({ unit, index }: { unit: HarnessUnit; index: number }) {
           <div>
             <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Serial Number</p>
             <p className="font-mono text-slate-200">{unit.serialNumber}</p>
-          </div>
-        )}
-        {!unit.barcode && (
-          <div className="col-span-2">
-            <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Barcode / Serial</p>
-            <p className="text-slate-500 italic text-[11px]">Assigned on Start Crimping</p>
           </div>
         )}
         <div className="flex items-start gap-1.5">
