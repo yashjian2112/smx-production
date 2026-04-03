@@ -2067,6 +2067,7 @@ model HarnessUnit {
   productId      String            @map("product_id")
   assignedUserId String?           @map("assigned_user_id")
   status         HarnessUnitStatus @default(PENDING)
+  harnessModel   String?           @map("harness_model")  // e.g. "Ultra Bee", "Light Bee"
   qcData         Json?             @map("qc_data")   // per-connector pass/fail results
   remarks        String?
   createdAt      DateTime          @default(now()) @map("created_at")

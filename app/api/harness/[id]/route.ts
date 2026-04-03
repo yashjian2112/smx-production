@@ -17,10 +17,11 @@ export async function PATCH(
     requireRole(session, 'ADMIN', 'PRODUCTION_MANAGER', 'HARNESS_PRODUCTION');
     const { id } = await params;
     const body = await req.json();
-    const { action, qcData, remarks } = body as {
+    const { action, qcData, remarks, harnessModel } = body as {
       action: 'accept' | 'start_crimping' | 'crimping_done' | 'qc_pass' | 'qc_fail' | 'rework';
       qcData?: Record<string, unknown>;
       remarks?: string;
+      harnessModel?: string;
     };
 
     const unit = await prisma.harnessUnit.findUnique({
@@ -49,9 +50,12 @@ export async function PATCH(
 
     const data: Record<string, unknown> = { status: transition.to };
 
-    // On accept, assign current user
+    // On accept, assign current user + harness model
     if (action === 'accept') {
       data.assignedUserId = session.id;
+      if (harnessModel) {
+        data.harnessModel = harnessModel;
+      }
     }
 
     // On start_crimping, generate barcode + serial number (only if not already assigned)

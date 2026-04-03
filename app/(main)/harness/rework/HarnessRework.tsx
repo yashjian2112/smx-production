@@ -12,6 +12,7 @@ type HarnessUnit = {
   productId: string;
   assignedUserId: string | null;
   status: string;
+  harnessModel: string | null;
   qcData: Record<string, { status: string; remarks?: string; name?: string }> | null;
   remarks: string | null;
   createdAt: string;
@@ -186,6 +187,7 @@ export default function HarnessRework({ role, userId }: { role: string; userId: 
                               <span className={badgeCls(unit.status)}>QC FAILED</span>
                             </div>
                             {unit.serialNumber && <p className="text-[10px] text-slate-500 mt-0.5">SN: {unit.serialNumber}</p>}
+                            {unit.harnessModel && <p className="text-[10px] text-sky-400/70 mt-0.5">Model: {unit.harnessModel}</p>}
                             {unit.assignedUser && <p className="text-[10px] text-slate-500">Assigned: {unit.assignedUser.name}</p>}
                             {unit.remarks && <p className="text-[10px] text-red-400 mt-0.5">{unit.remarks}</p>}
                           </div>

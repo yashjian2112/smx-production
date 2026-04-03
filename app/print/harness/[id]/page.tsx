@@ -22,6 +22,7 @@ export default async function PrintHarnessPage({ params }: { params: Promise<{ i
       productCode={unit.product.code}
       productName={unit.product.name}
       orderNumber={unit.order.orderNumber}
+      harnessModel={unit.harnessModel}
     />
   );
 }

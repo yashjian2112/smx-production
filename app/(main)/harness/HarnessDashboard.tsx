@@ -12,6 +12,7 @@ type HarnessUnit = {
   productId: string;
   assignedUserId: string | null;
   status: string;
+  harnessModel: string | null;
   qcData: Record<string, { status: string; remarks?: string; name?: string }> | null;
   remarks: string | null;
   createdAt: string;
@@ -21,6 +22,8 @@ type HarnessUnit = {
   assignedUser: { id: string; name: string } | null;
   pairedController: { id: string; serialNumber: string } | null;
 };
+
+const HARNESS_MODELS = ['Ultra Bee', 'Light Bee'];
 
 type Connector = {
   id: string;
@@ -51,6 +54,9 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   // Job card expanded
   const [jobCardUnit, setJobCardUnit] = useState<string | null>(null);
+  // Model selection for accept
+  const [acceptUnitId, setAcceptUnitId] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>('');
 
   const fetchUnits = useCallback(async () => {
     setLoading(true);
@@ -238,6 +244,9 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                             {unit.serialNumber && (
                               <p className="text-[10px] text-slate-500 mt-0.5">SN: {unit.serialNumber}</p>
                             )}
+                            {unit.harnessModel && (
+                              <p className="text-[10px] text-sky-400/70 mt-0.5">Model: {unit.harnessModel}</p>
+                            )}
                             {unit.assignedUser && (
                               <p className="text-[10px] text-slate-500">Assigned: {unit.assignedUser.name}</p>
                             )}
@@ -265,8 +274,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                               </button>
                             )}
                             {/* Action buttons based on status */}
-                            {unit.status === 'PENDING' && (
-                              <ActionBtn label="Accept" color="sky" loading={acting === unit.id} onClick={() => doAction(unit.id, 'accept')} />
+                            {unit.status === 'PENDING' && acceptUnitId !== unit.id && (
+                              <ActionBtn label="Accept" color="sky" loading={acting === unit.id} onClick={() => { setAcceptUnitId(unit.id); setSelectedModel(''); }} />
                             )}
                             {unit.status === 'ACCEPTED' && (
                               <ActionBtn label="Start Crimping" color="amber" loading={acting === unit.id} onClick={() => doAction(unit.id, 'start_crimping')} />
@@ -279,6 +288,47 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                             )}
                           </div>
                         </div>
+
+                        {/* Model selection for accept */}
+                        {acceptUnitId === unit.id && (
+                          <div className="mt-3 p-3 rounded-lg bg-smx-bg border border-sky-600/30 space-y-3">
+                            <p className="text-xs font-medium text-sky-400">Select Harness Model</p>
+                            <div className="flex gap-2">
+                              {HARNESS_MODELS.map(m => (
+                                <button
+                                  key={m}
+                                  onClick={() => setSelectedModel(m)}
+                                  className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                                    selectedModel === m
+                                      ? 'bg-sky-600/20 text-sky-300 border-sky-500'
+                                      : 'bg-slate-700/30 text-slate-400 border-slate-600 hover:border-slate-500'
+                                  }`}
+                                >
+                                  {m}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => setAcceptUnitId(null)}
+                                className="px-3 py-1.5 rounded-lg bg-slate-700 text-slate-200 text-xs hover:bg-slate-600"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (!selectedModel) { alert('Please select a model'); return; }
+                                  doAction(unit.id, 'accept', { harnessModel: selectedModel });
+                                  setAcceptUnitId(null);
+                                }}
+                                disabled={!selectedModel || acting === unit.id}
+                                className="px-3 py-1.5 rounded-lg bg-sky-600/20 text-sky-400 border border-sky-600/40 hover:bg-sky-600/30 text-xs font-medium disabled:opacity-40"
+                              >
+                                {acting === unit.id ? '...' : 'Confirm Accept'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Job card */}
                         {jobCardUnit === unit.id && (
@@ -380,6 +430,12 @@ function JobCard({ unit, index }: { unit: HarnessUnit; index: number }) {
           <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Order</p>
           <p className="text-slate-200">{unit.order.orderNumber}</p>
         </div>
+        {unit.harnessModel && (
+          <div>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Model</p>
+            <p className="text-sky-300 font-medium">{unit.harnessModel}</p>
+          </div>
+        )}
         <div>
           <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Order Qty</p>
           <p className="text-slate-200">{unit.order.quantity} units</p>

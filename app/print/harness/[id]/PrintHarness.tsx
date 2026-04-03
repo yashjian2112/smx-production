@@ -9,12 +9,14 @@ export default function PrintHarness({
   productCode,
   productName,
   orderNumber,
+  harnessModel,
 }: {
   barcode: string;
   serialNumber: string;
   productCode: string;
   productName: string;
   orderNumber: string;
+  harnessModel?: string | null;
 }) {
   useEffect(() => {
     const timer = setTimeout(() => window.print(), 800);
@@ -68,7 +70,7 @@ export default function PrintHarness({
         </div>
 
         <div style={{ fontSize: '8px', color: '#666', marginTop: '2mm', textAlign: 'center' }}>
-          {orderNumber}
+          {orderNumber}{harnessModel ? ` — ${harnessModel}` : ''}
         </div>
       </div>
 
