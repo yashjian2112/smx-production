@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { StageType } from '@prisma/client';
@@ -222,6 +223,11 @@ export default async function DashboardPage() {
   const session = await getSession();
   if (!session) return null;
   const data = await getDashboardData(session.role, session.id);
+
+  // ── HARNESS PRODUCTION ──────────────────────────────────────
+  if (session.role === 'HARNESS_PRODUCTION') {
+    redirect('/harness');
+  }
 
   // ── PACKING ────────────────────────────────────────────────
   if (session.role === 'PACKING') {

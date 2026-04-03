@@ -5,7 +5,7 @@ import { appendTimeline } from '@/lib/timeline';
 
 /**
  * PATCH /api/harness/[id] — update harness unit status
- * Body: { action: 'accept' | 'start_crimping' | 'crimping_done' | 'qc_pass' | 'qc_fail', qcData?, remarks? }
+ * Body: { action: 'accept' | 'start_crimping' | 'crimping_done' | 'qc_pass' | 'qc_fail' | 'rework', qcData?, remarks? }
  */
 export async function PATCH(
   req: NextRequest,
@@ -17,7 +17,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
     const { action, qcData, remarks } = body as {
-      action: 'accept' | 'start_crimping' | 'crimping_done' | 'qc_pass' | 'qc_fail';
+      action: 'accept' | 'start_crimping' | 'crimping_done' | 'qc_pass' | 'qc_fail' | 'rework';
       qcData?: Record<string, unknown>;
       remarks?: string;
     };
@@ -32,6 +32,7 @@ export async function PATCH(
       crimping_done:  { from: ['CRIMPING'],    to: 'QC_PENDING', timeline: 'harness_crimping_done' },
       qc_pass:        { from: ['QC_PENDING', 'QC_FAILED'], to: 'QC_PASSED', timeline: 'harness_qc_passed' },
       qc_fail:        { from: ['QC_PENDING', 'QC_FAILED'], to: 'QC_FAILED', timeline: 'harness_qc_failed' },
+      rework:         { from: ['QC_FAILED'],  to: 'CRIMPING',   timeline: 'harness_rework' },
     };
 
     const transition = transitions[action];
@@ -54,12 +55,18 @@ export async function PATCH(
       data.status = 'READY';
     }
 
+    // On rework, clear old QC data so next QC starts fresh
+    if (action === 'rework') {
+      data.qcData = null;
+      data.remarks = remarks || `Rework — sent back from QC failure`;
+    }
+
     // Save QC data if provided
     if (qcData) {
       data.qcData = JSON.parse(JSON.stringify(qcData));
     }
 
-    if (remarks) {
+    if (remarks && action !== 'rework') {
       data.remarks = remarks;
     }
 

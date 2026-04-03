@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Cable, Package, CheckCircle2, XCircle, Clock, Play, Zap, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Cable, Package, CheckCircle2, XCircle, Clock, Play, Zap, RefreshCw, ChevronDown, ChevronUp, Printer, ScanLine, FileText, RotateCcw, User, Calendar, Hash } from 'lucide-react';
+import { ScanInput } from '@/components/ScanInput';
 
 type HarnessUnit = {
   id: string;
@@ -11,7 +12,7 @@ type HarnessUnit = {
   productId: string;
   assignedUserId: string | null;
   status: string;
-  qcData: Record<string, { status: string; remarks?: string }> | null;
+  qcData: Record<string, { status: string; remarks?: string; name?: string }> | null;
   remarks: string | null;
   createdAt: string;
   updatedAt: string;
@@ -45,9 +46,16 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   const [acting, setActing] = useState<string | null>(null);
   // QC panel state
   const [qcUnitId, setQcUnitId] = useState<string | null>(null);
+  const [qcScanVerified, setQcScanVerified] = useState(false);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [qcResults, setQcResults] = useState<Record<string, { status: 'PASS' | 'FAIL'; remarks: string }>>({});
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  // Job card / QC report expanded
+  const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
+  const [jobCardUnit, setJobCardUnit] = useState<string | null>(null);
+  // Rework remarks
+  const [reworkRemarks, setReworkRemarks] = useState('');
+  const [showReworkDialog, setShowReworkDialog] = useState<string | null>(null);
 
   const fetchUnits = useCallback(async () => {
     setLoading(true);
@@ -78,6 +86,10 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
         alert(err.error || 'Action failed');
         return;
       }
+      // If start_crimping, open print window
+      if (action === 'start_crimping') {
+        window.open(`/print/harness/${unitId}`, '_blank');
+      }
       fetchUnits();
     } catch (e) {
       console.error(e);
@@ -89,6 +101,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   // ── Load connectors for QC ──
   async function openQC(unit: HarnessUnit) {
     setQcUnitId(unit.id);
+    setQcScanVerified(false);
     setQcResults({});
     try {
       const res = await fetch(`/api/admin/harness-connectors?productId=${unit.productId}`);
@@ -112,6 +125,15 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
     }
   }
 
+  function handleQcScan(unit: HarnessUnit, scannedValue: string) {
+    const val = scannedValue.trim().toUpperCase();
+    if (val === unit.barcode.toUpperCase() || val === unit.serialNumber.toUpperCase()) {
+      setQcScanVerified(true);
+    } else {
+      alert('Barcode does not match this harness unit. Please scan the correct barcode.');
+    }
+  }
+
   function submitQC(unit: HarnessUnit) {
     const allPass = Object.values(qcResults).every(r => r.status === 'PASS');
     const action = allPass ? 'qc_pass' : 'qc_fail';
@@ -119,8 +141,30 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
       .filter(c => qcResults[c.id]?.status === 'FAIL')
       .map(c => c.name);
     const remarks = allPass ? 'All connectors passed' : `Failed: ${failedNames.join(', ')}`;
-    doAction(unit.id, action, { qcData: qcResults, remarks });
+
+    // Build qcData with connector names included (for QC report display later)
+    const qcDataWithNames: Record<string, { status: string; remarks: string; name: string }> = {};
+    for (const c of connectors) {
+      const result = qcResults[c.id];
+      if (result) {
+        qcDataWithNames[c.id] = {
+          status: result.status,
+          remarks: result.remarks,
+          name: c.name,
+        };
+      }
+    }
+
+    doAction(unit.id, action, { qcData: qcDataWithNames, remarks });
     setQcUnitId(null);
+    setQcScanVerified(false);
+  }
+
+  // ── Rework ──
+  function handleRework(unitId: string) {
+    doAction(unitId, 'rework', { remarks: reworkRemarks || undefined });
+    setShowReworkDialog(null);
+    setReworkRemarks('');
   }
 
   // ── Group by order ──
@@ -211,7 +255,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                     {group.map(unit => (
                       <div key={unit.id} className="px-4 py-3">
                         <div className="flex items-center justify-between">
-                          <div>
+                          <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="font-mono text-sm text-sky-300">{unit.barcode}</span>
                               <span className={badgeCls(unit.status)}>{unit.status.replace(/_/g, ' ')}</span>
@@ -229,7 +273,35 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                               <p className="text-[10px] text-amber-400 mt-0.5">{unit.remarks}</p>
                             )}
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 items-center shrink-0">
+                            {/* Job card toggle */}
+                            <button
+                              onClick={() => setJobCardUnit(jobCardUnit === unit.id ? null : unit.id)}
+                              className={`p-1.5 rounded-lg hover:bg-slate-700/50 ${jobCardUnit === unit.id ? 'text-sky-400' : 'text-slate-500 hover:text-slate-300'}`}
+                              title="Job card"
+                            >
+                              <Hash className="w-4 h-4" />
+                            </button>
+                            {/* Print barcode button — for crimping/qc stages */}
+                            {(unit.status === 'CRIMPING' || unit.status === 'QC_PENDING' || unit.status === 'QC_FAILED') && (
+                              <button
+                                onClick={() => window.open(`/print/harness/${unit.id}`, '_blank')}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50"
+                                title="Print barcode label"
+                              >
+                                <Printer className="w-4 h-4" />
+                              </button>
+                            )}
+                            {/* QC Report — for passed/ready units */}
+                            {(unit.status === 'QC_PASSED' || unit.status === 'READY' || unit.status === 'DISPATCHED') && unit.qcData && (
+                              <button
+                                onClick={() => setExpandedUnit(expandedUnit === unit.id ? null : unit.id)}
+                                className="p-1.5 rounded-lg text-emerald-400 hover:text-emerald-300 hover:bg-emerald-600/10"
+                                title="View QC Report"
+                              >
+                                <FileText className="w-4 h-4" />
+                              </button>
+                            )}
                             {/* Action buttons based on status */}
                             {unit.status === 'PENDING' && (
                               <ActionBtn
@@ -256,26 +328,90 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                               />
                             )}
                             {(unit.status === 'QC_PENDING' || unit.status === 'QC_FAILED') && (
-                              <ActionBtn
-                                label={unit.status === 'QC_FAILED' ? 'Re-test QC' : 'Start QC'}
-                                color="purple"
-                                loading={acting === unit.id}
-                                onClick={() => openQC(unit)}
-                              />
+                              <>
+                                <ActionBtn
+                                  label={unit.status === 'QC_FAILED' ? 'Re-test QC' : 'Start QC'}
+                                  color="purple"
+                                  loading={acting === unit.id}
+                                  onClick={() => openQC(unit)}
+                                />
+                                {/* Rework button for QC_FAILED */}
+                                {unit.status === 'QC_FAILED' && (
+                                  <button
+                                    onClick={() => { setShowReworkDialog(unit.id); setReworkRemarks(''); }}
+                                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium bg-orange-600/20 text-orange-400 border-orange-600/40 hover:bg-orange-600/30"
+                                    title="Send to rework"
+                                  >
+                                    <RotateCcw className="w-3 h-3" /> Rework
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
 
+                        {/* Job card (inline) */}
+                        {jobCardUnit === unit.id && (
+                          <JobCard unit={unit} />
+                        )}
+
+                        {/* Rework dialog (inline) */}
+                        {showReworkDialog === unit.id && (
+                          <div className="mt-3 p-3 rounded-lg bg-smx-bg border border-orange-600/30 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <RotateCcw className="w-4 h-4 text-orange-400" />
+                              <p className="text-xs font-medium text-orange-400">Send to Rework</p>
+                            </div>
+                            <p className="text-[10px] text-slate-500">
+                              This will send harness <span className="text-sky-300 font-mono">{unit.barcode}</span> back to crimping. Previous QC data will be cleared.
+                            </p>
+                            <input
+                              className="w-full bg-smx-bg border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500"
+                              placeholder="Rework reason (optional)..."
+                              value={reworkRemarks}
+                              onChange={e => setReworkRemarks(e.target.value)}
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => setShowReworkDialog(null)}
+                                className="px-3 py-1.5 rounded-lg bg-slate-700 text-slate-200 text-xs hover:bg-slate-600"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleRework(unit.id)}
+                                disabled={acting === unit.id}
+                                className="px-3 py-1.5 rounded-lg bg-orange-600/20 text-orange-400 border border-orange-600/40 hover:bg-orange-600/30 text-xs font-medium disabled:opacity-40"
+                              >
+                                {acting === unit.id ? '...' : 'Confirm Rework'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* QC Report inline (for Ready tab) */}
+                        {expandedUnit === unit.id && unit.qcData && (
+                          <QCReport unit={unit} />
+                        )}
+
                         {/* QC Panel (inline) */}
                         {qcUnitId === unit.id && (
-                          <QCPanel
-                            connectors={connectors}
-                            qcResults={qcResults}
-                            setQcResults={setQcResults}
-                            onSubmit={() => submitQC(unit)}
-                            onCancel={() => setQcUnitId(null)}
-                            submitting={acting === unit.id}
-                          />
+                          !qcScanVerified ? (
+                            <QCScanStep
+                              unit={unit}
+                              onVerified={(val) => handleQcScan(unit, val)}
+                              onCancel={() => { setQcUnitId(null); setQcScanVerified(false); }}
+                            />
+                          ) : (
+                            <QCPanel
+                              connectors={connectors}
+                              qcResults={qcResults}
+                              setQcResults={setQcResults}
+                              onSubmit={() => submitQC(unit)}
+                              onCancel={() => { setQcUnitId(null); setQcScanVerified(false); }}
+                              submitting={acting === unit.id}
+                            />
+                          )
                         )}
                       </div>
                     ))}
@@ -290,6 +426,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   );
 }
 
+// ── Action Button ──
 function ActionBtn({ label, color, loading, onClick }: { label: string; color: string; loading: boolean; onClick: () => void }) {
   const colorMap: Record<string, string> = {
     sky:     'bg-sky-600/20 text-sky-400 border-sky-600/40 hover:bg-sky-600/30',
@@ -309,6 +446,192 @@ function ActionBtn({ label, color, loading, onClick }: { label: string; color: s
   );
 }
 
+// ── Job Card (detailed view per unit) ──
+function JobCard({ unit }: { unit: HarnessUnit }) {
+  const createdDate = new Date(unit.createdAt);
+  const updatedDate = new Date(unit.updatedAt);
+
+  const statusFlow = ['PENDING', 'ACCEPTED', 'CRIMPING', 'QC_PENDING', 'QC_PASSED', 'READY', 'DISPATCHED'];
+  const currentIdx = statusFlow.indexOf(unit.status === 'QC_FAILED' ? 'QC_PENDING' : unit.status);
+
+  return (
+    <div className="mt-3 p-4 rounded-lg bg-smx-bg border border-slate-600/50 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Cable className="w-4 h-4 text-sky-400" />
+          <span className="text-sm font-semibold text-sky-300">Job Card</span>
+        </div>
+        <span className="text-[10px] text-slate-500 font-mono">{unit.id.slice(0, 8)}</span>
+      </div>
+
+      {/* Details grid */}
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Barcode</p>
+          <p className="font-mono text-sky-300">{unit.barcode}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Serial Number</p>
+          <p className="font-mono text-slate-200">{unit.serialNumber}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Product</p>
+          <p className="text-slate-200">{unit.product.code} &mdash; {unit.product.name}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Order</p>
+          <p className="text-slate-200">{unit.order.orderNumber}</p>
+        </div>
+        <div className="flex items-start gap-1.5">
+          <User className="w-3 h-3 text-slate-500 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Assigned To</p>
+            <p className="text-slate-200">{unit.assignedUser?.name || 'Unassigned'}</p>
+          </div>
+        </div>
+        <div className="flex items-start gap-1.5">
+          <Calendar className="w-3 h-3 text-slate-500 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Created</p>
+            <p className="text-slate-200">{createdDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Status Progress */}
+      <div>
+        <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-2">Progress</p>
+        <div className="flex items-center gap-0.5">
+          {statusFlow.map((s, i) => {
+            const isDone = i <= currentIdx;
+            const isCurrent = s === unit.status || (unit.status === 'QC_FAILED' && s === 'QC_PENDING');
+            const isFailed = unit.status === 'QC_FAILED' && s === 'QC_PENDING';
+            return (
+              <div key={s} className="flex-1 flex flex-col items-center gap-1">
+                <div
+                  className={`w-full h-1.5 rounded-full ${
+                    isFailed ? 'bg-red-500' :
+                    isDone ? 'bg-sky-500' : 'bg-slate-700'
+                  }`}
+                />
+                <span className={`text-[8px] leading-tight text-center ${
+                  isCurrent ? (isFailed ? 'text-red-400 font-medium' : 'text-sky-400 font-medium') :
+                  isDone ? 'text-slate-400' : 'text-slate-600'
+                }`}>
+                  {s.replace(/_/g, ' ').replace('QC ', 'QC\n')}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Paired controller info */}
+      {unit.pairedController && (
+        <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.15)' }}>
+          <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-400">Paired Controller</span>
+          <span className="font-mono text-sm text-emerald-300">{unit.pairedController.serialNumber}</span>
+        </div>
+      )}
+
+      {/* QC summary if available */}
+      {unit.qcData && (
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">QC Results</p>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(unit.qcData).map(([connId, result]) => (
+              <span
+                key={connId}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
+                  result.status === 'PASS'
+                    ? 'bg-emerald-600/15 text-emerald-400'
+                    : 'bg-red-600/15 text-red-400'
+                }`}
+              >
+                {result.status === 'PASS' ? (
+                  <CheckCircle2 className="w-2.5 h-2.5" />
+                ) : (
+                  <XCircle className="w-2.5 h-2.5" />
+                )}
+                {result.name || connId.slice(0, 8)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Remarks */}
+      {unit.remarks && (
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Remarks</p>
+          <p className="text-xs text-amber-400">{unit.remarks}</p>
+        </div>
+      )}
+
+      {/* Timestamps */}
+      <div className="flex justify-between text-[10px] text-slate-600 pt-2 border-t border-slate-700/50">
+        <span>Last updated: {updatedDate.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── QC Scan Verification Step ──
+function QCScanStep({
+  unit,
+  onVerified,
+  onCancel,
+}: {
+  unit: HarnessUnit;
+  onVerified: (val: string) => void;
+  onCancel: () => void;
+}) {
+  const [scanVal, setScanVal] = useState('');
+  const [error, setError] = useState('');
+
+  function handleScan(val: string) {
+    const v = val.trim().toUpperCase();
+    if (v === unit.barcode.toUpperCase() || v === unit.serialNumber.toUpperCase()) {
+      onVerified(v);
+    } else {
+      setError('Barcode does not match this harness unit');
+      setScanVal('');
+    }
+  }
+
+  return (
+    <div className="mt-3 p-3 rounded-lg bg-smx-bg border border-purple-600/30 space-y-3">
+      <div className="flex items-center gap-2">
+        <ScanLine className="w-4 h-4 text-purple-400" />
+        <p className="text-xs font-medium text-purple-400">Scan Harness Barcode to Start QC</p>
+      </div>
+      <p className="text-[10px] text-slate-500">
+        Scan the barcode label on harness <span className="text-sky-300 font-mono">{unit.barcode}</span> to verify identity before QC testing.
+      </p>
+      <ScanInput
+        value={scanVal}
+        onChange={setScanVal}
+        onScan={handleScan}
+        placeholder="Scan barcode..."
+        autoFocus
+        scannerTitle="Scan Harness"
+        scannerHint="Point at the harness barcode label"
+      />
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <div className="flex justify-end">
+        <button
+          onClick={onCancel}
+          className="px-3 py-1.5 rounded-lg bg-slate-700 text-slate-200 text-xs hover:bg-slate-600"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── QC Panel ──
 function QCPanel({
   connectors,
   qcResults,
@@ -337,7 +660,11 @@ function QCPanel({
 
   return (
     <div className="mt-3 p-3 rounded-lg bg-smx-bg border border-purple-600/30 space-y-3">
-      <p className="text-xs font-medium text-purple-400">Connector QC Test</p>
+      <div className="flex items-center gap-2">
+        <CheckCircle2 className="w-4 h-4 text-purple-400" />
+        <p className="text-xs font-medium text-purple-400">Connector QC Test</p>
+        <span className="text-[9px] text-emerald-400 bg-emerald-600/10 px-1.5 py-0.5 rounded">Barcode Verified</span>
+      </div>
       <div className="space-y-2">
         {connectors.map(c => {
           const result = qcResults[c.id] || { status: 'PASS' as const, remarks: '' };
@@ -409,6 +736,56 @@ function QCPanel({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── QC Report (inline, shown in Ready tab) ──
+function QCReport({ unit }: { unit: HarnessUnit }) {
+  const qcData = unit.qcData as Record<string, { status: string; remarks?: string; name?: string }> | null;
+  if (!qcData) return null;
+
+  const entries = Object.entries(qcData);
+  const allPassed = entries.every(([, v]) => v.status === 'PASS');
+  const failedCount = entries.filter(([, v]) => v.status === 'FAIL').length;
+
+  return (
+    <div className="mt-3 p-3 rounded-lg border space-y-2" style={{
+      background: allPassed ? 'rgba(74,222,128,0.04)' : 'rgba(248,113,113,0.04)',
+      borderColor: allPassed ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)',
+    }}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4" style={{ color: allPassed ? '#4ade80' : '#f87171' }} />
+          <p className="text-xs font-medium" style={{ color: allPassed ? '#4ade80' : '#f87171' }}>
+            QC Report — {allPassed ? 'PASSED' : `FAILED (${failedCount})`}
+          </p>
+        </div>
+        <span className="text-[10px] text-slate-500">{unit.barcode}</span>
+      </div>
+      <div className="space-y-1">
+        {entries.map(([connId, result]) => (
+          <div key={connId} className="flex items-center gap-2 text-xs">
+            {result.status === 'PASS' ? (
+              <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+            ) : (
+              <XCircle className="w-3 h-3 text-red-400 shrink-0" />
+            )}
+            <span className={result.status === 'PASS' ? 'text-slate-300' : 'text-red-300'}>
+              {result.name || connId.slice(0, 8)}
+            </span>
+            <span className={`text-[10px] font-medium ${result.status === 'PASS' ? 'text-emerald-400' : 'text-red-400'}`}>
+              {result.status}
+            </span>
+            {result.remarks && (
+              <span className="text-[10px] text-slate-500 italic">— {result.remarks}</span>
+            )}
+          </div>
+        ))}
+      </div>
+      {unit.remarks && (
+        <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-700/50">{unit.remarks}</p>
+      )}
     </div>
   );
 }
