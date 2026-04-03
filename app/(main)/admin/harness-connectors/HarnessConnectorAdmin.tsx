@@ -129,10 +129,11 @@ export default function HarnessConnectorAdmin({
       <select
         value={selectedProduct}
         onChange={e => setSelectedProduct(e.target.value)}
-        className="select-field max-w-xs text-sm"
+        className="max-w-xs w-full rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none"
+        style={{ backgroundColor: '#18181b', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.08)' }}
       >
         {products.map(p => (
-          <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
+          <option key={p.id} value={p.id} style={{ backgroundColor: '#18181b', color: '#e4e4e7' }}>{p.code} — {p.name}</option>
         ))}
       </select>
 

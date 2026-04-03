@@ -33,6 +33,9 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
         select: { stage: true, employeeId: true, buildTimeSec: true, submittedAt: true },
         orderBy: { submittedAt: 'asc' },
       },
+      pairedHarness: {
+        select: { id: true, serialNumber: true, barcode: true, status: true },
+      },
       linkedReturnRequest: {
         select: { id: true, returnNumber: true, reportedIssue: true, faultType: true, status: true },
       },
@@ -131,6 +134,23 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
             );
           })()}
         </div>
+
+        {/* Paired Harness */}
+        {unit.pairedHarness && (
+          <div className="mt-3 flex items-center gap-2 rounded-lg px-3 py-2"
+            style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.15)' }}>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-sky-400">Harness</span>
+            <span className="font-mono text-sm text-sky-300">{unit.pairedHarness.barcode}</span>
+            <span className="text-[10px] text-zinc-500">SN: {unit.pairedHarness.serialNumber}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded font-medium"
+              style={{
+                color: unit.pairedHarness.status === 'DISPATCHED' ? '#4ade80' : '#fbbf24',
+                background: unit.pairedHarness.status === 'DISPATCHED' ? 'rgba(74,222,128,0.1)' : 'rgba(251,191,36,0.1)',
+              }}>
+              {unit.pairedHarness.status}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Rework / Replacement Tracking */}
