@@ -16,7 +16,7 @@ type LineItem = {
   discountPercent: number;
   voltageFrom:     string;
   voltageTo:       string;
-  includeHarness:  boolean;
+  harnessChoice:   'yes' | 'no' | null;  // mandatory for controller items (HSN 85371000)
 };
 
 const HSN_OPTIONS = [
@@ -32,7 +32,7 @@ const PAYMENT_PRESETS = ['100% ADVANCE', '50% Advance, 50% on delivery', '30 day
 let keyCounter = 3;
 
 function newItem(): LineItem {
-  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', includeHarness: false };
+  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', harnessChoice: null };
 }
 
 function calcAmount(item: LineItem) {
@@ -65,7 +65,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   const [problemDesc,      setProblemDesc]      = useState('');
 
   const [items, setItems] = useState<LineItem[]>([
-    { key: 1, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', includeHarness: false },
+    { key: 1, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', harnessChoice: null },
   ]);
   const [hsnInputs, setHsnInputs] = useState<Record<number, string>>({});  // custom HSN per item
   const [productSearches, setProductSearches] = useState<Record<number, string>>({});
@@ -192,6 +192,10 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       setError('Please enter voltage range (From and To) for controller items');
       return;
     }
+    if (items.some((i) => i.hsnCode === '85371000' && i.harnessChoice === null)) {
+      setError('Please select "With Harness" or "Without Harness" for every controller item');
+      return;
+    }
     if (invoiceType === 'REPLACEMENT' && (!unitSerial.trim() || !problemDesc.trim())) {
       setError('Please fill in Unit Serial Number and Problem Description for replacement');
       return;
@@ -219,7 +223,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
         voltageTo:       item.voltageTo || undefined,
         sortOrder:       submitItems.length,
       });
-      if (item.includeHarness) {
+      if (item.harnessChoice === 'yes') {
         submitItems.push({
           description:     `Harness for ${item.description || 'Controller'}`,
           productId:       undefined,
@@ -675,23 +679,38 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
               </div>
               )}
 
-              {/* Harness checkbox — only for controller products (HSN 85371000) */}
+              {/* Harness — mandatory for controller products (HSN 85371000) */}
               {item.hsnCode === '85371000' && (
-              <label className="flex items-center gap-2.5 cursor-pointer select-none py-1">
-                <div
-                  className="relative w-9 h-[18px] rounded-full transition-colors shrink-0"
-                  style={{ background: item.includeHarness ? 'rgba(34,197,94,0.6)' : 'rgba(255,255,255,0.1)' }}
-                  onClick={() => updateItem(item.key, { includeHarness: !item.includeHarness })}
-                >
-                  <div
-                    className="absolute top-[1px] w-4 h-4 rounded-full bg-white transition-transform"
-                    style={{ transform: item.includeHarness ? 'translateX(20px)' : 'translateX(1px)' }}
-                  />
+              <div>
+                <label className={lCls}>Wiring Harness <span className="text-red-400">*</span></label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateItem(item.key, { harnessChoice: 'yes' })}
+                    className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                    style={item.harnessChoice === 'yes'
+                      ? { background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', color: '#4ade80' }
+                      : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }
+                    }
+                  >
+                    With Harness
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateItem(item.key, { harnessChoice: 'no' })}
+                    className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                    style={item.harnessChoice === 'no'
+                      ? { background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171' }
+                      : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }
+                    }
+                  >
+                    Without Harness
+                  </button>
                 </div>
-                <span className="text-xs text-zinc-400">
-                  {item.includeHarness ? 'Harness included (same qty)' : 'Add Harness'}
-                </span>
-              </label>
+                {item.harnessChoice === null && (
+                  <p className="text-[10px] text-amber-400 mt-1">Please select harness option</p>
+                )}
+              </div>
               )}
 
               {/* Price + Discount + Amount */}
