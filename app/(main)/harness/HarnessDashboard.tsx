@@ -88,6 +88,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   // Clear stale data immediately on tab switch, then fetch
   useEffect(() => {
     setUnits([]);
+    setExpandedOrder(null);
     setJobCardUnit(null);
     setQcUnitId(null);
     setQcScanVerified(false);
@@ -262,7 +263,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
         <div className="space-y-3">
           {orderKeys.map(orderNum => {
             const group = orderGroups[orderNum];
-            const isExpanded = expandedOrder === orderNum || orderKeys.length === 1;
+            const isExpanded = expandedOrder === null || expandedOrder === orderNum;
             const isPendingTab = tab === 'pending';
             const isCompletedTab = tab === 'completed';
             const orderId = group[0].orderId;
