@@ -234,6 +234,12 @@ const qcUserNav: NavItem[] = [
   { href: '/units',      label: 'Units',     icon: 'Serial'    },
 ];
 
+// HARNESS_PRODUCTION: harness manufacturing + QC
+const harnessNav: NavItem[] = [
+  { href: '/harness',    label: 'Harness',   icon: 'Tasks'     },
+  { href: '/orders',     label: 'Orders',    icon: 'Orders'    },
+];
+
 export function BottomNav({ role }: { role: string }) {
   const pathname     = usePathname();
   const searchParams = useSearchParams();
@@ -242,6 +248,7 @@ export function BottomNav({ role }: { role: string }) {
   const items =
     role === 'PRODUCTION_EMPLOYEE' ? employeeNav  :
     role === 'QC_USER'             ? qcUserNav    :
+    role === 'HARNESS_PRODUCTION'  ? harnessNav   :
     role === 'PACKING'             ? packingNav   :
     role === 'ADMIN'               ? adminNav     :
     role === 'SALES'               ? salesNav     :

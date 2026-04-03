@@ -84,6 +84,7 @@ model User {
   igTimelineEntries          IGTimeline[]         @relation("IGTimelineUser")
   returnFaultApprovals       ReturnRequest[]      @relation("ReturnFaultApprovedBy")
   returnBlameRecords         ReturnRequest[]      @relation("ReturnBlameEmployee")
+  harnessUnitsAssigned       HarnessUnit[]        @relation("HarnessAssignedTo")
 }
 
 enum Role {
@@ -98,6 +99,7 @@ enum Role {
   INVENTORY_MANAGER  // inventory: raw materials, BOM, stock, GRN, adjustments
   PACKING            // packing team — scans/packs/seals dispatch orders
   STORE_MANAGER      // legacy alias for INVENTORY_MANAGER
+  HARNESS_PRODUCTION // harness manufacturing, crimping, QC
 }
 
 // ----- Products / Models -----
@@ -120,6 +122,9 @@ model Product {
   bomItems        BOMItem[]
   sampleRequests  SampleRequest[]
   qcTestItems     QCTestItem[]
+  harnessOrders      Order[]            @relation("HarnessProduct")
+  harnessUnits       HarnessUnit[]
+  harnessConnectors  HarnessConnector[]
 }
 
 // ----- Product Components (BOM per model) -----
@@ -203,6 +208,8 @@ model Order {
   holdReason  String?   @map("hold_reason")
   voltage     String?   // e.g. "48V"
   motorType   MotorType?  @map("motor_type")
+  harnessRequired  Boolean  @default(false) @map("harness_required")
+  harnessProductId String?  @map("harness_product_id")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   createdById String?   @map("created_by_id")
@@ -216,6 +223,8 @@ model Order {
   returnRequests  ReturnRequest[]
   notes           OrderNote[]
   jobCards        JobCard[]
+  harnessProduct  Product?       @relation("HarnessProduct", fields: [harnessProductId], references: [id])
+  harnessUnits    HarnessUnit[]
 }
 
 model OrderNote {
@@ -269,11 +278,13 @@ model ControllerUnit {
   dispatchedAt         DateTime? @map("dispatched_at")
   returnRequestId      String?   @map("return_request_id")  // links replacement units to their ReturnRequest
   bluetoothCode        String?   @map("bluetooth_code")     // last 4 digits of BLE device, captured during QC
+  pairedHarnessId      String?   @unique @map("paired_harness_id") // set during packing scan
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   order       Order    @relation(fields: [orderId], references: [id])
   product     Product  @relation(fields: [productId], references: [id])
+  pairedHarness  HarnessUnit? @relation("PairedHarness", fields: [pairedHarnessId], references: [id])
   linkedReturnRequest ReturnRequest? @relation("ReplacementUnits", fields: [returnRequestId], references: [id])
   assignments StageAssignment[]
   stageLogs   StageLog[]
@@ -2033,4 +2044,53 @@ model IGPackingBox {
   ig ImplementationGood @relation(fields: [igId], references: [id], onDelete: Cascade)
 
   @@map("ig_packing_boxes")
+}
+
+// ----- Harness Production -----
+
+enum HarnessUnitStatus {
+  PENDING        // created when order converts, waiting acceptance
+  ACCEPTED       // employee accepted the job
+  CRIMPING       // crimping in progress
+  QC_PENDING     // crimping done, waiting QC test
+  QC_PASSED      // all connectors passed QC
+  QC_FAILED      // one or more connectors failed
+  READY          // QC passed, ready for dispatch / pairing
+  DISPATCHED     // paired with controller and dispatched
+}
+
+model HarnessUnit {
+  id             String            @id @default(cuid())
+  serialNumber   String            @unique @map("serial_number")
+  barcode        String            @unique
+  orderId        String            @map("order_id")
+  productId      String            @map("product_id")
+  assignedUserId String?           @map("assigned_user_id")
+  status         HarnessUnitStatus @default(PENDING)
+  qcData         Json?             @map("qc_data")   // per-connector pass/fail results
+  remarks        String?
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  order            Order            @relation(fields: [orderId], references: [id])
+  product          Product          @relation(fields: [productId], references: [id])
+  assignedUser     User?            @relation("HarnessAssignedTo", fields: [assignedUserId], references: [id])
+  pairedController ControllerUnit?  @relation("PairedHarness") // back-ref from ControllerUnit.pairedHarness
+
+  @@map("harness_units")
+}
+
+// Admin-configurable connectors per harness product (used as QC checklist)
+model HarnessConnector {
+  id          String  @id @default(cuid())
+  productId   String  @map("product_id")
+  name        String                          // e.g. "CAN", "USB", "Phase U", "Hall Sensor"
+  description String?
+  sortOrder   Int     @default(0) @map("sort_order")
+  active      Boolean @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("harness_connectors")
 }

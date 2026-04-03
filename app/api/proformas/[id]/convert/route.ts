@@ -3,7 +3,7 @@ import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
 import { generateNextSerial } from '@/lib/serial';
-import { generateNextPowerstageBarcode, generateNextBrainboardBarcode, generateNextQCBarcode } from '@/lib/barcode';
+import { generateNextPowerstageBarcode, generateNextBrainboardBarcode, generateNextQCBarcode, generateNextHarnessBarcode, generateNextHarnessSerial } from '@/lib/barcode';
 import { StageType } from '@prisma/client';
 import { z } from 'zod';
 
@@ -53,6 +53,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (productItems.length === 0)
       return NextResponse.json({ error: 'No product line item found in this invoice to create an order from' }, { status: 400 });
 
+    // Detect harness items — "Harness for ..." lines added by proforma creation
+    const harnessItems = proforma.items.filter((i) => !i.productId && /^Harness for /i.test(i.description ?? ''));
+    const harnessRequired = harnessItems.length > 0;
+    const harnessQty = harnessItems.reduce((sum, i) => sum + i.quantity, 0);
+
     // Total quantity across all products
     const totalQty = productItems.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -83,6 +88,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         priority:     0,
         status:       'ACTIVE',
         createdById:  session.id,
+        harnessRequired,
+        // Use the controller product for harness tracking (same product family)
+        harnessProductId: harnessRequired ? primaryProduct.id : undefined,
       },
       include: { product: true },
     });
@@ -175,6 +183,30 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           });
         }
       }
+    }
+
+    // ── Create HarnessUnits if harness is required ──
+    if (harnessRequired && harnessQty > 0) {
+      const harnessProductCode = primaryProduct.code;
+      for (let i = 0; i < harnessQty; i++) {
+        const serial = await generateNextHarnessSerial(harnessProductCode);
+        const barcode = await generateNextHarnessBarcode(harnessProductCode);
+        await prisma.harnessUnit.create({
+          data: {
+            serialNumber: serial,
+            barcode,
+            orderId:   order.id,
+            productId: primaryProduct.id,
+            status:    'PENDING',
+          },
+        });
+      }
+      await appendTimeline({
+        orderId: order.id,
+        userId:  session.id,
+        action:  'harness_units_created',
+        remarks: `${harnessQty} harness unit(s) created for manufacturing`,
+      });
     }
 
     // Log serials

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { appendTimeline } from '@/lib/timeline';
 import { z } from 'zod';
 
 const scanSchema = z.object({
   barcode:            z.string().min(1),
+  harnessBarcode:     z.string().optional(),      // optional harness pairing
   inspectionPhotoUrl: z.string().url().optional(),
 });
 
@@ -21,7 +23,7 @@ export async function POST(
     if (!parsed.success)
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-    const { barcode, inspectionPhotoUrl } = parsed.data;
+    const { barcode, harnessBarcode, inspectionPhotoUrl } = parsed.data;
 
     // Fetch the dispatch order
     const dispatchOrder = await prisma.dispatchOrder.findUnique({
@@ -88,6 +90,52 @@ export async function POST(
     if (unit.packingBoxItem)
       return NextResponse.json({ error: 'Unit is already packed in a box' }, { status: 400 });
 
+    // ── Harness pairing ──
+    let pairedHarness: { id: string; serialNumber: string; barcode: string } | null = null;
+
+    // Check if order requires harness
+    const order = await prisma.order.findUnique({
+      where: { id: dispatchOrder.orderId },
+      select: { harnessRequired: true },
+    });
+
+    if (order?.harnessRequired && !harnessBarcode) {
+      return NextResponse.json({ error: 'This order requires a harness. Scan the harness barcode along with the controller.' }, { status: 400 });
+    }
+
+    if (harnessBarcode) {
+      const harness = await prisma.harnessUnit.findFirst({
+        where: { barcode: harnessBarcode.trim() },
+        select: { id: true, serialNumber: true, barcode: true, status: true, orderId: true, pairedController: { select: { id: true } } },
+      });
+      if (!harness) return NextResponse.json({ error: 'Harness unit not found for this barcode' }, { status: 404 });
+      if (harness.status !== 'READY' && harness.status !== 'QC_PASSED')
+        return NextResponse.json({ error: `Harness must be READY for dispatch, got ${harness.status}` }, { status: 400 });
+      if (harness.orderId !== dispatchOrder.orderId)
+        return NextResponse.json({ error: 'Harness does not belong to the same order' }, { status: 400 });
+      if (harness.pairedController)
+        return NextResponse.json({ error: 'This harness is already paired with another controller' }, { status: 400 });
+
+      // Pair harness with controller
+      await prisma.controllerUnit.update({
+        where: { id: unit.id },
+        data: { pairedHarnessId: harness.id },
+      });
+      await prisma.harnessUnit.update({
+        where: { id: harness.id },
+        data: { status: 'DISPATCHED' },
+      });
+      pairedHarness = { id: harness.id, serialNumber: harness.serialNumber, barcode: harness.barcode };
+
+      await appendTimeline({
+        unitId: unit.id,
+        orderId: unit.orderId,
+        userId: session.id,
+        action: 'harness_paired',
+        remarks: `Controller ${unit.serialNumber} paired with harness ${harness.barcode}`,
+      });
+    }
+
     // Create the PackingBoxItem and return it directly (with unit info)
     const item = await prisma.packingBoxItem.create({
       data: {
@@ -103,7 +151,7 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ item }, { status: 201 });
+    return NextResponse.json({ item, pairedHarness }, { status: 201 });
   } catch (e) {
     if (e instanceof Error && e.message === 'Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

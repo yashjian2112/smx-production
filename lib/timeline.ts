@@ -20,7 +20,13 @@ type TimelineAction =
   | 'unit_blocked'
   | 'status_changed'
   | 'assembly_pairing_recorded'
-  | 'dispatched';
+  | 'dispatched'
+  | 'harness_units_created'
+  | 'harness_accepted'
+  | 'harness_crimping_done'
+  | 'harness_qc_passed'
+  | 'harness_qc_failed'
+  | 'harness_paired';
 
 export async function appendTimeline(params: {
   unitId?: string | null;

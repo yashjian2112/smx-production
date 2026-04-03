@@ -20,6 +20,7 @@ export default async function DOPackingPage({ params }: { params: { id: string }
           select: {
             orderNumber: true,
             quantity: true,
+            harnessRequired: true,
             client: { select: { customerName: true } },
             product: { select: { code: true, name: true } },
           },

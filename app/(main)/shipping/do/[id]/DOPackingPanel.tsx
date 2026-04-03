@@ -54,10 +54,11 @@ type DispatchOrderFull = {
   orderId:          string | null;
   returnRequestId:  string | null;
   order: {
-    orderNumber: string;
-    quantity:    number;
-    client:      { customerName: string } | null;
-    product:     { code: string; name: string };
+    orderNumber:     string;
+    quantity:        number;
+    harnessRequired: boolean;
+    client:          { customerName: string } | null;
+    product:         { code: string; name: string };
   } | null;
   returnRequest: {
     returnNumber: string;
@@ -102,13 +103,15 @@ async function uploadPhoto(file: File): Promise<string | null> {
 function InspectionStep({
   unit,
   doId,
+  harnessRequired,
   onPass,
   onCancel,
 }: {
-  unit:     InspectedUnit;
-  doId:     string;
-  onPass:   (scan: StagedScan) => void;
-  onCancel: () => void;
+  unit:             InspectedUnit;
+  doId:             string;
+  harnessRequired:  boolean;
+  onPass:           (scan: StagedScan) => void;
+  onCancel:         () => void;
 }) {
   const photoRef = useRef<HTMLInputElement>(null);
   const [photoFile,    setPhotoFile]    = useState<File | null>(null);
@@ -120,6 +123,7 @@ function InspectionStep({
   const [rejectError,  setRejectError]  = useState('');
   const [passing,      setPassing]      = useState(false);
   const [passError,    setPassError]    = useState('');
+  const [harnessCode,  setHarnessCode]  = useState('');
 
   async function handlePass() {
     setPassError('');
@@ -132,9 +136,14 @@ function InspectionStep({
         setUploading(false);
         if (url) inspectionPhotoUrl = url;
       }
+      const scanBody: Record<string, unknown> = {
+        barcode: unit.finalAssemblyBarcode ?? unit.serialNumber,
+        inspectionPhotoUrl,
+      };
+      if (harnessCode.trim()) scanBody.harnessBarcode = harnessCode.trim().toUpperCase();
       const res = await fetch(`/api/dispatch-orders/${doId}/scans`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode: unit.finalAssemblyBarcode ?? unit.serialNumber, inspectionPhotoUrl }),
+        body: JSON.stringify(scanBody),
       });
       const data = await res.json() as { scan?: StagedScan; error?: string };
       if (!res.ok) { setPassError(data.error ?? 'Failed'); return; }
@@ -194,6 +203,25 @@ function InspectionStep({
         {uploading && <p className="text-xs text-zinc-500 mt-1">Uploading…</p>}
       </div>
 
+      {/* Harness barcode field — shown when order requires harness */}
+      {harnessRequired && (
+        <div className="rounded-lg p-3 space-y-2" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
+          <p className="text-xs font-semibold text-sky-400">Scan Harness Barcode</p>
+          <ScanInput
+            value={harnessCode}
+            onChange={setHarnessCode}
+            onScan={(code) => setHarnessCode(code)}
+            placeholder="Scan harness barcode..."
+            autoFocus={false}
+            scannerTitle="Scan Harness"
+            scannerHint="Point at the harness barcode label"
+          />
+          {!harnessCode.trim() && (
+            <p className="text-[10px] text-amber-400">Required — scan the matching harness for this controller</p>
+          )}
+        </div>
+      )}
+
       <div className="rounded-lg p-3 text-center" style={{ background: 'rgba(255,255,255,0.04)' }}>
         <p className="text-sm text-zinc-300 font-medium">Any marks or dents on this controller?</p>
       </div>
@@ -219,7 +247,7 @@ function InspectionStep({
             style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}>
             <X className="w-4 h-4 mr-1" /> Yes — Reject
           </button>
-          <button onClick={handlePass} disabled={passing || uploading}
+          <button onClick={handlePass} disabled={passing || uploading || (harnessRequired && !harnessCode.trim())}
             className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 flex items-center justify-center" style={{ background: '#22c55e' }}>
             {passing ? 'Adding…' : <><Check className="w-4 h-4 mr-1" /> No — Pass</>}
           </button>
@@ -299,6 +327,7 @@ function PhaseAScan({
         <InspectionStep
           unit={inspecting}
           doId={doData.id}
+          harnessRequired={doData.order?.harnessRequired ?? false}
           onPass={(scan) => { onScansUpdate([...scans, scan]); setInspecting(null); setTimeout(() => barcodeRef.current?.focus(), 50); }}
           onCancel={() => { setInspecting(null); setTimeout(() => barcodeRef.current?.focus(), 50); }}
         />

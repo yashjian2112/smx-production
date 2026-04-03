@@ -211,6 +211,52 @@ export async function generateNextMaterialSerialBarcode(
   return `${prefix}${String(seq).padStart(5, '0')}`;
 }
 
+// ----- Harness Barcodes -----
+
+/** Harness barcode: {code}HR{YY}{seq3} — e.g. CL700HR26001 */
+export async function generateNextHarnessBarcode(modelCode: string): Promise<string> {
+  const prefix = `${modelPrefix(modelCode)}HR${YEAR_STR}`;
+  const last = await prisma.harnessUnit.findFirst({
+    where: { barcode: { startsWith: prefix } },
+    orderBy: { barcode: 'desc' },
+    select: { barcode: true },
+  });
+  let seq = 1;
+  if (last?.barcode) {
+    const seqPart = last.barcode.slice(prefix.length);
+    seq = (parseInt(seqPart, 10) || 0) + 1;
+  }
+  if (seq > 999) throw new Error(`Harness barcode sequence exhausted for ${prefix}`);
+  const barcode = `${prefix}${String(seq).padStart(3, '0')}`;
+  const exists = await prisma.harnessUnit.findFirst({ where: { barcode } });
+  if (exists) throw new Error('Harness barcode collision');
+  return barcode;
+}
+
+/** Harness serial: {code}H{YY}Q{n}{seq4} — e.g. CL700H26Q10001 */
+export async function generateNextHarnessSerial(modelCode: string): Promise<string> {
+  const code = modelCode.trim().toUpperCase();
+  const year = String(new Date().getFullYear() % 100).padStart(2, '0');
+  const month = new Date().getMonth(); // 0-11
+  const quarter = month >= 3 && month <= 5 ? 'Q1' : month >= 6 && month <= 8 ? 'Q2' : month >= 9 && month <= 11 ? 'Q3' : 'Q4';
+  const prefix = `${code}H${year}${quarter}`;
+  const last = await prisma.harnessUnit.findFirst({
+    where: { serialNumber: { startsWith: prefix } },
+    orderBy: { serialNumber: 'desc' },
+    select: { serialNumber: true },
+  });
+  let seq = 1;
+  if (last?.serialNumber) {
+    const seqPart = last.serialNumber.slice(prefix.length);
+    seq = (parseInt(seqPart, 10) || 0) + 1;
+  }
+  if (seq > 9999) throw new Error('Harness serial sequence exhausted for this quarter');
+  const serial = `${prefix}${String(seq).padStart(4, '0')}`;
+  const exists = await prisma.harnessUnit.findFirst({ where: { serialNumber: serial } });
+  if (exists) throw new Error('Harness serial collision');
+  return serial;
+}
+
 /** Map stage keys to their barcode DB field */
 export const STAGE_BARCODE_FIELD: Record<string, 'powerstageBarcode' | 'brainboardBarcode' | 'assemblyBarcode' | 'qcBarcode' | 'finalAssemblyBarcode' | null> = {
   POWERSTAGE_MANUFACTURING:  'powerstageBarcode',
