@@ -26,6 +26,13 @@ type Client = {
   state: string | null;
 };
 
+type ProformaItem = {
+  description: string;
+  voltageFrom: string | null;
+  voltageTo: string | null;
+  sortOrder: number;
+};
+
 type Proforma = {
   invoiceNumber: string;
   termsOfPayment: string | null;
@@ -33,6 +40,7 @@ type Proforma = {
   termsOfDelivery: string | null;
   shippingRoute: string | null;
   clientPONumber: string | null;
+  items?: ProformaItem[];
 } | null;
 
 type RelatedInvoice = {
@@ -414,11 +422,21 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
             {productItems.map((item, i) => {
               const serials = parseSerialNumbers(item.serialNumbers);
               const showSep = productItems.length > 1 && i < productItems.length - 1;
+              const piItem = invoice.proforma?.items?.find(
+                (p) => p.description === item.description || p.sortOrder === item.sortOrder
+              );
+              const vFrom = piItem?.voltageFrom;
+              const vTo = piItem?.voltageTo;
               return (
                 <tr key={item.id} style={showSep ? { borderBottom: '1.5px solid #b0c4de' } : {}}>
                   <td className="c" style={{ color: '#888', fontSize: 7.5 }}>{i + 1}</td>
                   <td style={{ fontWeight: 500 }}>
                     {item.description}
+                    {vFrom && vTo && (
+                      <div style={{ fontSize: 7, color: '#555', marginTop: 1 }}>
+                        Voltage Range: {vFrom}V &ndash; {vTo}V
+                      </div>
+                    )}
                     {serials.length > 0 && (
                       <div className="serial-list">
                         SN: {serials.join(', ')}

@@ -12,6 +12,8 @@ type Item = {
   quantity: number;
   unitPrice: number;
   discountPercent: number;
+  voltageFrom?: string | null;
+  voltageTo?: string | null;
   product?: { code: string; name: string } | null;
 };
 
@@ -384,7 +386,14 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
             {productItems.map((item, i) => (
               <tr key={item.id}>
                 <td className="c" style={{ color: '#888', fontSize: 8 }}>{i + 1}</td>
-                <td style={{ fontWeight: 500 }}>{item.description}</td>
+                <td style={{ fontWeight: 500 }}>
+                  {item.description}
+                  {item.voltageFrom && item.voltageTo && (
+                    <div style={{ fontSize: 7.5, color: '#555', marginTop: 1 }}>
+                      Voltage Range: {item.voltageFrom}V &ndash; {item.voltageTo}V
+                    </div>
+                  )}
+                </td>
                 <td className="c" style={{ fontFamily: 'monospace', fontSize: 8 }}>{item.hsnCode}</td>
                 <td className="c">{item.quantity}</td>
                 <td className="c" style={{ color: '#888' }}>PCS</td>

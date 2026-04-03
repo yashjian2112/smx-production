@@ -37,6 +37,10 @@ export default async function PrintInvoicePage({ params }: { params: { id: strin
           termsOfDelivery: true,
           shippingRoute: true,
           clientPONumber: true,
+          items: {
+            select: { description: true, voltageFrom: true, voltageTo: true, sortOrder: true },
+            orderBy: { sortOrder: 'asc' },
+          },
         },
       },
       relatedInvoice: {

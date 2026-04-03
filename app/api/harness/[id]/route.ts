@@ -32,9 +32,9 @@ export async function PATCH(
     // State machine validation
     const transitions: Record<string, { from: string[]; to: string; timeline: string }> = {
       accept:         { from: ['PENDING'],     to: 'ACCEPTED',   timeline: 'harness_accepted' },
-      start_crimping: { from: ['ACCEPTED'],    to: 'CRIMPING',   timeline: 'harness_accepted' },
+      start_crimping: { from: ['ACCEPTED'],    to: 'CRIMPING',   timeline: 'harness_crimping_started' },
       crimping_done:  { from: ['CRIMPING'],    to: 'QC_PENDING', timeline: 'harness_crimping_done' },
-      qc_pass:        { from: ['QC_PENDING', 'QC_FAILED'], to: 'QC_PASSED', timeline: 'harness_qc_passed' },
+      qc_pass:        { from: ['QC_PENDING', 'QC_FAILED'], to: 'READY', timeline: 'harness_qc_passed' },
       qc_fail:        { from: ['QC_PENDING', 'QC_FAILED'], to: 'QC_FAILED', timeline: 'harness_qc_failed' },
       rework:         { from: ['QC_FAILED'],  to: 'CRIMPING',   timeline: 'harness_rework' },
     };
@@ -61,11 +61,6 @@ export async function PATCH(
         data.serialNumber = await generateNextHarnessSerial(productCode);
         data.barcode = await generateNextHarnessBarcode(productCode);
       }
-    }
-
-    // On QC pass, also set status to READY (ready for dispatch)
-    if (action === 'qc_pass') {
-      data.status = 'READY';
     }
 
     // On rework, clear old QC data so next QC starts fresh
