@@ -54,11 +54,13 @@ export async function PATCH(
       data.assignedUserId = session.id;
     }
 
-    // On start_crimping, generate barcode + serial number
+    // On start_crimping, generate barcode + serial number (only if not already assigned)
     if (action === 'start_crimping') {
-      const productCode = unit.product.code;
-      data.serialNumber = await generateNextHarnessSerial(productCode);
-      data.barcode = await generateNextHarnessBarcode(productCode);
+      if (!unit.serialNumber || !unit.barcode) {
+        const productCode = unit.product.code;
+        data.serialNumber = await generateNextHarnessSerial(productCode);
+        data.barcode = await generateNextHarnessBarcode(productCode);
+      }
     }
 
     // On QC pass, also set status to READY (ready for dispatch)
