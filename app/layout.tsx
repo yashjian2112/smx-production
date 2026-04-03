@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Poppins } from 'next/font/google';
 import './globals.css';
+import NumberInputScrollFix from '@/components/NumberInputScrollFix';
 
 const poppins = Poppins({
   subsets: ['latin'],
@@ -30,7 +31,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`h-full ${poppins.variable}`}>
-      <body className="h-full min-h-dvh">{children}</body>
+      <body className="h-full min-h-dvh">
+        <NumberInputScrollFix />
+        {children}
+      </body>
     </html>
   );
 }

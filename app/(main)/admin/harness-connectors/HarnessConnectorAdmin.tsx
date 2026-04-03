@@ -129,7 +129,7 @@ export default function HarnessConnectorAdmin({
       <select
         value={selectedProduct}
         onChange={e => setSelectedProduct(e.target.value)}
-        className={inputCls + ' max-w-xs'}
+        className="select-field max-w-xs text-sm"
       >
         {products.map(p => (
           <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
