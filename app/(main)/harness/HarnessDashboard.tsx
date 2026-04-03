@@ -84,12 +84,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
         setActing(null);
         return;
       }
-      // FIX: Wait for fetchUnits to complete BEFORE opening print window
-      // This prevents the print page from loading stale data
       await fetchUnits();
-      if (action === 'start_crimping') {
-        window.open(`/print/harness/${unitId}`, '_blank');
-      }
     } catch (e) {
       console.error(e);
     } finally {
