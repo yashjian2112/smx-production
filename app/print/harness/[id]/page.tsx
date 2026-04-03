@@ -13,7 +13,7 @@ export default async function PrintHarnessPage({ params }: { params: Promise<{ i
     },
   });
 
-  if (!unit) notFound();
+  if (!unit || !unit.barcode || !unit.serialNumber) notFound();
 
   return (
     <PrintHarness

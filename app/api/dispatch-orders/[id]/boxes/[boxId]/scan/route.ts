@@ -125,14 +125,14 @@ export async function POST(
         where: { id: harness.id },
         data: { status: 'DISPATCHED' },
       });
-      pairedHarness = { id: harness.id, serialNumber: harness.serialNumber, barcode: harness.barcode };
+      pairedHarness = { id: harness.id, serialNumber: harness.serialNumber || '', barcode: harness.barcode || '' };
 
       await appendTimeline({
         unitId: unit.id,
         orderId: unit.orderId,
         userId: session.id,
         action: 'harness_paired',
-        remarks: `Controller ${unit.serialNumber} paired with harness ${harness.barcode}`,
+        remarks: `Controller ${unit.serialNumber} paired with harness ${harness.barcode || harness.id.slice(0, 8)}`,
       });
     }
 

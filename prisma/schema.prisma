@@ -2061,8 +2061,8 @@ enum HarnessUnitStatus {
 
 model HarnessUnit {
   id             String            @id @default(cuid())
-  serialNumber   String            @unique @map("serial_number")
-  barcode        String            @unique
+  serialNumber   String?           @unique @map("serial_number")
+  barcode        String?           @unique
   orderId        String            @map("order_id")
   productId      String            @map("product_id")
   assignedUserId String?           @map("assigned_user_id")

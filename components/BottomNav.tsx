@@ -236,8 +236,9 @@ const qcUserNav: NavItem[] = [
 
 // HARNESS_PRODUCTION: harness manufacturing + QC
 const harnessNav: NavItem[] = [
-  { href: '/harness',    label: 'Harness',   icon: 'Tasks'     },
-  { href: '/orders',     label: 'Orders',    icon: 'Orders'    },
+  { href: '/harness',          label: 'Harness',  icon: 'Tasks'    },
+  { href: '/harness/rework',   label: 'Rework',   icon: 'Returns'  },
+  { href: '/harness/history',  label: 'History',   icon: 'Status'   },
 ];
 
 export function BottomNav({ role }: { role: string }) {

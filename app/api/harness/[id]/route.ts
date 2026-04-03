@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
+import { generateNextHarnessBarcode, generateNextHarnessSerial } from '@/lib/barcode';
 
 /**
  * PATCH /api/harness/[id] — update harness unit status
@@ -22,7 +23,10 @@ export async function PATCH(
       remarks?: string;
     };
 
-    const unit = await prisma.harnessUnit.findUnique({ where: { id } });
+    const unit = await prisma.harnessUnit.findUnique({
+      where: { id },
+      include: { product: { select: { code: true } } },
+    });
     if (!unit) return NextResponse.json({ error: 'Harness unit not found' }, { status: 404 });
 
     // State machine validation
@@ -48,6 +52,13 @@ export async function PATCH(
     // On accept, assign current user
     if (action === 'accept') {
       data.assignedUserId = session.id;
+    }
+
+    // On start_crimping, generate barcode + serial number
+    if (action === 'start_crimping') {
+      const productCode = unit.product.code;
+      data.serialNumber = await generateNextHarnessSerial(productCode);
+      data.barcode = await generateNextHarnessBarcode(productCode);
     }
 
     // On QC pass, also set status to READY (ready for dispatch)
@@ -80,11 +91,12 @@ export async function PATCH(
       },
     });
 
+    const barcodeStr = updated.barcode || unit.barcode || id.slice(0, 8);
     await appendTimeline({
       orderId: unit.orderId,
       userId: session.id,
       action: transition.timeline as Parameters<typeof appendTimeline>[0]['action'],
-      remarks: `Harness ${unit.barcode} — ${action}${remarks ? `: ${remarks}` : ''}`,
+      remarks: `Harness ${barcodeStr} — ${action}${remarks ? `: ${remarks}` : ''}`,
     });
 
     return NextResponse.json(updated);

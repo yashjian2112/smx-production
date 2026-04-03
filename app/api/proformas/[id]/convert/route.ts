@@ -186,15 +186,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
 
     // ── Create HarnessUnits if harness is required ──
+    // Barcode + serial are NOT assigned here — generated on "Start Crimping"
     if (harnessRequired && harnessQty > 0) {
-      const harnessProductCode = primaryProduct.code;
       for (let i = 0; i < harnessQty; i++) {
-        const serial = await generateNextHarnessSerial(harnessProductCode);
-        const barcode = await generateNextHarnessBarcode(harnessProductCode);
         await prisma.harnessUnit.create({
           data: {
-            serialNumber: serial,
-            barcode,
             orderId:   order.id,
             productId: primaryProduct.id,
             status:    'PENDING',
