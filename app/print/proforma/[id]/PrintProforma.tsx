@@ -14,6 +14,7 @@ type Item = {
   discountPercent: number;
   voltageFrom?: string | null;
   voltageTo?: string | null;
+  harnessModel?: string | null;
   product?: { code: string; name: string } | null;
 };
 
@@ -387,7 +388,12 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
               <tr key={item.id}>
                 <td className="c" style={{ color: '#888', fontSize: 8 }}>{i + 1}</td>
                 <td style={{ fontWeight: 500 }}>
-                  {item.description}
+                  {item.hsnCode === '85371000' && item.description?.toLowerCase().includes('harness')
+                    ? (() => {
+                        const desc = item.description.replace(/\s*\(.*?\)\s*$/, '');
+                        return item.harnessModel && !desc.includes(item.harnessModel) ? `${desc} - ${item.harnessModel}` : desc;
+                      })()
+                    : item.description}
                   {item.voltageFrom && item.voltageTo && (
                     <div style={{ fontSize: 7.5, color: '#555', marginTop: 1 }}>
                       Voltage Range: {item.voltageFrom}V &ndash; {item.voltageTo}V

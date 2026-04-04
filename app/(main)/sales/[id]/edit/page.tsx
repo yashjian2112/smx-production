@@ -69,7 +69,7 @@ export default async function EditProformaPage({ params }: { params: Promise<{ i
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold">Edit Invoice</h2>
+        <h2 className="text-xl font-semibold">Edit Proforma</h2>
         <p className="text-sm text-zinc-500 mt-0.5 font-mono">{proforma.invoiceNumber}</p>
       </div>
       <EditProformaForm proforma={serialized as any} clients={clients as any} products={products} />

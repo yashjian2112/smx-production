@@ -332,7 +332,7 @@ export function EditProformaForm({
       });
       if (item.harnessChoice === 'yes') {
         submitItems.push({
-          description:     `Harness for ${item.description || 'Controller'}`,
+          description:     `Harness for ${(item.description || 'Controller').replace(/\s*\(.*?\)\s*$/, '')}${item.harnessModel ? ` - ${item.harnessModel}` : ''}`,
           productId:       undefined,
           hsnCode:         '85371000',
           quantity:        item.quantity,
