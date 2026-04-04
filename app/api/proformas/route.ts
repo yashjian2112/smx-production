@@ -13,6 +13,7 @@ const itemSchema = z.object({
   discountPercent: z.number().min(0).max(100).default(0),
   voltageFrom:     z.string().optional(),
   voltageTo:       z.string().optional(),
+  harnessModel:    z.string().optional(),
   sortOrder:       z.number().int().default(0),
 });
 
@@ -144,6 +145,7 @@ export async function POST(req: NextRequest) {
             discountPercent: item.discountPercent,
             voltageFrom:     item.voltageFrom ?? null,
             voltageTo:       item.voltageTo ?? null,
+            harnessModel:    item.harnessModel ?? null,
             sortOrder:       item.sortOrder ?? i,
           })),
         },

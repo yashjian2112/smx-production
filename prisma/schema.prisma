@@ -648,6 +648,7 @@ model ProformaInvoiceItem {
   sortOrder       Int      @default(0) @map("sort_order")
   voltageFrom     String?  @map("voltage_from")
   voltageTo       String?  @map("voltage_to")
+  harnessModel    String?  @map("harness_model")  // per-item: "Ultra Bee" | "Light Bee" | "DIY"
   createdAt       DateTime @default(now()) @map("created_at")
 
   proforma ProformaInvoice @relation(fields: [proformaId], references: [id], onDelete: Cascade)

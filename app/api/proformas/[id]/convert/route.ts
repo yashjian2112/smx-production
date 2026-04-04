@@ -187,17 +187,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     // ── Create HarnessUnits if harness is required ──
     // Barcode + serial are NOT assigned here — generated on "Start Crimping"
-    // harnessModel comes from the proforma (selected by Sales)
+    // harnessModel comes from per-item (preferred) or proforma-level (backward compat)
     if (harnessRequired && harnessQty > 0) {
-      for (let i = 0; i < harnessQty; i++) {
-        await prisma.harnessUnit.create({
-          data: {
-            orderId:      order.id,
-            productId:    primaryProduct.id,
-            status:       'PENDING',
-            harnessModel: proforma.harnessModel ?? null,
-          },
-        });
+      for (const hItem of harnessItems) {
+        // Find matching product item to get per-item harness model
+        const matchingProductItem = productItems.find(pi =>
+          hItem.description?.includes(pi.product!.name) || hItem.description?.includes(pi.product!.code)
+        );
+        const itemModel = hItem.harnessModel ?? matchingProductItem?.harnessModel ?? proforma.harnessModel ?? null;
+        const itemProductId = matchingProductItem?.product?.id ?? primaryProduct.id;
+        for (let i = 0; i < hItem.quantity; i++) {
+          await prisma.harnessUnit.create({
+            data: {
+              orderId:      order.id,
+              productId:    itemProductId,
+              status:       'PENDING',
+              harnessModel: itemModel,
+            },
+          });
+        }
       }
       await appendTimeline({
         orderId: order.id,

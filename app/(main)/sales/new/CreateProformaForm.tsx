@@ -17,6 +17,7 @@ type LineItem = {
   voltageFrom:     string;
   voltageTo:       string;
   harnessChoice:   'yes' | 'no' | null;  // mandatory for controller items (HSN 85371000)
+  harnessModel:    string;  // per-item: "Ultra Bee" | "Light Bee" | "DIY"
 };
 
 const HSN_OPTIONS = [
@@ -32,7 +33,7 @@ const PAYMENT_PRESETS = ['100% ADVANCE', '50% Advance, 50% on delivery', '30 day
 let keyCounter = 3;
 
 function newItem(): LineItem {
-  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', harnessChoice: null };
+  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', harnessChoice: null, harnessModel: '' };
 }
 
 function calcAmount(item: LineItem) {
@@ -63,11 +64,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
   // Replacement-specific fields
   const [unitSerial,       setUnitSerial]       = useState('');
   const [problemDesc,      setProblemDesc]      = useState('');
-  // Harness model
-  const [harnessModel,     setHarnessModel]     = useState('');
-
   const [items, setItems] = useState<LineItem[]>([
-    { key: 1, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', harnessChoice: null },
+    { key: 1, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', harnessChoice: null, harnessModel: '' },
   ]);
   const [hsnInputs, setHsnInputs] = useState<Record<number, string>>({});  // custom HSN per item
   const [productSearches, setProductSearches] = useState<Record<number, string>>({});
@@ -198,8 +196,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
       setError('Please select "With Harness" or "Without Harness" for every controller item');
       return;
     }
-    if (items.some((i) => i.harnessChoice === 'yes') && !harnessModel) {
-      setError('Please select a harness model (Ultra Bee, Light Bee, or DIY)');
+    if (items.some((i) => i.harnessChoice === 'yes' && !i.harnessModel)) {
+      setError('Please select a harness model for each item with harness');
       return;
     }
     if (invoiceType === 'REPLACEMENT' && (!unitSerial.trim() || !problemDesc.trim())) {
@@ -216,7 +214,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
     }
 
     // Build items (add harness lines + shipping as line items)
-    const submitItems: { description: string; productId: string | undefined; hsnCode: string; quantity: number; unitPrice: number; discountPercent: number; voltageFrom: string | undefined; voltageTo: string | undefined; sortOrder: number }[] = [];
+    const submitItems: { description: string; productId: string | undefined; hsnCode: string; quantity: number; unitPrice: number; discountPercent: number; voltageFrom: string | undefined; voltageTo: string | undefined; harnessModel: string | undefined; sortOrder: number }[] = [];
     items.forEach((item) => {
       submitItems.push({
         description:     item.description,
@@ -227,6 +225,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
         discountPercent: item.discountPercent,
         voltageFrom:     item.voltageFrom || undefined,
         voltageTo:       item.voltageTo || undefined,
+        harnessModel:    item.harnessChoice === 'yes' ? item.harnessModel || undefined : undefined,
         sortOrder:       submitItems.length,
       });
       if (item.harnessChoice === 'yes') {
@@ -239,6 +238,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           discountPercent: 0,
           voltageFrom:     undefined,
           voltageTo:       undefined,
+          harnessModel:    item.harnessModel || undefined,
           sortOrder:       submitItems.length,
         });
       }
@@ -253,6 +253,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
         discountPercent: 0,
         voltageFrom:     undefined,
         voltageTo:       undefined,
+        harnessModel:    undefined,
         sortOrder:       submitItems.length,
       });
     }
@@ -275,7 +276,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           items:           submitItems,
           splitInvoice:    splitInvoice || undefined,
           splitServicePercent: splitInvoice && splitServicePercent ? parseFloat(splitServicePercent) : undefined,
-          harnessModel:    harnessModel || undefined,
+          harnessModel:    items.find(i => i.harnessChoice === 'yes')?.harnessModel || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -549,32 +550,6 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
           </button>
         </div>
 
-        {/* Harness Model — single picker for entire invoice, shown when any item has harness */}
-        {items.some((i) => i.harnessChoice === 'yes') && (
-          <div className="rounded-xl p-3 space-y-2 mb-3" style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.15)' }}>
-            <label className={lCls}>Harness Model <span className="text-red-400">*</span></label>
-            <div className="flex gap-2">
-              {['Ultra Bee', 'Light Bee', 'DIY'].map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setHarnessModel(m)}
-                  className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all"
-                  style={harnessModel === m
-                    ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
-                    : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }
-                  }
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-            {!harnessModel && (
-              <p className="text-[10px] text-amber-400">Please select a harness model</p>
-            )}
-          </div>
-        )}
-
         <div className="space-y-3">
           {items.map((item, idx) => (
             <div key={item.key} className="rounded-xl border border-zinc-800 p-3 space-y-3" style={{ background: 'rgba(255,255,255,0.02)' }}>
@@ -742,6 +717,30 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                 </div>
                 {item.harnessChoice === null && (
                   <p className="text-[10px] text-amber-400 mt-1">Please select harness option</p>
+                )}
+                {item.harnessChoice === 'yes' && (
+                  <div className="mt-3 space-y-2">
+                    <label className={lCls}>Harness Model <span className="text-red-400">*</span></label>
+                    <div className="flex gap-2">
+                      {['Ultra Bee', 'Light Bee', 'DIY'].map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => updateItem(item.key, { harnessModel: m })}
+                          className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                          style={item.harnessModel === m
+                            ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                            : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }
+                          }
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                    {!item.harnessModel && (
+                      <p className="text-[10px] text-amber-400">Please select a harness model</p>
+                    )}
+                  </div>
                 )}
               </div>
               )}

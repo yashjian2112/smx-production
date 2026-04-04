@@ -16,6 +16,7 @@ type InitialItem = {
   discountPercent: number;
   voltageFrom?: string | null;
   voltageTo?: string | null;
+  harnessModel?: string | null;
   product?: { id: string; code: string; name: string } | null;
 };
 
@@ -47,6 +48,7 @@ type LineItem = {
   voltageFrom:     string;
   voltageTo:       string;
   harnessChoice:   'yes' | 'no' | null;
+  harnessModel:    string;
 };
 
 const HSN_KNOWN = ['85371000', '85011090', '87089900', '9965'];
@@ -63,7 +65,7 @@ const PAYMENT_PRESETS  = ['100% ADVANCE', '50% Advance, 50% on delivery', '30 da
 let keyCounter = 100;
 
 function newItem(): LineItem {
-  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', harnessChoice: null };
+  return { key: ++keyCounter, description: '', productId: '', hsnCode: '85371000', quantity: 1, unitPrice: 0, discountPercent: 0, voltageFrom: '', voltageTo: '', harnessChoice: null, harnessModel: '' };
 }
 
 function calcAmount(item: LineItem) {
@@ -78,7 +80,7 @@ function isHarnessItem(item: InitialItem) {
   return item.description.toLowerCase().startsWith('harness for');
 }
 
-function toLineItem(i: InitialItem, hadHarness: boolean): LineItem {
+function toLineItem(i: InitialItem, hadHarness: boolean, harnessModel?: string | null): LineItem {
   return {
     key:             ++keyCounter,
     description:     i.description,
@@ -90,6 +92,7 @@ function toLineItem(i: InitialItem, hadHarness: boolean): LineItem {
     voltageFrom:     i.voltageFrom ?? '',
     voltageTo:       i.voltageTo ?? '',
     harnessChoice:   i.hsnCode === '85371000' ? (hadHarness ? 'yes' : 'no') : null,
+    harnessModel:    hadHarness ? (i.harnessModel ?? harnessModel ?? '') : '',
   };
 }
 
@@ -127,16 +130,23 @@ export function EditProformaForm({
   // Separate out shipping + harness items from regular items
   // Detect which controller items had a harness paired
   const [items, setItems] = useState<LineItem[]>(() => {
-    const harnessDescs = new Set(
-      proforma.items.filter(isHarnessItem).map(h => h.description.replace(/^Harness for\s*/i, ''))
-    );
+    const harnessItemsList = proforma.items.filter(isHarnessItem);
+    const harnessDescs = new Set(harnessItemsList.map(h => h.description.replace(/^Harness for\s*/i, '')));
     const hasAnyHarness = harnessDescs.size > 0;
+    // Build a map of description → harnessModel from harness line items
+    const harnessModelMap = new Map<string, string>();
+    harnessItemsList.forEach(h => {
+      const desc = h.description.replace(/^Harness for\s*/i, '');
+      if (h.harnessModel) harnessModelMap.set(desc, h.harnessModel);
+    });
     return proforma.items
       .filter((i) => !isShippingItem(i) && !isHarnessItem(i))
       .map(i => {
         const desc = i.description || 'Controller';
         const hadHarness = harnessDescs.has(desc) || (hasAnyHarness && harnessDescs.has('Controller'));
-        return toLineItem(i, hadHarness);
+        // Per-item model from: item itself > matching harness line > proforma level
+        const itemModel = i.harnessModel ?? harnessModelMap.get(desc) ?? proforma.harnessModel;
+        return toLineItem(i, hadHarness, itemModel);
       });
   });
 
@@ -181,9 +191,6 @@ export function EditProformaForm({
   // Replacement-specific
   const [unitSerial,  setUnitSerial]  = useState(() => isReplacement ? parseReplacementNotes(proforma.notes, 'serial') : '');
   const [problemDesc, setProblemDesc] = useState(() => isReplacement ? parseReplacementNotes(proforma.notes, 'problem') : '');
-  // Harness model
-  const [harnessModel, setHarnessModel] = useState(proforma.harnessModel ?? '');
-
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
 
@@ -291,8 +298,8 @@ export function EditProformaForm({
       setError('Please select "With Harness" or "Without Harness" for every controller item');
       return;
     }
-    if (items.some((i) => i.harnessChoice === 'yes') && !harnessModel) {
-      setError('Please select a harness model (Ultra Bee, Light Bee, or DIY)');
+    if (items.some((i) => i.harnessChoice === 'yes' && !i.harnessModel)) {
+      setError('Please select a harness model for each item with harness');
       return;
     }
     if (isReplacement && (!unitSerial.trim() || !problemDesc.trim())) {
@@ -309,7 +316,7 @@ export function EditProformaForm({
     }
 
     // Build submit items (add harness lines)
-    const submitItems: { description: string; productId: string | undefined; hsnCode: string; quantity: number; unitPrice: number; discountPercent: number; voltageFrom: string | null; voltageTo: string | null; sortOrder: number }[] = [];
+    const submitItems: { description: string; productId: string | undefined; hsnCode: string; quantity: number; unitPrice: number; discountPercent: number; voltageFrom: string | null; voltageTo: string | null; harnessModel: string | null; sortOrder: number }[] = [];
     items.forEach((item) => {
       submitItems.push({
         description:     item.description,
@@ -320,6 +327,7 @@ export function EditProformaForm({
         discountPercent: item.discountPercent,
         voltageFrom:     item.voltageFrom || null,
         voltageTo:       item.voltageTo || null,
+        harnessModel:    item.harnessChoice === 'yes' ? item.harnessModel || null : null,
         sortOrder:       submitItems.length,
       });
       if (item.harnessChoice === 'yes') {
@@ -332,6 +340,7 @@ export function EditProformaForm({
           discountPercent: 0,
           voltageFrom:     null,
           voltageTo:       null,
+          harnessModel:    item.harnessModel || null,
           sortOrder:       submitItems.length,
         });
       }
@@ -346,6 +355,7 @@ export function EditProformaForm({
         discountPercent: 0,
         voltageFrom:     null,
         voltageTo:       null,
+        harnessModel:    null,
         sortOrder:       submitItems.length,
       });
     }
@@ -362,7 +372,7 @@ export function EditProformaForm({
           clientPONumber:  clientPONumber.trim() || null,
           deliveryDays:    deliveryDays ? parseInt(deliveryDays, 10) : null,
           shippingRoute:   shippingRoute || null,
-          harnessModel:    harnessModel || null,
+          harnessModel:    items.find(i => i.harnessChoice === 'yes')?.harnessModel || null,
           notes:           finalNotes    || undefined,
           items:           submitItems,
         }),
@@ -522,32 +532,6 @@ export function EditProformaForm({
           </button>
         </div>
 
-        {/* Harness Model — single picker for entire invoice, shown when any item has harness */}
-        {items.some((i) => i.harnessChoice === 'yes') && (
-          <div className="rounded-xl p-3 space-y-2 mb-3" style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.15)' }}>
-            <label className={lCls}>Harness Model <span className="text-red-400">*</span></label>
-            <div className="flex gap-2">
-              {['Ultra Bee', 'Light Bee', 'DIY'].map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setHarnessModel(m)}
-                  className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all"
-                  style={harnessModel === m
-                    ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
-                    : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }
-                  }
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-            {!harnessModel && (
-              <p className="text-[10px] text-amber-400">Please select a harness model</p>
-            )}
-          </div>
-        )}
-
         <div className="space-y-3">
           {items.map((item, idx) => (
             <div key={item.key} className="rounded-xl border border-zinc-800 p-3 space-y-3" style={{ background: 'rgba(255,255,255,0.02)' }}>
@@ -647,6 +631,30 @@ export function EditProformaForm({
                 </div>
                 {item.harnessChoice === null && (
                   <p className="text-[10px] text-amber-400 mt-1">Please select harness option</p>
+                )}
+                {item.harnessChoice === 'yes' && (
+                  <div className="mt-3 space-y-2">
+                    <label className={lCls}>Harness Model <span className="text-red-400">*</span></label>
+                    <div className="flex gap-2">
+                      {['Ultra Bee', 'Light Bee', 'DIY'].map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => updateItem(item.key, { harnessModel: m })}
+                          className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                          style={item.harnessModel === m
+                            ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                            : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }
+                          }
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                    {!item.harnessModel && (
+                      <p className="text-[10px] text-amber-400">Please select a harness model</p>
+                    )}
+                  </div>
                 )}
               </div>
               )}
