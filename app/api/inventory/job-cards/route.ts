@@ -103,28 +103,26 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  if (bomItems.length === 0) {
-    return NextResponse.json({
-      error: 'No BOM items found for this product/stage/voltage combination. Please contact Admin to configure the Bill of Materials before creating a job card.'
-    }, { status: 422 });
-  }
-
   const cardNumber = await generateNextJobCardNumber();
 
+  // If no BOM items configured, create job card as IN_PROGRESS (no materials to track)
   const jobCard = await prisma.jobCard.create({
     data: {
       cardNumber,
       orderId,
       orderQuantity: orderQty,
       stage: stage as StageType,
+      status: bomItems.length === 0 ? 'IN_PROGRESS' : 'PENDING',
       createdById: session.id,
-      items: {
-        create: bomItems.map(b => ({
-          rawMaterialId: b.rawMaterialId,
-          quantityReq: b.quantityRequired * orderQty,
-          isCritical: b.isCritical, // copy from BOM
-        }))
-      }
+      ...(bomItems.length > 0 ? {
+        items: {
+          create: bomItems.map(b => ({
+            rawMaterialId: b.rawMaterialId,
+            quantityReq: b.quantityRequired * orderQty,
+            isCritical: b.isCritical,
+          }))
+        }
+      } : {}),
     },
     include: {
       order: { select: { orderNumber: true, quantity: true } },

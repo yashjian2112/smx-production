@@ -64,8 +64,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
         fetch(`/api/harness?status=${statuses}`),
         fetch('/api/harness?status=PENDING,ACCEPTED,CRIMPING,QC_PENDING,QC_FAILED,QC_PASSED,READY,DISPATCHED'),
       ];
-      // Fetch job cards for in_progress tab
-      if (tab === 'in_progress') {
+      // Fetch job cards for pending + in_progress tabs
+      if (tab === 'pending' || tab === 'in_progress') {
         fetches.push(fetch('/api/inventory/job-cards?stage=HARNESS_CRIMPING'));
       }
       const [tabRes, allRes, jcRes] = await Promise.all(fetches);
@@ -412,8 +412,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
             const orderId = group[0].orderId;
             const { total: totalUnits, completed: completedUnits } = getOrderCompletion(orderId);
 
-            // Phase 3: Job card for this order (only relevant for in_progress tab)
-            const jcInfo = isInProgressTab ? getJobCardStatus(orderId) : { jc: null, label: '', color: '', canCrimp: true };
+            // Job card for this order (pending + in_progress tabs)
+            const jcInfo = (isPendingTab || isInProgressTab) ? getJobCardStatus(orderId) : { jc: null, label: '', color: '', canCrimp: true };
             const hasAcceptedUnits = isInProgressTab && group.some(u => u.status === 'ACCEPTED');
 
             return (
@@ -444,7 +444,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                     </span>
                     {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
                   </button>
-                  {isPendingTab && (
+                  {isPendingTab && jcInfo.canCrimp && (
                     <ActionBtn
                       label={acceptingOrder === orderId ? '...' : 'Accept Order'}
                       color="sky"
@@ -465,8 +465,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                   )}
                 </div>
 
-                {/* Phase 3: Job card status bar (in_progress tab only, when ACCEPTED units exist) */}
-                {isExpanded && isInProgressTab && hasAcceptedUnits && (
+                {/* Job card status bar (pending + in_progress tabs) */}
+                {isExpanded && (isPendingTab || (isInProgressTab && hasAcceptedUnits)) && (
                   <div className="px-4 py-2.5 border-t border-slate-700/50"
                     style={{ background: 'rgba(255,255,255,0.02)' }}>
                     <div className="flex items-center justify-between gap-3">
