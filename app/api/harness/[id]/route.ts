@@ -48,7 +48,7 @@ export async function PATCH(
       await appendTimeline({
         orderId: unit.orderId,
         userId: session.id,
-        action: 'harness_crimping_started' as Parameters<typeof appendTimeline>[0]['action'],
+        action: 'harness_barcode_confirmed',
         remarks: `Harness ${barcodeStr} — barcode print confirmed`,
       });
       return NextResponse.json(updated);
@@ -80,8 +80,16 @@ export async function PATCH(
       data.assignedUserId = session.id;
     }
 
-    // On start_crimping, generate barcode + serial number (only if not already assigned)
+    // On start_crimping, validate job card is ready + generate barcode
     if (action === 'start_crimping') {
+      const jobCard = await prisma.jobCard.findUnique({
+        where: { orderId_stage: { orderId: unit.orderId, stage: 'HARNESS_CRIMPING' } },
+      });
+      if (jobCard && !['IN_PROGRESS', 'COMPLETED'].includes(jobCard.status)) {
+        return NextResponse.json({
+          error: 'Cannot start crimping — materials not yet verified. Job card status: ' + jobCard.status,
+        }, { status: 400 });
+      }
       if (!unit.serialNumber || !unit.barcode) {
         const productCode = unit.product.code;
         data.serialNumber = await generateNextHarnessSerial(productCode);
@@ -109,8 +117,20 @@ export async function PATCH(
       }
     }
 
-    // Save QC data if provided
-    if (qcData) {
+    // Save QC data if provided — validate structure for QC actions
+    if (action === 'qc_pass' || action === 'qc_fail') {
+      if (!qcData || typeof qcData !== 'object' || Object.keys(qcData).length === 0) {
+        return NextResponse.json({ error: 'QC data required — must test all connectors' }, { status: 400 });
+      }
+      // Validate each connector result has a valid status
+      for (const [, val] of Object.entries(qcData)) {
+        const v = val as Record<string, unknown>;
+        if (!v.status || !['PASS', 'FAIL'].includes(v.status as string)) {
+          return NextResponse.json({ error: 'Invalid QC data — all connectors must be PASS or FAIL' }, { status: 400 });
+        }
+      }
+      data.qcData = JSON.parse(JSON.stringify(qcData));
+    } else if (qcData) {
       data.qcData = JSON.parse(JSON.stringify(qcData));
     }
 

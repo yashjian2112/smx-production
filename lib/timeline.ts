@@ -24,6 +24,7 @@ type TimelineAction =
   | 'harness_units_created'
   | 'harness_accepted'
   | 'harness_crimping_started'
+  | 'harness_barcode_confirmed'
   | 'harness_crimping_done'
   | 'harness_qc_passed'
   | 'harness_qc_failed'

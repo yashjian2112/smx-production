@@ -340,6 +340,13 @@ export default function HarnessRework({ role, userId }: { role: string; userId: 
                               onSubmit={() => submitQC(unit)}
                               onCancel={() => { setQcUnitId(null); setQcScanVerified(false); }}
                               submitting={acting === unit.id}
+                              previousFailedConnectors={
+                                unit.previousQcData
+                                  ? Object.entries(unit.previousQcData)
+                                      .filter(([, v]) => v.status === 'FAIL')
+                                      .map(([id]) => id)
+                                  : undefined
+                              }
                             />
                           )
                         )}
