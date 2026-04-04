@@ -27,7 +27,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
   const [acceptingOrder, setAcceptingOrder] = useState<string | null>(null);
-  const [printedRework, setPrintedRework] = useState<Set<string>>(new Set());
+  const [printedUnits, setPrintedUnits] = useState<Set<string>>(new Set());
+  const [confirmedUnits, setConfirmedUnits] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
 
   // Fetch units for the current tab + all units for completion counts
@@ -384,19 +385,27 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                 {unit.status === 'ACCEPTED' && (
                                   <ActionBtn label="Start Crimping" color="amber" loading={acting === unit.id} onClick={() => doAction(unit.id, 'start_crimping')} />
                                 )}
-                                {/* CRIMPING: must print barcode first, then Crimping Done */}
-                                {unit.status === 'CRIMPING' && unit.barcode && !printedRework.has(unit.id) && (
+                                {/* CRIMPING: Step 1 → Print Barcode, Step 2 → Confirm, Step 3 → Crimping Done */}
+                                {unit.status === 'CRIMPING' && unit.barcode && !printedUnits.has(unit.id) && (
                                   <a
                                     href={`/print/harness/${unit.id}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    onClick={() => setPrintedRework(prev => new Set(prev).add(unit.id))}
+                                    onClick={() => setPrintedUnits(prev => new Set(prev).add(unit.id))}
                                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-sky-600/15 text-sky-400 border border-sky-500/30 hover:bg-sky-600/25 transition-colors"
                                   >
                                     <Printer className="w-3.5 h-3.5" /> Print Barcode
                                   </a>
                                 )}
-                                {unit.status === 'CRIMPING' && printedRework.has(unit.id) && (
+                                {unit.status === 'CRIMPING' && printedUnits.has(unit.id) && !confirmedUnits.has(unit.id) && (
+                                  <button
+                                    onClick={() => setConfirmedUnits(prev => new Set(prev).add(unit.id))}
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-600/15 text-amber-400 border border-amber-500/30 hover:bg-amber-600/25 transition-colors"
+                                  >
+                                    <Check className="w-3.5 h-3.5" /> Confirm Printed
+                                  </button>
+                                )}
+                                {unit.status === 'CRIMPING' && confirmedUnits.has(unit.id) && (
                                   <ActionBtn label="Crimping Done" color="emerald" loading={acting === unit.id} onClick={() => doAction(unit.id, 'crimping_done')} />
                                 )}
                                 {unit.status === 'QC_PENDING' && (
