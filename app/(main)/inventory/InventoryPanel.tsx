@@ -3170,12 +3170,13 @@ export default function InventoryPanel({ sessionRole }: { sessionRole: string })
   return (
     <div>
       {/* Tab bar */}
-      <div className="flex gap-1 p-1 rounded-xl mb-6 overflow-x-auto no-scrollbar" style={{ background: 'rgba(255,255,255,0.04)' }}>
+      <div className="flex gap-1 p-1 rounded-xl mb-6 overflow-x-auto no-scrollbar" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
         {visibleTabs.map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
-            className={`flex-1 min-w-fit px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-              activeTab === tab ? 'bg-sky-600 text-white shadow-lg' : 'text-zinc-400 hover:text-white'
-            }`}>
+            className={`flex-1 min-w-fit px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+              activeTab === tab ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+            style={activeTab === tab ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
             {tab}
           </button>
         ))}

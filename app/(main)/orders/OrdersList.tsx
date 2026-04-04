@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { Check, Clock, ScanLine } from 'lucide-react';
+import { Check, Clock, Printer, ScanLine } from 'lucide-react';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 
 type UnitSummary = { currentStatus: string; currentStage: string; isTrading?: boolean; productName?: string };
@@ -208,7 +208,7 @@ export function OrdersList({ orders, isManager, sessionRole }: {
                           {jc?.id && (
                             <a href={`/print/job-card/${jc.id}`} target="_blank" rel="noreferrer"
                               className="text-zinc-500 hover:text-white text-sm px-2 py-1 rounded-lg border border-zinc-800 hover:border-zinc-600 transition-colors"
-                              title="Print Job Card">🖨</a>
+                              title="Print Job Card"><Printer className="w-4 h-4" /></a>
                           )}
                         </div>
                       )}

@@ -122,10 +122,11 @@ export default function PurchasePanel({ sessionRole }: { sessionRole: string }) 
   return (
     <div>
       {tabs.length > 1 && (
-        <div className="flex gap-1 mb-6 bg-zinc-900 rounded-xl p-1">
+        <div className="flex gap-1 mb-6 rounded-xl p-1" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
           {tabs.map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
+              className={`flex-1 py-2 px-3 text-xs font-medium rounded-lg transition-all ${tab === t ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+              style={tab === t ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
               {t}
             </button>
           ))}

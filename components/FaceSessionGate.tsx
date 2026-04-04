@@ -59,7 +59,7 @@ export function FaceSessionGate({
           mode="verify"
           title="Verify your identity to continue"
           onVerified={handleVerified}
-          onCancel={() => { window.location.href = '/login'; }}
+          onCancel={() => { setState('not_enrolled'); }}
         />
       )}
     </>

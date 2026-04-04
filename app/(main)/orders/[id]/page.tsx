@@ -1,5 +1,6 @@
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
+import { Printer } from 'lucide-react';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { OrderDetail, type StageGroup } from './OrderDetail';
@@ -530,7 +531,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                     </span>
                     <a href={`/print/job-card/${jc.id}`} target="_blank" rel="noreferrer"
                       className="text-zinc-500 hover:text-white text-sm px-2 py-1 rounded-lg border border-zinc-800 hover:border-zinc-600 transition-colors"
-                      title="Print Job Card">🖨</a>
+                      title="Print Job Card"><Printer className="w-4 h-4" /></a>
                   </div>
                 </div>
               );

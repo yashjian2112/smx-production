@@ -497,7 +497,7 @@ export default async function DashboardPage() {
     { label: 'QC pass', value: d.qcPass ?? 0 },
     { label: 'QC fail', value: d.qcFail ?? 0 },
     { label: 'Rework', value: d.reworkPending ?? 0 },
-    { label: 'QC Fail', value: d.blockedCount ?? 0 },
+    { label: 'Blocked', value: d.blockedCount ?? 0 },
   ];
   const byStage = d.byStage ?? {};
 
