@@ -221,7 +221,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
     setQcScanVerified(false);
     setQcResults({});
     try {
-      const res = await fetch(`/api/admin/harness-connectors?productId=${unit.productId}`);
+      const variantParam = unit.harnessModel ? `&variantName=${encodeURIComponent(unit.harnessModel)}` : '';
+      const res = await fetch(`/api/admin/harness-connectors?productId=${unit.productId}${variantParam}`);
       if (res.ok) {
         const data: Connector[] = await res.json();
         setConnectors(data);

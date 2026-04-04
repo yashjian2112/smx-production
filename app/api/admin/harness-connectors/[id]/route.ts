@@ -17,6 +17,7 @@ export async function PATCH(
     if (body.description !== undefined) data.description = body.description?.trim() || null;
     if (body.sortOrder !== undefined) data.sortOrder = body.sortOrder;
     if (body.active !== undefined) data.active = body.active;
+    if (body.variantName !== undefined) data.variantName = body.variantName?.trim() || null;
 
     const connector = await prisma.harnessConnector.update({ where: { id }, data });
     return NextResponse.json(connector);

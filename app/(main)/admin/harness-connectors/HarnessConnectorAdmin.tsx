@@ -9,6 +9,7 @@ type Connector = {
   productId: string;
   name: string;
   description: string | null;
+  variantName: string | null;
   sortOrder: number;
   active: boolean;
 };
@@ -34,6 +35,7 @@ export default function HarnessConnectorAdmin({
 
   // Variant state
   const [newVariant, setNewVariant] = useState('');
+  const [selectedVariant, setSelectedVariant] = useState<string>('__all__');
   const selectedProductData = productList.find(p => p.id === selectedProduct);
   const variants = selectedProductData?.harnessVariants ?? [];
 
@@ -71,7 +73,8 @@ export default function HarnessConnectorAdmin({
   }
 
   const filtered = connectors
-    .filter(c => c.productId === selectedProduct && c.active)
+    .filter(c => c.productId === selectedProduct && c.active &&
+      (selectedVariant === '__all__' ? !c.variantName : c.variantName === selectedVariant))
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
   // ── Add new connector ──
@@ -86,6 +89,7 @@ export default function HarnessConnectorAdmin({
           productId: selectedProduct,
           name: newName.trim(),
           description: newDesc.trim() || undefined,
+          variantName: selectedVariant === '__all__' ? undefined : selectedVariant,
           sortOrder: filtered.length,
         }),
       });
@@ -150,7 +154,7 @@ export default function HarnessConnectorAdmin({
     await handleUpdate(items[idx].id, { sortOrder: idx });
   }
 
-  const inputCls = 'w-full rounded-lg bg-smx-bg border border-slate-600 px-3 py-2 text-sm focus:outline-none focus:border-sky-500';
+  const inputCls = 'w-full rounded-lg bg-zinc-900 border border-slate-600 px-3 py-2 text-sm focus:outline-none focus:border-sky-500';
   const btnPrimary = 'px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-500 disabled:opacity-40';
   const btnSecondary = 'px-3 py-1.5 rounded-lg bg-slate-700 text-slate-200 text-xs hover:bg-slate-600';
 
@@ -167,7 +171,7 @@ export default function HarnessConnectorAdmin({
       {/* Product selector */}
       <select
         value={selectedProduct}
-        onChange={e => setSelectedProduct(e.target.value)}
+        onChange={e => { setSelectedProduct(e.target.value); setSelectedVariant('__all__'); }}
         className="max-w-xs w-full rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none"
         style={{ backgroundColor: '#18181b', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.08)' }}
       >
@@ -196,7 +200,7 @@ export default function HarnessConnectorAdmin({
         </div>
         <div className="flex gap-2">
           <input
-            className="flex-1 rounded-lg bg-smx-bg border border-slate-600 px-3 py-1.5 text-sm focus:outline-none focus:border-sky-500"
+            className="flex-1 rounded-lg bg-zinc-900 border border-slate-600 px-3 py-1.5 text-sm focus:outline-none focus:border-sky-500"
             placeholder="New variant name (e.g. Ultra Bee)"
             value={newVariant}
             onChange={e => setNewVariant(e.target.value)}
@@ -211,6 +215,41 @@ export default function HarnessConnectorAdmin({
           </button>
         </div>
       </div>
+
+      {/* Variant selector for connectors */}
+      {variants.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-slate-300">Connectors by Variant</p>
+          <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <button
+              onClick={() => setSelectedVariant('__all__')}
+              className={`flex-1 py-2 px-3 text-xs font-medium rounded-lg transition-all ${
+                selectedVariant === '__all__' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              style={selectedVariant === '__all__' ? { background: 'rgba(113,113,122,0.15)', border: '1px solid rgba(113,113,122,0.25)' } : {}}
+            >
+              General
+            </button>
+            {variants.map(v => (
+              <button
+                key={v}
+                onClick={() => setSelectedVariant(v)}
+                className={`flex-1 py-2 px-3 text-xs font-medium rounded-lg transition-all ${
+                  selectedVariant === v ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+                style={selectedVariant === v ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-slate-500">
+            {selectedVariant === '__all__'
+              ? 'General connectors apply to all variants'
+              : `Connectors specific to "${selectedVariant}" variant`}
+          </p>
+        </div>
+      )}
 
       {/* Connector list */}
       <div className="space-y-2">
@@ -261,7 +300,9 @@ export default function HarnessConnectorAdmin({
       {/* Add form */}
       {showAddForm ? (
         <div className="p-4 rounded-lg bg-smx-surface border border-sky-600/40 space-y-3">
-          <p className="text-sm font-medium text-sky-400">New Connector</p>
+          <p className="text-sm font-medium text-sky-400">
+            New Connector{selectedVariant !== '__all__' ? ` — ${selectedVariant}` : ' — General (all variants)'}
+          </p>
           <input
             className={inputCls}
             placeholder="Connector name (e.g. CAN, USB, Phase U, Hall Sensor)"
@@ -317,7 +358,7 @@ function EditableField({
     return (
       <div className="flex items-center gap-1">
         <input
-          className={`bg-smx-bg border border-slate-600 rounded px-2 py-0.5 text-sm focus:outline-none focus:border-sky-500 ${small ? 'text-xs' : ''}`}
+          className={`bg-zinc-900 border border-slate-600 rounded px-2 py-0.5 text-sm focus:outline-none focus:border-sky-500 ${small ? 'text-xs' : ''}`}
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => {

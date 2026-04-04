@@ -2093,6 +2093,7 @@ model HarnessConnector {
   id          String  @id @default(cuid())
   productId   String  @map("product_id")
   name        String                          // e.g. "CAN", "USB", "Phase U", "Hall Sensor"
+  variantName String? @map("variant_name")   // e.g. "Ultra Bee" — null means all variants
   description String?
   sortOrder   Int     @default(0) @map("sort_order")
   active      Boolean @default(true)

@@ -10,8 +10,16 @@ export async function GET(req: NextRequest) {
     const productId = req.nextUrl.searchParams.get('productId');
     if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 });
 
+    const variantName = req.nextUrl.searchParams.get('variantName');
+    const where: Record<string, unknown> = { productId, active: true };
+
+    // When variantName is provided, return connectors for that variant + general connectors (no variant)
+    if (variantName) {
+      where.OR = [{ variantName }, { variantName: null }];
+    }
+
     const connectors = await prisma.harnessConnector.findMany({
-      where: { productId, active: true },
+      where,
       orderBy: { sortOrder: 'asc' },
     });
     return NextResponse.json(connectors);
@@ -28,7 +36,7 @@ export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
     requireRole(session, 'ADMIN');
-    const { productId, name, description, sortOrder } = await req.json();
+    const { productId, name, description, sortOrder, variantName } = await req.json();
     if (!productId || !name?.trim())
       return NextResponse.json({ error: 'productId and name required' }, { status: 400 });
 
@@ -37,6 +45,7 @@ export async function POST(req: NextRequest) {
         productId,
         name: name.trim(),
         description: description?.trim() || undefined,
+        variantName: variantName?.trim() || undefined,
         sortOrder: sortOrder ?? 0,
       },
     });
