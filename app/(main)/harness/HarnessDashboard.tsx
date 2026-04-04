@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Cable, Package, CheckCircle2, Clock, Play, Zap, RefreshCw, ChevronDown, ChevronUp, Printer, Check, RotateCcw, FileText } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Cable, Package, CheckCircle2, Clock, Play, Zap, RefreshCw, ChevronDown, ChevronUp, Printer, Check, RotateCcw, FileText, Search } from 'lucide-react';
 import { StatusBadge, ActionBtn, QCScanStep, validateQCScan, QCPanel, QCReport } from '@/components/harness';
 import type { HarnessUnit, Connector, QCResult } from '@/components/harness';
 
@@ -29,6 +29,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   const [acceptingOrder, setAcceptingOrder] = useState<string | null>(null);
   const [printedUnits, setPrintedUnits] = useState<Set<string>>(new Set());
   const [confirmedUnits, setConfirmedUnits] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
   const [error, setError] = useState('');
 
   // Fetch units for the current tab + all units for completion counts
@@ -68,6 +69,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
     setExpandedOrder(null);
     setQcUnitId(null);
     setQcScanVerified(false);
+    setSearch('');
     fetchUnits();
   }, [fetchUnits]);
 
@@ -173,10 +175,25 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
     setQcScanVerified(false);
   }
 
+  // -- Search filter (completed tab only) --
+
+  const filteredUnits = useMemo(() => {
+    if (tab !== 'completed' || !search.trim()) return units;
+    const q = search.trim().toLowerCase();
+    return units.filter(u =>
+      (u.barcode && u.barcode.toLowerCase().includes(q)) ||
+      (u.serialNumber && u.serialNumber.toLowerCase().includes(q)) ||
+      u.order.orderNumber.toLowerCase().includes(q) ||
+      u.product.code.toLowerCase().includes(q) ||
+      (u.harnessModel && u.harnessModel.toLowerCase().includes(q)) ||
+      (u.assignedUser && u.assignedUser.name.toLowerCase().includes(q))
+    );
+  }, [units, search, tab]);
+
   // -- Grouping --
 
   const orderGroups: Record<string, HarnessUnit[]> = {};
-  for (const u of units) {
+  for (const u of filteredUnits) {
     const key = u.order.orderNumber;
     if (!orderGroups[key]) orderGroups[key] = [];
     orderGroups[key].push(u);
@@ -228,6 +245,21 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
         ))}
       </div>
 
+      {/* Search bar — completed tab only */}
+      {tab === 'completed' && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search barcode, order, product, model..."
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm text-white bg-transparent outline-none placeholder-zinc-600"
+            style={{ border: '1px solid rgba(255,255,255,0.1)' }}
+          />
+        </div>
+      )}
+
       {/* Content */}
       {loading ? (
         <div className="py-16 text-center">
@@ -241,10 +273,12 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
             Retry
           </button>
         </div>
-      ) : units.length === 0 ? (
+      ) : filteredUnits.length === 0 ? (
         <div className="py-16 text-center text-slate-500">
           <p className="text-sm">
-            {tab === 'completed' ? 'No completed harness units in the last 14 days' : 'No harness units in this category'}
+            {tab === 'completed' && search.trim() ? 'No matching results' :
+             tab === 'completed' ? 'No completed harness units in the last 14 days' :
+             'No harness units in this category'}
           </p>
         </div>
       ) : (
