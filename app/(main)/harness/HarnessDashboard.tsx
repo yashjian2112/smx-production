@@ -80,6 +80,14 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
         data = data.filter(u => new Date(u.updatedAt).getTime() >= cutoff);
       }
       setUnits(data);
+      // Reconcile printedUnits — clear stale entries so reworked units must re-print
+      setPrintedUnits(prev => {
+        const next = new Set(prev);
+        for (const u of data) {
+          if (!u.barcodePrinted) next.delete(u.id); // barcodePrinted reset (rework) → force re-print
+        }
+        return next;
+      });
       if (allRes.ok) {
         setAllUnits(await allRes.json());
       }
@@ -545,7 +553,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                               <div className="flex items-center gap-2 flex-wrap">
                                 {unit.barcode ? (
                                   <span className={`font-mono text-sm font-semibold ${
-                                    unit.remarks && unit.remarks.toLowerCase().includes('rework')
+                                    unit.reworkCount > 0
                                       ? 'text-red-400'
                                       : 'text-sky-300'
                                   }`}>{unit.barcode}</span>

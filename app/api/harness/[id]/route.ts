@@ -75,6 +75,13 @@ export async function PATCH(
 
     const data: Record<string, unknown> = { status: transition.to };
 
+    // On crimping_done, enforce barcode was printed
+    if (action === 'crimping_done' && !unit.barcodePrinted) {
+      return NextResponse.json({
+        error: 'Barcode must be printed and confirmed before completing crimping',
+      }, { status: 400 });
+    }
+
     // On accept, assign current user
     if (action === 'accept') {
       data.assignedUserId = session.id;
