@@ -307,6 +307,7 @@ enum StageType {
   QC_AND_SOFTWARE
   REWORK
   FINAL_ASSEMBLY
+  HARNESS_CRIMPING
 }
 
 enum UnitStatus {
@@ -2073,6 +2074,7 @@ model HarnessUnit {
   remarks        String?
   reworkCount    Int               @default(0) @map("rework_count")
   barcodePrinted Boolean           @default(false) @map("barcode_printed")
+  previousQcData Json?             @map("previous_qc_data")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
 

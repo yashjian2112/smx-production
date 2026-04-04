@@ -18,6 +18,7 @@ export function QCPanel({
   onCancel,
   submitting,
   title,
+  previousFailedConnectors,
 }: {
   connectors: Connector[];
   qcResults: Record<string, QCResult>;
@@ -26,6 +27,7 @@ export function QCPanel({
   onCancel: () => void;
   submitting: boolean;
   title?: string;
+  previousFailedConnectors?: string[];
 }) {
   if (connectors.length === 0) {
     return (
@@ -75,11 +77,19 @@ export function QCPanel({
       <div className="space-y-1">
         {connectors.map(c => {
           const result = qcResults[c.id] || { status: null, remarks: '' };
+          const wasPreviouslyFailed = previousFailedConnectors?.includes(c.id);
           return (
-            <div key={c.id} className="rounded-lg bg-slate-800/50 p-3">
+            <div key={c.id} className={`rounded-lg p-3 ${wasPreviouslyFailed ? 'bg-red-900/20 border border-red-500/20' : 'bg-slate-800/50'}`}>
               <div className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-200">{c.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-slate-200">{c.name}</p>
+                    {wasPreviouslyFailed && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-600/20 text-red-400 border border-red-500/30">
+                        PREV FAILED
+                      </span>
+                    )}
+                  </div>
                   {c.description && <p className="text-[10px] text-slate-500 mt-0.5">{c.description}</p>}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">

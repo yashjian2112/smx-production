@@ -11,6 +11,7 @@ export type HarnessUnit = {
   remarks: string | null;
   reworkCount: number;
   barcodePrinted: boolean;
+  previousQcData: Record<string, { status: string; remarks?: string; name?: string }> | null;
   createdAt: string;
   updatedAt: string;
   order: { id: string; orderNumber: string; clientId: string; quantity: number };

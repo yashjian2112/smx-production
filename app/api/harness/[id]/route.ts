@@ -3,6 +3,7 @@ import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { appendTimeline } from '@/lib/timeline';
 import { generateNextHarnessBarcode, generateNextHarnessSerial } from '@/lib/barcode';
+import { notifyMany } from '@/lib/notify';
 
 /**
  * PATCH /api/harness/[id] — update harness unit status
@@ -18,7 +19,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
     const { action, qcData, remarks } = body as {
-      action: 'accept' | 'start_crimping' | 'crimping_done' | 'qc_pass' | 'qc_fail' | 'rework' | 'confirm_print';
+      action: 'accept' | 'start_crimping' | 'crimping_done' | 'qc_pass' | 'qc_fail' | 'rework' | 'confirm_print' | 'dispatch';
       qcData?: Record<string, unknown>;
       remarks?: string;
     };
@@ -61,6 +62,7 @@ export async function PATCH(
       qc_pass:        { from: ['QC_PENDING', 'QC_FAILED'], to: 'READY', timeline: 'harness_qc_passed' },
       qc_fail:        { from: ['QC_PENDING', 'QC_FAILED'], to: 'QC_FAILED', timeline: 'harness_qc_failed' },
       rework:         { from: ['QC_FAILED'],  to: 'CRIMPING',   timeline: 'harness_rework' },
+      dispatch:       { from: ['READY'],      to: 'DISPATCHED', timeline: 'harness_dispatched' },
     };
 
     const transition = transitions[action];
@@ -90,6 +92,10 @@ export async function PATCH(
 
     // On rework, clear old QC data so next QC starts fresh + append R to serial & barcode
     if (action === 'rework') {
+      // Preserve previous QC results for re-test reference
+      if (unit.qcData) {
+        data.previousQcData = JSON.parse(JSON.stringify(unit.qcData));
+      }
       data.qcData = null;
       data.remarks = remarks || `Rework — sent back from QC failure`;
       data.barcodePrinted = false; // must re-print barcode after rework
@@ -129,6 +135,40 @@ export async function PATCH(
       action: transition.timeline as Parameters<typeof appendTimeline>[0]['action'],
       remarks: `Harness ${barcodeStr} — ${action}${remarks ? `: ${remarks}` : ''}`,
     });
+
+    // Notifications — non-blocking, fire-and-forget
+    if (['crimping_done', 'qc_pass', 'qc_fail'].includes(action)) {
+      const pmUsers = await prisma.user.findMany({
+        where: { role: 'PRODUCTION_MANAGER', active: true },
+        select: { id: true },
+      });
+      const pmIds = pmUsers.map(u => u.id);
+      if (action === 'crimping_done') {
+        notifyMany(pmIds, {
+          type: 'HARNESS_QC_READY',
+          title: 'Harness ready for QC',
+          message: `Harness ${barcodeStr} crimping complete — ready for QC test`,
+          relatedModel: 'harnessUnit',
+          relatedId: id,
+        });
+      } else if (action === 'qc_pass') {
+        notifyMany(pmIds, {
+          type: 'HARNESS_QC_PASSED',
+          title: 'Harness QC passed',
+          message: `Harness ${barcodeStr} passed QC — ready for dispatch`,
+          relatedModel: 'harnessUnit',
+          relatedId: id,
+        });
+      } else if (action === 'qc_fail') {
+        notifyMany(pmIds, {
+          type: 'HARNESS_QC_FAILED',
+          title: 'Harness QC failed',
+          message: `Harness ${barcodeStr} failed QC${remarks ? `: ${remarks}` : ''}`,
+          relatedModel: 'harnessUnit',
+          relatedId: id,
+        });
+      }
+    }
 
     return NextResponse.json(updated);
   } catch (e) {

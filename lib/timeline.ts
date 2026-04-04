@@ -28,6 +28,7 @@ type TimelineAction =
   | 'harness_qc_passed'
   | 'harness_qc_failed'
   | 'harness_rework'
+  | 'harness_dispatched'
   | 'harness_paired';
 
 export async function appendTimeline(params: {

@@ -1,17 +1,36 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Cable, Package, CheckCircle2, Clock, Play, Zap, RefreshCw, ChevronDown, ChevronUp, Printer, Check, RotateCcw, FileText, Search } from 'lucide-react';
+import { Cable, Package, CheckCircle2, Clock, Play, Zap, RefreshCw, ChevronDown, ChevronUp, Printer, Check, RotateCcw, FileText, Search, ClipboardList, Truck, AlertTriangle, PackageCheck } from 'lucide-react';
 import { StatusBadge, ActionBtn, QCScanStep, validateQCScan, QCPanel, QCReport } from '@/components/harness';
 import type { HarnessUnit, Connector, QCResult } from '@/components/harness';
 
 type Tab = 'pending' | 'in_progress' | 'qc' | 'completed';
 
+type JobCardItem = {
+  id: string;
+  rawMaterial: { id: string; name: string; code: string; unit: string };
+  quantityReq: number;
+  quantityIssued: number;
+  verifiedQty: number;
+  isVerified: boolean;
+  isCritical: boolean;
+};
+
+type JobCard = {
+  id: string;
+  cardNumber: string;
+  orderId: string;
+  stage: string;
+  status: string; // PENDING | DISPATCHED | IN_PROGRESS | COMPLETED | CANCELLED
+  items: JobCardItem[];
+};
+
 const STATUS_MAP: Record<Tab, string[]> = {
   pending:     ['PENDING'],
   in_progress: ['ACCEPTED', 'CRIMPING'],
   qc:          ['QC_PENDING'],
-  completed:   ['QC_PASSED', 'READY'],
+  completed:   ['QC_PASSED', 'READY', 'DISPATCHED'],
 };
 
 export default function HarnessDashboard({ role, userId }: { role: string; userId: string }) {
@@ -30,17 +49,26 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   const [printedUnits, setPrintedUnits] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
+  // Phase 3: Job card state
+  const [jobCards, setJobCards] = useState<Record<string, JobCard>>({}); // keyed by orderId
+  const [creatingJC, setCreatingJC] = useState<string | null>(null);
+  const [verifyingJC, setVerifyingJC] = useState<string | null>(null);
 
-  // Fetch units for the current tab + all units for completion counts
+  // Fetch units for the current tab + all units for completion counts + job cards
   const fetchUnits = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const statuses = STATUS_MAP[tab].join(',');
-      const [tabRes, allRes] = await Promise.all([
+      const fetches: Promise<Response>[] = [
         fetch(`/api/harness?status=${statuses}`),
-        fetch('/api/harness?status=PENDING,ACCEPTED,CRIMPING,QC_PENDING,QC_PASSED,READY'),
-      ]);
+        fetch('/api/harness?status=PENDING,ACCEPTED,CRIMPING,QC_PENDING,QC_PASSED,READY,DISPATCHED'),
+      ];
+      // Fetch job cards for in_progress tab
+      if (tab === 'in_progress') {
+        fetches.push(fetch('/api/inventory/job-cards?stage=HARNESS_CRIMPING'));
+      }
+      const [tabRes, allRes, jcRes] = await Promise.all(fetches);
       if (!tabRes.ok) {
         setError('Failed to load data. Tap refresh to retry.');
         setUnits([]);
@@ -54,6 +82,13 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
       setUnits(data);
       if (allRes.ok) {
         setAllUnits(await allRes.json());
+      }
+      // Index job cards by orderId
+      if (jcRes && jcRes.ok) {
+        const jcData: JobCard[] = await jcRes.json();
+        const map: Record<string, JobCard> = {};
+        for (const jc of jcData) map[jc.orderId] = jc;
+        setJobCards(map);
       }
     } catch {
       setError('Network error. Check your connection and retry.');
@@ -117,6 +152,55 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
     }
   }
 
+  // -- Phase 3: Job Card Functions --
+
+  async function createJobCard(orderId: string) {
+    setCreatingJC(orderId);
+    try {
+      const res = await fetch('/api/inventory/job-cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, stage: 'HARNESS_CRIMPING' }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to create job card');
+        return;
+      }
+      await fetchUnits(); // re-fetch to update job card state
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCreatingJC(null);
+    }
+  }
+
+  async function verifyAllMaterials(jobCardId: string) {
+    const jc = Object.values(jobCards).find(j => j.id === jobCardId);
+    if (!jc) return;
+    setVerifyingJC(jobCardId);
+    try {
+      const unverified = jc.items.filter(i => !i.isVerified);
+      for (const item of unverified) {
+        const res = await fetch(`/api/inventory/job-cards/${jobCardId}/verify-item`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itemId: item.id, verifiedQty: item.quantityIssued }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.error || `Failed to verify ${item.rawMaterial.name}`);
+          break;
+        }
+      }
+      await fetchUnits();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setVerifyingJC(null);
+    }
+  }
+
   // -- QC Flow --
 
   async function openQC(unit: HarnessUnit) {
@@ -128,8 +212,6 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
       if (res.ok) {
         const data: Connector[] = await res.json();
         setConnectors(data);
-        // FIX: Initialize ALL connectors with status: null (untested)
-        // Previously they were set to 'PASS' which allowed auto-submit
         const initial: Record<string, QCResult> = {};
         for (const c of data) {
           initial[c.id] = { status: null, remarks: '' };
@@ -174,6 +256,14 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
     setQcScanVerified(false);
   }
 
+  // -- Phase 2: Get previous failed connector IDs --
+  function getPreviousFailedConnectors(unit: HarnessUnit): string[] {
+    if (!unit.previousQcData) return [];
+    return Object.entries(unit.previousQcData)
+      .filter(([, v]) => v.status === 'FAIL')
+      .map(([connectorId]) => connectorId);
+  }
+
   // -- Search filter (completed tab only) --
 
   const filteredUnits = useMemo(() => {
@@ -206,6 +296,21 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
     const completed = orderUnits.filter(u => u.status === 'QC_PASSED' || u.status === 'READY' || u.status === 'DISPATCHED').length;
     return { total, completed };
   }
+
+  // Phase 3: Job card status helper
+  function getJobCardStatus(orderId: string): { jc: JobCard | null; label: string; color: string; canCrimp: boolean } {
+    const jc = jobCards[orderId] || null;
+    if (!jc) return { jc: null, label: 'No Job Card', color: 'text-slate-500', canCrimp: false };
+    switch (jc.status) {
+      case 'PENDING': return { jc, label: 'Awaiting Materials', color: 'text-amber-400', canCrimp: false };
+      case 'DISPATCHED': return { jc, label: 'Verify Materials', color: 'text-sky-400', canCrimp: false };
+      case 'IN_PROGRESS': return { jc, label: 'Materials Ready', color: 'text-emerald-400', canCrimp: true };
+      case 'COMPLETED': return { jc, label: 'Materials Ready', color: 'text-emerald-400', canCrimp: true };
+      default: return { jc, label: jc.status, color: 'text-slate-500', canCrimp: false };
+    }
+  }
+
+  const canManageDispatch = ['ADMIN', 'PRODUCTION_MANAGER'].includes(role);
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'pending',     label: 'Pending',     icon: <Clock className="w-4 h-4" /> },
@@ -285,13 +390,17 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
           {orderKeys.map(orderNum => {
             const group = orderGroups[orderNum];
             const isCollapsibleTab = tab === 'completed' || tab === 'qc';
-            // Completed/QC: collapsed by default, click to open one. Others: all open by default.
             const isExpanded = isCollapsibleTab
               ? expandedOrder === orderNum
               : expandedOrder === null || expandedOrder === orderNum;
             const isPendingTab = tab === 'pending';
+            const isInProgressTab = tab === 'in_progress';
             const orderId = group[0].orderId;
             const { total: totalUnits, completed: completedUnits } = getOrderCompletion(orderId);
+
+            // Phase 3: Job card for this order (only relevant for in_progress tab)
+            const jcInfo = isInProgressTab ? getJobCardStatus(orderId) : { jc: null, label: '', color: '', canCrimp: true };
+            const hasAcceptedUnits = isInProgressTab && group.some(u => u.status === 'ACCEPTED');
 
             return (
               <div key={orderNum} className="rounded-xl bg-zinc-900/60 border border-slate-700/60 overflow-hidden">
@@ -305,7 +414,6 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                     <span className="font-semibold text-sm text-slate-200">{orderNum}</span>
                     <span className="text-slate-500 text-xs">{group[0].product.code}</span>
                     <span className="text-slate-600 text-[10px]">Qty {group[0].order.quantity}</span>
-                    {/* Completion progress badge */}
                     {totalUnits > 0 && (
                       <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
                         completedUnits === totalUnits
@@ -343,6 +451,79 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                   )}
                 </div>
 
+                {/* Phase 3: Job card status bar (in_progress tab only, when ACCEPTED units exist) */}
+                {isExpanded && isInProgressTab && hasAcceptedUnits && (
+                  <div className="px-4 py-2.5 border-t border-slate-700/50"
+                    style={{ background: 'rgba(255,255,255,0.02)' }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <ClipboardList className="w-4 h-4 text-slate-400" />
+                        <span className="text-xs font-medium text-slate-300">Job Card</span>
+                        {jcInfo.jc && (
+                          <span className="text-[10px] font-mono text-slate-500">{jcInfo.jc.cardNumber}</span>
+                        )}
+                        <span className={`text-[10px] font-semibold ${jcInfo.color}`}>{jcInfo.label}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        {/* No job card → Create */}
+                        {!jcInfo.jc && (
+                          <button
+                            onClick={() => createJobCard(orderId)}
+                            disabled={creatingJC === orderId}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-600/15 text-sky-400 border border-sky-500/30 hover:bg-sky-600/25 transition-colors disabled:opacity-40"
+                          >
+                            <ClipboardList className="w-3.5 h-3.5" />
+                            {creatingJC === orderId ? '...' : 'Create Job Card'}
+                          </button>
+                        )}
+                        {/* DISPATCHED → Verify All */}
+                        {jcInfo.jc?.status === 'DISPATCHED' && (
+                          <button
+                            onClick={() => verifyAllMaterials(jcInfo.jc!.id)}
+                            disabled={verifyingJC === jcInfo.jc.id}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/25 transition-colors disabled:opacity-40"
+                          >
+                            <PackageCheck className="w-3.5 h-3.5" />
+                            {verifyingJC === jcInfo.jc.id ? 'Verifying...' : 'Verify All Materials'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Material items list (when DISPATCHED) */}
+                    {jcInfo.jc?.status === 'DISPATCHED' && jcInfo.jc.items.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {jcInfo.jc.items.map(item => (
+                          <div key={item.id} className="flex items-center justify-between text-[11px] px-2 py-1 rounded bg-slate-800/50">
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-300">{item.rawMaterial.name}</span>
+                              {item.isCritical && (
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-red-600/15 text-red-400">CRITICAL</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-slate-500">
+                                {item.quantityIssued}/{item.quantityReq} {item.rawMaterial.unit}
+                              </span>
+                              {item.isVerified ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              ) : (
+                                <span className="text-amber-400 text-[10px]">Pending</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* PENDING notice */}
+                    {jcInfo.jc?.status === 'PENDING' && (
+                      <p className="mt-1.5 text-[10px] text-amber-400/80 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        Inventory Manager needs to dispatch materials for this job card
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {isExpanded && (
                   <div className="border-t border-slate-700/50 divide-y divide-slate-700/30">
                     {group.map((unit, idx) => {
@@ -367,6 +548,11 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                   <span className="text-sm text-slate-500">Harness {idx + 1}</span>
                                 )}
                                 <StatusBadge status={unit.status} />
+                                {unit.reworkCount > 0 && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-600/15 text-red-400 border border-red-500/20">
+                                    R{unit.reworkCount}
+                                  </span>
+                                )}
                                 {isCollapsibleTab && unit.qcData && (
                                   <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                                     Object.values(unit.qcData).every((v: { status: string }) => v.status === 'PASS')
@@ -376,13 +562,17 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                     {Object.values(unit.qcData).every((v: { status: string }) => v.status === 'PASS') ? 'All Passed' : 'Failed'}
                                   </span>
                                 )}
+                                {unit.status === 'DISPATCHED' && (
+                                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-600/15 text-emerald-400">
+                                    Dispatched
+                                  </span>
+                                )}
                                 {isCollapsibleTab && (
                                   isUnitOpen
                                     ? <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
                                     : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
                                 )}
                               </div>
-                              {/* Show model/assigned only when expanded or non-collapsible */}
                               {(!isCollapsibleTab || isUnitOpen) && (
                                 <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
                                   {unit.harnessModel && (
@@ -398,11 +588,11 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                               )}
                             </div>
 
-                            {/* Actions — always visible for action tabs, only when expanded for collapsible tabs */}
+                            {/* Actions */}
                             {(!isCollapsibleTab || isUnitOpen) && (
                               <div className="flex gap-2 items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                {/* QC Report: only in completed tab */}
-                                {(unit.status === 'QC_PASSED' || unit.status === 'READY') && unit.qcData && (
+                                {/* QC Report: completed tab */}
+                                {(unit.status === 'QC_PASSED' || unit.status === 'READY' || unit.status === 'DISPATCHED') && unit.qcData && (
                                   <a
                                     href={`/print/harness-qc/${unit.id}`}
                                     target="_blank"
@@ -414,10 +604,24 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                   </a>
                                 )}
 
-                                {/* Stage actions */}
-                                {unit.status === 'ACCEPTED' && (
+                                {/* Phase 4: Dispatch button for READY units (PM/Admin only) */}
+                                {unit.status === 'READY' && canManageDispatch && tab === 'completed' && (
+                                  <ActionBtn label="Dispatch" color="sky" loading={acting === unit.id} onClick={() => {
+                                    if (confirm(`Mark harness ${unit.barcode || 'unit'} as dispatched?`)) {
+                                      doAction(unit.id, 'dispatch');
+                                    }
+                                  }} />
+                                )}
+
+                                {/* Stage actions — In Progress tab */}
+                                {/* ACCEPTED: Start Crimping (blocked if no job card ready) */}
+                                {unit.status === 'ACCEPTED' && jcInfo.canCrimp && (
                                   <ActionBtn label="Start Crimping" color="amber" loading={acting === unit.id} onClick={() => doAction(unit.id, 'start_crimping')} />
                                 )}
+                                {unit.status === 'ACCEPTED' && !jcInfo.canCrimp && isInProgressTab && (
+                                  <span className="text-[10px] text-slate-500 italic">Materials pending</span>
+                                )}
+
                                 {/* CRIMPING: Step 1 → Print Barcode, Step 2 → Confirm (API), Step 3 → Crimping Done */}
                                 {unit.status === 'CRIMPING' && unit.barcode && !unit.barcodePrinted && !printedUnits.has(unit.id) && (
                                   <a
@@ -483,6 +687,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                     onSubmit={() => submitQC(unit)}
                                     onCancel={() => { setQcUnitId(null); setQcScanVerified(false); }}
                                     submitting={acting === unit.id}
+                                    previousFailedConnectors={getPreviousFailedConnectors(unit)}
                                   />
                                 )
                               )}
