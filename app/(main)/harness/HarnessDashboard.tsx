@@ -25,6 +25,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [qcResults, setQcResults] = useState<Record<string, QCResult>>({});
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
   const [acceptingOrder, setAcceptingOrder] = useState<string | null>(null);
   const [error, setError] = useState('');
 
@@ -305,98 +306,130 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
 
                 {isExpanded && expandedOrder !== '__none__' && (
                   <div className="border-t border-slate-700/50 divide-y divide-slate-700/30">
-                    {group.map((unit, idx) => (
-                      <div key={unit.id} className="px-4 py-3">
-                        {/* Unit row */}
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {unit.barcode ? (
-                                <span className="font-mono text-sm font-semibold text-sky-300">{unit.barcode}</span>
-                              ) : (
-                                <span className="text-sm text-slate-500">Harness {idx + 1}</span>
+                    {group.map((unit, idx) => {
+                      const isCollapsibleTab = tab === 'completed' || tab === 'qc';
+                      const isUnitOpen = expandedUnit === unit.id;
+
+                      return (
+                        <div key={unit.id} className="px-4 py-3">
+                          {/* Unit header — clickable in completed/QC tabs */}
+                          <div
+                            className={`flex items-center justify-between gap-3 ${isCollapsibleTab ? 'cursor-pointer' : ''}`}
+                            onClick={isCollapsibleTab ? () => setExpandedUnit(isUnitOpen ? null : unit.id) : undefined}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {unit.barcode ? (
+                                  <span className="font-mono text-sm font-semibold text-sky-300">{unit.barcode}</span>
+                                ) : (
+                                  <span className="text-sm text-slate-500">Harness {idx + 1}</span>
+                                )}
+                                <StatusBadge status={unit.status} />
+                                {isCollapsibleTab && unit.qcData && (
+                                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                    Object.values(unit.qcData).every((v: { status: string }) => v.status === 'PASS')
+                                      ? 'bg-emerald-600/15 text-emerald-400'
+                                      : 'bg-red-600/15 text-red-400'
+                                  }`}>
+                                    {Object.values(unit.qcData).every((v: { status: string }) => v.status === 'PASS') ? 'All Passed' : 'Failed'}
+                                  </span>
+                                )}
+                                {isCollapsibleTab && (
+                                  isUnitOpen
+                                    ? <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+                                    : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                                )}
+                              </div>
+                              {/* Show model/assigned only when expanded or non-collapsible */}
+                              {(!isCollapsibleTab || isUnitOpen) && (
+                                <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
+                                  {unit.harnessModel && (
+                                    <span className="text-[11px] text-sky-400/80">Model: {unit.harnessModel}</span>
+                                  )}
+                                  {unit.assignedUser && (
+                                    <span className="text-[11px] text-slate-500">Assigned: {unit.assignedUser.name}</span>
+                                  )}
+                                </div>
                               )}
-                              <StatusBadge status={unit.status} />
+                              {(!isCollapsibleTab || isUnitOpen) && unit.remarks && (
+                                <p className="text-[11px] text-amber-400 mt-1">{unit.remarks}</p>
+                              )}
                             </div>
-                            <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
-                              {unit.harnessModel && (
-                                <span className="text-[11px] text-sky-400/80">Model: {unit.harnessModel}</span>
-                              )}
-                              {unit.assignedUser && (
-                                <span className="text-[11px] text-slate-500">Assigned: {unit.assignedUser.name}</span>
-                              )}
-                            </div>
-                            {unit.remarks && (
-                              <p className="text-[11px] text-amber-400 mt-1">{unit.remarks}</p>
+
+                            {/* Actions — always visible for action tabs, only when expanded for collapsible tabs */}
+                            {(!isCollapsibleTab || isUnitOpen) && (
+                              <div className="flex gap-2 items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                {/* Print barcode: only during CRIMPING */}
+                                {unit.barcode && unit.status === 'CRIMPING' && (
+                                  <a
+                                    href={`/print/harness/${unit.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
+                                    title="Reprint barcode label"
+                                  >
+                                    <Printer className="w-4 h-4" />
+                                  </a>
+                                )}
+
+                                {/* QC Report: only in completed tab */}
+                                {(unit.status === 'QC_PASSED' || unit.status === 'READY') && unit.qcData && (
+                                  <a
+                                    href={`/print/harness-qc/${unit.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-emerald-600/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/25 transition-colors"
+                                    title="View QC Report"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" /> QC Report
+                                  </a>
+                                )}
+
+                                {/* Stage actions */}
+                                {unit.status === 'ACCEPTED' && (
+                                  <ActionBtn label="Start Crimping" color="amber" loading={acting === unit.id} onClick={() => doAction(unit.id, 'start_crimping')} />
+                                )}
+                                {unit.status === 'CRIMPING' && (
+                                  <ActionBtn label="Crimping Done" color="emerald" loading={acting === unit.id} onClick={() => doAction(unit.id, 'crimping_done')} />
+                                )}
+                                {unit.status === 'QC_PENDING' && (
+                                  <ActionBtn label="Start QC" color="purple" loading={acting === unit.id} onClick={() => openQC(unit)} />
+                                )}
+                              </div>
                             )}
                           </div>
 
-                          {/* Actions -- stage-appropriate only */}
-                          <div className="flex gap-2 items-center shrink-0">
-                            {/* Print barcode: only during CRIMPING (when barcode is first generated) */}
-                            {unit.barcode && unit.status === 'CRIMPING' && (
-                              <a
-                                href={`/print/harness/${unit.id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
-                                title="Reprint barcode label"
-                              >
-                                <Printer className="w-4 h-4" />
-                              </a>
-                            )}
+                          {/* Expanded details — QC flow and QC report */}
+                          {(!isCollapsibleTab || isUnitOpen) && (
+                            <>
+                              {/* QC Flow inline */}
+                              {qcUnitId === unit.id && (
+                                !qcScanVerified ? (
+                                  <QCScanStep
+                                    onVerified={(val) => handleQcScanResult(unit, val)}
+                                    onCancel={() => { setQcUnitId(null); setQcScanVerified(false); }}
+                                  />
+                                ) : (
+                                  <QCPanel
+                                    connectors={connectors}
+                                    qcResults={qcResults}
+                                    setQcResults={setQcResults}
+                                    onSubmit={() => submitQC(unit)}
+                                    onCancel={() => { setQcUnitId(null); setQcScanVerified(false); }}
+                                    submitting={acting === unit.id}
+                                  />
+                                )
+                              )}
 
-                            {/* QC Report: only in completed tab */}
-                            {(unit.status === 'QC_PASSED' || unit.status === 'READY') && unit.qcData && (
-                              <a
-                                href={`/print/harness-qc/${unit.id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-emerald-600/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/25 transition-colors"
-                                title="View QC Report"
-                              >
-                                <FileText className="w-3.5 h-3.5" /> QC Report
-                              </a>
-                            )}
-
-                            {/* Stage actions */}
-                            {unit.status === 'ACCEPTED' && (
-                              <ActionBtn label="Start Crimping" color="amber" loading={acting === unit.id} onClick={() => doAction(unit.id, 'start_crimping')} />
-                            )}
-                            {unit.status === 'CRIMPING' && (
-                              <ActionBtn label="Crimping Done" color="emerald" loading={acting === unit.id} onClick={() => doAction(unit.id, 'crimping_done')} />
-                            )}
-                            {unit.status === 'QC_PENDING' && (
-                              <ActionBtn label="Start QC" color="purple" loading={acting === unit.id} onClick={() => openQC(unit)} />
-                            )}
-                          </div>
+                              {/* Inline QC report for completed tab */}
+                              {tab === 'completed' && unit.qcData && qcUnitId !== unit.id && (
+                                <QCReport unit={unit} defaultOpen />
+                              )}
+                            </>
+                          )}
                         </div>
-
-                        {/* QC Flow inline */}
-                        {qcUnitId === unit.id && (
-                          !qcScanVerified ? (
-                            <QCScanStep
-                              onVerified={(val) => handleQcScanResult(unit, val)}
-                              onCancel={() => { setQcUnitId(null); setQcScanVerified(false); }}
-                            />
-                          ) : (
-                            <QCPanel
-                              connectors={connectors}
-                              qcResults={qcResults}
-                              setQcResults={setQcResults}
-                              onSubmit={() => submitQC(unit)}
-                              onCancel={() => { setQcUnitId(null); setQcScanVerified(false); }}
-                              submitting={acting === unit.id}
-                            />
-                          )
-                        )}
-
-                        {/* Inline QC report for completed tab */}
-                        {tab === 'completed' && unit.qcData && qcUnitId !== unit.id && (
-                          <QCReport unit={unit} />
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
