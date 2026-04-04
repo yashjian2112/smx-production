@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Package, Wrench, AlertTriangle, Clock, Play, Check } from 'lucide-react';
+import { Package, Wrench, AlertTriangle, Clock, Play, Check, Search } from 'lucide-react';
+import { ReworkSearch } from './ReworkSearch';
 
 type ReturnItem = {
   id: string;
@@ -98,7 +99,7 @@ export default async function ReworkPage({
   if (!session) redirect('/login');
   if (!['ADMIN', 'PRODUCTION_EMPLOYEE', 'PRODUCTION_MANAGER', 'SALES', 'QC_USER'].includes(session.role)) redirect('/dashboard');
 
-  const { tab: rawTab } = await searchParams;
+  const { tab: rawTab, q: searchQuery } = await searchParams as { tab?: string; q?: string };
   const tab = rawTab === 'active' ? 'active' : rawTab === 'completed' ? 'completed' : 'pending';
 
   // Fetch return requests
@@ -185,6 +186,25 @@ export default async function ReworkPage({
     activeItems = [...doneReturns, ...doneRework].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+    // Apply search filter for completed tab
+    if (searchQuery?.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      activeItems = activeItems.filter(item => {
+        if (item.origin === 'replacement') {
+          const r = item as ReturnItem;
+          return r.returnNumber.toLowerCase().includes(q) ||
+            r.clientName.toLowerCase().includes(q) ||
+            r.clientCode.toLowerCase().includes(q) ||
+            (r.serialNumber && r.serialNumber.toLowerCase().includes(q)) ||
+            r.reportedIssue.toLowerCase().includes(q);
+        } else {
+          const r = item as QCFailItem;
+          return r.unitSerial.toLowerCase().includes(q) ||
+            r.orderNumber.toLowerCase().includes(q) ||
+            r.productName.toLowerCase().includes(q);
+        }
+      });
+    }
   }
 
   const TABS = [
@@ -244,6 +264,11 @@ export default async function ReworkPage({
           </Link>
         ))}
       </div>
+
+      {/* Search bar — completed tab only */}
+      {tab === 'completed' && (
+        <ReworkSearch currentQuery={searchQuery || ''} />
+      )}
 
       {/* Content */}
       {activeItems.length === 0 ? (
