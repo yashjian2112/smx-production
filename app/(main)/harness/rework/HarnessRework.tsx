@@ -43,8 +43,7 @@ export default function HarnessRework({ role, userId }: { role: string; userId: 
   }, [tab]);
 
   // Filter units by tab
-  const isReworkUnit = (u: HarnessUnit) =>
-    u.remarks != null && u.remarks.toLowerCase().includes('rework');
+  const isReworkUnit = (u: HarnessUnit) => u.reworkCount > 0;
 
   const pendingUnits = useMemo(() =>
     allUnits.filter(u => u.status === 'QC_FAILED'), [allUnits]);

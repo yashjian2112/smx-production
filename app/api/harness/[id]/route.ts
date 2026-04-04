@@ -86,9 +86,10 @@ export async function PATCH(
         where: { orderId_stage: { orderId: unit.orderId, stage: 'HARNESS_CRIMPING' } },
       });
       if (jobCard && !['IN_PROGRESS', 'COMPLETED'].includes(jobCard.status)) {
-        return NextResponse.json({
-          error: 'Cannot start crimping — materials not yet verified. Job card status: ' + jobCard.status,
-        }, { status: 400 });
+        const msg = jobCard.status === 'CANCELLED'
+          ? 'Cannot start crimping — job card has been cancelled'
+          : `Cannot start crimping — materials not yet verified (job card: ${jobCard.status})`;
+        return NextResponse.json({ error: msg }, { status: 400 });
       }
       if (!unit.serialNumber || !unit.barcode) {
         const productCode = unit.product.code;
@@ -117,7 +118,7 @@ export async function PATCH(
       }
     }
 
-    // Save QC data if provided — validate structure for QC actions
+    // Save QC data — only for QC actions, with full validation
     if (action === 'qc_pass' || action === 'qc_fail') {
       if (!qcData || typeof qcData !== 'object' || Object.keys(qcData).length === 0) {
         return NextResponse.json({ error: 'QC data required — must test all connectors' }, { status: 400 });
@@ -129,10 +130,23 @@ export async function PATCH(
           return NextResponse.json({ error: 'Invalid QC data — all connectors must be PASS or FAIL' }, { status: 400 });
         }
       }
-      data.qcData = JSON.parse(JSON.stringify(qcData));
-    } else if (qcData) {
+      // Validate all product connectors are covered
+      const productConnectors = await prisma.harnessConnector.findMany({
+        where: { productId: unit.productId, active: true },
+        select: { id: true },
+      });
+      if (productConnectors.length > 0) {
+        const testedIds = new Set(Object.keys(qcData));
+        const missing = productConnectors.filter(c => !testedIds.has(c.id));
+        if (missing.length > 0) {
+          return NextResponse.json({
+            error: `Incomplete QC — ${missing.length} connector(s) not tested`,
+          }, { status: 400 });
+        }
+      }
       data.qcData = JSON.parse(JSON.stringify(qcData));
     }
+    // qcData ignored for non-QC actions — prevents data corruption via API bypass
 
     if (remarks && action !== 'rework') {
       data.remarks = remarks;
@@ -157,37 +171,41 @@ export async function PATCH(
     });
 
     // Notifications — non-blocking, fire-and-forget
-    if (['crimping_done', 'qc_pass', 'qc_fail'].includes(action)) {
-      const pmUsers = await prisma.user.findMany({
-        where: { role: 'PRODUCTION_MANAGER', active: true },
-        select: { id: true },
-      });
-      const pmIds = pmUsers.map(u => u.id);
-      if (action === 'crimping_done') {
-        notifyMany(pmIds, {
-          type: 'HARNESS_QC_READY',
-          title: 'Harness ready for QC',
-          message: `Harness ${barcodeStr} crimping complete — ready for QC test`,
-          relatedModel: 'harnessUnit',
-          relatedId: id,
+    try {
+      if (['crimping_done', 'qc_pass', 'qc_fail'].includes(action)) {
+        const pmUsers = await prisma.user.findMany({
+          where: { role: 'PRODUCTION_MANAGER', active: true },
+          select: { id: true },
         });
-      } else if (action === 'qc_pass') {
-        notifyMany(pmIds, {
-          type: 'HARNESS_QC_PASSED',
-          title: 'Harness QC passed',
-          message: `Harness ${barcodeStr} passed QC — ready for dispatch`,
-          relatedModel: 'harnessUnit',
-          relatedId: id,
-        });
-      } else if (action === 'qc_fail') {
-        notifyMany(pmIds, {
-          type: 'HARNESS_QC_FAILED',
-          title: 'Harness QC failed',
-          message: `Harness ${barcodeStr} failed QC${remarks ? `: ${remarks}` : ''}`,
-          relatedModel: 'harnessUnit',
-          relatedId: id,
-        });
+        const pmIds = pmUsers.map(u => u.id);
+        if (action === 'crimping_done') {
+          notifyMany(pmIds, {
+            type: 'HARNESS_QC_READY',
+            title: 'Harness ready for QC',
+            message: `Harness ${barcodeStr} crimping complete — ready for QC test`,
+            relatedModel: 'harnessUnit',
+            relatedId: id,
+          });
+        } else if (action === 'qc_pass') {
+          notifyMany(pmIds, {
+            type: 'HARNESS_QC_PASSED',
+            title: 'Harness QC passed',
+            message: `Harness ${barcodeStr} passed QC — ready for dispatch`,
+            relatedModel: 'harnessUnit',
+            relatedId: id,
+          });
+        } else if (action === 'qc_fail') {
+          notifyMany(pmIds, {
+            type: 'HARNESS_QC_FAILED',
+            title: 'Harness QC failed',
+            message: `Harness ${barcodeStr} failed QC${remarks ? `: ${remarks}` : ''}`,
+            relatedModel: 'harnessUnit',
+            relatedId: id,
+          });
+        }
       }
+    } catch (notifyErr) {
+      console.warn('[harness] Notification failed (non-blocking):', notifyErr);
     }
 
     return NextResponse.json(updated);
