@@ -622,6 +622,30 @@ export function EditProformaForm({
                 {item.harnessChoice === null && (
                   <p className="text-[10px] text-amber-400 mt-1">Please select harness option</p>
                 )}
+                {item.harnessChoice === 'yes' && item.key === items.find(i => i.harnessChoice === 'yes')?.key && (
+                  <div className="mt-3 space-y-2">
+                    <label className={lCls}>Harness Model <span className="text-red-400">*</span></label>
+                    <div className="flex gap-2">
+                      {['Ultra Bee', 'Light Bee', 'DIY'].map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setHarnessModel(m)}
+                          className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                          style={harnessModel === m
+                            ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
+                            : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }
+                          }
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                    {!harnessModel && (
+                      <p className="text-[10px] text-amber-400">Please select a harness model</p>
+                    )}
+                  </div>
+                )}
               </div>
               )}
 
@@ -649,32 +673,6 @@ export function EditProformaForm({
           ))}
         </div>
       </div>
-
-      {/* Harness Model — shown when any item has harness */}
-      {items.some((i) => i.harnessChoice === 'yes') && (
-        <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.15)' }}>
-          <label className={lCls}>Harness Model <span className="text-red-400">*</span></label>
-          <div className="flex gap-2">
-            {['Ultra Bee', 'Light Bee', 'DIY'].map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setHarnessModel(m)}
-                className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all"
-                style={harnessModel === m
-                  ? { background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8' }
-                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }
-                }
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-          {!harnessModel && (
-            <p className="text-[10px] text-amber-400">Please select a harness model</p>
-          )}
-        </div>
-      )}
 
       {/* Shipping Charges */}
       <div>

@@ -62,7 +62,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
       const statuses = STATUS_MAP[tab].join(',');
       const fetches: Promise<Response>[] = [
         fetch(`/api/harness?status=${statuses}`),
-        fetch('/api/harness?status=PENDING,ACCEPTED,CRIMPING,QC_PENDING,QC_PASSED,READY,DISPATCHED'),
+        fetch('/api/harness?status=PENDING,ACCEPTED,CRIMPING,QC_PENDING,QC_FAILED,QC_PASSED,READY,DISPATCHED'),
       ];
       // Fetch job cards for in_progress tab
       if (tab === 'in_progress') {
@@ -152,7 +152,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
         alert(err.error || 'Failed to accept order');
         return;
       }
-      fetchUnits();
+      await fetchUnits();
     } catch (e) {
       console.error(e);
     } finally {

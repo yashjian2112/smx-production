@@ -99,7 +99,7 @@ export default function HarnessRework({ role, userId }: { role: string; userId: 
         alert(err.error || 'Action failed');
         return;
       }
-      fetchUnits();
+      await fetchUnits();
     } catch (e) { console.error(e); }
     finally { setActing(null); }
   }
