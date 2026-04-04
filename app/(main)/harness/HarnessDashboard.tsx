@@ -249,7 +249,11 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
         <div className="space-y-3">
           {orderKeys.map(orderNum => {
             const group = orderGroups[orderNum];
-            const isExpanded = expandedOrder === null || expandedOrder === orderNum;
+            const isCollapsibleTab = tab === 'completed' || tab === 'qc';
+            // Completed/QC: collapsed by default, click to open one. Others: all open by default.
+            const isExpanded = isCollapsibleTab
+              ? expandedOrder === orderNum
+              : expandedOrder === null || expandedOrder === orderNum;
             const isPendingTab = tab === 'pending';
             const orderId = group[0].orderId;
             const { total: totalUnits, completed: completedUnits } = getOrderCompletion(orderId);
@@ -259,7 +263,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                 {/* Order header */}
                 <div className="flex items-center justify-between px-4 py-3">
                   <button
-                    onClick={() => setExpandedOrder(isExpanded ? (orderKeys.length > 1 ? '__none__' : null) : orderNum)}
+                    onClick={() => setExpandedOrder(isExpanded ? '__none__' : orderNum)}
                     className="flex items-center gap-2.5 text-left flex-1 min-w-0"
                   >
                     <Package className="w-4 h-4 text-slate-400 shrink-0" />
@@ -304,10 +308,9 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                   )}
                 </div>
 
-                {isExpanded && expandedOrder !== '__none__' && (
+                {isExpanded && (
                   <div className="border-t border-slate-700/50 divide-y divide-slate-700/30">
                     {group.map((unit, idx) => {
-                      const isCollapsibleTab = tab === 'completed' || tab === 'qc';
                       const isUnitOpen = expandedUnit === unit.id;
 
                       return (
