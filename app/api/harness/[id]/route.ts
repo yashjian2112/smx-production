@@ -63,12 +63,16 @@ export async function PATCH(
       }
     }
 
-    // On rework, clear old QC data so next QC starts fresh + append R to serial
+    // On rework, clear old QC data so next QC starts fresh + append R to serial & barcode
     if (action === 'rework') {
       data.qcData = null;
       data.remarks = remarks || `Rework — sent back from QC failure`;
+      // Barcode = Serial Number — both get "R" suffix
       if (unit.serialNumber && !unit.serialNumber.endsWith('R')) {
         data.serialNumber = `${unit.serialNumber}R`;
+      }
+      if (unit.barcode && !unit.barcode.endsWith('R')) {
+        data.barcode = `${unit.barcode}R`;
       }
     }
 
