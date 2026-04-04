@@ -62,7 +62,7 @@ export async function PATCH(
       qc_pass:        { from: ['QC_PENDING', 'QC_FAILED'], to: 'READY', timeline: 'harness_qc_passed' },
       qc_fail:        { from: ['QC_PENDING', 'QC_FAILED'], to: 'QC_FAILED', timeline: 'harness_qc_failed' },
       rework:         { from: ['QC_FAILED'],  to: 'CRIMPING',   timeline: 'harness_rework' },
-      dispatch:       { from: ['READY'],      to: 'DISPATCHED', timeline: 'harness_dispatched' },
+      dispatch:       { from: ['READY', 'QC_PASSED'], to: 'DISPATCHED', timeline: 'harness_dispatched' },
     };
 
     const transition = transitions[action];

@@ -181,6 +181,11 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
     setVerifyingJC(jobCardId);
     try {
       const unverified = jc.items.filter(i => !i.isVerified);
+      if (unverified.length === 0) {
+        alert('All materials already verified');
+        setVerifyingJC(null);
+        return;
+      }
       for (const item of unverified) {
         const res = await fetch(`/api/inventory/job-cards/${jobCardId}/verify-item`, {
           method: 'PATCH',
@@ -604,8 +609,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                   </a>
                                 )}
 
-                                {/* Phase 4: Dispatch button for READY units (PM/Admin only) */}
-                                {unit.status === 'READY' && canManageDispatch && tab === 'completed' && (
+                                {/* Phase 4: Dispatch button for READY/QC_PASSED units (PM/Admin only) */}
+                                {(unit.status === 'READY' || unit.status === 'QC_PASSED') && canManageDispatch && tab === 'completed' && (
                                   <ActionBtn label="Dispatch" color="sky" loading={acting === unit.id} onClick={() => {
                                     if (confirm(`Mark harness ${unit.barcode || 'unit'} as dispatched?`)) {
                                       doAction(unit.id, 'dispatch');
