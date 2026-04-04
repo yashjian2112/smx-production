@@ -13,7 +13,7 @@ type Connector = {
   active: boolean;
 };
 
-type Product = { id: string; name: string; code: string };
+type Product = { id: string; name: string; code: string; harnessVariants: string[] };
 
 export default function HarnessConnectorAdmin({
   products,
@@ -25,11 +25,50 @@ export default function HarnessConnectorAdmin({
   const [selectedProduct, setSelectedProduct] = useState(products[0]?.id ?? '');
   const [connectors, setConnectors] = useState<Connector[]>(initialConnectors);
   const [saving, setSaving] = useState<string | null>(null);
+  const [productList, setProductList] = useState(products);
 
   // Add form state
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
+
+  // Variant state
+  const [newVariant, setNewVariant] = useState('');
+  const selectedProductData = productList.find(p => p.id === selectedProduct);
+  const variants = selectedProductData?.harnessVariants ?? [];
+
+  async function addVariant() {
+    const v = newVariant.trim();
+    if (!v || variants.includes(v)) return;
+    const updated = [...variants, v];
+    setSaving('variant-add');
+    try {
+      const res = await fetch(`/api/products/${selectedProduct}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ harnessVariants: updated }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setProductList(prev => prev.map(p => p.id === selectedProduct ? { ...p, harnessVariants: updated } : p));
+      setNewVariant('');
+    } catch (e) { console.error(e); alert('Failed to add variant'); }
+    finally { setSaving(null); }
+  }
+
+  async function removeVariant(v: string) {
+    const updated = variants.filter(x => x !== v);
+    setSaving('variant-del');
+    try {
+      const res = await fetch(`/api/products/${selectedProduct}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ harnessVariants: updated }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setProductList(prev => prev.map(p => p.id === selectedProduct ? { ...p, harnessVariants: updated } : p));
+    } catch (e) { console.error(e); alert('Failed to remove variant'); }
+    finally { setSaving(null); }
+  }
 
   const filtered = connectors
     .filter(c => c.productId === selectedProduct && c.active)
@@ -136,6 +175,42 @@ export default function HarnessConnectorAdmin({
           <option key={p.id} value={p.id} style={{ backgroundColor: '#18181b', color: '#e4e4e7' }}>{p.code} — {p.name}</option>
         ))}
       </select>
+
+      {/* Harness Variants */}
+      <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.15)' }}>
+        <p className="text-sm font-medium text-sky-400">Harness Variants</p>
+        <p className="text-xs text-slate-400">These variants appear in the proforma form when this product is selected with harness.</p>
+        <div className="flex flex-wrap gap-2">
+          {variants.map(v => (
+            <span key={v} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-sky-300"
+              style={{ background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.25)' }}>
+              {v}
+              <button onClick={() => removeVariant(v)} className="text-red-400/60 hover:text-red-400 ml-0.5">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+          {variants.length === 0 && (
+            <span className="text-xs text-slate-500 italic">No variants configured</span>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <input
+            className="flex-1 rounded-lg bg-smx-bg border border-slate-600 px-3 py-1.5 text-sm focus:outline-none focus:border-sky-500"
+            placeholder="New variant name (e.g. Ultra Bee)"
+            value={newVariant}
+            onChange={e => setNewVariant(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addVariant()}
+          />
+          <button
+            className="px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-medium hover:bg-sky-500 disabled:opacity-40"
+            onClick={addVariant}
+            disabled={!newVariant.trim() || saving === 'variant-add'}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
 
       {/* Connector list */}
       <div className="space-y-2">

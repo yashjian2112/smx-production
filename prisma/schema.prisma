@@ -110,7 +110,8 @@ model Product {
   description String?
   productType String   @default("MANUFACTURED") @map("product_type") // MANUFACTURED | TRADING
   hsnCode     String?  @map("hsn_code") // e.g. 85371000 (controllers), 85011090 (motors)
-  colors      String[] @default([])    // available colors e.g. ["Black", "Silver", "White"]
+  colors           String[] @default([])    // available colors e.g. ["Black", "Silver", "White"]
+  harnessVariants  String[] @default([]) @map("harness_variants")  // e.g. ["Ultra Bee", "Light Bee", "DIY"]
   active      Boolean  @default(true)
   createdAt   DateTime @default(now()) @map("created_at")
 

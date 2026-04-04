@@ -10,6 +10,7 @@ const updateSchema = z.object({
   productType: z.enum(['MANUFACTURED', 'TRADING']).optional(),
   hsnCode: z.string().optional(),
   colors: z.array(z.string()).optional(),
+  harnessVariants: z.array(z.string()).optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {

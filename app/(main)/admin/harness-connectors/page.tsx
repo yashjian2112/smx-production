@@ -12,7 +12,7 @@ export default async function HarnessConnectorsPage() {
     prisma.product.findMany({
       where: { active: true },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, code: true },
+      select: { id: true, name: true, code: true, harnessVariants: true },
     }),
     prisma.harnessConnector.findMany({
       where: { active: true },

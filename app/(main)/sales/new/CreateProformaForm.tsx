@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 type Client  = { id: string; code: string; customerName: string; globalOrIndian: string | null; gstNumber: string | null; state: string | null };
-type Product = { id: string; code: string; name: string; hsnCode?: string | null; colors?: string[] };
+type Product = { id: string; code: string; name: string; hsnCode?: string | null; colors?: string[]; harnessVariants?: string[] };
 
 type LineItem = {
   key:             number;
@@ -718,11 +718,14 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                 {item.harnessChoice === null && (
                   <p className="text-[10px] text-amber-400 mt-1">Please select harness option</p>
                 )}
-                {item.harnessChoice === 'yes' && (
+                {item.harnessChoice === 'yes' && (() => {
+                  const itemProduct = products.find(p => p.id === item.productId);
+                  const variantList = itemProduct?.harnessVariants?.length ? itemProduct.harnessVariants : ['Ultra Bee', 'Light Bee', 'DIY'];
+                  return (
                   <div className="mt-3 space-y-2">
                     <label className={lCls}>Harness Model <span className="text-red-400">*</span></label>
                     <div className="flex gap-2">
-                      {['Ultra Bee', 'Light Bee', 'DIY'].map((m) => (
+                      {variantList.map((m) => (
                         <button
                           key={m}
                           type="button"
@@ -741,7 +744,8 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                       <p className="text-[10px] text-amber-400">Please select a harness model</p>
                     )}
                   </div>
-                )}
+                  );
+                })()}
               </div>
               )}
 

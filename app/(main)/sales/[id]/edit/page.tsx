@@ -50,6 +50,7 @@ export default async function EditProformaPage({ params }: { params: Promise<{ i
     splitInvoice:    proforma.splitInvoice,
     splitServicePercent: proforma.splitServicePercent,
     shippingRoute:   proforma.shippingRoute,
+    harnessModel:    proforma.harnessModel,
     items:           proforma.items.map((item) => ({
       id:              item.id,
       description:     item.description,
@@ -60,6 +61,7 @@ export default async function EditProformaPage({ params }: { params: Promise<{ i
       discountPercent: item.discountPercent,
       voltageFrom:     item.voltageFrom,
       voltageTo:       item.voltageTo,
+      harnessModel:    item.harnessModel,
       product:         item.product,
     })),
   };
