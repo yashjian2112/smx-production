@@ -432,12 +432,23 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                   </a>
                                 )}
                                 {unit.status === 'CRIMPING' && printedUnits.has(unit.id) && !confirmedUnits.has(unit.id) && (
-                                  <button
-                                    onClick={() => setConfirmedUnits(prev => new Set(prev).add(unit.id))}
-                                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-600/15 text-amber-400 border border-amber-500/30 hover:bg-amber-600/25 transition-colors"
-                                  >
-                                    <Check className="w-3.5 h-3.5" /> Confirm Printed
-                                  </button>
+                                  <>
+                                    <a
+                                      href={`/print/harness/${unit.id}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
+                                      title="Reprint barcode"
+                                    >
+                                      <Printer className="w-4 h-4" />
+                                    </a>
+                                    <button
+                                      onClick={() => setConfirmedUnits(prev => new Set(prev).add(unit.id))}
+                                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-600/15 text-amber-400 border border-amber-500/30 hover:bg-amber-600/25 transition-colors"
+                                    >
+                                      <Check className="w-3.5 h-3.5" /> Confirm Printed
+                                    </button>
+                                  </>
                                 )}
                                 {unit.status === 'CRIMPING' && confirmedUnits.has(unit.id) && (
                                   <ActionBtn label="Crimping Done" color="emerald" loading={acting === unit.id} onClick={() => doAction(unit.id, 'crimping_done')} />
