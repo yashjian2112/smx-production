@@ -2071,6 +2071,8 @@ model HarnessUnit {
   harnessModel   String?           @map("harness_model")  // e.g. "Ultra Bee", "Light Bee"
   qcData         Json?             @map("qc_data")   // per-connector pass/fail results
   remarks        String?
+  reworkCount    Int               @default(0) @map("rework_count")
+  barcodePrinted Boolean           @default(false) @map("barcode_printed")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
 

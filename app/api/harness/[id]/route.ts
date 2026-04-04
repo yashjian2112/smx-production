@@ -18,7 +18,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
     const { action, qcData, remarks } = body as {
-      action: 'accept' | 'start_crimping' | 'crimping_done' | 'qc_pass' | 'qc_fail' | 'rework';
+      action: 'accept' | 'start_crimping' | 'crimping_done' | 'qc_pass' | 'qc_fail' | 'rework' | 'confirm_print';
       qcData?: Record<string, unknown>;
       remarks?: string;
     };
@@ -28,6 +28,30 @@ export async function PATCH(
       include: { product: { select: { code: true } } },
     });
     if (!unit) return NextResponse.json({ error: 'Harness unit not found' }, { status: 404 });
+
+    // Special case: confirm_print — no status change, just sets barcodePrinted = true
+    if (action === 'confirm_print') {
+      if (unit.status !== 'CRIMPING') {
+        return NextResponse.json({ error: 'Can only confirm print during CRIMPING' }, { status: 400 });
+      }
+      const updated = await prisma.harnessUnit.update({
+        where: { id },
+        data: { barcodePrinted: true },
+        include: {
+          order: { select: { id: true, orderNumber: true } },
+          product: { select: { id: true, code: true, name: true } },
+          assignedUser: { select: { id: true, name: true } },
+        },
+      });
+      const barcodeStr = updated.barcode || id.slice(0, 8);
+      await appendTimeline({
+        orderId: unit.orderId,
+        userId: session.id,
+        action: 'harness_crimping_started' as Parameters<typeof appendTimeline>[0]['action'],
+        remarks: `Harness ${barcodeStr} — barcode print confirmed`,
+      });
+      return NextResponse.json(updated);
+    }
 
     // State machine validation
     const transitions: Record<string, { from: string[]; to: string; timeline: string }> = {
@@ -61,12 +85,15 @@ export async function PATCH(
         data.serialNumber = await generateNextHarnessSerial(productCode);
         data.barcode = await generateNextHarnessBarcode(productCode);
       }
+      data.barcodePrinted = false; // must print barcode before crimping
     }
 
     // On rework, clear old QC data so next QC starts fresh + append R to serial & barcode
     if (action === 'rework') {
       data.qcData = null;
       data.remarks = remarks || `Rework — sent back from QC failure`;
+      data.barcodePrinted = false; // must re-print barcode after rework
+      data.reworkCount = (unit.reworkCount ?? 0) + 1;
       // Barcode = Serial Number — both get "R" suffix
       if (unit.serialNumber && !unit.serialNumber.endsWith('R')) {
         data.serialNumber = `${unit.serialNumber}R`;

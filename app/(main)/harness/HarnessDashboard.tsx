@@ -28,7 +28,6 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
   const [acceptingOrder, setAcceptingOrder] = useState<string | null>(null);
   const [printedUnits, setPrintedUnits] = useState<Set<string>>(new Set());
-  const [confirmedUnits, setConfirmedUnits] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
 
@@ -419,8 +418,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                 {unit.status === 'ACCEPTED' && (
                                   <ActionBtn label="Start Crimping" color="amber" loading={acting === unit.id} onClick={() => doAction(unit.id, 'start_crimping')} />
                                 )}
-                                {/* CRIMPING: Step 1 → Print Barcode, Step 2 → Confirm, Step 3 → Crimping Done */}
-                                {unit.status === 'CRIMPING' && unit.barcode && !printedUnits.has(unit.id) && (
+                                {/* CRIMPING: Step 1 → Print Barcode, Step 2 → Confirm (API), Step 3 → Crimping Done */}
+                                {unit.status === 'CRIMPING' && unit.barcode && !unit.barcodePrinted && !printedUnits.has(unit.id) && (
                                   <a
                                     href={`/print/harness/${unit.id}`}
                                     target="_blank"
@@ -431,7 +430,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                     <Printer className="w-3.5 h-3.5" /> Print Barcode
                                   </a>
                                 )}
-                                {unit.status === 'CRIMPING' && printedUnits.has(unit.id) && !confirmedUnits.has(unit.id) && (
+                                {unit.status === 'CRIMPING' && !unit.barcodePrinted && printedUnits.has(unit.id) && (
                                   <>
                                     <a
                                       href={`/print/harness/${unit.id}`}
@@ -442,16 +441,22 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                     >
                                       <Printer className="w-4 h-4" />
                                     </a>
-                                    <button
-                                      onClick={() => setConfirmedUnits(prev => new Set(prev).add(unit.id))}
-                                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-600/15 text-amber-400 border border-amber-500/30 hover:bg-amber-600/25 transition-colors"
-                                    >
-                                      <Check className="w-3.5 h-3.5" /> Confirm Printed
-                                    </button>
+                                    <ActionBtn label="Confirm Printed" color="amber" loading={acting === unit.id} onClick={() => doAction(unit.id, 'confirm_print')} />
                                   </>
                                 )}
-                                {unit.status === 'CRIMPING' && confirmedUnits.has(unit.id) && (
-                                  <ActionBtn label="Crimping Done" color="emerald" loading={acting === unit.id} onClick={() => doAction(unit.id, 'crimping_done')} />
+                                {unit.status === 'CRIMPING' && unit.barcodePrinted && (
+                                  <>
+                                    <a
+                                      href={`/print/harness/${unit.id}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
+                                      title="Reprint barcode"
+                                    >
+                                      <Printer className="w-4 h-4" />
+                                    </a>
+                                    <ActionBtn label="Crimping Done" color="emerald" loading={acting === unit.id} onClick={() => doAction(unit.id, 'crimping_done')} />
+                                  </>
                                 )}
                                 {unit.status === 'QC_PENDING' && (
                                   <ActionBtn label="Start QC" color="purple" loading={acting === unit.id} onClick={() => openQC(unit)} />
