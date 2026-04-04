@@ -63,10 +63,13 @@ export async function PATCH(
       }
     }
 
-    // On rework, clear old QC data so next QC starts fresh
+    // On rework, clear old QC data so next QC starts fresh + append R to serial
     if (action === 'rework') {
       data.qcData = null;
       data.remarks = remarks || `Rework — sent back from QC failure`;
+      if (unit.serialNumber && !unit.serialNumber.endsWith('R')) {
+        data.serialNumber = `${unit.serialNumber}R`;
+      }
     }
 
     // Save QC data if provided
