@@ -1,3 +1,25 @@
 {
-  "defaultMode": "bypassPermissions"
+  "defaultMode": "bypassPermissions",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /Users/mr.yash/Desktop/production/.claude/hooks/policy-engine.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /Users/mr.yash/Desktop/production/.claude/hooks/deploy-guard.sh"
+          }
+        ]
+      }
+    ]
+  }
 }
