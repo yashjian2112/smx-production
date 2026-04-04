@@ -717,7 +717,7 @@ export function CreateProformaForm({ clients, products, role }: { clients: Clien
                 {item.harnessChoice === null && (
                   <p className="text-[10px] text-amber-400 mt-1">Please select harness option</p>
                 )}
-                {item.harnessChoice === 'yes' && item.key === items.find(i => i.harnessChoice === 'yes')?.key && (
+                {item.harnessChoice === 'yes' && (
                   <div className="mt-3 space-y-2">
                     <label className={lCls}>Harness Model <span className="text-red-400">*</span></label>
                     <div className="flex gap-2">
