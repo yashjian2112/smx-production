@@ -301,7 +301,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
     if (!orderGroups[key]) orderGroups[key] = [];
     orderGroups[key].push(u);
   }
-  const orderKeys = Object.keys(orderGroups).sort();
+  const orderKeys = Object.keys(orderGroups).sort().reverse();
 
   // Completion counts per order (from allUnits)
   function getOrderCompletion(orderId: string) {
