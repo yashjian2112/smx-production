@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Package, Wrench, AlertTriangle } from 'lucide-react';
+import { Package, Wrench, AlertTriangle, Clock, Play, Check } from 'lucide-react';
 
 type ReturnItem = {
   id: string;
@@ -188,9 +188,9 @@ export default async function ReworkPage({
   }
 
   const TABS = [
-    { key: 'pending',   label: 'Pending',   count: pendingCount,  accent: '#fbbf24' },
-    { key: 'active',    label: 'In Repair',  count: activeCount,   accent: '#f97316' },
-    { key: 'completed', label: 'Completed',  count: doneCount,     accent: '#71717a' },
+    { key: 'pending',   label: 'Pending',     count: pendingCount,  icon: 'clock' },
+    { key: 'active',    label: 'Processing',  count: activeCount,   icon: 'play' },
+    { key: 'completed', label: 'Completed',   count: doneCount,     icon: 'check' },
   ];
 
   return (
@@ -212,25 +212,34 @@ export default async function ReworkPage({
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
-        {TABS.map(t => (
-          <div key={t.key} className="card p-4 text-center">
-            <div className="text-2xl font-bold" style={{ color: t.accent }}>{t.count}</div>
-            <div className="text-xs text-slate-500 mt-0.5">{t.label}</div>
-          </div>
-        ))}
+        {TABS.map(t => {
+          const accent = t.key === 'pending' ? '#fbbf24' : t.key === 'active' ? '#f97316' : '#71717a';
+          return (
+            <div key={t.key} className="card p-4 text-center">
+              <div className="text-2xl font-bold" style={{ color: accent }}>{t.count}</div>
+              <div className="text-xs text-slate-500 mt-0.5">{t.label}</div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
         {TABS.map(t => (
           <Link key={t.key} href={`/rework?tab=${t.key}`}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium text-center transition-all ${
-              tab === t.key ? 'text-white shadow-lg' : 'text-zinc-400 hover:text-white'
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-medium rounded-lg transition-all ${
+              tab === t.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
             }`}
-            style={tab === t.key ? { background: t.accent === '#fbbf24' ? '#b45309' : t.accent === '#f97316' ? '#c2410c' : '#52525b' } : {}}>
+            style={tab === t.key ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}>
+            {t.icon === 'clock' && <Clock className="w-3.5 h-3.5" />}
+            {t.icon === 'play' && <Play className="w-3.5 h-3.5" />}
+            {t.icon === 'check' && <Check className="w-3.5 h-3.5" />}
             {t.label}
             {t.count > 0 && (
-              <span className="ml-1.5 text-[10px] font-semibold opacity-80">({t.count})</span>
+              <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ background: 'rgba(14,165,233,0.2)' }}>
+                {t.count}
+              </span>
             )}
           </Link>
         ))}
@@ -242,7 +251,7 @@ export default async function ReworkPage({
           <div className="flex justify-center mb-3"><Package className="w-4 h-4 text-zinc-600" /></div>
           <p className="text-slate-400 text-sm">
             {tab === 'pending'   ? 'No pending requests.' :
-             tab === 'active'    ? 'Nothing currently in repair.' :
+             tab === 'active'    ? 'Nothing currently processing.' :
              'No completed items yet.'}
           </p>
         </div>

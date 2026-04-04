@@ -74,6 +74,14 @@ export async function PATCH(
     });
 
     if (status === 'COMPLETED' || status === 'SENT_TO_QC') {
+      // Append "R" to serial number to mark unit as reworked (skip if already ends with R)
+      if (unit.serialNumber && !unit.serialNumber.endsWith('R')) {
+        await prisma.controllerUnit.update({
+          where: { id },
+          data: { serialNumber: `${unit.serialNumber}R` },
+        });
+      }
+
       await appendTimeline({
         unitId: id,
         userId: session.id,
