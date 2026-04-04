@@ -13,9 +13,9 @@ export async function GET(req: NextRequest) {
     const variantName = req.nextUrl.searchParams.get('variantName');
     const where: Record<string, unknown> = { productId, active: true };
 
-    // When variantName is provided, return connectors for that variant + general connectors (no variant)
+    // When variantName is provided, return only that variant's connectors
     if (variantName) {
-      where.OR = [{ variantName }, { variantName: null }];
+      where.variantName = variantName;
     }
 
     const connectors = await prisma.harnessConnector.findMany({

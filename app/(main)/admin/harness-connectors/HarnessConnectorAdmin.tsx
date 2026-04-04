@@ -35,7 +35,7 @@ export default function HarnessConnectorAdmin({
 
   // Variant state
   const [newVariant, setNewVariant] = useState('');
-  const [selectedVariant, setSelectedVariant] = useState<string>('__all__');
+  const [selectedVariant, setSelectedVariant] = useState<string>('');
   const selectedProductData = productList.find(p => p.id === selectedProduct);
   const variants = selectedProductData?.harnessVariants ?? [];
 
@@ -72,9 +72,12 @@ export default function HarnessConnectorAdmin({
     finally { setSaving(null); }
   }
 
+  // Auto-select first variant if none selected
+  const activeVariant = selectedVariant || variants[0] || '';
+
   const filtered = connectors
     .filter(c => c.productId === selectedProduct && c.active &&
-      (selectedVariant === '__all__' ? !c.variantName : c.variantName === selectedVariant))
+      (variants.length === 0 ? true : c.variantName === activeVariant))
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
   // ── Add new connector ──
@@ -89,7 +92,7 @@ export default function HarnessConnectorAdmin({
           productId: selectedProduct,
           name: newName.trim(),
           description: newDesc.trim() || undefined,
-          variantName: selectedVariant === '__all__' ? undefined : selectedVariant,
+          variantName: activeVariant || undefined,
           sortOrder: filtered.length,
         }),
       });
@@ -171,7 +174,7 @@ export default function HarnessConnectorAdmin({
       {/* Product selector */}
       <select
         value={selectedProduct}
-        onChange={e => { setSelectedProduct(e.target.value); setSelectedVariant('__all__'); }}
+        onChange={e => { setSelectedProduct(e.target.value); setSelectedVariant(''); }}
         className="max-w-xs w-full rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none"
         style={{ backgroundColor: '#18181b', color: '#e4e4e7', border: '1px solid rgba(255,255,255,0.08)' }}
       >
@@ -221,32 +224,21 @@ export default function HarnessConnectorAdmin({
         <div className="space-y-2">
           <p className="text-sm font-medium text-slate-300">Connectors by Variant</p>
           <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <button
-              onClick={() => setSelectedVariant('__all__')}
-              className={`flex-1 py-2 px-3 text-xs font-medium rounded-lg transition-all ${
-                selectedVariant === '__all__' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-              style={selectedVariant === '__all__' ? { background: 'rgba(113,113,122,0.15)', border: '1px solid rgba(113,113,122,0.25)' } : {}}
-            >
-              General
-            </button>
             {variants.map(v => (
               <button
                 key={v}
                 onClick={() => setSelectedVariant(v)}
                 className={`flex-1 py-2 px-3 text-xs font-medium rounded-lg transition-all ${
-                  selectedVariant === v ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                  activeVariant === v ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
-                style={selectedVariant === v ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}
+                style={activeVariant === v ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}
               >
                 {v}
               </button>
             ))}
           </div>
           <p className="text-[10px] text-slate-500">
-            {selectedVariant === '__all__'
-              ? 'General connectors apply to all variants'
-              : `Connectors specific to "${selectedVariant}" variant`}
+            {`Connectors for "${activeVariant}" variant`}
           </p>
         </div>
       )}
@@ -301,7 +293,7 @@ export default function HarnessConnectorAdmin({
       {showAddForm ? (
         <div className="p-4 rounded-lg bg-smx-surface border border-sky-600/40 space-y-3">
           <p className="text-sm font-medium text-sky-400">
-            New Connector{selectedVariant !== '__all__' ? ` — ${selectedVariant}` : ' — General (all variants)'}
+            New Connector{activeVariant ? ` — ${activeVariant}` : ''}
           </p>
           <input
             className={inputCls}
