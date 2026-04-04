@@ -367,19 +367,6 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                             {/* Actions — always visible for action tabs, only when expanded for collapsible tabs */}
                             {(!isCollapsibleTab || isUnitOpen) && (
                               <div className="flex gap-2 items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                {/* Print barcode: during CRIMPING (non-rework = optional icon) */}
-                                {unit.barcode && unit.status === 'CRIMPING' && !(unit.remarks && unit.remarks.toLowerCase().includes('rework')) && (
-                                  <a
-                                    href={`/print/harness/${unit.id}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
-                                    title="Reprint barcode label"
-                                  >
-                                    <Printer className="w-4 h-4" />
-                                  </a>
-                                )}
-
                                 {/* QC Report: only in completed tab */}
                                 {(unit.status === 'QC_PASSED' || unit.status === 'READY') && unit.qcData && (
                                   <a
@@ -397,20 +384,19 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                 {unit.status === 'ACCEPTED' && (
                                   <ActionBtn label="Start Crimping" color="amber" loading={acting === unit.id} onClick={() => doAction(unit.id, 'start_crimping')} />
                                 )}
-                                {/* CRIMPING: rework units must print barcode first */}
-                                {unit.status === 'CRIMPING' && unit.remarks && unit.remarks.toLowerCase().includes('rework') && !printedRework.has(unit.id) && (
+                                {/* CRIMPING: must print barcode first, then Crimping Done */}
+                                {unit.status === 'CRIMPING' && unit.barcode && !printedRework.has(unit.id) && (
                                   <a
                                     href={`/print/harness/${unit.id}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={() => setPrintedRework(prev => new Set(prev).add(unit.id))}
-                                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-red-600/15 text-red-400 border border-red-500/30 hover:bg-red-600/25 transition-colors animate-pulse"
-                                    title="Print new barcode before crimping"
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-sky-600/15 text-sky-400 border border-sky-500/30 hover:bg-sky-600/25 transition-colors"
                                   >
-                                    <Printer className="w-3.5 h-3.5" /> Print New Barcode
+                                    <Printer className="w-3.5 h-3.5" /> Print Barcode
                                   </a>
                                 )}
-                                {unit.status === 'CRIMPING' && (!unit.remarks || !unit.remarks.toLowerCase().includes('rework') || printedRework.has(unit.id)) && (
+                                {unit.status === 'CRIMPING' && printedRework.has(unit.id) && (
                                   <ActionBtn label="Crimping Done" color="emerald" loading={acting === unit.id} onClick={() => doAction(unit.id, 'crimping_done')} />
                                 )}
                                 {unit.status === 'QC_PENDING' && (
