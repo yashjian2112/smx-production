@@ -290,6 +290,17 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                       onClick={() => acceptOrder(orderId)}
                     />
                   )}
+                  {tab === 'completed' && group.some(u => u.qcData) && (
+                    <a
+                      href={`/print/harness-qc-batch?ids=${group.filter(u => u.qcData).map(u => u.id).join(',')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-emerald-600/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/25 transition-colors shrink-0"
+                      title="Print all QC reports for this order"
+                    >
+                      <Printer className="w-3.5 h-3.5" /> Print All QC
+                    </a>
+                  )}
                 </div>
 
                 {isExpanded && expandedOrder !== '__none__' && (
@@ -324,24 +335,28 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                           <div className="flex gap-2 items-center shrink-0">
                             {/* Print barcode: only during CRIMPING (when barcode is first generated) */}
                             {unit.barcode && unit.status === 'CRIMPING' && (
-                              <button
-                                onClick={() => window.open(`/print/harness/${unit.id}`, '_blank')}
+                              <a
+                                href={`/print/harness/${unit.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
                                 title="Reprint barcode label"
                               >
                                 <Printer className="w-4 h-4" />
-                              </button>
+                              </a>
                             )}
 
                             {/* QC Report: only in completed tab */}
                             {(unit.status === 'QC_PASSED' || unit.status === 'READY') && unit.qcData && (
-                              <button
-                                onClick={() => window.open(`/print/harness-qc/${unit.id}`, '_blank')}
+                              <a
+                                href={`/print/harness-qc/${unit.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-emerald-600/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/25 transition-colors"
                                 title="View QC Report"
                               >
                                 <FileText className="w-3.5 h-3.5" /> QC Report
-                              </button>
+                              </a>
                             )}
 
                             {/* Stage actions */}

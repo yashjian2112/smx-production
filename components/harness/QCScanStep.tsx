@@ -1,16 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { ScanLine } from 'lucide-react';
-import { ScanInput } from '@/components/ScanInput';
+import { BarcodeScanner } from '@/components/BarcodeScanner';
 import type { HarnessUnit } from './types';
 
 /**
- * QC Scan Verification Step
+ * QC Scan Verification Step — SCANNER ONLY
  *
- * CRITICAL: This component intentionally HIDES the barcode and serial number.
- * Showing them would let operators copy/paste instead of physically scanning,
- * which defeats the purpose of QC barcode verification.
+ * CRITICAL: No manual text entry allowed. Users must physically scan the barcode.
+ * USB/Bluetooth scanners work via a hidden auto-focused input that captures fast keystrokes.
+ * Phone users can tap the camera button to scan.
  */
 export function QCScanStep({
   onVerified,
@@ -21,14 +21,42 @@ export function QCScanStep({
   onCancel: () => void;
   title?: string;
 }) {
-  const [scanVal, setScanVal] = useState('');
-  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [buffer, setBuffer] = useState('');
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function handleScan(val: string) {
-    const v = val.trim().toUpperCase();
-    if (!v) return;
-    setError('');
-    onVerified(v);
+  // Keep hidden input focused so USB scanner input is captured
+  useEffect(() => {
+    inputRef.current?.focus();
+    const interval = setInterval(() => {
+      if (!cameraOpen) inputRef.current?.focus();
+    }, 500);
+    return () => clearInterval(interval);
+  }, [cameraOpen]);
+
+  // USB scanner types fast + Enter. Detect Enter to submit.
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = buffer.trim();
+      if (val) {
+        onVerified(val.toUpperCase());
+        setBuffer('');
+      }
+    }
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setBuffer(e.target.value);
+    // Auto-clear if no Enter within 2s (stale partial scan)
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setBuffer(''), 2000);
+  }
+
+  function handleCameraScan(code: string) {
+    setCameraOpen(false);
+    onVerified(code.trim().toUpperCase());
   }
 
   return (
@@ -38,18 +66,45 @@ export function QCScanStep({
         <p className="text-sm font-medium text-purple-300">{title || 'Scan Harness Barcode'}</p>
       </div>
       <p className="text-xs text-slate-400">
-        Scan the barcode label on the physical harness unit to verify identity before QC testing.
+        Use a barcode scanner or tap the camera button to scan the harness label.
       </p>
-      <ScanInput
-        value={scanVal}
-        onChange={setScanVal}
-        onScan={handleScan}
-        placeholder="Scan barcode..."
-        autoFocus
-        scannerTitle="Scan Harness"
-        scannerHint="Point at the harness barcode label"
+
+      {/* Hidden input for USB/Bluetooth scanner — captures fast keystrokes */}
+      <input
+        ref={inputRef}
+        type="text"
+        value={buffer}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="characters"
+        spellCheck={false}
+        style={{ position: 'absolute', left: '-9999px', opacity: 0, width: '1px', height: '1px' }}
+        aria-hidden="true"
+        tabIndex={-1}
       />
-      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      {/* Visual scan area */}
+      <div className="flex items-center justify-center gap-4 py-4 rounded-lg border border-dashed border-slate-600">
+        <div className="flex flex-col items-center gap-2">
+          <ScanLine className="w-8 h-8 text-purple-400/60 animate-pulse" />
+          <span className="text-xs text-slate-500">Waiting for scanner...</span>
+        </div>
+        <div className="h-8 w-px bg-slate-700" />
+        <button
+          type="button"
+          onClick={() => setCameraOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-purple-600/15 text-purple-300 border border-purple-500/30 text-xs font-medium hover:bg-purple-600/25 transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          Camera Scan
+        </button>
+      </div>
+
       <div className="flex justify-end">
         <button
           onClick={onCancel}
@@ -58,6 +113,15 @@ export function QCScanStep({
           Cancel
         </button>
       </div>
+
+      {cameraOpen && (
+        <BarcodeScanner
+          title="Scan Harness"
+          hint="Point at the harness barcode label"
+          onScan={handleCameraScan}
+          onClose={() => setCameraOpen(false)}
+        />
+      )}
     </div>
   );
 }

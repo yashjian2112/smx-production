@@ -1,32 +1,22 @@
 'use client';
 
-import { useEffect } from 'react';
-
 export default function PrintHarnessQC({
   barcode,
-  serialNumber,
   productCode,
   orderNumber,
   assignedTo,
   status,
   qcData,
-  remarks,
   updatedAt,
 }: {
   barcode: string;
-  serialNumber: string;
   productCode: string;
   orderNumber: string;
   assignedTo: string;
   status: string;
   qcData: Record<string, { status: string; remarks?: string; name?: string }>;
-  remarks: string | null;
   updatedAt: string;
 }) {
-  useEffect(() => {
-    const timer = setTimeout(() => window.print(), 800);
-    return () => clearTimeout(timer);
-  }, []);
 
   const entries = Object.entries(qcData);
   const allPassed = entries.every(([, v]) => v.status === 'PASS');
@@ -79,12 +69,8 @@ export default function PrintHarnessQC({
         {/* Info Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '12px', marginBottom: '20px' }}>
           <div>
-            <div style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Barcode</div>
+            <div style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Serial / Barcode</div>
             <div style={{ fontWeight: 600, fontFamily: 'monospace', fontSize: '13px' }}>{barcode}</div>
-          </div>
-          <div>
-            <div style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Serial Number</div>
-            <div style={{ fontWeight: 600, fontFamily: 'monospace', fontSize: '13px' }}>{serialNumber}</div>
           </div>
           <div>
             <div style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Product</div>
@@ -121,7 +107,6 @@ export default function PrintHarnessQC({
               <th style={{ width: '40px' }}>#</th>
               <th>Connector</th>
               <th style={{ width: '80px' }}>Result</th>
-              <th>Remarks</th>
             </tr>
           </thead>
           <tbody>
@@ -130,21 +115,10 @@ export default function PrintHarnessQC({
                 <td>{i + 1}</td>
                 <td>{result.name || connId.slice(0, 8)}</td>
                 <td className={result.status === 'PASS' ? 'pass' : 'fail'}>{result.status}</td>
-                <td style={{ color: '#6b7280', fontStyle: result.remarks ? 'italic' : 'normal' }}>
-                  {result.remarks || '—'}
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
-
-        {/* Notes */}
-        {remarks && (
-          <div style={{ marginTop: '16px', padding: '10px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '12px' }}>
-            <div style={{ fontWeight: 600, fontSize: '10px', textTransform: 'uppercase', color: '#92400e', marginBottom: '4px' }}>Remarks</div>
-            <div style={{ color: '#78350f' }}>{remarks}</div>
-          </div>
-        )}
 
         {/* Footer */}
         <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#9ca3af' }}>

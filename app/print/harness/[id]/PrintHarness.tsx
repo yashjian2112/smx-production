@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect } from 'react';
 import { Barcode128 } from '@/components/Barcode128';
 
 export default function PrintHarness({
@@ -18,10 +17,6 @@ export default function PrintHarness({
   orderNumber: string;
   harnessModel?: string | null;
 }) {
-  useEffect(() => {
-    const timer = setTimeout(() => window.print(), 800);
-    return () => clearTimeout(timer);
-  }, []);
 
   return (
     <div style={{ background: '#fff', color: '#000', minHeight: '100vh', padding: '16px' }}>

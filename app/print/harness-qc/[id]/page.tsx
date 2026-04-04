@@ -20,14 +20,12 @@ export default async function PrintHarnessQCPage({ params }: { params: Promise<{
 
   return (
     <PrintHarnessQC
-      barcode={unit.barcode || 'N/A'}
-      serialNumber={unit.serialNumber || 'N/A'}
+      barcode={unit.barcode || unit.serialNumber || 'N/A'}
       productCode={unit.product.code}
       orderNumber={unit.order.orderNumber}
       assignedTo={unit.assignedUser?.name || 'Unassigned'}
       status={unit.status}
       qcData={qcData}
-      remarks={unit.remarks}
       updatedAt={unit.updatedAt.toISOString()}
     />
   );
