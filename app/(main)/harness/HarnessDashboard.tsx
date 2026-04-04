@@ -27,6 +27,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
   const [acceptingOrder, setAcceptingOrder] = useState<string | null>(null);
+  const [printedRework, setPrintedRework] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
 
   // Fetch units for the current tab + all units for completion counts
@@ -323,7 +324,11 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 {unit.barcode ? (
-                                  <span className="font-mono text-sm font-semibold text-sky-300">{unit.barcode}</span>
+                                  <span className={`font-mono text-sm font-semibold ${
+                                    unit.remarks && unit.remarks.toLowerCase().includes('rework')
+                                      ? 'text-red-400'
+                                      : 'text-sky-300'
+                                  }`}>{unit.barcode}</span>
                                 ) : (
                                   <span className="text-sm text-slate-500">Harness {idx + 1}</span>
                                 )}
@@ -362,8 +367,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                             {/* Actions — always visible for action tabs, only when expanded for collapsible tabs */}
                             {(!isCollapsibleTab || isUnitOpen) && (
                               <div className="flex gap-2 items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                {/* Print barcode: only during CRIMPING */}
-                                {unit.barcode && unit.status === 'CRIMPING' && (
+                                {/* Print barcode: during CRIMPING (non-rework = optional icon) */}
+                                {unit.barcode && unit.status === 'CRIMPING' && !(unit.remarks && unit.remarks.toLowerCase().includes('rework')) && (
                                   <a
                                     href={`/print/harness/${unit.id}`}
                                     target="_blank"
@@ -392,7 +397,20 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                                 {unit.status === 'ACCEPTED' && (
                                   <ActionBtn label="Start Crimping" color="amber" loading={acting === unit.id} onClick={() => doAction(unit.id, 'start_crimping')} />
                                 )}
-                                {unit.status === 'CRIMPING' && (
+                                {/* CRIMPING: rework units must print barcode first */}
+                                {unit.status === 'CRIMPING' && unit.remarks && unit.remarks.toLowerCase().includes('rework') && !printedRework.has(unit.id) && (
+                                  <a
+                                    href={`/print/harness/${unit.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => setPrintedRework(prev => new Set(prev).add(unit.id))}
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-red-600/15 text-red-400 border border-red-500/30 hover:bg-red-600/25 transition-colors animate-pulse"
+                                    title="Print new barcode before crimping"
+                                  >
+                                    <Printer className="w-3.5 h-3.5" /> Print New Barcode
+                                  </a>
+                                )}
+                                {unit.status === 'CRIMPING' && (!unit.remarks || !unit.remarks.toLowerCase().includes('rework') || printedRework.has(unit.id)) && (
                                   <ActionBtn label="Crimping Done" color="emerald" loading={acting === unit.id} onClick={() => doAction(unit.id, 'crimping_done')} />
                                 )}
                                 {unit.status === 'QC_PENDING' && (
