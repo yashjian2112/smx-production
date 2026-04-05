@@ -77,7 +77,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   if (session.role === 'QC_USER') redirect('/qc');
 
   const { id } = await params;
-  const isEmployee = session.role === 'PRODUCTION_EMPLOYEE';
+  const isEmployee = ['PRODUCTION_EMPLOYEE', 'ADMIN', 'PRODUCTION_MANAGER'].includes(session.role);
 
   const [order, jobCards] = await Promise.all([
   prisma.order.findUnique({
