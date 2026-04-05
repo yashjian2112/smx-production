@@ -184,8 +184,6 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
   const [verifyChecking, setVerifyChecking] = useState(false);
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
   const verifyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const verifyInputRef = useRef<HTMLInputElement | null>(null);
-  const verifyFrontInputRef = useRef<HTMLInputElement | null>(null);
   const verifyCameraRef = useRef<HTMLVideoElement | null>(null);
   const verifyStreamRef = useRef<MediaStream | null>(null);
   const [verifyCameraOpen, setVerifyCameraOpen] = useState(false);
