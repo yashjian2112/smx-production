@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Check, ClipboardList, ScanLine, ArrowLeft, Camera } from 'lucide-react';
+import { X, Check, ClipboardList, ScanLine, ArrowLeft, Camera, AlertTriangle, Undo2 } from 'lucide-react';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 
 interface RawMaterial {
@@ -59,6 +59,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]         = useState('');
   const [showCamera, setShowCamera] = useState(false);
+  const [loadingScans, setLoadingScans] = useState(true);
 
   // Instant duplicate tracking — ref updates synchronously, unlike state
   const scannedCodesRef = useRef<Set<string>>(new Set());
@@ -67,15 +68,39 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
   // Lock to prevent concurrent scan processing
   const processingRef = useRef(false);
 
-  useEffect(() => { scanRef.current?.focus(); }, []);
+  // Load saved scans from server on mount
+  useEffect(() => {
+    async function loadSaved() {
+      try {
+        const res = await fetch(`/api/inventory/job-cards/${card.id}/scans`);
+        if (res.ok) {
+          const saved: ScannedSerial[] = await res.json();
+          if (saved.length > 0) {
+            setScannedSerials(saved);
+            // Sync refs
+            for (const s of saved) {
+              scannedCodesRef.current.add(s.barcode);
+              qtyByItemRef.current[s.jobCardItemId] = (qtyByItemRef.current[s.jobCardItemId] ?? 0) + s.packQty;
+            }
+            setLastScan({ text: `Resumed ${saved.length} scan(s) from previous session`, ok: true });
+            setTimeout(() => setLastScan(null), 3000);
+          }
+        }
+      } catch { /* ignore */ }
+      setLoadingScans(false);
+      scanRef.current?.focus();
+    }
+    loadSaved();
+  }, [card.id]);
 
   // Sum of pack quantities per job card item (not count of serials)
   const qtyByItem = (itemId: string) => scannedSerials.filter(s => s.jobCardItemId === itemId).reduce((sum, s) => sum + s.packQty, 0);
-  const serialIdsForItem = (itemId: string) => scannedSerials.filter(s => s.jobCardItemId === itemId).map(s => s.serialId);
 
   const totalQtyNeeded  = card.items.reduce((s, i) => s + i.quantityReq, 0);
   const totalQtyScanned = scannedSerials.reduce((s, ser) => s + ser.packQty, 0);
   const allScanned      = card.items.every(i => qtyByItem(i.id) >= i.quantityReq);
+  const completedItems  = card.items.filter(i => qtyByItem(i.id) >= i.quantityReq).length;
+  const remainingItems  = card.items.length - completedItems;
 
   // Shared scan processing — used by both camera and barcode gun
   async function processScan(val: string) {
@@ -85,7 +110,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
     // Lock: reject if another scan is still processing
     if (processingRef.current) return;
 
-    // Instant duplicate check via ref (not state — avoids stale closure in continuous mode)
+    // Instant duplicate check via ref
     if (scannedCodesRef.current.has(code)) {
       setLastScan({ text: `"${code}" already scanned`, ok: false });
       setTimeout(() => setLastScan(null), 3000);
@@ -101,48 +126,39 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
       const res = await fetch('/api/inventory/job-cards/scan-serial', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode: code, jobCardId: card.id, alreadyScannedIds: scannedSerials.map(s => s.serialId) }),
+        body: JSON.stringify({ barcode: code, jobCardId: card.id }),
       });
       const data = await res.json();
 
       if (!res.ok) {
-        // Remove from ref so user can retry
         scannedCodesRef.current.delete(code);
         setLastScan({ text: data.error || 'Scan failed', ok: false });
       } else {
-        const currentQty = qtyByItemRef.current[data.jobCardItemId] ?? 0;
-        if (currentQty >= data.quantityReq) {
-          scannedCodesRef.current.delete(code);
-          setLastScan({ text: `${data.materialName} — all ${fmt(data.quantityReq)} already covered`, ok: false });
-        } else {
-          const packQty = data.packQty ?? 1;
-          const newQty = currentQty + packQty;
-          // Update ref immediately for next scan
-          qtyByItemRef.current[data.jobCardItemId] = newQty;
+        const packQty = data.packQty ?? 1;
+        const newQty = (qtyByItemRef.current[data.jobCardItemId] ?? 0) + packQty;
+        qtyByItemRef.current[data.jobCardItemId] = newQty;
 
-          setScannedSerials(prev => {
-            const next = [...prev, {
-              serialId: data.serialId,
-              barcode: data.barcode,
-              packQty,
-              jobCardItemId: data.jobCardItemId,
-              materialName: data.materialName,
-            }];
-            // Auto-close camera if all items are now fulfilled
-            const allDone = card.items.every(item => {
-              const qty = next.filter(s => s.jobCardItemId === item.id).reduce((sum, s) => sum + s.packQty, 0);
-              return qty >= item.quantityReq;
-            });
-            if (allDone) {
-              setShowCamera(false);
-              setLastScan({ text: 'All materials scanned!', ok: true });
-            }
-            return next;
+        setScannedSerials(prev => {
+          const next = [...prev, {
+            serialId: data.serialId,
+            barcode: data.barcode,
+            packQty,
+            jobCardItemId: data.jobCardItemId,
+            materialName: data.materialName,
+          }];
+          // Auto-close camera if all items are now fulfilled
+          const allDone = card.items.every(item => {
+            const qty = next.filter(s => s.jobCardItemId === item.id).reduce((sum, s) => sum + s.packQty, 0);
+            return qty >= item.quantityReq;
           });
-          if (!showCamera) {
+          if (allDone) {
+            setShowCamera(false);
+            setLastScan({ text: 'All materials scanned!', ok: true });
+          } else {
             setLastScan({ text: `${data.materialName} +${packQty} (${fmt(newQty)}/${fmt(data.quantityReq)})`, ok: true });
           }
-        }
+          return next;
+        });
       }
     } catch {
       scannedCodesRef.current.delete(code);
@@ -162,31 +178,43 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
     processScan(val);
   }
 
-  function undoLastScanForItem(itemId: string) {
-    setScannedSerials(prev => {
-      const idx = prev.findLastIndex(s => s.jobCardItemId === itemId);
-      if (idx === -1) return prev;
-      const removed = prev[idx];
-      // Sync refs
-      scannedCodesRef.current.delete(removed.barcode);
-      qtyByItemRef.current[itemId] = Math.max(0, (qtyByItemRef.current[itemId] ?? 0) - removed.packQty);
-      return [...prev.slice(0, idx), ...prev.slice(idx + 1)];
-    });
+  // Undo: optimistic local update + server DELETE
+  async function undoLastScanForItem(itemId: string) {
+    const idx = scannedSerials.findLastIndex(s => s.jobCardItemId === itemId);
+    if (idx === -1) return;
+    const removed = scannedSerials[idx];
+
+    // Optimistic: update state and refs immediately
+    scannedCodesRef.current.delete(removed.barcode);
+    qtyByItemRef.current[itemId] = Math.max(0, (qtyByItemRef.current[itemId] ?? 0) - removed.packQty);
+    setScannedSerials(prev => [...prev.slice(0, idx), ...prev.slice(idx + 1)]);
+
+    // Server: clear jobCardItemId
+    try {
+      await fetch(`/api/inventory/job-cards/${card.id}/scans`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serialId: removed.serialId }),
+      });
+    } catch {
+      // Revert on failure
+      scannedCodesRef.current.add(removed.barcode);
+      qtyByItemRef.current[itemId] = (qtyByItemRef.current[itemId] ?? 0) + removed.packQty;
+      setScannedSerials(prev => [...prev.slice(0, idx), removed, ...prev.slice(idx)]);
+      setLastScan({ text: 'Failed to undo — try again', ok: false });
+      setTimeout(() => setLastScan(null), 3000);
+    }
   }
 
+  // Dispatch — server reads scans from DB, no body needed
   async function handleDispatch() {
     setSubmitting(true);
     setError('');
-    const items = card.items.map(item => ({
-      jobCardItemId: item.id,
-      issuedQty: qtyByItem(item.id),
-      serialIds: serialIdsForItem(item.id),
-    }));
 
     const res = await fetch(`/api/inventory/job-cards/${card.id}/dispatch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({}),
     });
     setSubmitting(false);
 
@@ -200,6 +228,8 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
     }
   }
 
+  const overallPct = totalQtyNeeded > 0 ? Math.min(100, (totalQtyScanned / totalQtyNeeded) * 100) : 0;
+
   return (
     <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: 'rgb(9,9,11)' }}>
       {/* Header */}
@@ -212,12 +242,12 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
           <p className="text-zinc-500 text-xs">{card.order.orderNumber} · {card.orderQuantity} units · {STAGE_LABEL[card.stage] ?? card.stage}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-2xl font-bold" style={{ color: allScanned ? '#4ade80' : '#fbbf24' }}>{totalQtyScanned}/{fmt(totalQtyNeeded)}</p>
-          <p className="text-zinc-600 text-[10px]">serials scanned</p>
+          <p className="text-2xl font-bold" style={{ color: allScanned ? '#4ade80' : '#fbbf24' }}>{completedItems}/{card.items.length}</p>
+          <p className="text-zinc-600 text-[10px]">materials done</p>
         </div>
       </div>
 
-      {/* Hidden input for barcode gun — no manual typing (inputMode none) */}
+      {/* Hidden input for barcode gun */}
       <input
         ref={scanRef}
         type="text"
@@ -231,18 +261,23 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
         style={{ position: 'fixed', left: '-9999px', opacity: 0 }}
       />
 
-      {/* Scan area — tap opens camera, barcode gun works in background */}
-      <div className="px-4 py-4 border-b border-zinc-800/50" style={{ background: 'rgba(14,165,233,0.03)' }}>
+      {/* Scan area with progress */}
+      <div className="px-4 py-3 border-b border-zinc-800/50" style={{ background: 'rgba(14,165,233,0.03)' }}>
         <button
           onClick={() => setShowCamera(true)}
-          disabled={scanning}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-2xl transition-all active:scale-[0.98]"
-          style={{ background: 'rgba(14,165,233,0.08)', border: '2px solid rgba(14,165,233,0.25)' }}
+          disabled={scanning || allScanned}
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-40"
+          style={{ background: allScanned ? 'rgba(34,197,94,0.08)' : 'rgba(14,165,233,0.08)', border: `2px solid ${allScanned ? 'rgba(34,197,94,0.25)' : 'rgba(14,165,233,0.25)'}` }}
         >
           {scanning ? (
             <>
               <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin shrink-0" />
               <span className="text-sky-400 font-medium text-sm">Processing...</span>
+            </>
+          ) : allScanned ? (
+            <>
+              <Check className="w-5 h-5 text-emerald-400" />
+              <span className="text-emerald-400 font-medium text-sm">All materials scanned</span>
             </>
           ) : (
             <>
@@ -252,6 +287,13 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
             </>
           )}
         </button>
+        {/* Overall progress bar */}
+        <div className="mt-2 flex items-center gap-2">
+          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${overallPct}%`, background: allScanned ? '#4ade80' : '#38bdf8' }} />
+          </div>
+          <span className="text-zinc-500 text-[10px] shrink-0">{completedItems} of {card.items.length}</span>
+        </div>
         {lastScan && (
           <div className={`mt-2 px-4 py-2 rounded-xl text-sm font-medium ${lastScan.ok ? 'text-emerald-400 bg-emerald-900/20' : 'text-red-400 bg-red-900/20'}`}>
             {lastScan.ok ? <Check className="w-4 h-4 inline mr-1.5" /> : <X className="w-4 h-4 inline mr-1.5" />}
@@ -264,7 +306,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
       {showCamera && (
         <BarcodeScanner
           title="Scan Material Barcode"
-          hint={`${card.cardNumber} — ${card.items.length} material(s)`}
+          hint={`${card.cardNumber} — ${remainingItems} material(s) remaining`}
           continuous
           exclude={scannedCodesRef}
           onScan={(code) => processScan(code)}
@@ -274,14 +316,22 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
 
       {/* Items list */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
-        {card.items.map(item => {
+        {loadingScans ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <div className="w-6 h-6 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-zinc-500 text-sm">Loading saved scans...</p>
+          </div>
+        ) : card.items.map(item => {
           const qty   = qtyByItem(item.id);
           const need  = item.quantityReq;
           const done  = qty >= need;
           const stock = item.rawMaterial.currentStock;
-          const ok    = stock >= need;
+          const remaining = Math.max(0, need - qty);
           const pct   = need > 0 ? Math.min(100, (qty / need) * 100) : 0;
           const itemSerials = scannedSerials.filter(s => s.jobCardItemId === item.id);
+          // Stock status: green = enough for remaining, amber = some but not enough, red = none
+          const stockOk = stock >= remaining;
+          const stockLow = !stockOk && stock > 0;
 
           return (
             <div key={item.id}
@@ -293,7 +343,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
               <div className="flex items-center gap-3">
                 {/* Status circle */}
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${done ? 'bg-emerald-500' : qty > 0 ? 'bg-sky-600' : 'bg-zinc-800'}`}>
-                  {done ? <Check className="w-4 h-4 text-white" /> : qty > 0 ? <span className="text-white text-[10px] font-bold">{qty}</span> : <span className="w-2 h-2 rounded-full" style={{ background: ok ? '#4ade80' : stock > 0 ? '#fbbf24' : '#f87171' }} />}
+                  {done ? <Check className="w-4 h-4 text-white" /> : qty > 0 ? <span className="text-white text-[10px] font-bold">{qty}</span> : <span className="w-2 h-2 rounded-full" style={{ background: stockOk ? '#4ade80' : stockLow ? '#fbbf24' : '#f87171' }} />}
                 </div>
 
                 <div className="flex-1 min-w-0">
@@ -308,9 +358,12 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-zinc-600 font-mono text-[10px]">{item.rawMaterial.code}</span>
-                    <span className={`text-[10px] ${ok ? 'text-emerald-400' : stock > 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                    <span className={`text-[10px] ${stockOk ? 'text-emerald-400' : stockLow ? 'text-amber-400' : 'text-red-400'}`}>
                       Stock: {stock <= 0 ? 'None' : fmt(stock)}
                     </span>
+                    {!done && remaining > 0 && (
+                      <span className="text-zinc-500 text-[10px]">Need {fmt(remaining)} more</span>
+                    )}
                   </div>
                   {/* Progress bar */}
                   {need > 1 && (
@@ -328,7 +381,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
                       ))}
                     </div>
                   )}
-                  {/* Show excess warning if scanned > required */}
+                  {/* Excess warning */}
                   {qty > need && (
                     <p className="text-amber-400 text-[10px] mt-1">Excess: {fmt(qty - need)} units (will be returned after use)</p>
                   )}
@@ -336,7 +389,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
 
                 {qty > 0 && (
                   <button onClick={() => undoLastScanForItem(item.id)} className="text-zinc-500 hover:text-red-400 p-1 shrink-0" title="Undo last scan">
-                    <X className="w-4 h-4" />
+                    <Undo2 className="w-4 h-4" />
                   </button>
                 )}
               </div>
@@ -352,18 +405,24 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
         </div>
       )}
 
-      {/* Footer */}
+      {/* Sticky Footer */}
       <div className="px-4 py-4 border-t border-zinc-800 flex items-center gap-3" style={{ background: 'rgba(0,0,0,0.5)' }}>
-        <div className="flex-1">
+        <div className="flex-1 flex items-center gap-2">
           {allScanned ? (
-            <span className="text-emerald-400 text-sm font-medium">All packs scanned — ready to dispatch</span>
-          ) : totalQtyScanned > 0 ? (
-            <span className="text-amber-400 text-sm">{fmt(totalQtyScanned)}/{fmt(totalQtyNeeded)} units</span>
+            <>
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="text-emerald-400 text-sm font-medium">Ready to dispatch</span>
+            </>
+          ) : remainingItems > 0 ? (
+            <>
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="text-amber-400 text-sm">{remainingItems} material{remainingItems !== 1 ? 's' : ''} remaining</span>
+            </>
           ) : (
             <span className="text-zinc-500 text-sm">Scan serial barcodes to begin</span>
           )}
         </div>
-        <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 border border-zinc-700">Cancel</button>
+        <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 border border-zinc-700">Close</button>
         <button
           onClick={handleDispatch}
           disabled={submitting || !allScanned}

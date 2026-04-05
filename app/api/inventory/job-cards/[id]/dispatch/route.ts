@@ -3,17 +3,16 @@ import { requireSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 // POST /api/inventory/job-cards/[id]/dispatch
-// Body: { items: [{ jobCardItemId: string, issuedQty: number, serialIds?: string[] }] }
-// IM scans each item's unique MaterialSerial barcodes.
-// serialIds are the MaterialSerial IDs to mark as CONSUMED.
+// Server-driven: reads scanned serials from DB (linked via jobCardItemId during scanning).
+// No body needed — all scan data is already persisted.
 // Rules:
-//   - Critical items: issuedQty must == quantityReq (no shortfall allowed)
+//   - Critical items: scanned qty must >= quantityReq (no shortfall allowed)
 //   - Non-critical items: any qty ok (partial dispatch)
 //   - If all items fully issued → dispatchType = FULL
 //   - If some non-critical short → dispatchType = PARTIAL
 
 export async function POST(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await requireSession();
@@ -22,19 +21,17 @@ export async function POST(
   }
 
   const { id } = await params;
-  const body = await req.json();
-  const { items }: { items: { jobCardItemId: string; issuedQty: number; serialIds?: string[] }[] } = body;
-
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    return NextResponse.json({ error: 'items array required' }, { status: 400 });
-  }
 
   const jobCard = await prisma.jobCard.findUnique({
     where: { id },
     include: {
       items: {
         include: {
-          rawMaterial: { select: { id: true, name: true, currentStock: true } }
+          rawMaterial: { select: { id: true, name: true, currentStock: true } },
+          consumedSerials: {
+            where: { status: { not: 'CONSUMED' } },
+            select: { id: true, quantity: true },
+          },
         }
       }
     }
@@ -45,10 +42,14 @@ export async function POST(
     return NextResponse.json({ error: 'Job card is not in PENDING status' }, { status: 400 });
   }
 
-  // Build a map — record actual qty issued (reels can exceed order qty, excess returned after use)
-  const issuedMap = new Map(
-    items.map(i => [i.jobCardItemId, Math.max(0, i.issuedQty)])
-  );
+  // Build issued map from DB (sum of serial quantities per item)
+  const issuedMap = new Map<string, number>();
+  const serialIdsByItem = new Map<string, string[]>();
+  for (const item of jobCard.items) {
+    const qty = item.consumedSerials.reduce((sum, s) => sum + s.quantity, 0);
+    issuedMap.set(item.id, qty);
+    serialIdsByItem.set(item.id, item.consumedSerials.map(s => s.id));
+  }
 
   // Validate stock availability (prevent negative stock)
   const stockErrors: string[] = [];
@@ -103,7 +104,7 @@ export async function POST(
 
       // FIFO: deduct from oldest batches first
       let remaining = issued;
-      let primaryBatchId: string | null = null;  // track first batch used
+      let primaryBatchId: string | null = null;
       const batches = await tx.inventoryBatch.findMany({
         where: { rawMaterialId: item.rawMaterialId, remainingQty: { gt: 0 } },
         orderBy: { createdAt: 'asc' },
@@ -120,7 +121,6 @@ export async function POST(
         remaining -= deduct;
       }
 
-      // Save which batch this item came from (for component tracing)
       if (primaryBatchId) {
         await tx.jobCardItem.update({
           where: { id: item.id },
@@ -128,13 +128,11 @@ export async function POST(
         });
       }
 
-      // Update material currentStock
       await tx.rawMaterial.update({
         where: { id: item.rawMaterialId },
         data: { currentStock: { decrement: issued } },
       });
 
-      // Log stock movement
       await tx.stockMovement.create({
         data: {
           rawMaterialId: item.rawMaterialId,
@@ -146,23 +144,21 @@ export async function POST(
         }
       });
 
-      // Update job card item
       await tx.jobCardItem.update({
         where: { id: item.id },
         data: { quantityIssued: issued },
       });
 
-      // Mark MaterialSerials as CONSUMED and link to job card item
-      const itemPayload = items.find(i => i.jobCardItemId === item.id);
-      if (itemPayload?.serialIds?.length) {
+      // Mark serials as CONSUMED (jobCardItemId already set during scanning)
+      const sIds = serialIdsByItem.get(item.id) ?? [];
+      if (sIds.length > 0) {
         await tx.materialSerial.updateMany({
-          where: { id: { in: itemPayload.serialIds } },
-          data: { status: 'CONSUMED', jobCardItemId: item.id },
+          where: { id: { in: sIds } },
+          data: { status: 'CONSUMED' },
         });
       }
     }
 
-    // Update job card status
     await tx.jobCard.update({
       where: { id },
       data: {
