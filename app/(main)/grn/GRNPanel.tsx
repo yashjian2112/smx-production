@@ -912,6 +912,7 @@ function SerialScanStep({
             hint="Scan the printed barcode label to confirm receipt"
             onScan={handleScan}
             onClose={() => { setScanning(false); setScanError(''); }}
+            continuous
           />
         </div>
       )}

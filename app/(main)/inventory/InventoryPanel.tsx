@@ -1303,6 +1303,7 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose, 
             hint="Point camera at barcode label"
             onScan={handleScan}
             onClose={() => setScanning(false)}
+            continuous
           />
         )}
       </div>

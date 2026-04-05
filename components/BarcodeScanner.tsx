@@ -7,9 +7,10 @@ type Props = {
   hint?: string;
   onScan: (code: string) => void;
   onClose: () => void;
+  continuous?: boolean;
 };
 
-export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }: Props) {
+export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, continuous = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -17,6 +18,10 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
   const [cameraReady, setCameraReady] = useState(false);
   const [barcodeApiSupported, setBarcodeApiSupported] = useState(false);
   const didScan = useRef(false);
+  const [scanCount, setScanCount] = useState(0);
+  const [lastScanned, setLastScanned] = useState('');
+  const [flash, setFlash] = useState(false);
+  const cooldownRef = useRef(false);
 
   const stopCamera = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -26,12 +31,24 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
 
   const handleScanResult = useCallback(
     (code: string) => {
-      if (didScan.current) return;
-      didScan.current = true;
-      stopCamera();
-      onScan(code.trim().toUpperCase());
+      const trimmed = code.trim().toUpperCase();
+      if (continuous) {
+        if (cooldownRef.current) return;
+        cooldownRef.current = true;
+        setScanCount(c => c + 1);
+        setLastScanned(trimmed);
+        setFlash(true);
+        setTimeout(() => setFlash(false), 600);
+        setTimeout(() => { cooldownRef.current = false; }, 1500);
+        onScan(trimmed);
+      } else {
+        if (didScan.current) return;
+        didScan.current = true;
+        stopCamera();
+        onScan(trimmed);
+      }
     },
-    [stopCamera, onScan]
+    [stopCamera, onScan, continuous]
   );
 
   useEffect(() => {
@@ -67,12 +84,12 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
     });
 
     async function loop() {
-      if (!videoRef.current || didScan.current) return;
+      if (!videoRef.current || (!continuous && didScan.current)) return;
       try {
         const codes = await detector.detect(videoRef.current);
         if (codes.length > 0) {
           handleScanResult(codes[0].rawValue);
-          return;
+          if (!continuous) return;
         }
       } catch {
         // detector not ready yet, retry
@@ -81,7 +98,7 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
     }
 
     rafRef.current = requestAnimationFrame(loop);
-  }, [handleScanResult]);
+  }, [handleScanResult, continuous]);
 
   function handleClose() {
     stopCamera();
@@ -132,6 +149,12 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
               onPlaying={startScanLoop}
             />
 
+            {/* Green flash on successful scan */}
+            {flash && (
+              <div className="absolute inset-0 pointer-events-none transition-opacity duration-300"
+                style={{ background: 'rgba(34,197,94,0.25)' }} />
+            )}
+
             {/* Scan overlay */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               {/* Dark edges */}
@@ -148,13 +171,15 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
                   'bottom-0 left-0 border-b-2 border-l-2 rounded-bl-xl',
                   'bottom-0 right-0 border-b-2 border-r-2 rounded-br-xl',
                 ].map((cls, i) => (
-                  <div key={i} className={`absolute w-8 h-8 border-sky-400 ${cls}`} />
+                  <div key={i} className={`absolute w-8 h-8 ${flash ? 'border-green-400' : 'border-sky-400'} ${cls}`} />
                 ))}
                 {/* Scan line animation */}
                 <div
                   className="absolute left-2 right-2 h-0.5 rounded-full"
                   style={{
-                    background: 'linear-gradient(90deg,transparent,#38bdf8,transparent)',
+                    background: flash
+                      ? 'linear-gradient(90deg,transparent,#4ade80,transparent)'
+                      : 'linear-gradient(90deg,transparent,#38bdf8,transparent)',
                     animation: 'scanline 2s ease-in-out infinite',
                     top: '50%',
                   }}
@@ -166,11 +191,14 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
             <div className="absolute bottom-0 left-0 right-0 pb-4 flex justify-center pointer-events-none">
               {cameraReady && barcodeApiSupported ? (
                 <div
-                  className="flex items-center gap-2 px-4 py-2 rounded-full text-xs text-sky-400 font-medium"
-                  style={{ background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.2)' }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium"
+                  style={flash
+                    ? { background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }
+                    : { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.2)', color: '#38bdf8' }
+                  }
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-                  Scanning…
+                  <span className={`w-1.5 h-1.5 rounded-full ${flash ? 'bg-green-400' : 'bg-sky-400'} animate-pulse`} />
+                  {flash ? 'Scanned!' : 'Scanning…'}
                 </div>
               ) : !cameraReady && !cameraError ? (
                 <div className="text-zinc-500 text-xs">Starting camera…</div>
@@ -184,6 +212,29 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
         )}
       </div>
 
+      {/* Continuous mode: scan count + last scanned + Done button */}
+      {continuous && (
+        <div className="px-4 py-3 flex items-center justify-between"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)', background: 'rgba(255,255,255,0.04)', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="flex-1 min-w-0">
+            {scanCount > 0 ? (
+              <>
+                <p className="text-white text-sm font-semibold">{scanCount} scanned</p>
+                <p className="text-zinc-500 text-[11px] font-mono truncate">{lastScanned}</p>
+              </>
+            ) : (
+              <p className="text-zinc-500 text-xs">Waiting for first scan…</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-colors shrink-0"
+          >
+            Done
+          </button>
+        </div>
+      )}
 
       {/* Scan line keyframe */}
       <style>{`
