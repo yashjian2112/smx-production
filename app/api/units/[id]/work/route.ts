@@ -160,14 +160,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Unit is not available for work' }, { status: 409 });
   }
 
-  // Block work if board hasn't been assigned via job card dispatch
-  if (unit.currentStage === StageType.POWERSTAGE_MANUFACTURING && !unit.powerstageBarcode) {
-    return NextResponse.json({ error: 'Board not yet assigned — dispatch job card materials first' }, { status: 409 });
-  }
-  if (unit.currentStage === StageType.BRAINBOARD_MANUFACTURING && !unit.brainboardBarcode) {
-    return NextResponse.json({ error: 'Board not yet assigned — dispatch job card materials first' }, { status: 409 });
-  }
-
   // REJECTED_BACK: reset to IN_PROGRESS so the test can restart
   if (unit.currentStatus === UnitStatus.REJECTED_BACK) {
     await prisma.controllerUnit.update({ where: { id }, data: { currentStatus: UnitStatus.IN_PROGRESS } });

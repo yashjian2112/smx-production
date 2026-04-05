@@ -159,57 +159,8 @@ export async function POST(
         });
       }
 
-      // ── Board assignment: if this BOM item isBoard, assign serial barcodes to units ──
-      const bomItem = await tx.bOMItem.findFirst({
-        where: {
-          productId: jobCard.order.productId,
-          rawMaterialId: item.rawMaterialId,
-          stage: jobCard.stage,
-          isBoard: true,
-        },
-      });
-
-      if (bomItem && sIds.length > 0) {
-        // Get the scanned serial barcodes (ordered by scan time)
-        const boardSerials = await tx.materialSerial.findMany({
-          where: { id: { in: sIds } },
-          orderBy: { createdAt: 'asc' },
-          select: { id: true, barcode: true },
-        });
-
-        // Determine which unit field to set based on stage
-        const barcodeField = jobCard.stage === 'POWERSTAGE_MANUFACTURING'
-          ? 'powerstageBarcode'
-          : jobCard.stage === 'BRAINBOARD_MANUFACTURING'
-            ? 'brainboardBarcode'
-            : null;
-
-        if (barcodeField) {
-          // Get unassigned units for this order (barcode is null for this stage)
-          const unassignedUnits = await tx.controllerUnit.findMany({
-            where: {
-              orderId: jobCard.orderId,
-              [barcodeField]: null,
-            },
-            orderBy: { createdAt: 'asc' },
-            select: { id: true },
-          });
-
-          // Assign board serials to units sequentially
-          const assignCount = Math.min(boardSerials.length, unassignedUnits.length);
-          for (let bi = 0; bi < assignCount; bi++) {
-            await tx.controllerUnit.update({
-              where: { id: unassignedUnits[bi].id },
-              data: { [barcodeField]: boardSerials[bi].barcode },
-            });
-            // Link serial to the specific unit via allocatedToUnitId
-            await tx.materialSerial.update({
-              where: { id: boardSerials[bi].id },
-              data: { allocatedToUnitId: unassignedUnits[bi].id },
-            });
-          }
-        }
-      }
+      // Board serials stay unassigned to units at dispatch time.
+      // Assignment happens later when employee scans the board to start work.
     }
 
     await tx.jobCard.update({
