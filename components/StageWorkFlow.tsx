@@ -928,12 +928,15 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
             <div className="min-w-0">
               {orderNumber && <p className="text-[10px] text-zinc-600 font-mono">{orderNumber}</p>}
               <p className="text-sm font-semibold text-white truncate">{productName || 'Unit'}</p>
-              <p className="text-xs text-zinc-500 font-mono mt-0.5">{unitSerial}</p>
+              {boardBarcode
+                ? <p className="text-sm font-mono text-sky-400 font-bold mt-0.5">{boardBarcode}</p>
+                : <p className="text-xs text-zinc-500 font-mono mt-0.5">{unitSerial}</p>
+              }
             </div>
             {boardBarcode && (
               <div className="text-right shrink-0">
-                <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Board Serial</p>
-                <p className="text-xs font-mono text-sky-400 font-bold">{boardBarcode}</p>
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Unit</p>
+                <p className="text-[10px] font-mono text-zinc-600">{unitSerial}</p>
               </div>
             )}
           </div>
@@ -1030,16 +1033,26 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
             <div className="min-w-0">
               {orderNumber && <p className="text-[10px] text-zinc-600 font-mono">{orderNumber}</p>}
               <p className="text-sm font-semibold text-white truncate">{productName || 'Unit'}</p>
-              <p className="text-xs text-zinc-500 font-mono mt-0.5">{unitSerial}</p>
+              {(currentStage === 'POWERSTAGE_MANUFACTURING' || currentStage === 'BRAINBOARD_MANUFACTURING') && (powerstageBarcode || brainboardBarcode)
+                ? <p className="text-sm font-mono text-sky-400 font-bold mt-0.5">
+                    {currentStage === 'POWERSTAGE_MANUFACTURING' ? powerstageBarcode : brainboardBarcode}
+                  </p>
+                : <p className="text-xs text-zinc-500 font-mono mt-0.5">{unitSerial}</p>
+              }
             </div>
-            {(powerstageBarcode || brainboardBarcode) && (
+            {(currentStage === 'POWERSTAGE_MANUFACTURING' || currentStage === 'BRAINBOARD_MANUFACTURING') && (powerstageBarcode || brainboardBarcode) ? (
+              <div className="text-right shrink-0">
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Unit</p>
+                <p className="text-[10px] font-mono text-zinc-600">{unitSerial}</p>
+              </div>
+            ) : (powerstageBarcode || brainboardBarcode) ? (
               <div className="text-right shrink-0">
                 <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Board</p>
                 <p className="text-xs font-mono text-sky-400 font-bold">
                   {currentStage === 'POWERSTAGE_MANUFACTURING' ? powerstageBarcode : brainboardBarcode}
                 </p>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -1341,28 +1354,18 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
             </button>
           </div>
           {/* Unit info bar */}
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <span className="font-mono text-sm text-sky-400 font-semibold">{unitSerial}</span>
-            {orderNumber && <span className="text-xs text-zinc-600">·</span>}
-            {orderNumber && <span className="text-xs text-zinc-500">{orderNumber}</span>}
-            {productName && <span className="text-xs text-zinc-600">·</span>}
-            {productName && <span className="text-xs text-zinc-500 truncate max-w-[140px]">{productName}</span>}
-          </div>
-          {/* Board barcode */}
           {(() => {
             const bc = currentStage === 'POWERSTAGE_MANUFACTURING' ? powerstageBarcode
               : currentStage === 'BRAINBOARD_MANUFACTURING' ? brainboardBarcode
               : null;
-            if (!bc) return null;
             return (
-              <div className="mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
-                style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.15)' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-400 shrink-0">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <path d="M7 7h.01M7 12h.01M7 17h.01M12 7h.01M12 12h.01M12 17h.01M17 7h.01M17 12h.01M17 17h.01" />
-                </svg>
-                <span className="text-xs text-zinc-400">Board:</span>
-                <span className="font-mono text-xs text-sky-300 font-semibold">{bc}</span>
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <span className="font-mono text-sm text-sky-400 font-semibold">{bc || unitSerial}</span>
+                {bc && <span className="text-[10px] text-zinc-600 font-mono">{unitSerial}</span>}
+                {orderNumber && <span className="text-xs text-zinc-600">·</span>}
+                {orderNumber && <span className="text-xs text-zinc-500">{orderNumber}</span>}
+                {productName && <span className="text-xs text-zinc-600">·</span>}
+                {productName && <span className="text-xs text-zinc-500 truncate max-w-[140px]">{productName}</span>}
               </div>
             );
           })()}
