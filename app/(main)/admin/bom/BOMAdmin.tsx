@@ -3,10 +3,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, ClipboardList, Cable, Cpu } from 'lucide-react';
 
-interface Product { id: string; name: string; code: string; }
+interface Product { id: string; name: string; code: string; harnessVariants?: string[]; }
 interface BOMItem {
   id: string; productId: string; rawMaterialId: string; voltage: string | null;
-  stage: string | null; quantityRequired: number; unit: string; isCritical: boolean; notes: string | null;
+  stage: string | null; variantName: string | null; quantityRequired: number; unit: string; isCritical: boolean; notes: string | null;
   rawMaterial: { id: string; name: string; code: string; unit: string; };
 }
 
@@ -32,6 +32,7 @@ export default function BOMAdmin() {
   const [search, setSearch]           = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [bomTab, setBomTab]           = useState<BOMTab>('controller');
+  const [selectedVariant, setSelectedVariant] = useState<string>('');
 
   // add-row state
   const [adding, setAdding]           = useState(false);
@@ -67,7 +68,13 @@ export default function BOMAdmin() {
     setSearch('');
     setStageFilter('all');
     setAdding(false);
+    setSelectedVariant('');
   }, [bomTab]);
+
+  // Auto-select first variant when switching to harness tab
+  const selectedProduct = products.find(p => p.id === selectedPid);
+  const harnessVariants = selectedProduct?.harnessVariants ?? [];
+  const activeVariant = selectedVariant || harnessVariants[0] || '';
 
   async function toggleCritical(item: BOMItem) {
     const updated = { ...item, isCritical: !item.isCritical };
@@ -88,13 +95,14 @@ export default function BOMAdmin() {
     if (!newMat || !newQty || !selectedPid) { setAddErr('Select material and enter qty'); return; }
     setSaving(true); setAddErr('');
     const stage = bomTab === 'harness' ? 'HARNESS_CRIMPING' : (newStage || null);
+    const variantName = bomTab === 'harness' ? activeVariant : null;
     const res = await fetch('/api/inventory/bom', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         productId: selectedPid, rawMaterialId: newMat,
         quantityRequired: parseFloat(newQty), unit: newUnit,
         stage, voltage: newVoltage || null,
-        isCritical: newCritical,
+        isCritical: newCritical, variantName,
       }),
     });
     setSaving(false);
@@ -105,15 +113,19 @@ export default function BOMAdmin() {
     setNewStage(''); setNewVoltage(''); setNewCritical(false); setMatSearch('');
   }
 
-  // Split items by tab
+  // Split items by tab — harness items also filtered by active variant
   const isHarnessItem = (i: BOMItem) => i.stage === 'HARNESS_CRIMPING';
   const tabItems = useMemo(() =>
-    items.filter(i => bomTab === 'harness' ? isHarnessItem(i) : !isHarnessItem(i)),
-    [items, bomTab]
+    items.filter(i => {
+      if (bomTab === 'harness') return isHarnessItem(i) && i.variantName === activeVariant;
+      return !isHarnessItem(i);
+    }),
+    [items, bomTab, activeVariant]
   );
 
   const controllerCount = items.filter(i => !isHarnessItem(i)).length;
   const harnessCount = items.filter(i => isHarnessItem(i)).length;
+  const variantCount = tabItems.length; // items for the active variant
 
   const filtered = tabItems.filter(i => {
     const matchSearch = i.rawMaterial.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -176,6 +188,31 @@ export default function BOMAdmin() {
             </button>
           </div>
 
+          {/* Variant tabs (harness only) */}
+          {bomTab === 'harness' && harnessVariants.length > 0 && (
+            <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              {harnessVariants.map(v => (
+                <button key={v} onClick={() => setSelectedVariant(v)}
+                  className={`flex-1 py-2 px-3 text-xs font-medium rounded-lg transition-all ${
+                    activeVariant === v ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                  style={activeVariant === v ? { background: 'rgba(251,146,60,0.15)', border: '1px solid rgba(251,146,60,0.25)' } : {}}>
+                  {v}
+                  <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                    style={{ background: activeVariant === v ? 'rgba(251,146,60,0.2)' : 'transparent' }}>
+                    {items.filter(i => isHarnessItem(i) && i.variantName === v).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {bomTab === 'harness' && harnessVariants.length === 0 && (
+            <div className="text-sm text-amber-400 px-3 py-2 rounded-lg"
+              style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+              No harness variants defined for this product. Add variants in Product settings first.
+            </div>
+          )}
+
           {/* Stats + filters */}
           <div className="flex flex-wrap gap-3 items-center">
             <div className="rounded-xl px-3 py-2 text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -197,7 +234,8 @@ export default function BOMAdmin() {
               </select>
             )}
             <button onClick={() => setAdding(true)}
-              className="rounded-xl px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-colors">
+              disabled={bomTab === 'harness' && harnessVariants.length === 0}
+              className="rounded-xl px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
               + Add Component
             </button>
           </div>

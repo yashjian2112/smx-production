@@ -1115,6 +1115,7 @@ model BOMItem {
   rawMaterialId    String     @map("raw_material_id")
   voltage          String?    // null = applies to all voltages
   stage            StageType? // which production stage consumes this
+  variantName      String?    @map("variant_name") // harness variant e.g. "Ultra Bee" — null for controller items
   quantityRequired Float      @map("quantity_required")
   unit             String
   isCritical       Boolean    @default(false) @map("is_critical") // must be in stock to dispatch
@@ -1123,7 +1124,7 @@ model BOMItem {
   product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   rawMaterial RawMaterial @relation(fields: [rawMaterialId], references: [id])
 
-  @@unique([productId, rawMaterialId, voltage])
+  @@unique([productId, rawMaterialId, voltage, variantName])
   @@map("bom_items")
 }
 

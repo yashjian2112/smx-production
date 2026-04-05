@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { productId, rawMaterialId, voltage, stage, quantityRequired, unit, notes } = body;
+    const { productId, rawMaterialId, voltage, stage, quantityRequired, unit, notes, variantName } = body;
 
     if (!productId || !rawMaterialId || quantityRequired === undefined || !unit) {
       return NextResponse.json(
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
         rawMaterialId,
         voltage: voltage || null,
         stage: stage ? (stage as StageType) : null,
+        variantName: variantName?.trim() || null,
         quantityRequired,
         unit,
         notes: notes || null,

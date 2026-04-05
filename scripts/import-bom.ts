@@ -158,7 +158,7 @@ async function main() {
 
       try {
         await prisma.bOMItem.upsert({
-          where: { productId_rawMaterialId_voltage: { productId: product.id, rawMaterialId: matId, voltage: '' } },
+          where: { productId_rawMaterialId_voltage_variantName: { productId: product.id, rawMaterialId: matId, voltage: '', variantName: '' } },
           update: { quantityRequired: quantity },
           create: {
             productId: product.id,
