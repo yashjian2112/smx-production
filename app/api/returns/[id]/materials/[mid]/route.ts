@@ -70,9 +70,9 @@ export async function PATCH(
           rawMaterialId:  mat.rawMaterialId,
           type:           'OUT',
           quantity:       -mat.qtyRequested,
-          reference:      mat.returnRequest.returnNumber,
+          reference:      mat.returnRequest?.returnNumber ?? 'Rework',
           adjustmentType: 'PRODUCTION',
-          notes:          `Rework issue — ${mat.returnRequest.returnNumber}`,
+          notes:          `Rework issue — ${mat.returnRequest?.returnNumber ?? 'Standalone'}`,
           createdById:    session.id,
         },
       });

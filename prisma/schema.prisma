@@ -437,6 +437,7 @@ model ReworkRecord {
   assignedUser User?         @relation(fields: [assignedUserId], references: [id])
   returnRequest ReturnRequest? @relation(fields: [returnRequestId], references: [id])
   rootCauseCategory RootCauseCategory? @relation(fields: [rootCauseCategoryId], references: [id])
+  materials   ReworkMaterial[] @relation("ReworkRecordMaterials")
   @@map("rework_records")
 }
 
@@ -996,7 +997,8 @@ model RepairLog {
 
 model ReworkMaterial {
   id              String    @id @default(cuid())
-  returnRequestId String    @map("return_request_id")
+  returnRequestId String?   @map("return_request_id")
+  reworkRecordId  String?   @map("rework_record_id")
   rawMaterialId   String    @map("raw_material_id")
   materialName    String    @map("material_name")
   unit            String
@@ -1009,10 +1011,11 @@ model ReworkMaterial {
   issuedAt        DateTime? @map("issued_at")
   createdAt       DateTime  @default(now()) @map("created_at")
 
-  returnRequest ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
-  rawMaterial   RawMaterial   @relation(fields: [rawMaterialId], references: [id])
-  requestedBy   User          @relation("ReworkMaterialRequestedBy", fields: [requestedById], references: [id])
-  issuedBy      User?         @relation("ReworkMaterialIssuedBy", fields: [issuedById], references: [id])
+  returnRequest  ReturnRequest? @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  reworkRecord   ReworkRecord?  @relation("ReworkRecordMaterials", fields: [reworkRecordId], references: [id], onDelete: Cascade)
+  rawMaterial    RawMaterial    @relation(fields: [rawMaterialId], references: [id])
+  requestedBy    User           @relation("ReworkMaterialRequestedBy", fields: [requestedById], references: [id])
+  issuedBy       User?          @relation("ReworkMaterialIssuedBy", fields: [issuedById], references: [id])
 
   @@map("rework_materials")
 }
