@@ -188,7 +188,7 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
   const verifyStreamRef = useRef<MediaStream | null>(null);
   const [verifyCameraOpen, setVerifyCameraOpen] = useState(false);
   const [verifyBackFile, setVerifyBackFile] = useState<File | null>(null);
-  const [verifyFrontFile, setVerifyFrontFile] = useState<File | null>(null);
+  const [, setVerifyFrontFile] = useState<File | null>(null);
 
   // ── job card state ─────────────────────────────────────────────────────────
   type JCItem = { id: string; rawMaterial: { name: string; unit: string; barcode?: string | null }; quantityReq: number; quantityIssued: number; verifiedQty: number; isVerified: boolean };

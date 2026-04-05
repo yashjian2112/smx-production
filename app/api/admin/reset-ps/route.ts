@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { requireRole } from '@/lib/auth';
+import { requireSession, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function POST() {
-  const session = await requireRole(['ADMIN']);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const session = await requireSession();
+  requireRole(session, 'ADMIN');
 
   // Reset all units at POWERSTAGE_MANUFACTURING back to PENDING
   const units = await prisma.controllerUnit.findMany({
