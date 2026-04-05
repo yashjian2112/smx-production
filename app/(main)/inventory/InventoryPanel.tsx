@@ -1293,7 +1293,7 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose, 
         )}
 
         {/* Serial list — scrollable bottom */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
+        <div className="flex-1 overflow-y-auto px-4 py-3 pb-20 space-y-1.5">
           {pending.map(s => (
             <div key={s.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs"
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -1319,7 +1319,7 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose, 
 
         {/* Bottom bar — Done button when all confirmed */}
         {allConfirmed && (
-          <div className="sticky bottom-0 px-4 py-3 shrink-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgb(24,24,27)' }}>
+          <div className="fixed bottom-16 left-0 right-0 px-4 py-3 z-10" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgb(24,24,27)' }}>
             <button onClick={onClose}
               className="w-full py-3 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-2">
               <Check className="w-4 h-4" /> All Verified — Done
