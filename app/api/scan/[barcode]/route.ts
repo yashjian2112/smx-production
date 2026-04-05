@@ -1,14 +1,20 @@
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { findUnitByBarcode, findComponentByBarcode, findUnitByComponentBarcode } from '@/lib/barcode';
+import { tryAssignBoardSerial } from '@/lib/board-assign';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ barcode: string }> }) {
   try {
     await requireSession();
     const { barcode } = await params;
-    const unit = await findUnitByBarcode(barcode);
+    let unit = await findUnitByBarcode(barcode);
+
+    // If no unit found, try board serial assignment (employee scanned a board)
     if (!unit) {
-      // Check if the scanned barcode is a component barcode — try to find a matching unit
+      unit = await tryAssignBoardSerial(barcode);
+    }
+
+    if (!unit) {
       const component = await findComponentByBarcode(barcode);
       if (component) {
         const unitByComp = await findUnitByComponentBarcode(barcode);

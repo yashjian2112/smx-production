@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { findUnitByBarcode, findComponentByBarcode, findUnitByComponentBarcode, STAGE_BARCODE_FIELD } from '@/lib/barcode';
+import { tryAssignBoardSerial } from '@/lib/board-assign';
 
 const STAGE_LABEL: Record<string, string> = {
   POWERSTAGE_MANUFACTURING: 'Powerstage',
@@ -23,14 +24,18 @@ export async function GET(
     if (!barcode) return NextResponse.json({ error: 'Barcode required' }, { status: 400 });
 
     const stage = req.nextUrl.searchParams.get('stage') ?? undefined;
-    const unit = await findUnitByBarcode(barcode, stage);
+    let unit = await findUnitByBarcode(barcode, stage);
+
+    // If no unit found, try board serial assignment (employee scanned a board)
+    if (!unit) {
+      unit = await tryAssignBoardSerial(barcode);
+    }
 
     if (!unit) {
       // If stage-specific search failed, check if the barcode exists in a DIFFERENT stage
       if (stage && STAGE_BARCODE_FIELD[stage]) {
-        const anyUnit = await findUnitByBarcode(barcode); // search all stages
+        const anyUnit = await findUnitByBarcode(barcode);
         if (anyUnit) {
-          // If the unit is currently AT the requested stage, accept it regardless of barcode type
           if (anyUnit.currentStage === stage) {
             return NextResponse.json(anyUnit);
           }
