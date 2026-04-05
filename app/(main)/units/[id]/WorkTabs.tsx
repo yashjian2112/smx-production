@@ -32,7 +32,6 @@ type Props = {
   qcBarcode?: string | null;
   powerstageBarcode?: string | null;
   brainboardBarcode?: string | null;
-  productId?: string | null;
 };
 
 type ReworkMat = {
@@ -303,7 +302,7 @@ function ReworkTab({ unitId, reworkRecords }: { unitId: string; reworkRecords: R
   );
 }
 
-export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, isEmployee, role, orderId, reworkRecords = [], productName, orderNumber, qcBarcode, powerstageBarcode, brainboardBarcode, productId }: Props) {
+export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, isEmployee, role, orderId, reworkRecords = [], productName, orderNumber, qcBarcode, powerstageBarcode, brainboardBarcode }: Props) {
   const canDoQC = ['ADMIN', 'PRODUCTION_MANAGER', 'QC_USER'].includes(role ?? '');
   const isRework = currentStage === 'REWORK';
   const defaultTab = isRework ? 'rework' : isEmployee ? 'work' : 'history';
@@ -370,7 +369,6 @@ export function WorkTabs({ unitId, unitSerial, stageBarcode, currentStage, curre
             brainboardBarcode={brainboardBarcode}
             orderNumber={orderNumber}
             productName={productName}
-            productId={productId ?? undefined}
           />
         )}
         {tab === 'history' && (

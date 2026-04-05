@@ -30,7 +30,6 @@ type Props = {
   brainboardBarcode?: string | null;
   orderNumber?: string;
   productName?: string;
-  productId?: string;
 };
 
 function fmtDuration(sec: number) {
@@ -154,7 +153,7 @@ async function smartCropPCB(blob: Blob): Promise<Blob> {
   });
 }
 
-export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, orderId, powerstageBarcode, brainboardBarcode, orderNumber, productName, productId }: Props) {
+export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, orderId, powerstageBarcode, brainboardBarcode, orderNumber, productName }: Props) {
   const router = useRouter();
 
   // ── state machine ──────────────────────────────────────────────────────────
@@ -165,7 +164,7 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
   // analyzing → AI running
   // result  → PASS / FAIL shown
   // completed → stage already done
-  const [step, setStep] = useState<'loading' | 'jc_create' | 'jc_waiting' | 'jc_scan' | 'idle' | 'verify_back' | 'verify_front' | 'working' | 'open' | 'analyzing' | 'result' | 'completed'>('loading');
+  const [step, setStep] = useState<'loading' | 'jc_create' | 'jc_waiting' | 'jc_scan' | 'idle' | 'working' | 'open' | 'analyzing' | 'result' | 'completed'>('loading');
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [capturedImage, setCapturedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -174,21 +173,6 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
   const [error, setError] = useState('');
   const [startingWork, setStartingWork] = useState(false);
 
-  // ── board verification state ──────────────────────────────────────────────
-  const VERIFY_TIMEOUT = 30; // seconds for both steps combined
-  const needsVerification = ['POWERSTAGE_MANUFACTURING', 'BRAINBOARD_MANUFACTURING'].includes(currentStage);
-  const [verifyTimer, setVerifyTimer] = useState(VERIFY_TIMEOUT);
-  const [verifyBackPhoto, setVerifyBackPhoto] = useState<string | null>(null); // object URL
-  const [verifyFrontPhoto, setVerifyFrontPhoto] = useState<string | null>(null);
-  const [verifyError, setVerifyError] = useState('');
-  const [verifyChecking, setVerifyChecking] = useState(false);
-  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
-  const verifyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const verifyCameraRef = useRef<HTMLVideoElement | null>(null);
-  const verifyStreamRef = useRef<MediaStream | null>(null);
-  const [verifyCameraOpen, setVerifyCameraOpen] = useState(false);
-  const [verifyBackFile, setVerifyBackFile] = useState<File | null>(null);
-  const [, setVerifyFrontFile] = useState<File | null>(null);
 
   // ── job card state ─────────────────────────────────────────────────────────
   type JCItem = { id: string; rawMaterial: { name: string; unit: string; barcode?: string | null }; quantityReq: number; quantityIssued: number; verifiedQty: number; isVerified: boolean };
@@ -262,145 +246,8 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
       .catch(() => {});
   }, [unitId]);
 
-  // ── fetch reference image for board verification ───────────────────────────
-  useEffect(() => {
-    if (needsVerification && productId) {
-      fetch(`/api/admin/stage-references?productId=${productId}`)
-        .then(r => r.json())
-        .then((data: { stage: string; imageUrl: string }[]) => {
-          const ref = data.find((r: { stage: string }) => r.stage === currentStage);
-          if (ref) setReferenceImageUrl(ref.imageUrl);
-        })
-        .catch(() => {});
-    }
-  }, [needsVerification, productId, currentStage]);
 
-  // ── verify camera helpers ─────────────────────────────────────────────────
-  async function openVerifyCamera() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-      });
-      verifyStreamRef.current = stream;
-      setVerifyCameraOpen(true);
-    } catch {
-      setVerifyError('Camera access denied. Please allow camera access.');
-    }
-  }
 
-  function stopVerifyCamera() {
-    verifyStreamRef.current?.getTracks().forEach(t => t.stop());
-    verifyStreamRef.current = null;
-    setVerifyCameraOpen(false);
-  }
-
-  function captureVerifyPhoto(side: 'back' | 'front') {
-    const video = verifyCameraRef.current;
-    if (!video || video.videoWidth === 0 || video.readyState < 2) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d')?.drawImage(video, 0, 0);
-    canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      const file = new File([blob], `verify-${side}.jpg`, { type: 'image/jpeg' });
-      const url = URL.createObjectURL(blob);
-      stopVerifyCamera();
-      if (side === 'back') {
-        setVerifyBackPhoto(url);
-        setVerifyBackFile(file);
-        setStep('verify_front');
-      } else {
-        setVerifyFrontPhoto(url);
-        setVerifyFrontFile(file);
-        // Both captured — submit for verification
-        setVerifyChecking(true);
-        setVerifyError('');
-        try {
-          const backFile = verifyBackFile;
-          if (!backFile) { setVerifyError('Back photo missing'); setVerifyChecking(false); return; }
-          const form = new FormData();
-          form.append('backPhoto', backFile);
-          form.append('frontPhoto', file);
-          const res = await fetch(`/api/units/${unitId}/verify-board`, { method: 'POST', body: form });
-          const data = await res.json();
-          if (data.verified || data.warning) {
-            if (verifyTimerRef.current) { clearInterval(verifyTimerRef.current); verifyTimerRef.current = null; }
-            await startWork();
-          } else {
-            const reasonText = data.reasons?.join('. ') || 'Board verification failed';
-            setVerifyError(reasonText);
-            setVerifyBackPhoto(null);
-            setVerifyFrontPhoto(null);
-            setVerifyBackFile(null);
-            setVerifyFrontFile(null);
-            setVerifyTimer(VERIFY_TIMEOUT);
-            setStep('idle');
-          }
-        } catch {
-          setVerifyError('Verification network error. Try again.');
-          setStep('idle');
-        } finally {
-          setVerifyChecking(false);
-        }
-      }
-    }, 'image/jpeg', 0.92);
-  }
-
-  const verifyVideoRefCallback = useCallback((node: HTMLVideoElement | null) => {
-    verifyCameraRef.current = node;
-    if (node && verifyStreamRef.current) {
-      node.srcObject = verifyStreamRef.current;
-      node.play().catch(() => {});
-    }
-  }, []);
-
-  // ── verification countdown timer ──────────────────────────────────────────
-  useEffect(() => {
-    if (step !== 'verify_back' && step !== 'verify_front') {
-      if (verifyTimerRef.current) { clearInterval(verifyTimerRef.current); verifyTimerRef.current = null; }
-      return;
-    }
-    if (verifyTimerRef.current) return; // already running
-    verifyTimerRef.current = setInterval(() => {
-      setVerifyTimer(prev => {
-        if (prev <= 1) {
-          // Time's up — reset verification
-          clearInterval(verifyTimerRef.current!);
-          verifyTimerRef.current = null;
-          verifyStreamRef.current?.getTracks().forEach(t => t.stop());
-          verifyStreamRef.current = null;
-          setVerifyCameraOpen(false);
-          setVerifyBackPhoto(null);
-          setVerifyFrontPhoto(null);
-          setVerifyBackFile(null);
-          setVerifyFrontFile(null);
-          setVerifyError('Time expired. Please start verification again.');
-          setStep('idle');
-          return VERIFY_TIMEOUT;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => { if (verifyTimerRef.current) { clearInterval(verifyTimerRef.current); verifyTimerRef.current = null; } };
-  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── auto-open camera when entering verify steps ───────────────────────────
-  useEffect(() => {
-    if (step === 'verify_back' || step === 'verify_front') {
-      if (!verifyCameraOpen && !verifyChecking) {
-        openVerifyCamera();
-      }
-    }
-    return () => {
-      // Clean up camera when leaving verify steps
-      if (step !== 'verify_back' && step !== 'verify_front') {
-        verifyStreamRef.current?.getTracks().forEach(t => t.stop());
-        verifyStreamRef.current = null;
-        setVerifyCameraOpen(false);
-      }
-    };
-  }, [step, verifyChecking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── auto-start work on mount ───────────────────────────────────────────────
   useEffect(() => {
@@ -973,128 +820,12 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
   }
 
   // ── idle (manual fallback) ─────────────────────────────────────────────────
-  // ── board verification: back photo (barcode side) ──────────────────────────
-  if (step === 'verify_back' || step === 'verify_front') {
-    const isBack = step === 'verify_back';
-    const boardBarcode = currentStage === 'POWERSTAGE_MANUFACTURING' ? powerstageBarcode : brainboardBarcode;
-    const timerColor = verifyTimer <= 10 ? '#ef4444' : verifyTimer <= 20 ? '#fbbf24' : '#4ade80';
-    const currentSide = isBack ? 'back' : 'front';
-
-    return (
-      <div className="space-y-4">
-        {/* Unit info card */}
-        <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="flex items-center justify-between">
-            <div className="min-w-0">
-              {orderNumber && <p className="text-[10px] text-zinc-600 font-mono">{orderNumber}</p>}
-              <p className="text-sm font-semibold text-white truncate">{productName || 'Unit'}</p>
-              {boardBarcode
-                ? <p className="text-sm font-mono text-sky-400 font-bold mt-0.5">{boardBarcode}</p>
-                : <p className="text-xs text-zinc-500 font-mono mt-0.5">{unitSerial}</p>
-              }
-            </div>
-            {boardBarcode && (
-              <div className="text-right shrink-0">
-                <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Unit</p>
-                <p className="text-[10px] font-mono text-zinc-600">{unitSerial}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Timer */}
-        <div className="flex items-center justify-center gap-2">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center font-mono font-bold text-sm"
-            style={{ border: `2px solid ${timerColor}`, color: timerColor }}>
-            {verifyTimer}
-          </div>
-          <div>
-            <p className="text-xs text-zinc-400 font-medium">Board Verification</p>
-            <p className="text-[10px] text-zinc-600">Step {isBack ? '1' : '2'} of 2</p>
-          </div>
-        </div>
-
-        {/* Progress bar */}
-        <div className="flex gap-1.5">
-          <div className="h-1.5 rounded-full flex-1 transition-all" style={{ background: verifyBackPhoto ? '#22c55e' : '#38bdf8' }} />
-          <div className="h-1.5 rounded-full flex-1 transition-all" style={{ background: verifyFrontPhoto ? '#22c55e' : !isBack ? '#38bdf8' : 'rgba(255,255,255,0.1)' }} />
-        </div>
-
-        {verifyChecking ? (
-          <div className="text-center py-8 space-y-3">
-            <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-sm text-zinc-400">Verifying board...</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="text-center space-y-1">
-              <p className="text-white font-semibold text-sm">
-                {isBack ? 'Flip board — show barcode side' : 'Flip board — show component side'}
-              </p>
-              <p className="text-zinc-500 text-xs">
-                {isBack ? 'Point camera at the back with barcode label visible' : 'Point camera at the front (component side)'}
-              </p>
-            </div>
-
-            {/* Reference image for front side */}
-            {!isBack && referenceImageUrl && (
-              <div className="rounded-xl overflow-hidden p-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 text-center">Reference — your board should look like this</p>
-                <img src={referenceImageUrl} alt="Reference" className="w-full rounded-lg object-cover" style={{ maxHeight: 120 }} />
-              </div>
-            )}
-
-            {/* Live camera viewfinder */}
-            {verifyCameraOpen ? (
-              <div className="space-y-3">
-                <div className="relative rounded-xl overflow-hidden bg-black" style={{ aspectRatio: '4/3' }}>
-                  <video
-                    ref={verifyVideoRefCallback}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover"
-                  />
-                  {/* Capture overlay */}
-                  <div className="absolute inset-x-0 bottom-0 p-3 flex justify-center"
-                    style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.6))' }}>
-                    <button
-                      type="button"
-                      onClick={() => captureVerifyPhoto(currentSide)}
-                      className="w-16 h-16 rounded-full flex items-center justify-center"
-                      style={{ background: 'rgba(255,255,255,0.2)', border: '3px solid white' }}
-                    >
-                      <div className="w-12 h-12 rounded-full bg-white" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={openVerifyCamera}
-                className="w-full py-6 rounded-2xl flex flex-col items-center gap-3 text-sky-400 font-semibold text-sm"
-                style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}
-              >
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                  <circle cx="12" cy="13" r="4" />
-                </svg>
-                Open Camera — {isBack ? 'Back Side' : 'Front Side'}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   if (step === 'idle') {
     return (
       <div className="space-y-4">
-        {(error || verifyError) && (
+        {error && (
           <div className="rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-            {error || verifyError}
+            {error}
           </div>
         )}
 
@@ -1129,17 +860,7 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
 
         <button
           type="button"
-          onClick={() => {
-            if (needsVerification) {
-              setVerifyTimer(VERIFY_TIMEOUT);
-              setVerifyBackPhoto(null);
-              setVerifyFrontPhoto(null);
-              setVerifyError('');
-              setStep('verify_back');
-            } else {
-              startWork();
-            }
-          }}
+          onClick={() => startWork()}
           disabled={startingWork}
           className="w-full py-5 rounded-2xl font-bold text-sm flex flex-col items-center gap-2 disabled:opacity-50"
           style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}
@@ -1151,7 +872,7 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
           )}
-          {startingWork ? 'Starting…' : needsVerification ? `Verify & Start ${stageLabel}` : `Start ${stageLabel}`}
+          {startingWork ? 'Starting…' : `Start ${stageLabel}`}
         </button>
       </div>
     );
