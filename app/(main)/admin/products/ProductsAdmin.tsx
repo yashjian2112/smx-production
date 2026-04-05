@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { Camera, Upload, Trash2 } from 'lucide-react';
 import { QRCodeCanvas } from '@/components/QRCode';
 
 type Product = { id: string; code: string; name: string; description: string | null; productType?: string; hsnCode?: string | null; colors?: string[]; active: boolean };
@@ -251,6 +253,105 @@ function ComponentsPanel({ product }: { product: Product }) {
   );
 }
 
+const REFERENCE_STAGES = [
+  { value: 'POWERSTAGE_MANUFACTURING', label: 'Powerstage' },
+  { value: 'BRAINBOARD_MANUFACTURING', label: 'Brainboard' },
+] as const;
+
+type StageRef = { id: string; stage: string; imageUrl: string };
+
+function ReferenceImagesPanel({ product }: { product: Product }) {
+  const [open, setOpen] = useState(false);
+  const [refs, setRefs] = useState<StageRef[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
+
+  async function loadRefs() {
+    if (refs !== null) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/stage-references?productId=${product.id}`);
+      const data = await res.json();
+      setRefs(Array.isArray(data) ? data : []);
+    } finally { setLoading(false); }
+  }
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next) await loadRefs();
+  }
+
+  async function uploadImage(stage: string, file: File) {
+    setUploading(stage);
+    try {
+      const form = new FormData();
+      form.append('productId', product.id);
+      form.append('stage', stage);
+      form.append('image', file);
+      const res = await fetch('/api/admin/stage-references', { method: 'POST', body: form });
+      if (res.ok) {
+        const data = await res.json();
+        setRefs(prev => {
+          const filtered = (prev ?? []).filter(r => r.stage !== stage);
+          return [...filtered, data];
+        });
+      }
+    } finally { setUploading(null); }
+  }
+
+  return (
+    <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <button type="button" onClick={toggle}
+        className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300">
+        <Camera className="w-3 h-3" />
+        <span className="font-medium">Reference Images</span>
+        <span className="text-zinc-700">({refs?.length ?? '…'})</span>
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          {loading && <p className="text-zinc-700 text-xs">Loading...</p>}
+          {!loading && REFERENCE_STAGES.map(({ value, label }) => {
+            const ref = refs?.find(r => r.stage === value);
+            const isUploading = uploading === value;
+            return (
+              <div key={value} className="p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <p className="text-xs font-semibold text-sky-400 uppercase tracking-widest mb-2">{label}</p>
+                {ref ? (
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-20 h-16 rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <Image src={ref.imageUrl} alt={label} fill className="object-cover" unoptimized />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs text-green-400 font-medium">Reference uploaded</p>
+                      <p className="text-[10px] text-zinc-600 mt-0.5">Used for board verification during manufacturing</p>
+                    </div>
+                    <label className="cursor-pointer text-xs px-2 py-1 rounded-lg text-sky-400 hover:text-sky-300"
+                      style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.15)' }}>
+                      <Upload className="w-3 h-3 inline mr-1" />Replace
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(value, f); }} />
+                    </label>
+                  </div>
+                ) : (
+                  <label className={`flex flex-col items-center gap-2 py-4 rounded-xl cursor-pointer transition-all ${isUploading ? 'opacity-50' : 'hover:border-sky-500/30'}`}
+                    style={{ background: 'rgba(14,165,233,0.05)', border: '1px dashed rgba(14,165,233,0.2)' }}>
+                    <Camera className="w-5 h-5 text-sky-400/60" />
+                    <span className="text-xs text-sky-400/60">{isUploading ? 'Uploading...' : 'Upload reference photo'}</span>
+                    <input type="file" accept="image/*" className="hidden" disabled={isUploading}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(value, f); }} />
+                  </label>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProductsAdmin({ products }: { products: Product[] }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
@@ -482,6 +583,7 @@ export function ProductsAdmin({ products }: { products: Product[] }) {
                   </div>
                 </div>
                 {p.productType !== 'TRADING' && <ComponentsPanel product={p} />}
+                {p.productType !== 'TRADING' && <ReferenceImagesPanel product={p} />}
                 {p.productType === 'TRADING' && (
                   <p className="text-zinc-600 text-xs mt-2 italic">Trading items have no manufacturing components</p>
                 )}

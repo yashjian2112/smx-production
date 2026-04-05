@@ -159,9 +159,49 @@ export async function POST(
         });
       }
 
-      // Board serials are NOT assigned to specific units at dispatch.
-      // Assignment happens when employee scans the board to start work.
-      // This allows PS board 01 + BB board 02 to end up on unit 05.
+      // ── Board assignment: assign consumed board serials to units at dispatch ──
+      const bomItem = await tx.bOMItem.findFirst({
+        where: {
+          productId: jobCard.order.productId,
+          rawMaterialId: item.rawMaterialId,
+          stage: jobCard.stage,
+          isBoard: true,
+        },
+      });
+
+      if (bomItem && sIds.length > 0) {
+        const boardSerials = await tx.materialSerial.findMany({
+          where: { id: { in: sIds } },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, barcode: true },
+        });
+
+        const barcodeField = jobCard.stage === 'POWERSTAGE_MANUFACTURING'
+          ? 'powerstageBarcode'
+          : jobCard.stage === 'BRAINBOARD_MANUFACTURING'
+            ? 'brainboardBarcode'
+            : null;
+
+        if (barcodeField) {
+          const unassignedUnits = await tx.controllerUnit.findMany({
+            where: { orderId: jobCard.orderId, [barcodeField]: null },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
+          });
+
+          const assignCount = Math.min(boardSerials.length, unassignedUnits.length);
+          for (let bi = 0; bi < assignCount; bi++) {
+            await tx.controllerUnit.update({
+              where: { id: unassignedUnits[bi].id },
+              data: { [barcodeField]: boardSerials[bi].barcode },
+            });
+            await tx.materialSerial.update({
+              where: { id: boardSerials[bi].id },
+              data: { allocatedToUnitId: unassignedUnits[bi].id },
+            });
+          }
+        }
+      }
     }
 
     await tx.jobCard.update({

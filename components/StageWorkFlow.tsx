@@ -28,6 +28,9 @@ type Props = {
   orderId: string | null;
   powerstageBarcode?: string | null;
   brainboardBarcode?: string | null;
+  orderNumber?: string;
+  productName?: string;
+  productId?: string;
 };
 
 function fmtDuration(sec: number) {
@@ -151,7 +154,7 @@ async function smartCropPCB(blob: Blob): Promise<Blob> {
   });
 }
 
-export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, powerstageBarcode, brainboardBarcode }: Props) {
+export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, currentStatus, orderId, powerstageBarcode, brainboardBarcode, orderNumber, productName, productId }: Props) {
   const router = useRouter();
 
   // ── state machine ──────────────────────────────────────────────────────────
@@ -162,7 +165,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
   // analyzing → AI running
   // result  → PASS / FAIL shown
   // completed → stage already done
-  const [step, setStep] = useState<'loading' | 'jc_create' | 'jc_waiting' | 'jc_scan' | 'idle' | 'working' | 'open' | 'analyzing' | 'result' | 'completed'>('loading');
+  const [step, setStep] = useState<'loading' | 'jc_create' | 'jc_waiting' | 'jc_scan' | 'idle' | 'verify_back' | 'verify_front' | 'working' | 'open' | 'analyzing' | 'result' | 'completed'>('loading');
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [capturedImage, setCapturedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -170,6 +173,19 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
   const [result, setResult] = useState<{ result: string; issues: Issue[]; summary: string } | null>(null);
   const [error, setError] = useState('');
   const [startingWork, setStartingWork] = useState(false);
+
+  // ── board verification state ──────────────────────────────────────────────
+  const VERIFY_TIMEOUT = 30; // seconds for both steps combined
+  const needsVerification = ['POWERSTAGE_MANUFACTURING', 'BRAINBOARD_MANUFACTURING'].includes(currentStage);
+  const [verifyTimer, setVerifyTimer] = useState(VERIFY_TIMEOUT);
+  const [verifyBackPhoto, setVerifyBackPhoto] = useState<string | null>(null); // object URL
+  const [verifyFrontPhoto, setVerifyFrontPhoto] = useState<string | null>(null);
+  const [verifyError, setVerifyError] = useState('');
+  const [verifyChecking, setVerifyChecking] = useState(false);
+  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
+  const verifyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const verifyInputRef = useRef<HTMLInputElement | null>(null);
+  const verifyFrontInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── job card state ─────────────────────────────────────────────────────────
   type JCItem = { id: string; rawMaterial: { name: string; unit: string; barcode?: string | null }; quantityReq: number; quantityIssued: number; verifiedQty: number; isVerified: boolean };
@@ -242,6 +258,44 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
       })
       .catch(() => {});
   }, [unitId]);
+
+  // ── fetch reference image for board verification ───────────────────────────
+  useEffect(() => {
+    if (needsVerification && productId) {
+      fetch(`/api/admin/stage-references?productId=${productId}`)
+        .then(r => r.json())
+        .then((data: { stage: string; imageUrl: string }[]) => {
+          const ref = data.find((r: { stage: string }) => r.stage === currentStage);
+          if (ref) setReferenceImageUrl(ref.imageUrl);
+        })
+        .catch(() => {});
+    }
+  }, [needsVerification, productId, currentStage]);
+
+  // ── verification countdown timer ──────────────────────────────────────────
+  useEffect(() => {
+    if (step !== 'verify_back' && step !== 'verify_front') {
+      if (verifyTimerRef.current) { clearInterval(verifyTimerRef.current); verifyTimerRef.current = null; }
+      return;
+    }
+    if (verifyTimerRef.current) return; // already running
+    verifyTimerRef.current = setInterval(() => {
+      setVerifyTimer(prev => {
+        if (prev <= 1) {
+          // Time's up — reset verification
+          clearInterval(verifyTimerRef.current!);
+          verifyTimerRef.current = null;
+          setVerifyBackPhoto(null);
+          setVerifyFrontPhoto(null);
+          setVerifyError('Time expired. Please start verification again.');
+          setStep('idle');
+          return VERIFY_TIMEOUT;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (verifyTimerRef.current) { clearInterval(verifyTimerRef.current); verifyTimerRef.current = null; } };
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── auto-start work on mount ───────────────────────────────────────────────
   useEffect(() => {
@@ -814,17 +868,194 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
   }
 
   // ── idle (manual fallback) ─────────────────────────────────────────────────
+  // ── board verification: back photo (barcode side) ──────────────────────────
+  if (step === 'verify_back' || step === 'verify_front') {
+    const isBack = step === 'verify_back';
+    const boardBarcode = currentStage === 'POWERSTAGE_MANUFACTURING' ? powerstageBarcode : brainboardBarcode;
+    const timerColor = verifyTimer <= 10 ? '#ef4444' : verifyTimer <= 20 ? '#fbbf24' : '#4ade80';
+
+    const handleVerifyPhoto = async (e: React.ChangeEvent<HTMLInputElement>, side: 'back' | 'front') => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      if (side === 'back') {
+        setVerifyBackPhoto(url);
+        setStep('verify_front');
+      } else {
+        setVerifyFrontPhoto(url);
+        // Both captured — submit for verification
+        setVerifyChecking(true);
+        setVerifyError('');
+        try {
+          // Get actual File objects from the input refs
+          const backFile = verifyInputRef.current?.files?.[0];
+          const frontFile = file;
+          if (!backFile) { setVerifyError('Back photo missing'); setVerifyChecking(false); return; }
+
+          const form = new FormData();
+          form.append('backPhoto', backFile);
+          form.append('frontPhoto', frontFile);
+          const res = await fetch(`/api/units/${unitId}/verify-board`, { method: 'POST', body: form });
+          const data = await res.json();
+
+          if (data.verified || data.warning) {
+            // Stop timer, proceed to start work
+            if (verifyTimerRef.current) { clearInterval(verifyTimerRef.current); verifyTimerRef.current = null; }
+            await startWork();
+          } else {
+            // Verification failed
+            const reasonText = data.reasons?.join('. ') || 'Board verification failed';
+            setVerifyError(reasonText);
+            setVerifyBackPhoto(null);
+            setVerifyFrontPhoto(null);
+            setVerifyTimer(VERIFY_TIMEOUT);
+            setStep('idle');
+          }
+        } catch {
+          setVerifyError('Verification network error. Try again.');
+          setStep('idle');
+        } finally {
+          setVerifyChecking(false);
+        }
+      }
+    }
+
+    return (
+      <div className="space-y-4">
+        {/* Unit info card */}
+        <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center justify-between">
+            <div className="min-w-0">
+              {orderNumber && <p className="text-[10px] text-zinc-600 font-mono">{orderNumber}</p>}
+              <p className="text-sm font-semibold text-white truncate">{productName || 'Unit'}</p>
+              <p className="text-xs text-zinc-500 font-mono mt-0.5">{unitSerial}</p>
+            </div>
+            {boardBarcode && (
+              <div className="text-right shrink-0">
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Board Serial</p>
+                <p className="text-xs font-mono text-sky-400 font-bold">{boardBarcode}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Timer */}
+        <div className="flex items-center justify-center gap-2">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center font-mono font-bold text-sm"
+            style={{ border: `2px solid ${timerColor}`, color: timerColor }}>
+            {verifyTimer}
+          </div>
+          <div>
+            <p className="text-xs text-zinc-400 font-medium">Board Verification</p>
+            <p className="text-[10px] text-zinc-600">Step {isBack ? '1' : '2'} of 2</p>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="flex gap-1.5">
+          <div className="h-1.5 rounded-full flex-1 transition-all" style={{ background: verifyBackPhoto ? '#22c55e' : '#38bdf8' }} />
+          <div className="h-1.5 rounded-full flex-1 transition-all" style={{ background: verifyFrontPhoto ? '#22c55e' : !isBack ? '#38bdf8' : 'rgba(255,255,255,0.1)' }} />
+        </div>
+
+        {verifyChecking ? (
+          <div className="text-center py-8 space-y-3">
+            <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-sm text-zinc-400">Verifying board...</p>
+          </div>
+        ) : isBack ? (
+          /* Step 1: Back photo */
+          <div className="space-y-3">
+            <div className="text-center space-y-1">
+              <p className="text-white font-semibold text-sm">Flip board — show barcode side</p>
+              <p className="text-zinc-500 text-xs">Take a clear photo of the back with the barcode label visible</p>
+            </div>
+            {verifyBackPhoto ? (
+              <div className="relative rounded-xl overflow-hidden" style={{ maxHeight: 200 }}>
+                <img src={verifyBackPhoto} alt="Back" className="w-full object-cover rounded-xl" />
+              </div>
+            ) : (
+              <label className="w-full py-6 rounded-2xl flex flex-col items-center gap-3 text-sky-400 font-semibold text-sm cursor-pointer"
+                style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+                Capture Back Side
+                <input ref={verifyInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+                  onChange={(e) => handleVerifyPhoto(e, 'back')} />
+              </label>
+            )}
+          </div>
+        ) : (
+          /* Step 2: Front photo */
+          <div className="space-y-3">
+            <div className="text-center space-y-1">
+              <p className="text-white font-semibold text-sm">Flip board — show component side</p>
+              <p className="text-zinc-500 text-xs">Take a clear photo of the front (component side)</p>
+            </div>
+            {referenceImageUrl && (
+              <div className="rounded-xl overflow-hidden p-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 text-center">Reference — your board should look like this</p>
+                <img src={referenceImageUrl} alt="Reference" className="w-full rounded-lg object-cover" style={{ maxHeight: 120 }} />
+              </div>
+            )}
+            <label className="w-full py-6 rounded-2xl flex flex-col items-center gap-3 text-sky-400 font-semibold text-sm cursor-pointer"
+              style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+              Capture Front Side
+              <input ref={verifyFrontInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+                onChange={(e) => handleVerifyPhoto(e, 'front')} />
+            </label>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (step === 'idle') {
     return (
       <div className="space-y-4">
-        {error && (
+        {(error || verifyError) && (
           <div className="rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-            {error}
+            {error || verifyError}
           </div>
         )}
+
+        {/* Unit info card (for all stages) */}
+        <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center justify-between">
+            <div className="min-w-0">
+              {orderNumber && <p className="text-[10px] text-zinc-600 font-mono">{orderNumber}</p>}
+              <p className="text-sm font-semibold text-white truncate">{productName || 'Unit'}</p>
+              <p className="text-xs text-zinc-500 font-mono mt-0.5">{unitSerial}</p>
+            </div>
+            {(powerstageBarcode || brainboardBarcode) && (
+              <div className="text-right shrink-0">
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Board</p>
+                <p className="text-xs font-mono text-sky-400 font-bold">
+                  {currentStage === 'POWERSTAGE_MANUFACTURING' ? powerstageBarcode : brainboardBarcode}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
         <button
           type="button"
-          onClick={startWork}
+          onClick={() => {
+            if (needsVerification) {
+              setVerifyTimer(VERIFY_TIMEOUT);
+              setVerifyBackPhoto(null);
+              setVerifyFrontPhoto(null);
+              setVerifyError('');
+              setStep('verify_back');
+            } else {
+              startWork();
+            }
+          }}
           disabled={startingWork}
           className="w-full py-5 rounded-2xl font-bold text-sm flex flex-col items-center gap-2 disabled:opacity-50"
           style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}
@@ -836,7 +1067,7 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
           )}
-          {startingWork ? 'Starting…' : `Start ${stageLabel}`}
+          {startingWork ? 'Starting…' : needsVerification ? `Verify & Start ${stageLabel}` : `Start ${stageLabel}`}
         </button>
       </div>
     );
@@ -1083,28 +1314,58 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
       <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: '#0a0a0f' }}>
         {/* Header */}
         <div
-          className="flex items-center justify-between px-4 flex-shrink-0"
-          style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+          className="px-4 flex-shrink-0"
+          style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)', paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}
         >
-          <div>
-            <p className="text-xs text-zinc-500 font-medium uppercase tracking-widest">{stageLabel}</p>
-            {submission && (
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                <LiveTimer startedAt={submission.startedAt} />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div>
+                <p className="text-xs text-zinc-500 font-medium uppercase tracking-widest">{stageLabel}</p>
+                {submission && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                    <LiveTimer startedAt={submission.startedAt} />
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setStep('working')}
+              className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setStep('working')}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
+          {/* Unit info bar */}
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span className="font-mono text-sm text-sky-400 font-semibold">{unitSerial}</span>
+            {orderNumber && <span className="text-xs text-zinc-600">·</span>}
+            {orderNumber && <span className="text-xs text-zinc-500">{orderNumber}</span>}
+            {productName && <span className="text-xs text-zinc-600">·</span>}
+            {productName && <span className="text-xs text-zinc-500 truncate max-w-[140px]">{productName}</span>}
+          </div>
+          {/* Board barcode */}
+          {(() => {
+            const bc = currentStage === 'POWERSTAGE_MANUFACTURING' ? powerstageBarcode
+              : currentStage === 'BRAINBOARD_MANUFACTURING' ? brainboardBarcode
+              : null;
+            if (!bc) return null;
+            return (
+              <div className="mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
+                style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.15)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-400 shrink-0">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M7 7h.01M7 12h.01M7 17h.01M12 7h.01M12 12h.01M12 17h.01M17 7h.01M17 12h.01M17 17h.01" />
+                </svg>
+                <span className="text-xs text-zinc-400">Board:</span>
+                <span className="font-mono text-xs text-sky-300 font-semibold">{bc}</span>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Body */}
@@ -1183,8 +1444,8 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
             </div>
           ) : !previewUrl ? (
             /* ── Photo capture area ─────────────────────────────────────────── */
-            <div className="flex-1 flex flex-col items-center justify-center gap-6">
-              <div className="text-center space-y-2">
+            <div className="flex-1 flex flex-col items-center justify-start gap-4 pt-4">
+              <div className="text-center space-y-1.5">
                 <p className="text-white font-semibold text-base">
                   {ZONE_INFO[zones[photoStep] ?? 'full']?.title ?? 'Take a photo'}
                 </p>
@@ -1195,10 +1456,10 @@ export function StageWorkFlow({ unitId, currentStage, currentStatus, orderId, po
               <button
                 type="button"
                 onClick={openCamera}
-                className="w-full py-6 rounded-2xl flex flex-col items-center gap-3 text-sky-400 font-semibold text-sm"
+                className="w-full py-5 rounded-2xl flex flex-col items-center gap-2.5 text-sky-400 font-semibold text-sm"
                 style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}
               >
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                   <circle cx="12" cy="13" r="4" />
                 </svg>

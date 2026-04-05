@@ -297,6 +297,9 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
           }))}
           powerstageBarcode={unit.powerstageBarcode ?? null}
           brainboardBarcode={unit.brainboardBarcode ?? null}
+          productId={unit.product?.id ?? null}
+          productName={unit.product?.name ?? undefined}
+          orderNumber={unit.order?.orderNumber ?? undefined}
         />
       )}
 

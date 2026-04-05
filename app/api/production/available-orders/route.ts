@@ -85,7 +85,7 @@ export async function GET() {
       return { ...order, alreadyAccepted: accepted, myJobCard: jc };
     })
     .filter(order => {
-      if (order.alreadyAccepted && order.myJobCard?.status && ['COMPLETED', 'IN_PROGRESS'].includes(order.myJobCard.status)) return false;
+      if (order.alreadyAccepted && order.myJobCard?.status && ['VERIFIED', 'COMPLETED', 'IN_PROGRESS'].includes(order.myJobCard.status)) return false;
       return true;
     });
 
