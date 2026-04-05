@@ -230,24 +230,87 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
 
   const overallPct = totalQtyNeeded > 0 ? Math.min(100, (totalQtyScanned / totalQtyNeeded) * 100) : 0;
 
-  return (
-    <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: 'rgb(9,9,11)' }}>
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800" style={{ background: 'rgba(0,0,0,0.5)' }}>
-        <button onClick={onClose} className="text-zinc-400 hover:text-white p-1">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <p className="text-white font-semibold text-sm">{card.cardNumber}</p>
-          <p className="text-zinc-500 text-xs">{card.order.orderNumber} · {card.orderQuantity} units · {STAGE_LABEL[card.stage] ?? card.stage}</p>
-        </div>
-        <div className="text-right shrink-0">
-          <p className="text-2xl font-bold" style={{ color: allScanned ? '#4ade80' : '#fbbf24' }}>{completedItems}/{card.items.length}</p>
-          <p className="text-zinc-600 text-[10px]">materials done</p>
+  // ── Material item row (shared between camera-on and camera-off views) ──
+  const renderItem = (item: JobCardItem, compact = false) => {
+    const qty   = qtyByItem(item.id);
+    const need  = item.quantityReq;
+    const done  = qty >= need;
+    const stock = item.rawMaterial.currentStock;
+    const remaining = Math.max(0, need - qty);
+    const pct   = need > 0 ? Math.min(100, (qty / need) * 100) : 0;
+    const itemSerials = scannedSerials.filter(s => s.jobCardItemId === item.id);
+    const stockOk = stock >= remaining;
+    const stockLow = !stockOk && stock > 0;
+
+    return (
+      <div key={item.id}
+        className={`rounded-xl transition-all ${compact ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}
+        style={{
+          background: done ? 'rgba(34,197,94,0.08)' : qty > 0 ? 'rgba(14,165,233,0.06)' : 'rgba(255,255,255,0.03)',
+          border: `1px solid ${done ? 'rgba(34,197,94,0.25)' : item.isCritical ? 'rgba(251,113,133,0.2)' : 'rgba(255,255,255,0.05)'}`,
+        }}>
+        <div className="flex items-center gap-2.5">
+          {/* Status circle */}
+          <div className={`${compact ? 'w-6 h-6' : 'w-7 h-7'} rounded-full flex items-center justify-center shrink-0 ${done ? 'bg-emerald-500' : qty > 0 ? 'bg-sky-600' : 'bg-zinc-800'}`}>
+            {done ? <Check className={`${compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-white`} /> : qty > 0 ? <span className="text-white text-[10px] font-bold">{qty}</span> : <span className="w-2 h-2 rounded-full" style={{ background: stockOk ? '#4ade80' : stockLow ? '#fbbf24' : '#f87171' }} />}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className={`text-zinc-200 truncate ${compact ? 'text-xs' : 'text-sm'}`}>{item.rawMaterial.name}</span>
+              {item.isCritical && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>
+              )}
+              <span className={`text-xs font-mono shrink-0 ${done ? 'text-emerald-400' : qty > 0 ? 'text-sky-400' : 'text-zinc-600'}`}>
+                {qty}/{fmt(need)}
+              </span>
+            </div>
+            {!compact && (
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-zinc-600 font-mono text-[10px]">{item.rawMaterial.code}</span>
+                <span className={`text-[10px] ${stockOk ? 'text-emerald-400' : stockLow ? 'text-amber-400' : 'text-red-400'}`}>
+                  Stock: {stock <= 0 ? 'None' : fmt(stock)}
+                </span>
+                {!done && remaining > 0 && (
+                  <span className="text-zinc-500 text-[10px]">Need {fmt(remaining)} more</span>
+                )}
+              </div>
+            )}
+            {/* Progress bar */}
+            {need > 1 && (
+              <div className={`${compact ? 'mt-1' : 'mt-1.5'} h-1 rounded-full overflow-hidden`} style={{ background: 'rgba(255,255,255,0.06)' }}>
+                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: done ? '#4ade80' : '#38bdf8' }} />
+              </div>
+            )}
+            {/* Scanned serials */}
+            {!compact && itemSerials.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {itemSerials.map(s => (
+                  <span key={s.serialId} className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-sky-900/30 text-sky-400">
+                    {s.barcode}{s.packQty > 1 ? ` (×${s.packQty})` : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* Excess warning */}
+            {qty > need && !compact && (
+              <p className="text-amber-400 text-[10px] mt-1">Excess: {fmt(qty - need)} units</p>
+            )}
+          </div>
+
+          {!compact && qty > 0 && (
+            <button onClick={() => undoLastScanForItem(item.id)} className="text-zinc-500 hover:text-red-400 p-1 shrink-0" title="Undo last scan">
+              <Undo2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
+    );
+  };
 
-      {/* Hidden input for barcode gun */}
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: 'rgb(9,9,11)' }}>
+      {/* Hidden input for barcode gun — always active */}
       <input
         ref={scanRef}
         type="text"
@@ -261,176 +324,196 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
         style={{ position: 'fixed', left: '-9999px', opacity: 0 }}
       />
 
-      {/* Scan area with progress */}
-      <div className="px-4 py-3 border-b border-zinc-800/50" style={{ background: 'rgba(14,165,233,0.03)' }}>
-        <button
-          onClick={() => setShowCamera(true)}
-          disabled={scanning || allScanned}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-40"
-          style={{ background: allScanned ? 'rgba(34,197,94,0.08)' : 'rgba(14,165,233,0.08)', border: `2px solid ${allScanned ? 'rgba(34,197,94,0.25)' : 'rgba(14,165,233,0.25)'}` }}
-        >
-          {scanning ? (
-            <>
-              <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin shrink-0" />
-              <span className="text-sky-400 font-medium text-sm">Processing...</span>
-            </>
-          ) : allScanned ? (
-            <>
-              <Check className="w-5 h-5 text-emerald-400" />
-              <span className="text-emerald-400 font-medium text-sm">All materials scanned</span>
-            </>
-          ) : (
-            <>
-              <Camera className="w-5 h-5 text-sky-400" />
-              <span className="text-sky-400 font-medium text-sm">Tap to scan</span>
-              <span className="text-zinc-600 text-xs ml-1">or use barcode gun</span>
-            </>
-          )}
-        </button>
-        {/* Overall progress bar */}
-        <div className="mt-2 flex items-center gap-2">
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${overallPct}%`, background: allScanned ? '#4ade80' : '#38bdf8' }} />
+      {showCamera ? (
+        /* ═══════════ SPLIT-SCREEN: Camera top + Materials bottom ═══════════ */
+        <>
+          {/* Compact header */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800" style={{ background: 'rgba(0,0,0,0.6)' }}>
+            <button onClick={() => { setShowCamera(false); setTimeout(() => scanRef.current?.focus(), 200); }}
+              className="text-zinc-400 hover:text-white p-0.5">
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-semibold text-xs">{card.cardNumber}</p>
+            </div>
+            {/* Progress pill */}
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-full shrink-0"
+              style={{ background: allScanned ? 'rgba(34,197,94,0.12)' : 'rgba(14,165,233,0.12)' }}>
+              <span className={`text-xs font-bold ${allScanned ? 'text-emerald-400' : 'text-sky-400'}`}>
+                {completedItems}/{card.items.length}
+              </span>
+            </div>
           </div>
-          <span className="text-zinc-500 text-[10px] shrink-0">{completedItems} of {card.items.length}</span>
-        </div>
-        {lastScan && (
-          <div className={`mt-2 px-4 py-2 rounded-xl text-sm font-medium ${lastScan.ok ? 'text-emerald-400 bg-emerald-900/20' : 'text-red-400 bg-red-900/20'}`}>
-            {lastScan.ok ? <Check className="w-4 h-4 inline mr-1.5" /> : <X className="w-4 h-4 inline mr-1.5" />}
-            {lastScan.text}
-          </div>
-        )}
-      </div>
 
-      {/* Camera scanner modal */}
-      {showCamera && (
-        <BarcodeScanner
-          title="Scan Material Barcode"
-          hint={`${card.cardNumber} — ${remainingItems} material(s) remaining`}
-          continuous
-          exclude={scannedCodesRef}
-          onScan={(code) => processScan(code)}
-          onClose={() => { setShowCamera(false); setTimeout(() => scanRef.current?.focus(), 200); }}
-        />
-      )}
-
-      {/* Items list */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
-        {loadingScans ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <div className="w-6 h-6 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-zinc-500 text-sm">Loading saved scans...</p>
-          </div>
-        ) : card.items.map(item => {
-          const qty   = qtyByItem(item.id);
-          const need  = item.quantityReq;
-          const done  = qty >= need;
-          const stock = item.rawMaterial.currentStock;
-          const remaining = Math.max(0, need - qty);
-          const pct   = need > 0 ? Math.min(100, (qty / need) * 100) : 0;
-          const itemSerials = scannedSerials.filter(s => s.jobCardItemId === item.id);
-          // Stock status: green = enough for remaining, amber = some but not enough, red = none
-          const stockOk = stock >= remaining;
-          const stockLow = !stockOk && stock > 0;
-
-          return (
-            <div key={item.id}
-              className="rounded-xl px-3 py-2.5 transition-all"
-              style={{
-                background: done ? 'rgba(34,197,94,0.08)' : qty > 0 ? 'rgba(14,165,233,0.06)' : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${done ? 'rgba(34,197,94,0.25)' : item.isCritical ? 'rgba(251,113,133,0.2)' : 'rgba(255,255,255,0.05)'}`,
-              }}>
-              <div className="flex items-center gap-3">
-                {/* Status circle */}
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${done ? 'bg-emerald-500' : qty > 0 ? 'bg-sky-600' : 'bg-zinc-800'}`}>
-                  {done ? <Check className="w-4 h-4 text-white" /> : qty > 0 ? <span className="text-white text-[10px] font-bold">{qty}</span> : <span className="w-2 h-2 rounded-full" style={{ background: stockOk ? '#4ade80' : stockLow ? '#fbbf24' : '#f87171' }} />}
+          {/* Camera — top ~40% */}
+          <div className="relative shrink-0" style={{ height: '38vh' }}>
+            <BarcodeScanner
+              inline
+              continuous
+              exclude={scannedCodesRef}
+              onScan={(code) => processScan(code)}
+              onClose={() => { setShowCamera(false); setTimeout(() => scanRef.current?.focus(), 200); }}
+            />
+            {/* Scan feedback overlay at bottom of camera */}
+            {lastScan && (
+              <div className="absolute bottom-2 left-3 right-3 z-10">
+                <div className={`px-3 py-1.5 rounded-xl text-xs font-medium ${lastScan.ok ? 'text-emerald-400 bg-emerald-900/80 border border-emerald-800/50' : 'text-red-400 bg-red-900/80 border border-red-800/50'}`}
+                  style={{ backdropFilter: 'blur(8px)' }}>
+                  {lastScan.ok ? <Check className="w-3.5 h-3.5 inline mr-1" /> : <X className="w-3.5 h-3.5 inline mr-1" />}
+                  {lastScan.text}
                 </div>
+              </div>
+            )}
+          </div>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-zinc-200 text-sm truncate">{item.rawMaterial.name}</span>
-                    {item.isCritical && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>
-                    )}
-                    <span className={`text-xs font-mono shrink-0 ${done ? 'text-emerald-400' : qty > 0 ? 'text-sky-400' : 'text-zinc-600'}`}>
-                      {qty}/{fmt(need)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-zinc-600 font-mono text-[10px]">{item.rawMaterial.code}</span>
-                    <span className={`text-[10px] ${stockOk ? 'text-emerald-400' : stockLow ? 'text-amber-400' : 'text-red-400'}`}>
-                      Stock: {stock <= 0 ? 'None' : fmt(stock)}
-                    </span>
-                    {!done && remaining > 0 && (
-                      <span className="text-zinc-500 text-[10px]">Need {fmt(remaining)} more</span>
-                    )}
-                  </div>
-                  {/* Progress bar */}
-                  {need > 1 && (
-                    <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: done ? '#4ade80' : '#38bdf8' }} />
-                    </div>
-                  )}
-                  {/* Scanned serials */}
-                  {itemSerials.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {itemSerials.map(s => (
-                        <span key={s.serialId} className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-sky-900/30 text-sky-400">
-                          {s.barcode}{s.packQty > 1 ? ` (×${s.packQty})` : ''}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {/* Excess warning */}
-                  {qty > need && (
-                    <p className="text-amber-400 text-[10px] mt-1">Excess: {fmt(qty - need)} units (will be returned after use)</p>
-                  )}
-                </div>
-
-                {qty > 0 && (
-                  <button onClick={() => undoLastScanForItem(item.id)} className="text-zinc-500 hover:text-red-400 p-1 shrink-0" title="Undo last scan">
-                    <Undo2 className="w-4 h-4" />
-                  </button>
-                )}
+          {/* Material progress list — bottom ~60% */}
+          <div className="flex-1 overflow-y-auto border-t border-zinc-800">
+            {/* Section header */}
+            <div className="sticky top-0 z-10 px-3 py-2 flex items-center justify-between"
+              style={{ background: 'rgba(9,9,11,0.95)', backdropFilter: 'blur(8px)' }}>
+              <span className="text-zinc-500 text-[10px] uppercase tracking-wider font-medium">
+                Materials · {completedItems} of {card.items.length} done
+              </span>
+              <div className="flex-1 mx-3 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${overallPct}%`, background: allScanned ? '#4ade80' : '#38bdf8' }} />
               </div>
             </div>
-          );
-        })}
-      </div>
+            <div className="px-3 pb-3 space-y-1">
+              {card.items.map(item => renderItem(item, true))}
+            </div>
+          </div>
 
-      {/* Error */}
-      {error && (
-        <div className="px-4 py-2 border-t border-red-900/30" style={{ background: 'rgba(239,68,68,0.06)' }}>
-          <p className="text-red-400 text-xs whitespace-pre-line">{error}</p>
-        </div>
-      )}
+          {/* Compact bottom bar */}
+          <div className="px-3 py-2.5 border-t border-zinc-800 flex items-center gap-2" style={{ background: 'rgba(0,0,0,0.6)', paddingBottom: 'max(env(safe-area-inset-bottom), 10px)' }}>
+            {allScanned ? (
+              <>
+                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-emerald-400 text-xs font-medium flex-1">Ready to dispatch</span>
+              </>
+            ) : (
+              <span className="text-zinc-500 text-xs flex-1">{remainingItems} material{remainingItems !== 1 ? 's' : ''} remaining</span>
+            )}
+            <button
+              onClick={() => { setShowCamera(false); setTimeout(() => scanRef.current?.focus(), 200); }}
+              className="px-3 py-2 rounded-xl text-xs text-sky-400 font-medium"
+              style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.2)' }}>
+              Close Camera
+            </button>
+            {allScanned && (
+              <button
+                onClick={handleDispatch}
+                disabled={submitting}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white disabled:opacity-40"
+                style={{ background: 'rgba(34,197,94,0.9)' }}>
+                {submitting ? 'Dispatching...' : 'Dispatch'}
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        /* ═══════════ NORMAL VIEW: No camera, full material list ═══════════ */
+        <>
+          {/* Header */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800" style={{ background: 'rgba(0,0,0,0.5)' }}>
+            <button onClick={onClose} className="text-zinc-400 hover:text-white p-1">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-semibold text-sm">{card.cardNumber}</p>
+              <p className="text-zinc-500 text-xs">{card.order.orderNumber} · {card.orderQuantity} units · {STAGE_LABEL[card.stage] ?? card.stage}</p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-2xl font-bold" style={{ color: allScanned ? '#4ade80' : '#fbbf24' }}>{completedItems}/{card.items.length}</p>
+              <p className="text-zinc-600 text-[10px]">materials done</p>
+            </div>
+          </div>
 
-      {/* Sticky Footer */}
-      <div className="px-4 py-4 border-t border-zinc-800 flex items-center gap-3" style={{ background: 'rgba(0,0,0,0.5)' }}>
-        <div className="flex-1 flex items-center gap-2">
-          {allScanned ? (
-            <>
-              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span className="text-emerald-400 text-sm font-medium">Ready to dispatch</span>
-            </>
-          ) : remainingItems > 0 ? (
-            <>
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="text-amber-400 text-sm">{remainingItems} material{remainingItems !== 1 ? 's' : ''} remaining</span>
-            </>
-          ) : (
-            <span className="text-zinc-500 text-sm">Scan serial barcodes to begin</span>
+          {/* Scan button + progress */}
+          <div className="px-4 py-3 border-b border-zinc-800/50" style={{ background: 'rgba(14,165,233,0.03)' }}>
+            <button
+              onClick={() => setShowCamera(true)}
+              disabled={scanning || allScanned}
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-40"
+              style={{ background: allScanned ? 'rgba(34,197,94,0.08)' : 'rgba(14,165,233,0.08)', border: `2px solid ${allScanned ? 'rgba(34,197,94,0.25)' : 'rgba(14,165,233,0.25)'}` }}
+            >
+              {scanning ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                  <span className="text-sky-400 font-medium text-sm">Processing...</span>
+                </>
+              ) : allScanned ? (
+                <>
+                  <Check className="w-5 h-5 text-emerald-400" />
+                  <span className="text-emerald-400 font-medium text-sm">All materials scanned</span>
+                </>
+              ) : (
+                <>
+                  <Camera className="w-5 h-5 text-sky-400" />
+                  <span className="text-sky-400 font-medium text-sm">Tap to scan</span>
+                  <span className="text-zinc-600 text-xs ml-1">or use barcode gun</span>
+                </>
+              )}
+            </button>
+            {/* Overall progress bar */}
+            <div className="mt-2 flex items-center gap-2">
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${overallPct}%`, background: allScanned ? '#4ade80' : '#38bdf8' }} />
+              </div>
+              <span className="text-zinc-500 text-[10px] shrink-0">{completedItems} of {card.items.length}</span>
+            </div>
+            {lastScan && (
+              <div className={`mt-2 px-4 py-2 rounded-xl text-sm font-medium ${lastScan.ok ? 'text-emerald-400 bg-emerald-900/20' : 'text-red-400 bg-red-900/20'}`}>
+                {lastScan.ok ? <Check className="w-4 h-4 inline mr-1.5" /> : <X className="w-4 h-4 inline mr-1.5" />}
+                {lastScan.text}
+              </div>
+            )}
+          </div>
+
+          {/* Items list */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
+            {loadingScans ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <div className="w-6 h-6 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+                <p className="text-zinc-500 text-sm">Loading saved scans...</p>
+              </div>
+            ) : card.items.map(item => renderItem(item, false))}
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="px-4 py-2 border-t border-red-900/30" style={{ background: 'rgba(239,68,68,0.06)' }}>
+              <p className="text-red-400 text-xs whitespace-pre-line">{error}</p>
+            </div>
           )}
-        </div>
-        <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 border border-zinc-700">Close</button>
-        <button
-          onClick={handleDispatch}
-          disabled={submitting || !allScanned}
-          className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40"
-          style={{ background: 'rgba(34,197,94,0.9)' }}>
-          {submitting ? 'Dispatching...' : 'Dispatch'}
-        </button>
-      </div>
+
+          {/* Sticky Footer */}
+          <div className="px-4 py-4 border-t border-zinc-800 flex items-center gap-3" style={{ background: 'rgba(0,0,0,0.5)' }}>
+            <div className="flex-1 flex items-center gap-2">
+              {allScanned ? (
+                <>
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="text-emerald-400 text-sm font-medium">Ready to dispatch</span>
+                </>
+              ) : remainingItems > 0 ? (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="text-amber-400 text-sm">{remainingItems} material{remainingItems !== 1 ? 's' : ''} remaining</span>
+                </>
+              ) : (
+                <span className="text-zinc-500 text-sm">Scan serial barcodes to begin</span>
+              )}
+            </div>
+            <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 border border-zinc-700">Close</button>
+            <button
+              onClick={handleDispatch}
+              disabled={submitting || !allScanned}
+              className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40"
+              style={{ background: 'rgba(34,197,94,0.9)' }}>
+              {submitting ? 'Dispatching...' : 'Dispatch'}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
