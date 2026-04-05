@@ -31,7 +31,13 @@ export async function POST(req: Request) {
   const material = await prisma.rawMaterial.findUnique({ where: { id: data.rawMaterialId } });
   if (!material) return NextResponse.json({ error: 'Material not found' }, { status: 404 });
 
-  const newStock = material.currentStock + data.quantity;
+  // For opening stock with packs: stock = packCount × packSize (not raw quantity)
+  const ps = data.packSize ?? material.packSize ?? 1;
+  const stockQty = (data.type === 'OPENING' && data.packCount && data.packCount > 0)
+    ? data.packCount * ps
+    : data.quantity;
+
+  const newStock = material.currentStock + stockQty;
   if (newStock < 0) {
     return NextResponse.json({ error: 'Adjustment would result in negative stock' }, { status: 400 });
   }
@@ -45,7 +51,6 @@ export async function POST(req: Request) {
   // Find last serial sequence OUTSIDE transaction to avoid lock issues
   let serialPrefix = '';
   let serialSeqStart = 1;
-  const ps = data.packSize ?? 1;
   if (data.type === 'OPENING' && data.packCount && data.packCount > 0) {
     const mat = await prisma.rawMaterial.findUnique({
       where: { id: data.rawMaterialId },
@@ -87,7 +92,7 @@ export async function POST(req: Request) {
         data: {
           rawMaterialId:  data.rawMaterialId,
           type:           'ADJUSTMENT',
-          quantity:       data.quantity,
+          quantity:       stockQty,
           reference:      data.type,
           adjustmentType: data.adjustmentType ?? data.type,
           notes:          data.reason,
@@ -97,13 +102,13 @@ export async function POST(req: Request) {
 
       // 3. For positive adjustments (opening stock / add), create a batch
       let batchId: string | null = null;
-      if (data.quantity > 0 && batchCode) {
+      if (stockQty > 0 && batchCode) {
         const batch = await tx.inventoryBatch.create({
           data: {
             batchCode,
             rawMaterialId:    data.rawMaterialId,
-            quantity:         data.quantity,
-            remainingQty:     data.quantity,
+            quantity:         stockQty,
+            remainingQty:     stockQty,
             unitPrice:        data.unitPrice,
             condition:        'GOOD',
             expiryDate:       data.expiryDate ? new Date(data.expiryDate) : null,
@@ -168,7 +173,7 @@ export async function POST(req: Request) {
     });
 
     // After deduction: check if stock dropped below reorder point → auto-create RO
-    if (data.quantity < 0) {
+    if (stockQty < 0) {
       const updated = await prisma.rawMaterial.findUnique({
         where: { id: data.rawMaterialId },
         select: { id: true, currentStock: true, reorderPoint: true, minimumOrderQty: true },
