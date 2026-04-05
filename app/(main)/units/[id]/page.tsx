@@ -86,7 +86,7 @@ export default async function UnitPage({ params }: { params: Promise<{ id: strin
   };
   const currentStageBarcode = stageBarcodeMap[unit.currentStage] ?? null;
 
-  const isEmployee = session.role === 'PRODUCTION_EMPLOYEE';
+  const isEmployee = ['PRODUCTION_EMPLOYEE', 'ADMIN', 'PRODUCTION_MANAGER'].includes(session.role);
   const canDoQC = ['ADMIN', 'PRODUCTION_MANAGER', 'QC_USER'].includes(session.role);
   const components = unit.product?.components ?? [];
   const initialChecks = unit.componentChecks.map((cc) => ({
