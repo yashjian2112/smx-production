@@ -105,8 +105,8 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   const processing = orders.filter((o) => {
     if (o.status !== 'ACTIVE') return false;
     if (allUnitsDone(o)) return false;
-    // For employees: only show in Processing after they accepted (have job card) or units started
-    if (isEmployee) return o.hasMyJobCard || o.units.some(u => u.currentStatus !== 'PENDING');
+    // For employees: show in Processing if they accepted (job card), units started, or has trading items
+    if (isEmployee) return o.hasMyJobCard || o.units.some(u => u.currentStatus !== 'PENDING') || o.units.some(u => u.isTrading);
     // For managers: trading orders and all active orders show in Processing
     if (o.product.productType === 'TRADING' || o.units.some(u => u.isTrading)) return true;
     return true;
@@ -323,11 +323,14 @@ function OrderCard({ order, onRefresh }: { order: OrderItem; onRefresh?: () => v
       <p className="text-zinc-500 text-sm">
         {(() => {
           const grouped: Record<string, number> = {};
-          order.units.forEach(u => { const name = u.productName || order.product.name; grouped[name] = (grouped[name] || 0) + 1; });
+          const mfgUnits = order.units.filter(u => !u.isTrading);
+          const displayUnits = mfgUnits.length > 0 ? mfgUnits : order.units;
+          displayUnits.forEach(u => { const name = u.productName || order.product.name; grouped[name] = (grouped[name] || 0) + 1; });
           const entries = Object.entries(grouped);
           if (entries.length <= 1) {
             const name = entries.length === 1 ? entries[0][0] : order.product.name;
-            return <>{name}{order.voltage ? ` · ${order.voltage}` : ''}{' · '}{total} unit{total !== 1 ? 's' : ''}</>;
+            const count = entries.length === 1 ? entries[0][1] : total;
+            return <>{name}{order.voltage ? ` · ${order.voltage}` : ''}{' · '}{count} unit{count !== 1 ? 's' : ''}</>;
           }
           return entries.map(([name, count], i) => <span key={name}>{i > 0 ? ' · ' : ''}{count}x {name}</span>);
         })()}
