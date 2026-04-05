@@ -1306,7 +1306,7 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose, 
         </div>
 
         {/* Bottom action bar */}
-        <div className="px-4 py-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}>
+        <div className="sticky bottom-0 px-4 py-3 shrink-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgb(24,24,27)' }}>
           {allConfirmed ? (
             <button onClick={onClose}
               className="w-full py-3 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-2">
