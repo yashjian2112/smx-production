@@ -153,7 +153,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'rgb(9,9,11)' }}>
+    <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: 'rgb(9,9,11)' }}>
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800" style={{ background: 'rgba(0,0,0,0.5)' }}>
         <button onClick={onClose} className="text-zinc-400 hover:text-white p-1">
