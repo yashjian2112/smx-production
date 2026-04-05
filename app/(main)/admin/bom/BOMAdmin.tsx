@@ -14,8 +14,6 @@ const STAGE_LABELS: Record<string, string> = {
   POWERSTAGE_MANUFACTURING: 'PS Mfg',
   BRAINBOARD_MANUFACTURING: 'BB Mfg',
   CONTROLLER_ASSEMBLY: 'Controller Assembly',
-  QC_AND_SOFTWARE: 'QC & Software',
-  REWORK: 'Rework',
   FINAL_ASSEMBLY: 'Final Assembly',
   HARNESS_CRIMPING: 'Harness Crimping',
 };
