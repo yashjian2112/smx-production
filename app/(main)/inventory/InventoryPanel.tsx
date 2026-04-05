@@ -1178,7 +1178,14 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose, 
       if (!res.ok) { setScanError(data.error || 'Scan failed'); return; }
       if (data.alreadyConfirmed) { setScanError('Already scanned'); return; }
       // Update local state
-      setSerials(prev => prev.map(s => s.id === data.id ? { ...s, status: 'CONFIRMED' } : s));
+      setSerials(prev => {
+        const updated = prev.map(s => s.id === data.id ? { ...s, status: 'CONFIRMED' } : s);
+        // Auto-close scanner when all serials are confirmed
+        if (updated.every(s => s.status === 'CONFIRMED')) {
+          setTimeout(() => setScanning(false), 600);
+        }
+        return updated;
+      });
       setLastScanned(barcode);
       setScanError('');
     } catch {
