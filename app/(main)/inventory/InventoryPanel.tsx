@@ -1240,73 +1240,91 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose, 
 
   // ── Step 2: Scan & Verify ──
   if (step === 'scan') {
+    const pending = serials.filter(s => s.status !== 'CONFIRMED');
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
-        <div className="w-full max-w-md rounded-2xl p-5" style={{ background: 'rgb(24,24,27)' }}>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold text-sm">Scan Barcodes to Verify</h3>
-            <span className="text-xs px-2 py-0.5 rounded bg-sky-900/30 text-sky-400 font-medium">
-              {confirmed} / {total} verified
+      <div className="fixed inset-0 z-50 bg-black flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <div>
+            <h3 className="text-white font-semibold text-sm">Scan & Verify</h3>
+            <p className="text-zinc-500 text-[11px]">{materialName}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs px-2.5 py-1 rounded-full font-semibold"
+              style={allConfirmed
+                ? { background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }
+                : { background: 'rgba(14,165,233,0.15)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.25)' }
+              }>
+              {confirmed}/{total}
             </span>
+            <button onClick={onClose}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-white"
+              style={{ background: 'rgba(255,255,255,0.08)' }}>
+              <X className="w-4 h-4" />
+            </button>
           </div>
+        </div>
 
-          {/* Progress bar */}
-          <div className="w-full h-1.5 rounded-full bg-zinc-800 mb-4">
-            <div className="h-full rounded-full bg-emerald-500 transition-all duration-300"
-              style={{ width: total > 0 ? `${(confirmed / total) * 100}%` : '0%' }} />
+        {/* Progress bar */}
+        <div className="w-full h-1 bg-zinc-900">
+          <div className="h-full bg-emerald-500 transition-all duration-300"
+            style={{ width: total > 0 ? `${(confirmed / total) * 100}%` : '0%' }} />
+        </div>
+
+        {/* Error banner */}
+        {scanError && (
+          <div className="mx-4 mt-2 px-3 py-2 rounded-lg bg-red-900/20 border border-red-800/30">
+            <p className="text-red-400 text-xs">{scanError}</p>
           </div>
+        )}
 
-          {/* Error / Last scanned */}
-          {scanError && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-red-900/20 border border-red-800/30">
-              <p className="text-red-400 text-xs">{scanError}</p>
+        {/* Serial list — scrollable */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
+          {/* Pending first, then confirmed */}
+          {pending.map(s => (
+            <div key={s.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <span className="font-mono text-zinc-300 text-[11px]">{s.barcode}</span>
+              <span className="flex items-center gap-1.5">
+                {s.quantity > 1 && <span className="text-zinc-600">x{s.quantity}</span>}
+                <span className="text-[10px] text-amber-400 font-medium px-1.5 py-0.5 rounded"
+                  style={{ background: 'rgba(251,191,36,0.1)' }}>PENDING</span>
+              </span>
             </div>
-          )}
-          {lastScanned && !scanError && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-emerald-900/20 border border-emerald-800/30">
-              <p className="text-emerald-400 text-xs"><Check className="w-3 h-3 inline mr-1" />{lastScanned} confirmed</p>
+          ))}
+          {serials.filter(s => s.status === 'CONFIRMED').map(s => (
+            <div key={s.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs"
+              style={{ background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.1)' }}>
+              <span className="font-mono text-zinc-400 text-[11px]">{s.barcode}</span>
+              <span className="flex items-center gap-1.5">
+                {s.quantity > 1 && <span className="text-zinc-600">x{s.quantity}</span>}
+                <Check className="w-4 h-4 text-emerald-400" />
+              </span>
             </div>
+          ))}
+        </div>
+
+        {/* Bottom action bar */}
+        <div className="px-4 py-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}>
+          {allConfirmed ? (
+            <button onClick={onClose}
+              className="w-full py-3 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-2">
+              <Check className="w-4 h-4" /> All Verified — Done
+            </button>
+          ) : (
+            <button onClick={() => { setScanError(''); setScanning(true); }}
+              className="w-full py-3 rounded-xl text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white transition-colors flex items-center justify-center gap-2">
+              <ScanLine className="w-4 h-4" /> {scanning ? 'Scanning…' : 'Scan Barcode'}
+            </button>
           )}
-
-          {/* Serial list */}
-          <div className="space-y-1 max-h-[40vh] overflow-y-auto mb-4">
-            {serials.map(s => (
-              <div key={s.id} className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs ${
-                s.status === 'CONFIRMED' ? 'bg-emerald-900/15 border border-emerald-800/20' : 'bg-zinc-800/50 border border-zinc-700/30'
-              }`}>
-                <span className="font-mono text-zinc-300">{s.barcode}</span>
-                <span className="flex items-center gap-1">
-                  {s.quantity > 1 && <span className="text-zinc-500">×{s.quantity}</span>}
-                  {s.status === 'CONFIRMED'
-                    ? <Check className="w-4 h-4 text-emerald-400" />
-                    : <span className="w-4 h-4 rounded-full border border-zinc-600" />
-                  }
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-3">
-            {allConfirmed ? (
-              <button onClick={onClose}
-                className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors flex items-center justify-center gap-1.5">
-                <Check className="w-4 h-4" /> All Verified — Done
-              </button>
-            ) : (
-              <button onClick={() => { setScanError(''); setScanning(true); }}
-                className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors flex items-center justify-center gap-1.5">
-                <ScanLine className="w-4 h-4" /> Scan Barcode
-              </button>
-            )}
-          </div>
         </div>
 
         {/* Full-screen barcode scanner overlay */}
         {scanning && (
           <BarcodeScanner
-            title="Scan Serial Barcode"
-            hint="Point camera at barcode label"
+            title={`Scan Serial — ${confirmed}/${total} verified`}
+            hint={pending.length > 0 ? `Next: ${pending[0].barcode}` : undefined}
             onScan={handleScan}
             onClose={() => setScanning(false)}
             continuous
