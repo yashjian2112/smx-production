@@ -17,6 +17,7 @@ const STAGE_LABELS: Record<string, string> = {
   QC_AND_SOFTWARE: 'QC & Software',
   REWORK: 'Rework',
   FINAL_ASSEMBLY: 'Final Assembly',
+  HARNESS_CRIMPING: 'Harness Crimping',
 };
 
 export default function BOMAdmin() {
