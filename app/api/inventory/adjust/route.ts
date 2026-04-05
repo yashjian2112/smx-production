@@ -58,14 +58,19 @@ export async function POST(req: Request) {
     const year = String(now.getFullYear() % 100).padStart(2, '0');
     serialPrefix = `${barcodePrefix}${month}${year}`;
 
-    const last = await prisma.materialSerial.findFirst({
-      where: { barcode: { startsWith: serialPrefix } },
-      orderBy: { barcode: 'desc' },
+    // Sequence resets yearly — find max seq across ALL months in current year
+    const allSerials = await prisma.materialSerial.findMany({
+      where: { materialId: data.rawMaterialId },
       select: { barcode: true },
     });
-    if (last?.barcode) {
-      const seqPart = last.barcode.slice(serialPrefix.length);
-      serialSeqStart = (parseInt(seqPart, 10) || 0) + 1;
+    const prefixLen = barcodePrefix.length;
+    for (const s of allSerials) {
+      const bYear = s.barcode.slice(prefixLen + 3, prefixLen + 5);
+      if (bYear === year) {
+        const seqPart = s.barcode.slice(prefixLen + 5);
+        const n = parseInt(seqPart, 10) || 0;
+        if (n >= serialSeqStart) serialSeqStart = n + 1;
+      }
     }
   }
 
@@ -112,17 +117,20 @@ export async function POST(req: Request) {
       // 4. For OPENING with pack info, generate MaterialSerial barcodes
       const serialIds: string[] = [];
       if (data.type === 'OPENING' && data.packCount && data.packCount > 0 && serialPrefix) {
-        // Re-check sequence inside transaction to prevent duplicates
-        const lastInTx = await tx.materialSerial.findFirst({
-          where: { barcode: { startsWith: serialPrefix } },
-          orderBy: { barcode: 'desc' },
+        // Re-check sequence inside transaction — yearly reset across all months
+        const allInTx = await tx.materialSerial.findMany({
+          where: { materialId: data.rawMaterialId },
           select: { barcode: true },
         });
         let seq = serialSeqStart;
-        if (lastInTx?.barcode) {
-          const seqPart = lastInTx.barcode.slice(serialPrefix.length);
-          const dbSeq = (parseInt(seqPart, 10) || 0) + 1;
-          if (dbSeq > seq) seq = dbSeq;
+        const pLen = serialPrefix.length - 5; // barcodePrefix length (minus MON+YY)
+        const yr = serialPrefix.slice(-2);
+        for (const s of allInTx) {
+          const bY = s.barcode.slice(pLen + 3, pLen + 5);
+          if (bY === yr) {
+            const dbSeq = (parseInt(s.barcode.slice(pLen + 5), 10) || 0) + 1;
+            if (dbSeq > seq) seq = dbSeq;
+          }
         }
 
         for (let i = 0; i < data.packCount; i++) {
