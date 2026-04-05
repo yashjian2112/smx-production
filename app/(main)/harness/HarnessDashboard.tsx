@@ -538,7 +538,31 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                   </div>
                 )}
 
-                {isExpanded && (
+                {/* Pending tab: group by variant instead of listing individual units */}
+                {isExpanded && isPendingTab && (
+                  <div className="border-t border-slate-700/50 divide-y divide-slate-700/30">
+                    {(() => {
+                      const variantMap: Record<string, typeof group> = {};
+                      for (const u of group) {
+                        const key = u.harnessModel || 'Harness';
+                        if (!variantMap[key]) variantMap[key] = [];
+                        variantMap[key].push(u);
+                      }
+                      return Object.entries(variantMap).map(([variant, units]) => (
+                        <div key={variant} className="px-4 py-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-sm font-semibold text-slate-200">{variant}</span>
+                            <StatusBadge status="PENDING" />
+                          </div>
+                          <span className="text-xs font-medium text-slate-400">{units.length} pcs</span>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                )}
+
+                {/* Other tabs: show individual units with actions */}
+                {isExpanded && !isPendingTab && (
                   <div className="border-t border-slate-700/50 divide-y divide-slate-700/30">
                     {group.map((unit, idx) => {
                       const isUnitOpen = expandedUnit === unit.id;
