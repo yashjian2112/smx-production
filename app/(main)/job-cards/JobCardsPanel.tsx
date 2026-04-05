@@ -64,6 +64,8 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
   const scannedCodesRef = useRef<Set<string>>(new Set());
   // Track qty per item in a ref so continuous scans see latest values
   const qtyByItemRef = useRef<Record<string, number>>({});
+  // Lock to prevent concurrent scan processing
+  const processingRef = useRef(false);
 
   useEffect(() => { scanRef.current?.focus(); }, []);
 
@@ -80,6 +82,9 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
     const code = val.trim().toUpperCase();
     if (!code) return;
 
+    // Lock: reject if another scan is still processing
+    if (processingRef.current) return;
+
     // Instant duplicate check via ref (not state — avoids stale closure in continuous mode)
     if (scannedCodesRef.current.has(code)) {
       setLastScan({ text: `"${code}" already scanned`, ok: false });
@@ -89,13 +94,14 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
 
     // Mark as scanned immediately so rapid re-scans are blocked
     scannedCodesRef.current.add(code);
+    processingRef.current = true;
 
     setScanning(true);
     try {
       const res = await fetch('/api/inventory/job-cards/scan-serial', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode: code, jobCardId: card.id }),
+        body: JSON.stringify({ barcode: code, jobCardId: card.id, alreadyScannedIds: scannedSerials.map(s => s.serialId) }),
       });
       const data = await res.json();
 
@@ -142,6 +148,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
       scannedCodesRef.current.delete(code);
       setLastScan({ text: 'Network error — try again', ok: false });
     }
+    processingRef.current = false;
     setScanning(false);
     setTimeout(() => setLastScan(null), 3000);
     scanRef.current?.focus();
@@ -259,6 +266,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
           title="Scan Material Barcode"
           hint={`${card.cardNumber} — ${card.items.length} material(s)`}
           continuous
+          exclude={scannedCodesRef}
           onScan={(code) => processScan(code)}
           onClose={() => { setShowCamera(false); setTimeout(() => scanRef.current?.focus(), 200); }}
         />

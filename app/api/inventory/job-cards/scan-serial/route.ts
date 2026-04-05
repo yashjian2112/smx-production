@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { barcode, jobCardId } = await req.json();
+  const { barcode, jobCardId, alreadyScannedIds } = await req.json();
   if (!barcode || !jobCardId) {
     return NextResponse.json({ error: 'barcode and jobCardId required' }, { status: 400 });
   }
@@ -25,6 +25,11 @@ export async function POST(req: NextRequest) {
 
   if (!serial) {
     return NextResponse.json({ error: 'Serial not found', barcode }, { status: 404 });
+  }
+
+  // Server-side dedup: reject if client already scanned this serial in this session
+  if (Array.isArray(alreadyScannedIds) && alreadyScannedIds.includes(serial.id)) {
+    return NextResponse.json({ error: `Already scanned (${serial.barcode})`, barcode }, { status: 409 });
   }
 
   if (serial.status === 'CONSUMED') {

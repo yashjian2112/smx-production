@@ -8,9 +8,11 @@ type Props = {
   onScan: (code: string) => void;
   onClose: () => void;
   continuous?: boolean;
+  /** Codes to silently skip (e.g. already-scanned barcodes). Checked before onScan fires. */
+  exclude?: React.RefObject<Set<string> | null>;
 };
 
-export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, continuous = false }: Props) {
+export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, continuous = false, exclude }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -32,6 +34,8 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, 
   const handleScanResult = useCallback(
     (code: string) => {
       const trimmed = code.trim().toUpperCase();
+      // Skip codes the caller already has (e.g. already-scanned serials)
+      if (exclude?.current?.has(trimmed)) return;
       if (continuous) {
         if (cooldownRef.current) return;
         cooldownRef.current = true;
@@ -48,7 +52,7 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, 
         onScan(trimmed);
       }
     },
-    [stopCamera, onScan, continuous]
+    [stopCamera, onScan, continuous, exclude]
   );
 
   useEffect(() => {
