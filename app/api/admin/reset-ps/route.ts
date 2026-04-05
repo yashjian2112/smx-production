@@ -19,7 +19,7 @@ export async function POST() {
   const unitIds = units.map(u => u.id);
 
   // Delete active work submissions for these units at PS stage
-  await prisma.workSubmission.deleteMany({
+  await prisma.stageWorkSubmission.deleteMany({
     where: { unitId: { in: unitIds }, stage: 'POWERSTAGE_MANUFACTURING' },
   });
 
@@ -30,7 +30,7 @@ export async function POST() {
 
   // Delete stage logs for PS that are IN_PROGRESS
   await prisma.stageLog.deleteMany({
-    where: { unitId: { in: unitIds }, stage: 'POWERSTAGE_MANUFACTURING', status: { in: ['IN_PROGRESS', 'COMPLETED'] } },
+    where: { unitId: { in: unitIds }, stage: 'POWERSTAGE_MANUFACTURING', statusTo: { in: ['IN_PROGRESS', 'COMPLETED'] } },
   });
 
   // Reset units back to PENDING
