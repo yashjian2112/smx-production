@@ -62,6 +62,7 @@ model User {
   orderNotes           OrderNote[]            @relation("OrderNoteAuthor")
   jobCardsCreated      JobCard[]              @relation("JCCreatedBy")
   jobCardsDispatched   JobCard[]              @relation("JCDispatchedBy")
+  jobCardsVerified     JobCard[]              @relation("JCVerifiedBy")
   // Procurement (new flow)
   requirementOrdersApproved RequirementOrder[] @relation("ROApprovedBy")
   rfqsCreated          RFQ[]                  @relation("RFQCreatedBy")
@@ -1439,6 +1440,7 @@ model AuditLog {
 enum JobCardStatus {
   PENDING       // job card created, waiting for IM to dispatch
   DISPATCHED    // IM has scanned and dispatched materials
+  VERIFIED      // PE has verified receipt of materials
   IN_PROGRESS   // PE is working
   COMPLETED
   CANCELLED
@@ -1462,6 +1464,9 @@ model JobCard {
   createdById   String        @map("created_by_id")
   dispatchedById String?      @map("dispatched_by_id")
   dispatchedAt  DateTime?     @map("dispatched_at")
+  verifiedById  String?       @map("verified_by_id")
+  verifiedAt    DateTime?     @map("verified_at")
+  verifyNote    String?       @map("verify_note")  // employee can flag missing items
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
@@ -1469,6 +1474,7 @@ model JobCard {
   unit             ControllerUnit?   @relation(fields: [unitId], references: [id])
   createdBy        User              @relation("JCCreatedBy", fields: [createdById], references: [id])
   dispatchedBy     User?             @relation("JCDispatchedBy", fields: [dispatchedById], references: [id])
+  verifiedBy       User?             @relation("JCVerifiedBy", fields: [verifiedById], references: [id])
   items            JobCardItem[]
   requirementOrders RequirementOrder[] @relation("JobCardRO")
   damageReports     DamageReport[]

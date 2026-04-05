@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { Check, Clock, Printer, ScanLine } from 'lucide-react';
+import { Check, Clock, Printer, ScanLine, ClipboardCheck, X, AlertTriangle } from 'lucide-react';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 
 type UnitSummary = { currentStatus: string; currentStage: string; isTrading?: boolean; productName?: string };
@@ -47,7 +47,8 @@ const STAGE_LABEL: Record<string, string> = {
 
 const JC_STATUS: Record<string, { label: ReactNode; color: string }> = {
   PENDING:     { label: <><Clock className="w-4 h-4 mr-1 inline" />Waiting for Materials</>, color: '#fbbf24' },
-  DISPATCHED:  { label: <><Check className="w-4 h-4 mr-1 inline" />Materials Dispatched</>,  color: '#4ade80' },
+  DISPATCHED:  { label: <><ClipboardCheck className="w-4 h-4 mr-1 inline" />Verify Materials</>,  color: '#f59e0b' },
+  VERIFIED:    { label: <><Check className="w-4 h-4 mr-1 inline" />Materials Verified</>,  color: '#4ade80' },
   IN_PROGRESS: { label: '⚙ In Progress',           color: '#38bdf8' },
   COMPLETED:   { label: '✅ Completed',             color: '#4ade80' },
 };
@@ -80,6 +81,7 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   }, [isEmployee, tab, loadPending]);
 
   const [acceptError, setAcceptError] = useState('');
+  const [verifyingJC, setVerifyingJC] = useState<string | null>(null);
 
   async function acceptOrder(orderId: string, stage: string) {
     setAcceptError('');
@@ -197,6 +199,13 @@ export function OrdersList({ orders, isManager, sessionRole }: {
                           {isLoading ? 'Accepting…' : 'Accept Order'}
                         </button>
                       ) : jc?.status === 'DISPATCHED' ? (
+                        <button
+                          onClick={() => setVerifyingJC(jc.id)}
+                          className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-all flex items-center gap-1.5"
+                          style={{ background: 'rgba(245,158,11,0.8)' }}>
+                          <ClipboardCheck className="w-4 h-4" /> Verify Job Card
+                        </button>
+                      ) : jc?.status === 'VERIFIED' ? (
                         <Link href={`/orders/${order.orderId}`}
                           className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white text-center block"
                           style={{ background: 'rgba(34,197,94,0.8)' }}>
@@ -236,6 +245,155 @@ export function OrdersList({ orders, isManager, sessionRole }: {
           )}
         </div>
       )}
+
+      {/* Verify Job Card Modal */}
+      {verifyingJC && (
+        <VerifyJobCardModal
+          jobCardId={verifyingJC}
+          onClose={() => setVerifyingJC(null)}
+          onVerified={() => { setVerifyingJC(null); loadPending(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Verify Job Card Modal ────────────────────────────────── */
+interface JCItem {
+  id: string;
+  rawMaterial: { id: string; name: string; code: string; unit: string };
+  quantityReq: number;
+  quantityIssued: number;
+  isCritical: boolean;
+}
+
+function VerifyJobCardModal({ jobCardId, onClose, onVerified }: {
+  jobCardId: string;
+  onClose: () => void;
+  onVerified: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [cardNumber, setCardNumber] = useState('');
+  const [items, setItems] = useState<JCItem[]>([]);
+  const [note, setNote] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetch(`/api/inventory/job-cards/${jobCardId}/verify`)
+      .then(r => r.json())
+      .then(data => {
+        setCardNumber(data.cardNumber ?? '');
+        setItems(data.items ?? []);
+        setLoading(false);
+      })
+      .catch(() => { setError('Failed to load'); setLoading(false); });
+  }, [jobCardId]);
+
+  async function handleVerify() {
+    setVerifying(true);
+    setError('');
+    const res = await fetch(`/api/inventory/job-cards/${jobCardId}/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: note.trim() || undefined }),
+    });
+    setVerifying(false);
+    if (res.ok) {
+      onVerified();
+    } else {
+      const data = await res.json().catch(() => ({ error: 'Verification failed' }));
+      setError(data.error || 'Verification failed');
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.75)' }}>
+      <div className="w-full max-w-md rounded-2xl p-5 space-y-4"
+        style={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-white font-semibold text-sm">Verify Job Card</h3>
+            {cardNumber && <p className="text-zinc-500 text-xs font-mono mt-0.5">{cardNumber}</p>}
+          </div>
+          <button onClick={onClose}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-white"
+            style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <p className="text-zinc-400 text-xs">
+          Check that you received all materials listed below. If anything is missing, add a note.
+        </p>
+
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <>
+            {/* Material list */}
+            <div className="space-y-1.5 max-h-60 overflow-y-auto">
+              {items.map(item => (
+                <div key={item.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-zinc-200 text-[11px]">{item.rawMaterial.name}</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {item.isCritical && (
+                        <span className="text-[9px] font-bold px-1 py-0.5 rounded"
+                          style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171' }}>CRITICAL</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0 ml-3">
+                    <span className="text-zinc-300 font-mono text-[11px]">{item.quantityIssued}</span>
+                    <span className="text-zinc-600 text-[10px]"> / {item.quantityReq} {item.rawMaterial.unit}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Note field */}
+            <div>
+              <label className="text-zinc-500 text-[10px] uppercase tracking-wider font-medium mb-1 block">
+                <AlertTriangle className="w-3 h-3 inline mr-1" />Issue / Missing items (optional)
+              </label>
+              <textarea
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                placeholder="e.g. 2 boards missing, received only 4 of 6"
+                rows={2}
+                className="w-full px-3 py-2 rounded-lg text-white bg-transparent outline-none text-xs resize-none"
+                style={{ border: '1px solid rgba(255,255,255,0.15)' }}
+              />
+            </div>
+
+            {error && (
+              <div className="text-sm text-rose-400 px-3 py-2 rounded-lg"
+                style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
+                {error}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button onClick={onClose}
+                className="flex-1 py-2.5 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:text-white transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleVerify} disabled={verifying}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                style={{ background: verifying ? 'rgba(34,197,94,0.3)' : 'rgba(34,197,94,0.8)' }}>
+                <Check className="w-4 h-4" /> {verifying ? 'Verifying…' : 'Confirm Receipt'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
