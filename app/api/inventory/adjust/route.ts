@@ -49,11 +49,14 @@ export async function POST(req: Request) {
   if (data.type === 'OPENING' && data.packCount && data.packCount > 0) {
     const mat = await prisma.rawMaterial.findUnique({
       where: { id: data.rawMaterialId },
-      include: { category: { select: { code: true } } },
+      select: { barcode: true },
     });
-    const categoryCode = mat?.category?.code ?? 'MAT';
-    const year = String(new Date().getFullYear() % 100).padStart(2, '0');
-    serialPrefix = `${categoryCode.trim().toUpperCase()}GN${year}`;
+    const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const now = new Date();
+    const barcodePrefix = mat?.barcode?.replace(/\d+$/, '').trim().toUpperCase() ?? 'MAT';
+    const month = MONTHS[now.getMonth()];
+    const year = String(now.getFullYear() % 100).padStart(2, '0');
+    serialPrefix = `${barcodePrefix}${month}${year}`;
 
     const last = await prisma.materialSerial.findFirst({
       where: { barcode: { startsWith: serialPrefix } },
@@ -123,7 +126,7 @@ export async function POST(req: Request) {
         }
 
         for (let i = 0; i < data.packCount; i++) {
-          const barcode = `${serialPrefix}${String(seq + i).padStart(5, '0')}`;
+          const barcode = `${serialPrefix}${String(seq + i).padStart(4, '0')}`;
           // Check for existing barcode before creating
           const existing = await tx.materialSerial.findUnique({ where: { barcode } });
           if (existing) {

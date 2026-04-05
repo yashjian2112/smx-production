@@ -38,6 +38,7 @@ export function Barcode128({
         background,
         lineColor,
         margin: 4,
+        font: 'Poppins',
         fontOptions: 'bold',
       });
     } catch {
