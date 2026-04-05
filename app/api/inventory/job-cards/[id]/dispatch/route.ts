@@ -45,13 +45,9 @@ export async function POST(
     return NextResponse.json({ error: 'Job card is not in PENDING status' }, { status: 400 });
   }
 
-  // Build a map — cap at quantityReq (no excess allowed)
+  // Build a map — record actual qty issued (reels can exceed order qty, excess returned after use)
   const issuedMap = new Map(
-    items.map(i => {
-      const cardItem = jobCard.items.find(ci => ci.id === i.jobCardItemId);
-      const capped = cardItem ? Math.min(Math.max(0, i.issuedQty), cardItem.quantityReq) : Math.max(0, i.issuedQty);
-      return [i.jobCardItemId, capped];
-    })
+    items.map(i => [i.jobCardItemId, Math.max(0, i.issuedQty)])
   );
 
   // Validate stock availability (prevent negative stock)
