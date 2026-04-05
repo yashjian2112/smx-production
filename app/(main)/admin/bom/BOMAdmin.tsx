@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, ClipboardList } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, ClipboardList, Cable, Cpu } from 'lucide-react';
 
 interface Product { id: string; name: string; code: string; }
 interface BOMItem {
@@ -10,11 +10,17 @@ interface BOMItem {
   rawMaterial: { id: string; name: string; code: string; unit: string; };
 }
 
-const STAGE_LABELS: Record<string, string> = {
+type BOMTab = 'controller' | 'harness';
+
+const CONTROLLER_STAGES: Record<string, string> = {
   POWERSTAGE_MANUFACTURING: 'PS Mfg',
   BRAINBOARD_MANUFACTURING: 'BB Mfg',
   CONTROLLER_ASSEMBLY: 'Controller Assembly',
   FINAL_ASSEMBLY: 'Final Assembly',
+};
+
+const ALL_STAGE_LABELS: Record<string, string> = {
+  ...CONTROLLER_STAGES,
   HARNESS_CRIMPING: 'Harness Crimping',
 };
 
@@ -25,6 +31,7 @@ export default function BOMAdmin() {
   const [loading, setLoading]         = useState(false);
   const [search, setSearch]           = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
+  const [bomTab, setBomTab]           = useState<BOMTab>('controller');
 
   // add-row state
   const [adding, setAdding]           = useState(false);
@@ -55,6 +62,13 @@ export default function BOMAdmin() {
     fetch('/api/inventory/materials').then(r => r.json()).then(d => setAllMats(Array.isArray(d) ? d : (Array.isArray(d.materials) ? d.materials : [])));
   }, [adding]);
 
+  // Reset sub-state when switching tabs
+  useEffect(() => {
+    setSearch('');
+    setStageFilter('all');
+    setAdding(false);
+  }, [bomTab]);
+
   async function toggleCritical(item: BOMItem) {
     const updated = { ...item, isCritical: !item.isCritical };
     setItems(prev => prev.map(i => i.id === item.id ? updated : i));
@@ -73,12 +87,13 @@ export default function BOMAdmin() {
   async function addItem() {
     if (!newMat || !newQty || !selectedPid) { setAddErr('Select material and enter qty'); return; }
     setSaving(true); setAddErr('');
+    const stage = bomTab === 'harness' ? 'HARNESS_CRIMPING' : (newStage || null);
     const res = await fetch('/api/inventory/bom', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         productId: selectedPid, rawMaterialId: newMat,
         quantityRequired: parseFloat(newQty), unit: newUnit,
-        stage: newStage || null, voltage: newVoltage || null,
+        stage, voltage: newVoltage || null,
         isCritical: newCritical,
       }),
     });
@@ -90,9 +105,20 @@ export default function BOMAdmin() {
     setNewStage(''); setNewVoltage(''); setNewCritical(false); setMatSearch('');
   }
 
-  const filtered = items.filter(i => {
+  // Split items by tab
+  const isHarnessItem = (i: BOMItem) => i.stage === 'HARNESS_CRIMPING';
+  const tabItems = useMemo(() =>
+    items.filter(i => bomTab === 'harness' ? isHarnessItem(i) : !isHarnessItem(i)),
+    [items, bomTab]
+  );
+
+  const controllerCount = items.filter(i => !isHarnessItem(i)).length;
+  const harnessCount = items.filter(i => isHarnessItem(i)).length;
+
+  const filtered = tabItems.filter(i => {
     const matchSearch = i.rawMaterial.name.toLowerCase().includes(search.toLowerCase()) ||
       i.rawMaterial.code.toLowerCase().includes(search.toLowerCase());
+    if (bomTab === 'harness') return matchSearch;
     const matchStage =
       stageFilter === 'all' ? true :
       stageFilter === 'no_stage' ? i.stage === null :
@@ -100,7 +126,7 @@ export default function BOMAdmin() {
     return matchSearch && matchStage;
   });
 
-  const criticalCount = items.filter(i => i.isCritical).length;
+  const criticalCount = tabItems.filter(i => i.isCritical).length;
   const filteredMats = allMats.filter(m =>
     m.name.toLowerCase().includes(matSearch.toLowerCase()) || m.code.toLowerCase().includes(matSearch.toLowerCase())
   ).slice(0, 30);
@@ -110,7 +136,7 @@ export default function BOMAdmin() {
       {/* Product selector */}
       <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
         <label className="block text-xs text-zinc-400 mb-2 font-medium">Select Product</label>
-        <select value={selectedPid} onChange={e => setSelectedPid(e.target.value)}
+        <select value={selectedPid} onChange={e => { setSelectedPid(e.target.value); setBomTab('controller'); }}
           className="w-full rounded-xl px-3 py-2 text-sm text-white"
           style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
           <option value="">— Choose a product to view its BOM —</option>
@@ -120,24 +146,56 @@ export default function BOMAdmin() {
 
       {selectedPid && (
         <>
+          {/* Controller / Harness tabs */}
+          <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <button
+              onClick={() => setBomTab('controller')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-medium rounded-lg transition-all ${
+                bomTab === 'controller' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              style={bomTab === 'controller' ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}
+            >
+              <Cpu className="w-4 h-4" />
+              Controller
+              {controllerCount > 0 && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(14,165,233,0.2)' }}>{controllerCount}</span>
+              )}
+            </button>
+            <button
+              onClick={() => setBomTab('harness')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-medium rounded-lg transition-all ${
+                bomTab === 'harness' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              style={bomTab === 'harness' ? { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.25)' } : {}}
+            >
+              <Cable className="w-4 h-4" />
+              Harness
+              {harnessCount > 0 && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(14,165,233,0.2)' }}>{harnessCount}</span>
+              )}
+            </button>
+          </div>
+
           {/* Stats + filters */}
           <div className="flex flex-wrap gap-3 items-center">
             <div className="rounded-xl px-3 py-2 text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <span className="text-zinc-400">Total </span><span className="text-white font-semibold">{items.length}</span>
+              <span className="text-zinc-400">Total </span><span className="text-white font-semibold">{tabItems.length}</span>
             </div>
             <div className="rounded-xl px-3 py-2 text-xs" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-              <span className="text-red-400">⚠ Critical </span><span className="text-white font-semibold">{criticalCount}</span>
+              <span className="text-red-400">Critical </span><span className="text-white font-semibold">{criticalCount}</span>
             </div>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search component…"
               className="flex-1 min-w-[160px] rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600"
               style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }} />
-            <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
-              className="rounded-xl px-3 py-2 text-xs text-white"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <option value="all">All Stages</option>
-              <option value="no_stage">Common (All Stages)</option>
-              {Object.entries(STAGE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+            {bomTab === 'controller' && (
+              <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
+                className="rounded-xl px-3 py-2 text-xs text-white"
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <option value="all">All Stages</option>
+                <option value="no_stage">Common (All Stages)</option>
+                {Object.entries(CONTROLLER_STAGES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            )}
             <button onClick={() => setAdding(true)}
               className="rounded-xl px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-colors">
               + Add Component
@@ -147,7 +205,9 @@ export default function BOMAdmin() {
           {/* Add component form */}
           {adding && (
             <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.2)' }}>
-              <p className="text-xs font-semibold text-sky-400">Add BOM Component</p>
+              <p className="text-xs font-semibold text-sky-400">
+                Add {bomTab === 'harness' ? 'Harness' : 'Controller'} Component
+              </p>
               <input value={matSearch} onChange={e => setMatSearch(e.target.value)} placeholder="Search material by name or code…"
                 className="w-full rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600"
                 style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }} />
@@ -162,7 +222,7 @@ export default function BOMAdmin() {
                   {filteredMats.length === 0 && <p className="px-3 py-2 text-zinc-600 text-xs">No materials found</p>}
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-2">
+              <div className={`grid gap-2 ${bomTab === 'harness' ? 'grid-cols-2' : 'grid-cols-2'}`}>
                 <div>
                   <label className="text-xs text-zinc-500 mb-1 block">Qty Required</label>
                   <input type="number" value={newQty} onChange={e => setNewQty(e.target.value)} placeholder="e.g. 4"
@@ -176,15 +236,17 @@ export default function BOMAdmin() {
                     className="w-full rounded-xl px-3 py-2 text-sm text-white"
                     style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }} />
                 </div>
-                <div>
-                  <label className="text-xs text-zinc-500 mb-1 block">Stage (optional)</label>
-                  <select value={newStage} onChange={e => setNewStage(e.target.value)}
-                    className="w-full rounded-xl px-3 py-2 text-xs text-white"
-                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <option value="">All Stages (common)</option>
-                    {Object.entries(STAGE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
-                </div>
+                {bomTab === 'controller' && (
+                  <div>
+                    <label className="text-xs text-zinc-500 mb-1 block">Stage (optional)</label>
+                    <select value={newStage} onChange={e => setNewStage(e.target.value)}
+                      className="w-full rounded-xl px-3 py-2 text-xs text-white"
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <option value="">All Stages (common)</option>
+                      {Object.entries(CONTROLLER_STAGES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="text-xs text-zinc-500 mb-1 block">Voltage (optional)</label>
                   <input value={newVoltage} onChange={e => setNewVoltage(e.target.value)} placeholder="e.g. 48V"
@@ -217,7 +279,7 @@ export default function BOMAdmin() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-zinc-600">
               <div className="flex justify-center mb-3"><ClipboardList className="w-5 h-5" /></div>
-              <p className="text-sm">{items.length === 0 ? 'No BOM items for this product' : 'No items match your filter'}</p>
+              <p className="text-sm">{tabItems.length === 0 ? `No ${bomTab} BOM items for this product` : 'No items match your filter'}</p>
             </div>
           ) : (
             <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -227,7 +289,9 @@ export default function BOMAdmin() {
                     <th className="text-left px-4 py-3 text-zinc-400 font-medium">Component</th>
                     <th className="text-left px-3 py-3 text-zinc-400 font-medium">Code</th>
                     <th className="text-center px-3 py-3 text-zinc-400 font-medium">Qty</th>
-                    <th className="text-left px-3 py-3 text-zinc-400 font-medium">Stage</th>
+                    {bomTab === 'controller' && (
+                      <th className="text-left px-3 py-3 text-zinc-400 font-medium">Stage</th>
+                    )}
                     <th className="text-left px-3 py-3 text-zinc-400 font-medium">Voltage</th>
                     <th className="text-center px-3 py-3 text-zinc-400 font-medium">Critical</th>
                     <th className="px-3 py-3" />
@@ -243,11 +307,13 @@ export default function BOMAdmin() {
                         <span className="text-white font-semibold">{item.quantityRequired}</span>
                         <span className="text-zinc-500 ml-1">{item.unit}</span>
                       </td>
-                      <td className="px-3 py-3">
-                        {item.stage
-                          ? <span className="px-2 py-0.5 rounded text-xs" style={{ background: 'rgba(14,165,233,0.15)', color: '#38bdf8' }}>{STAGE_LABELS[item.stage] ?? item.stage}</span>
-                          : <span className="text-zinc-600 text-xs">Common</span>}
-                      </td>
+                      {bomTab === 'controller' && (
+                        <td className="px-3 py-3">
+                          {item.stage
+                            ? <span className="px-2 py-0.5 rounded text-xs" style={{ background: 'rgba(14,165,233,0.15)', color: '#38bdf8' }}>{ALL_STAGE_LABELS[item.stage] ?? item.stage}</span>
+                            : <span className="text-zinc-600 text-xs">Common</span>}
+                        </td>
+                      )}
                       <td className="px-3 py-3 text-zinc-400">{item.voltage || <span className="text-zinc-600">All</span>}</td>
                       <td className="px-3 py-3 text-center">
                         <button onClick={() => toggleCritical(item)}
@@ -263,7 +329,7 @@ export default function BOMAdmin() {
                 </tbody>
               </table>
               <div className="px-4 py-2 text-xs text-zinc-600" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                Showing {filtered.length} of {items.length} components
+                Showing {filtered.length} of {tabItems.length} components
               </div>
             </div>
           )}
