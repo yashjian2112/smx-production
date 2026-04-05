@@ -39,7 +39,7 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, 
         setLastScanned(trimmed);
         setFlash(true);
         setTimeout(() => setFlash(false), 600);
-        setTimeout(() => { cooldownRef.current = false; }, 1500);
+        setTimeout(() => { cooldownRef.current = false; }, 500);
         onScan(trimmed);
       } else {
         if (didScan.current) return;
