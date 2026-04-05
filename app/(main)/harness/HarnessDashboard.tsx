@@ -427,7 +427,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                     <Package className="w-4 h-4 text-slate-400 shrink-0" />
                     <span className="font-semibold text-sm text-slate-200">{orderNum}</span>
                     <span className="text-slate-500 text-xs">{group[0].product.code}</span>
-                    <span className="text-slate-600 text-[10px]">Qty {group[0].order.quantity}</span>
+                    <span className="text-slate-600 text-[10px]">Qty {totalUnits}</span>
                     {totalUnits > 0 && (
                       <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
                         completedUnits === totalUnits
@@ -489,6 +489,17 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                             <ClipboardList className="w-3.5 h-3.5" />
                             {creatingJC === orderId ? '...' : 'Create Job Card'}
                           </button>
+                        )}
+                        {/* Job card exists → Print */}
+                        {jcInfo.jc && (
+                          <a
+                            href={`/print/job-card/${jcInfo.jc.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-700/50 text-slate-300 border border-slate-600/30 hover:bg-slate-700 transition-colors"
+                          >
+                            <Printer className="w-3.5 h-3.5" /> Print Job Card
+                          </a>
                         )}
                         {/* DISPATCHED → Verify All */}
                         {jcInfo.jc?.status === 'DISPATCHED' && (
