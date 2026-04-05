@@ -494,12 +494,6 @@ export function PrintProforma({ proforma, settings }: { proforma: Proforma; sett
             ) : (
               <>
                 <div className="t-total"><span>TOTAL</span><span>{fmt(total, currency)}</span></div>
-                {currency === 'USD' && proforma.exchangeRate && (
-                  <div className="t-row" style={{ fontSize: 8, color: '#888', marginTop: 3 }}>
-                    <span>≈ INR equivalent @ ₹{proforma.exchangeRate}/$</span>
-                    <span>₹{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                  </div>
-                )}
               </>
             )}
             <div style={{ marginTop: 4, fontSize: 7.5, color: '#888', display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #c8d8f0', paddingTop: 3 }}>

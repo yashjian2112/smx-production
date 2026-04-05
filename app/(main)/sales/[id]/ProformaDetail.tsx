@@ -583,12 +583,6 @@ export function ProformaDetail({ proforma, role, userId }: { proforma: Proforma;
               <span>{fmtAmt(fullSubtotal, 'USD')}</span>
             </div>
           )}
-          {isExport && proforma.exchangeRate && (
-            <div className="flex justify-between text-xs text-zinc-600">
-              <span>≈ INR @ ₹{proforma.exchangeRate}/$</span>
-              <span>₹{(total * proforma.exchangeRate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-            </div>
-          )}
           {proforma.declaredAmount != null && (
             <div className="flex justify-between text-xs mt-2 pt-2 border-t border-zinc-800">
               <span className="text-amber-400 font-medium">Declared by Sales</span>

@@ -518,12 +518,6 @@ export function PrintInvoice({ invoice, settings }: { invoice: Invoice; settings
             ) : (
               <>
                 <div className="t-total"><span>TOTAL</span><span>{fmt(total, currency)}</span></div>
-                {currency === 'USD' && invoice.exchangeRate && (
-                  <div className="t-row" style={{ fontSize: 7.5, color: '#888', marginTop: 2 }}>
-                    <span>≈ INR @ \u20b9{invoice.exchangeRate}/$</span>
-                    <span>\u20b9{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                  </div>
-                )}
               </>
             )}
             <div className="t-qty">
