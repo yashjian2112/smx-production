@@ -169,23 +169,30 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
         </div>
       </div>
 
-      {/* Scan input */}
+      {/* Scan input — hidden text field captures barcode gun input */}
       <div className="px-4 py-4 border-b border-zinc-800/50" style={{ background: 'rgba(14,165,233,0.03)' }}>
-        <div className="flex items-center gap-3 px-4 py-3 rounded-2xl" style={{ background: 'rgba(14,165,233,0.08)', border: '2px solid rgba(14,165,233,0.25)' }}>
-          <ScanLine className="w-6 h-6 text-sky-400 shrink-0" />
-          <input
-            ref={scanRef}
-            type="text"
-            value={scanInput}
-            onChange={e => setScanInput(e.target.value)}
-            onKeyDown={handleScan}
-            placeholder="Scan serial barcode..."
-            autoFocus
-            disabled={scanning}
-            className="flex-1 bg-transparent text-lg text-white placeholder-zinc-600 outline-none font-mono"
-          />
+        <input
+          ref={scanRef}
+          type="text"
+          value={scanInput}
+          onChange={e => setScanInput(e.target.value)}
+          onKeyDown={handleScan}
+          autoFocus
+          disabled={scanning}
+          style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+        />
+        <button
+          type="button"
+          onClick={() => scanRef.current?.focus()}
+          className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-2xl transition-colors"
+          style={{ background: 'rgba(14,165,233,0.08)', border: '2px solid rgba(14,165,233,0.25)' }}
+        >
+          <ScanLine className="w-6 h-6 text-sky-400" />
+          <span className="text-sky-400 font-medium text-sm">
+            {scanning ? 'Processing...' : 'Ready to scan — use barcode gun'}
+          </span>
           {scanning && <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin shrink-0" />}
-        </div>
+        </button>
         {lastScan && (
           <div className={`mt-2 px-4 py-2 rounded-xl text-sm font-medium ${lastScan.ok ? 'text-emerald-400 bg-emerald-900/20' : 'text-red-400 bg-red-900/20'}`}>
             {lastScan.ok ? <Check className="w-4 h-4 inline mr-1.5" /> : <X className="w-4 h-4 inline mr-1.5" />}
