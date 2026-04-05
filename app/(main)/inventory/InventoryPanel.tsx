@@ -1168,7 +1168,6 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose, 
 
   async function handleScan(barcode: string) {
     setScanError('');
-    setScanning(false);
     try {
       const res = await fetch('/api/procurement/material-serials/scan', {
         method: 'POST',
