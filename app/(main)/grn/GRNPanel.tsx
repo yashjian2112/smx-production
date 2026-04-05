@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Package, Check, X, ChevronDown, ChevronUp, ScanLine, Printer, CheckCircle } from 'lucide-react';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 
@@ -750,6 +750,13 @@ function SerialScanStep({
     {}
   );
 
+  const scannedCodesRef = useRef<Set<string>>(new Set(
+    serials.filter(s => s.status === 'CONFIRMED').map(s => s.barcode)
+  ));
+  useEffect(() => {
+    scannedCodesRef.current = new Set(serials.filter(s => s.status === 'CONFIRMED').map(s => s.barcode));
+  }, [serials]);
+
   async function handleScan(barcode: string) {
     setScanError('');
     const res = await fetch('/api/procurement/material-serials/scan', {
@@ -762,160 +769,117 @@ function SerialScanStep({
       setScanError(data.error || 'Scan failed');
       return;
     }
-    // Update local state
+    if (data.alreadyConfirmed) { setScanError('Already scanned'); return; }
     setSerials(prev => prev.map(s => s.id === data.id ? { ...s, status: 'CONFIRMED' } : s));
     setLastScanned(data.barcode);
-    setScanning(false);
   }
 
+  const pendingSerials = serials.filter(s => s.status !== 'CONFIRMED');
+  const confirmedSerials = serials.filter(s => s.status === 'CONFIRMED');
+
   return (
-    <>
-      <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b border-zinc-800 shrink-0">
-          <h2 className="text-white font-semibold text-xl mb-3">Scan &amp; Verify Barcodes</h2>
-          {/* Step indicator */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5">
-              <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center">
-                <Check className="w-3.5 h-3.5 text-white" />
-              </div>
-              <span className="text-xs text-zinc-400">Confirm Qty</span>
-            </div>
-            <div className="flex-1 h-px bg-emerald-800" />
-            <div className="flex items-center gap-1.5">
-              <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center">
-                <Check className="w-3.5 h-3.5 text-white" />
-              </div>
-              <span className="text-xs text-zinc-400">Print Labels</span>
-            </div>
-            <div className="flex-1 h-px bg-emerald-800" />
-            <div className="flex items-center gap-1.5">
-              <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-bold">3</div>
-              <span className="text-xs text-white font-medium">Scan &amp; Verify</span>
-            </div>
-          </div>
-          <p className="text-zinc-500 text-xs mt-3">GRN: <span className="text-zinc-300 font-mono">{grnNumber}</span></p>
-        </div>
-
-        {/* Body — scrollable */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          <div className="max-w-2xl mx-auto">
-            {loading ? (
-              <p className="text-zinc-400 text-sm py-6 text-center">Loading barcodes...</p>
-            ) : (
-              <>
-                {/* Progress bar */}
-                <div className="mb-4 p-3 rounded-xl border border-zinc-800" style={{ background: 'rgba(255,255,255,0.02)' }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Scan Progress</span>
-                    <Badge color={allConfirmed ? 'green' : 'yellow'}>{confirmed}/{total} confirmed</Badge>
-                  </div>
-                  <div className="w-full bg-zinc-800 rounded-full h-2">
-                    <div className="bg-emerald-500 h-2 rounded-full transition-all"
-                      style={{ width: total > 0 ? `${(confirmed / total) * 100}%` : '0%' }} />
-                  </div>
-                  {lastScanned && (
-                    <p className="text-emerald-400 text-xs mt-2 flex items-center gap-1">
-                      <Check className="w-3 h-3" />
-                      Last scanned: <span className="font-mono">{lastScanned}</span>
-                    </p>
-                  )}
-                </div>
-
-                {/* Scan button */}
-                {!allConfirmed && (
-                  <button
-                    onClick={() => { setScanError(''); setScanning(true); }}
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium transition-colors mb-4">
-                    <ScanLine className="w-4 h-4" />
-                    Scan Next Barcode
-                  </button>
-                )}
-
-                {scanError && (
-                  <div className="mb-3 p-3 rounded-xl bg-red-900/30 border border-red-800">
-                    <p className="text-red-400 text-sm">{scanError}</p>
-                    <button onClick={() => setScanError('')} className="text-red-500 text-xs mt-1 underline">Dismiss</button>
-                  </div>
-                )}
-
-                {/* Serials list grouped by material */}
-                <div className="space-y-3">
-                  {Object.values(byMaterial).map(group => (
-                    <div key={group.code}>
-                      <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider mb-1.5">
-                        {group.name} ({group.code})
-                      </div>
-                      <div className="space-y-1">
-                        {group.items.map(s => (
-                          <div key={s.id}
-                            className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs ${
-                              s.status === 'CONFIRMED'
-                                ? 'bg-emerald-900/20 border border-emerald-800/40'
-                                : 'bg-zinc-800/50 border border-zinc-700/50'
-                            }`}>
-                            <span className="font-mono text-zinc-300">{s.barcode}</span>
-                            <div className="flex items-center gap-2">
-                              {s.quantity > 1 && <span className="text-zinc-500">×{s.quantity}</span>}
-                              {s.status === 'CONFIRMED' ? (
-                                <span className="flex items-center gap-1 text-emerald-400">
-                                  <Check className="w-3 h-3" /> Confirmed
-                                </span>
-                              ) : (
-                                <span className="text-zinc-500">Pending</span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        {!loading && (
-          <div className="px-6 py-4 border-t border-zinc-800 shrink-0">
-            <div className="max-w-2xl mx-auto">
-              <div className="flex gap-2 mb-3">
-                <button onClick={onPrintAgain}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors">
-                  <Printer className="w-3.5 h-3.5" />
-                  Print Again
-                </button>
-              </div>
-              {allConfirmed ? (
-                <button onClick={onDone}
-                  className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2">
-                  <CheckCircle className="w-4 h-4" />
-                  All Verified — Done
-                </button>
-              ) : (
-                <p className="text-center text-amber-400 text-xs py-2">
-                  Scan all {total} barcodes to complete GRN &nbsp;·&nbsp; {confirmed}/{total} scanned
-                </p>
+    <div className="flex flex-col h-full">
+      {/* Camera — top ~38vh */}
+      {!loading && !allConfirmed && (
+        <div className="relative shrink-0" style={{ height: '38vh' }}>
+          <BarcodeScanner
+            inline
+            continuous
+            exclude={scannedCodesRef}
+            onScan={(code) => handleScan(code)}
+            onDuplicate={() => setScanError('Already scanned')}
+            onClose={onDone}
+          />
+          {/* Header overlay on camera */}
+          <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-3"
+            style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)' }}>
+            <div>
+              <h3 className="text-white font-semibold text-sm">Scan & Verify — {confirmed}/{total}</h3>
+              <p className="text-zinc-400 text-[11px]">GRN: {grnNumber}</p>
+              {pendingSerials.length > 0 && (
+                <p className="text-sky-400 text-[10px] mt-0.5">Next: {pendingSerials[0].barcode}</p>
               )}
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Serial barcode scanner overlay */}
-      {scanning && (
-        <div className="fixed inset-0 z-[60]">
-          <BarcodeScanner
-            title="Scan Serial Barcode"
-            hint="Scan the printed barcode label to confirm receipt"
-            onScan={handleScan}
-            onClose={() => { setScanning(false); setScanError(''); }}
-            continuous
-          />
         </div>
       )}
-    </>
+
+      {/* Progress bar */}
+      <div className="w-full h-1 bg-zinc-900 shrink-0">
+        <div className="h-full bg-emerald-500 transition-all duration-300"
+          style={{ width: total > 0 ? `${(confirmed / total) * 100}%` : '0%' }} />
+      </div>
+
+      {/* Error banner */}
+      {scanError && (
+        <div className="mx-4 mt-2 px-3 py-2 rounded-lg bg-red-900/20 border border-red-800/30 shrink-0">
+          <p className="text-red-400 text-xs">{scanError}</p>
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading && (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-zinc-400 text-sm">Loading barcodes...</p>
+        </div>
+      )}
+
+      {/* Serial list — scrollable */}
+      {!loading && (
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+          {Object.values(byMaterial).map(group => (
+            <div key={group.code}>
+              <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider mb-1.5">
+                {group.name} ({group.code})
+              </div>
+              <div className="space-y-1">
+                {group.items.filter(s => s.status !== 'CONFIRMED').map(s => (
+                  <div key={s.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <span className="font-mono text-zinc-300 text-[11px]">{s.barcode}</span>
+                    <span className="flex items-center gap-1.5">
+                      {s.quantity > 1 && <span className="text-zinc-600">x{s.quantity}</span>}
+                      <span className="text-[10px] text-amber-400 font-medium px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(251,191,36,0.1)' }}>PENDING</span>
+                    </span>
+                  </div>
+                ))}
+                {group.items.filter(s => s.status === 'CONFIRMED').map(s => (
+                  <div key={s.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs"
+                    style={{ background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.1)' }}>
+                    <span className="font-mono text-zinc-400 text-[11px]">{s.barcode}</span>
+                    <span className="flex items-center gap-1.5">
+                      {s.quantity > 1 && <span className="text-zinc-600">x{s.quantity}</span>}
+                      <Check className="w-4 h-4 text-emerald-400" />
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Bottom bar */}
+      {!loading && (
+        <div className="sticky bottom-0 px-4 py-3 shrink-0 flex gap-2"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgb(24,24,27)' }}>
+          <button onClick={onPrintAgain}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors shrink-0">
+            <Printer className="w-3.5 h-3.5" /> Reprint
+          </button>
+          {allConfirmed ? (
+            <button onClick={onDone}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-2">
+              <CheckCircle className="w-4 h-4" /> All Verified — Done
+            </button>
+          ) : (
+            <span className="flex-1 text-center text-amber-400 text-xs py-2.5">
+              {confirmed}/{total} scanned
+            </span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

@@ -1238,50 +1238,62 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose, 
     );
   }
 
-  // ── Step 2: Scan & Verify ──
+  // ── Step 2: Scan & Verify (vertical split — camera top, list bottom) ──
   if (step === 'scan') {
     const pending = serials.filter(s => s.status !== 'CONFIRMED');
+    const scannedCodesRef = useRef<Set<string>>(new Set(
+      serials.filter(s => s.status === 'CONFIRMED').map(s => s.barcode)
+    ));
+    // Keep ref in sync
+    useEffect(() => {
+      scannedCodesRef.current = new Set(serials.filter(s => s.status === 'CONFIRMED').map(s => s.barcode));
+    }, [serials]);
+
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <div>
-            <h3 className="text-white font-semibold text-sm">Scan & Verify</h3>
-            <p className="text-zinc-500 text-[11px]">{materialName}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs px-2.5 py-1 rounded-full font-semibold"
-              style={allConfirmed
-                ? { background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }
-                : { background: 'rgba(14,165,233,0.15)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.25)' }
-              }>
-              {confirmed}/{total}
-            </span>
+        {/* Camera — top ~38vh */}
+        <div className="relative shrink-0" style={{ height: '38vh' }}>
+          <BarcodeScanner
+            inline
+            continuous
+            exclude={scannedCodesRef}
+            onScan={(code) => handleScan(code)}
+            onDuplicate={() => setScanError('Already scanned')}
+            onClose={onClose}
+          />
+          {/* Header overlay on camera */}
+          <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-3"
+            style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)' }}>
+            <div>
+              <h3 className="text-white font-semibold text-sm">Scan & Verify — {confirmed}/{total}</h3>
+              <p className="text-zinc-400 text-[11px]">{materialName}</p>
+              {pending.length > 0 && (
+                <p className="text-sky-400 text-[10px] mt-0.5">Next: {pending[0].barcode}</p>
+              )}
+            </div>
             <button onClick={onClose}
               className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-white"
-              style={{ background: 'rgba(255,255,255,0.08)' }}>
+              style={{ background: 'rgba(255,255,255,0.15)' }}>
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* Progress bar */}
-        <div className="w-full h-1 bg-zinc-900">
+        <div className="w-full h-1 bg-zinc-900 shrink-0">
           <div className="h-full bg-emerald-500 transition-all duration-300"
             style={{ width: total > 0 ? `${(confirmed / total) * 100}%` : '0%' }} />
         </div>
 
         {/* Error banner */}
         {scanError && (
-          <div className="mx-4 mt-2 px-3 py-2 rounded-lg bg-red-900/20 border border-red-800/30">
+          <div className="mx-4 mt-2 px-3 py-2 rounded-lg bg-red-900/20 border border-red-800/30 shrink-0">
             <p className="text-red-400 text-xs">{scanError}</p>
           </div>
         )}
 
-        {/* Serial list — scrollable */}
+        {/* Serial list — scrollable bottom */}
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
-          {/* Pending first, then confirmed */}
           {pending.map(s => (
             <div key={s.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs"
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -1305,30 +1317,14 @@ function PrintConfirmScanModal({ materialId, materialName, labelCount, onClose, 
           ))}
         </div>
 
-        {/* Bottom action bar */}
-        <div className="sticky bottom-0 px-4 py-3 shrink-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgb(24,24,27)' }}>
-          {allConfirmed ? (
+        {/* Bottom bar — Done button when all confirmed */}
+        {allConfirmed && (
+          <div className="sticky bottom-0 px-4 py-3 shrink-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgb(24,24,27)' }}>
             <button onClick={onClose}
               className="w-full py-3 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-2">
               <Check className="w-4 h-4" /> All Verified — Done
             </button>
-          ) : (
-            <button onClick={() => { setScanError(''); setScanning(true); }}
-              className="w-full py-3 rounded-xl text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white transition-colors flex items-center justify-center gap-2">
-              <ScanLine className="w-4 h-4" /> {scanning ? 'Scanning…' : 'Scan Barcode'}
-            </button>
-          )}
-        </div>
-
-        {/* Full-screen barcode scanner overlay */}
-        {scanning && (
-          <BarcodeScanner
-            title={`Scan Serial — ${confirmed}/${total} verified`}
-            hint={pending.length > 0 ? `Next: ${pending[0].barcode}` : undefined}
-            onScan={handleScan}
-            onClose={() => setScanning(false)}
-            continuous
-          />
+          </div>
         )}
       </div>
     );
