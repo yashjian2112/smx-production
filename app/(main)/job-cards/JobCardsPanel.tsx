@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Check, ClipboardList, ScanLine, ArrowLeft } from 'lucide-react';
+import { X, Check, ClipboardList, ScanLine, ArrowLeft, Camera } from 'lucide-react';
+import { BarcodeScanner } from '@/components/BarcodeScanner';
 
 interface RawMaterial {
   id: string; name: string; code: string; unit: string; barcode?: string | null;
@@ -57,6 +58,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
   const [scanning, setScanning]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]         = useState('');
+  const [showCamera, setShowCamera] = useState(false);
 
   useEffect(() => { scanRef.current?.focus(); }, []);
 
@@ -68,17 +70,14 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
   const totalQtyScanned = scannedSerials.reduce((s, ser) => s + ser.packQty, 0);
   const allScanned      = card.items.every(i => qtyByItem(i.id) >= i.quantityReq);
 
-  async function handleScan(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== 'Enter') return;
-    const val = scanInput.trim().toUpperCase();
-    setScanInput('');
-    if (!val) return;
+  // Shared scan processing — used by both camera and barcode gun
+  async function processScan(val: string) {
+    const code = val.trim().toUpperCase();
+    if (!code) return;
 
-    // Reject if already scanned in this session
-    if (scannedSerials.some(s => s.barcode === val)) {
-      setLastScan({ text: `"${val}" already scanned`, ok: false });
+    if (scannedSerials.some(s => s.barcode === code)) {
+      setLastScan({ text: `"${code}" already scanned`, ok: false });
       setTimeout(() => setLastScan(null), 3000);
-      scanRef.current?.focus();
       return;
     }
 
@@ -87,7 +86,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
       const res = await fetch('/api/inventory/job-cards/scan-serial', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode: val, jobCardId: card.id }),
+        body: JSON.stringify({ barcode: code, jobCardId: card.id }),
       });
       const data = await res.json();
 
@@ -116,6 +115,14 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
     setScanning(false);
     setTimeout(() => setLastScan(null), 3000);
     scanRef.current?.focus();
+  }
+
+  // Barcode gun handler — fires on Enter key
+  function handleGunScan(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return;
+    const val = scanInput;
+    setScanInput('');
+    processScan(val);
   }
 
   function undoLastScanForItem(itemId: string) {
@@ -169,29 +176,41 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
         </div>
       </div>
 
-      {/* Scan input — off-screen field captures barcode gun input */}
-      <div className="px-4 py-4 border-b border-zinc-800/50" style={{ background: 'rgba(14,165,233,0.03)' }}
-        onClick={() => scanRef.current?.focus()}>
-        <input
-          ref={scanRef}
-          type="text"
-          value={scanInput}
-          onChange={e => setScanInput(e.target.value)}
-          onKeyDown={handleScan}
-          onBlur={() => setTimeout(() => scanRef.current?.focus(), 100)}
-          autoFocus
+      {/* Hidden input for barcode gun — no manual typing (inputMode none) */}
+      <input
+        ref={scanRef}
+        type="text"
+        inputMode="none"
+        value={scanInput}
+        onChange={e => setScanInput(e.target.value)}
+        onKeyDown={handleGunScan}
+        onBlur={() => { if (!showCamera) setTimeout(() => scanRef.current?.focus(), 100); }}
+        autoFocus
+        disabled={scanning}
+        style={{ position: 'fixed', left: '-9999px', opacity: 0 }}
+      />
+
+      {/* Scan area — tap opens camera, barcode gun works in background */}
+      <div className="px-4 py-4 border-b border-zinc-800/50" style={{ background: 'rgba(14,165,233,0.03)' }}>
+        <button
+          onClick={() => setShowCamera(true)}
           disabled={scanning}
-          style={{ position: 'fixed', left: '-9999px', opacity: 0 }}
-        />
-        <div className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-2xl"
+          className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-2xl transition-all active:scale-[0.98]"
           style={{ background: 'rgba(14,165,233,0.08)', border: '2px solid rgba(14,165,233,0.25)' }}
         >
-          <ScanLine className="w-6 h-6 text-sky-400" />
-          <span className="text-sky-400 font-medium text-sm">
-            {scanning ? 'Processing...' : 'Ready to scan'}
-          </span>
-          {scanning && <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin shrink-0" />}
-        </div>
+          {scanning ? (
+            <>
+              <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin shrink-0" />
+              <span className="text-sky-400 font-medium text-sm">Processing...</span>
+            </>
+          ) : (
+            <>
+              <Camera className="w-5 h-5 text-sky-400" />
+              <span className="text-sky-400 font-medium text-sm">Tap to scan</span>
+              <span className="text-zinc-600 text-xs ml-1">or use barcode gun</span>
+            </>
+          )}
+        </button>
         {lastScan && (
           <div className={`mt-2 px-4 py-2 rounded-xl text-sm font-medium ${lastScan.ok ? 'text-emerald-400 bg-emerald-900/20' : 'text-red-400 bg-red-900/20'}`}>
             {lastScan.ok ? <Check className="w-4 h-4 inline mr-1.5" /> : <X className="w-4 h-4 inline mr-1.5" />}
@@ -199,6 +218,17 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
           </div>
         )}
       </div>
+
+      {/* Camera scanner modal */}
+      {showCamera && (
+        <BarcodeScanner
+          title="Scan Material Barcode"
+          hint={`${card.cardNumber} — ${card.items.length} material(s)`}
+          continuous
+          onScan={(code) => processScan(code)}
+          onClose={() => { setShowCamera(false); setTimeout(() => scanRef.current?.focus(), 200); }}
+        />
+      )}
 
       {/* Items list */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
