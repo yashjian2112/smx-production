@@ -412,8 +412,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
             const orderId = group[0].orderId;
             const { total: totalUnits, completed: completedUnits } = getOrderCompletion(orderId);
 
-            // Job card for this order (pending + in_progress tabs)
-            const jcInfo = (isPendingTab || isInProgressTab) ? getJobCardStatus(orderId) : { jc: null, label: '', color: '', canCrimp: true };
+            // Job card for this order (in_progress tab only)
+            const jcInfo = isInProgressTab ? getJobCardStatus(orderId) : { jc: null, label: '', color: '', canCrimp: true };
             const hasAcceptedUnits = isInProgressTab && group.some(u => u.status === 'ACCEPTED');
 
             return (
@@ -444,7 +444,7 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                     </span>
                     {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
                   </button>
-                  {isPendingTab && jcInfo.canCrimp && (
+                  {isPendingTab && (
                     <ActionBtn
                       label={acceptingOrder === orderId ? '...' : 'Accept Order'}
                       color="sky"
@@ -465,8 +465,8 @@ export default function HarnessDashboard({ role, userId }: { role: string; userI
                   )}
                 </div>
 
-                {/* Job card status bar (pending + in_progress tabs) */}
-                {isExpanded && (isPendingTab || (isInProgressTab && hasAcceptedUnits)) && (
+                {/* Job card status bar (in_progress tab only — after order accepted) */}
+                {isExpanded && isInProgressTab && hasAcceptedUnits && (
                   <div className="px-4 py-2.5 border-t border-slate-700/50"
                     style={{ background: 'rgba(255,255,255,0.02)' }}>
                     <div className="flex items-center justify-between gap-3">
