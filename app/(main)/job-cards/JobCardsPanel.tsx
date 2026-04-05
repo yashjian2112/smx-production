@@ -60,6 +60,11 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
   const [error, setError]         = useState('');
   const [showCamera, setShowCamera] = useState(false);
 
+  // Instant duplicate tracking — ref updates synchronously, unlike state
+  const scannedCodesRef = useRef<Set<string>>(new Set());
+  // Track qty per item in a ref so continuous scans see latest values
+  const qtyByItemRef = useRef<Record<string, number>>({});
+
   useEffect(() => { scanRef.current?.focus(); }, []);
 
   // Sum of pack quantities per job card item (not count of serials)
@@ -75,11 +80,15 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
     const code = val.trim().toUpperCase();
     if (!code) return;
 
-    if (scannedSerials.some(s => s.barcode === code)) {
+    // Instant duplicate check via ref (not state — avoids stale closure in continuous mode)
+    if (scannedCodesRef.current.has(code)) {
       setLastScan({ text: `"${code}" already scanned`, ok: false });
       setTimeout(() => setLastScan(null), 3000);
       return;
     }
+
+    // Mark as scanned immediately so rapid re-scans are blocked
+    scannedCodesRef.current.add(code);
 
     setScanning(true);
     try {
@@ -91,25 +100,46 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
       const data = await res.json();
 
       if (!res.ok) {
+        // Remove from ref so user can retry
+        scannedCodesRef.current.delete(code);
         setLastScan({ text: data.error || 'Scan failed', ok: false });
       } else {
-        const currentQty = qtyByItem(data.jobCardItemId);
+        const currentQty = qtyByItemRef.current[data.jobCardItemId] ?? 0;
         if (currentQty >= data.quantityReq) {
+          scannedCodesRef.current.delete(code);
           setLastScan({ text: `${data.materialName} — all ${fmt(data.quantityReq)} already covered`, ok: false });
         } else {
           const packQty = data.packQty ?? 1;
           const newQty = currentQty + packQty;
-          setScannedSerials(prev => [...prev, {
-            serialId: data.serialId,
-            barcode: data.barcode,
-            packQty,
-            jobCardItemId: data.jobCardItemId,
-            materialName: data.materialName,
-          }]);
-          setLastScan({ text: `${data.materialName} +${packQty} (${fmt(newQty)}/${fmt(data.quantityReq)})`, ok: true });
+          // Update ref immediately for next scan
+          qtyByItemRef.current[data.jobCardItemId] = newQty;
+
+          setScannedSerials(prev => {
+            const next = [...prev, {
+              serialId: data.serialId,
+              barcode: data.barcode,
+              packQty,
+              jobCardItemId: data.jobCardItemId,
+              materialName: data.materialName,
+            }];
+            // Auto-close camera if all items are now fulfilled
+            const allDone = card.items.every(item => {
+              const qty = next.filter(s => s.jobCardItemId === item.id).reduce((sum, s) => sum + s.packQty, 0);
+              return qty >= item.quantityReq;
+            });
+            if (allDone) {
+              setShowCamera(false);
+              setLastScan({ text: 'All materials scanned!', ok: true });
+            }
+            return next;
+          });
+          if (!showCamera) {
+            setLastScan({ text: `${data.materialName} +${packQty} (${fmt(newQty)}/${fmt(data.quantityReq)})`, ok: true });
+          }
         }
       }
     } catch {
+      scannedCodesRef.current.delete(code);
       setLastScan({ text: 'Network error — try again', ok: false });
     }
     setScanning(false);
@@ -129,6 +159,10 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
     setScannedSerials(prev => {
       const idx = prev.findLastIndex(s => s.jobCardItemId === itemId);
       if (idx === -1) return prev;
+      const removed = prev[idx];
+      // Sync refs
+      scannedCodesRef.current.delete(removed.barcode);
+      qtyByItemRef.current[itemId] = Math.max(0, (qtyByItemRef.current[itemId] ?? 0) - removed.packQty);
       return [...prev.slice(0, idx), ...prev.slice(idx + 1)];
     });
   }
