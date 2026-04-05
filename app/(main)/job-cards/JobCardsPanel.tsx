@@ -60,6 +60,7 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
   const [error, setError]         = useState('');
   const [showCamera, setShowCamera] = useState(false);
   const [loadingScans, setLoadingScans] = useState(true);
+  const [boardMaterialIds, setBoardMaterialIds] = useState<Set<string>>(new Set());
 
   // Instant duplicate tracking — ref updates synchronously, unlike state
   const scannedCodesRef = useRef<Set<string>>(new Set());
@@ -87,6 +88,16 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
           }
         }
       } catch { /* ignore */ }
+
+      // Load BOM to identify board items for this job card's product+stage
+      try {
+        const bomRes = await fetch(`/api/inventory/bom/board-items?jobCardId=${card.id}`);
+        if (bomRes.ok) {
+          const boardIds: string[] = await bomRes.json();
+          if (boardIds.length > 0) setBoardMaterialIds(new Set(boardIds));
+        }
+      } catch { /* ignore */ }
+
       setLoadingScans(false);
       scanRef.current?.focus();
     }
@@ -258,6 +269,9 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className={`text-zinc-200 truncate ${compact ? 'text-xs' : 'text-sm'}`}>{item.rawMaterial.name}</span>
+              {boardMaterialIds.has(item.rawMaterialId) && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(168,85,247,0.12)', color: '#c084fc' }}>BOARD</span>
+              )}
               {item.isCritical && (
                 <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0" style={{ background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>CRITICAL</span>
               )}

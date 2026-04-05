@@ -34,13 +34,29 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { productId, rawMaterialId, voltage, stage, quantityRequired, unit, notes, variantName } = body;
+    const { productId, rawMaterialId, voltage, stage, quantityRequired, unit, notes, variantName, isBoard, isCritical } = body;
 
     if (!productId || !rawMaterialId || quantityRequired === undefined || !unit) {
       return NextResponse.json(
         { error: 'Missing required fields: productId, rawMaterialId, quantityRequired, unit' },
         { status: 400 }
       );
+    }
+
+    // Board validation: max 1 per product+stage, qty must be 1
+    if (isBoard) {
+      if (!stage) {
+        return NextResponse.json({ error: 'Board items must have a stage (PS or BB)' }, { status: 400 });
+      }
+      if (quantityRequired !== 1) {
+        return NextResponse.json({ error: 'Board items must have quantity = 1 (one board per unit)' }, { status: 400 });
+      }
+      const existingBoard = await prisma.bOMItem.findFirst({
+        where: { productId, stage: stage as StageType, isBoard: true },
+      });
+      if (existingBoard) {
+        return NextResponse.json({ error: 'Only one board item allowed per product + stage' }, { status: 409 });
+      }
     }
 
     const item = await prisma.bOMItem.create({
@@ -52,6 +68,8 @@ export async function POST(req: NextRequest) {
         variantName: variantName?.trim() || null,
         quantityRequired,
         unit,
+        isBoard: Boolean(isBoard),
+        isCritical: Boolean(isCritical),
         notes: notes || null,
       },
       include: { rawMaterial: { select: { id: true, name: true, code: true, unit: true } } },
@@ -73,12 +91,29 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const body = await req.json();
-  const { id, isCritical } = body;
+  const { id, isCritical, isBoard } = body;
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+
+  // If toggling isBoard on, validate uniqueness
+  if (isBoard !== undefined && isBoard) {
+    const existing = await prisma.bOMItem.findUnique({ where: { id } });
+    if (existing?.stage) {
+      const otherBoard = await prisma.bOMItem.findFirst({
+        where: { productId: existing.productId, stage: existing.stage, isBoard: true, id: { not: id } },
+      });
+      if (otherBoard) {
+        return NextResponse.json({ error: 'Only one board item allowed per product + stage' }, { status: 409 });
+      }
+    }
+  }
+
+  const data: Record<string, unknown> = {};
+  if (isCritical !== undefined) data.isCritical = Boolean(isCritical);
+  if (isBoard !== undefined) data.isBoard = Boolean(isBoard);
 
   const updated = await prisma.bOMItem.update({
     where: { id },
-    data: { isCritical: Boolean(isCritical) },
+    data,
     include: { rawMaterial: { select: { id: true, name: true, code: true, unit: true } } },
   });
   return NextResponse.json(updated);

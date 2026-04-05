@@ -604,7 +604,13 @@ function StageCard({
                     className={`flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg font-mono text-xs transition-colors hover:brightness-125 ${c.text}`}
                     style={{ background: c.bg, border: `1px solid ${c.border}` }}
                   >
-                    <span className="truncate">{u.barcodeForStage ?? u.serialNumber}</span>
+                    <span className="truncate">
+                      {u.barcodeForStage
+                        ? u.barcodeForStage
+                        : status === 'PENDING' && !u.barcodeForStage && u.serialNumber
+                          ? <span className="text-amber-400 italic text-[10px]">Awaiting board</span>
+                          : u.serialNumber}
+                    </span>
                     {u.hasRework && (
                       <span className="text-[8px] font-bold px-1 py-0.5 rounded uppercase tracking-widest shrink-0"
                         style={{ color: '#f87171', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.25)' }}>

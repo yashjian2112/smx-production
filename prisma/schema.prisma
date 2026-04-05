@@ -1119,6 +1119,7 @@ model BOMItem {
   quantityRequired Float      @map("quantity_required")
   unit             String
   isCritical       Boolean    @default(false) @map("is_critical") // must be in stock to dispatch
+  isBoard          Boolean    @default(false) @map("is_board")    // true = this IS the board (serial becomes unit barcode)
   notes            String?
 
   product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)

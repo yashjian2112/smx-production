@@ -117,39 +117,28 @@ export async function POST(req: NextRequest) {
         });
       }
     } else {
-      // ── MANUFACTURED ITEMS: units start at POWERSTAGE / PENDING (normal flow) ──
-      // Try to allocate PS and BB barcodes from MaterialSerial inventory
-      const availablePS = await prisma.materialSerial.findMany({
-        where: { stageType: 'PS', status: 'CONFIRMED' },
-        orderBy: { createdAt: 'asc' },
-        take: quantity,
+      // ── MANUFACTURED ITEMS: units start at POWERSTAGE / PENDING ──
+
+      // Check if BOM has board items for PS/BB — if so, barcodes assigned via job card dispatch
+      const hasPSBoard = await prisma.bOMItem.findFirst({
+        where: { productId: product.id, stage: StageType.POWERSTAGE_MANUFACTURING, isBoard: true },
       });
-      const availableBB = await prisma.materialSerial.findMany({
-        where: { stageType: 'BB', status: 'CONFIRMED' },
-        orderBy: { createdAt: 'asc' },
-        take: quantity,
+      const hasBBBoard = await prisma.bOMItem.findFirst({
+        where: { productId: product.id, stage: StageType.BRAINBOARD_MANUFACTURING, isBoard: true },
       });
-      const useInventoryPS = availablePS.length >= quantity;
-      const useInventoryBB = availableBB.length >= quantity;
 
       for (let i = 0; i < quantity; i++) {
         const serial = await generateNextSerial(product.code);
         const qcBarcode = await generateNextQCBarcode(product.code);
 
-        let powerstageBarcode: string;
-        let brainboardBarcode: string;
-
-        if (useInventoryPS) {
-          powerstageBarcode = availablePS[i].barcode;
-        } else {
-          powerstageBarcode = await generateNextPowerstageBarcode(product.code);
-        }
-
-        if (useInventoryBB) {
-          brainboardBarcode = availableBB[i].barcode;
-        } else {
-          brainboardBarcode = await generateNextBrainboardBarcode(product.code);
-        }
+        // If BOM has board item → null (assigned via job card dispatch)
+        // If no board BOM item → auto-generate (backward compatible)
+        const powerstageBarcode = hasPSBoard
+          ? null
+          : await generateNextPowerstageBarcode(product.code);
+        const brainboardBarcode = hasBBBoard
+          ? null
+          : await generateNextBrainboardBarcode(product.code);
 
         await prisma.controllerUnit.create({
           data: {
@@ -163,20 +152,6 @@ export async function POST(req: NextRequest) {
             qcBarcode,
             finalAssemblyBarcode: serial, // FA barcode = serial number
           },
-        });
-      }
-
-      // Mark allocated MaterialSerials
-      if (useInventoryPS) {
-        await prisma.materialSerial.updateMany({
-          where: { id: { in: availablePS.slice(0, quantity).map(s => s.id) } },
-          data: { status: 'ALLOCATED', allocatedToOrderId: order.id },
-        });
-      }
-      if (useInventoryBB) {
-        await prisma.materialSerial.updateMany({
-          where: { id: { in: availableBB.slice(0, quantity).map(s => s.id) } },
-          data: { status: 'ALLOCATED', allocatedToOrderId: order.id },
         });
       }
     }

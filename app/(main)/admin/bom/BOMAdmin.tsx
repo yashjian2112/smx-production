@@ -6,7 +6,7 @@ import { X, ClipboardList, Cable, Cpu } from 'lucide-react';
 interface Product { id: string; name: string; code: string; harnessVariants?: string[]; }
 interface BOMItem {
   id: string; productId: string; rawMaterialId: string; voltage: string | null;
-  stage: string | null; variantName: string | null; quantityRequired: number; unit: string; isCritical: boolean; notes: string | null;
+  stage: string | null; variantName: string | null; quantityRequired: number; unit: string; isCritical: boolean; isBoard: boolean; notes: string | null;
   rawMaterial: { id: string; name: string; code: string; unit: string; };
 }
 
@@ -44,6 +44,7 @@ export default function BOMAdmin() {
   const [newStage, setNewStage]       = useState('');
   const [newVoltage, setNewVoltage]   = useState('');
   const [newCritical, setNewCritical] = useState(false);
+  const [newBoard, setNewBoard]       = useState(false);
   const [saving, setSaving]           = useState(false);
   const [addErr, setAddErr]           = useState('');
 
@@ -85,6 +86,21 @@ export default function BOMAdmin() {
     });
   }
 
+  async function toggleBoard(item: BOMItem) {
+    const newVal = !item.isBoard;
+    const res = await fetch('/api/inventory/bom', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, isBoard: newVal }),
+    });
+    if (!res.ok) {
+      const e = await res.json();
+      alert(e.error || 'Failed to toggle board');
+      return;
+    }
+    const updated = await res.json();
+    setItems(prev => prev.map(i => i.id === item.id ? updated : i));
+  }
+
   async function deleteItem(id: string) {
     if (!confirm('Remove this BOM item?')) return;
     await fetch(`/api/inventory/bom?id=${id}`, { method: 'DELETE' });
@@ -102,7 +118,7 @@ export default function BOMAdmin() {
         productId: selectedPid, rawMaterialId: newMat,
         quantityRequired: parseFloat(newQty), unit: newUnit,
         stage, voltage: newVoltage || null,
-        isCritical: newCritical, variantName,
+        isCritical: newCritical, isBoard: newBoard, variantName,
       }),
     });
     setSaving(false);
@@ -110,7 +126,7 @@ export default function BOMAdmin() {
     const created = await res.json();
     setItems(prev => [...prev, created]);
     setAdding(false); setNewMat(''); setNewQty(''); setNewUnit('PCS');
-    setNewStage(''); setNewVoltage(''); setNewCritical(false); setMatSearch('');
+    setNewStage(''); setNewVoltage(''); setNewCritical(false); setNewBoard(false); setMatSearch('');
   }
 
   // Split items by tab — harness items also filtered by active variant
@@ -292,6 +308,19 @@ export default function BOMAdmin() {
                     style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }} />
                 </div>
               </div>
+              {/* Board toggle — only for PS or BB stages */}
+              {bomTab === 'controller' && (newStage === 'POWERSTAGE_MANUFACTURING' || newStage === 'BRAINBOARD_MANUFACTURING') && (
+                <label className="flex items-center gap-2 text-xs cursor-pointer px-3 py-2 rounded-lg"
+                  style={{ background: newBoard ? 'rgba(168,85,247,0.1)' : 'transparent', border: newBoard ? '1px solid rgba(168,85,247,0.25)' : '1px solid transparent' }}>
+                  <input type="checkbox" checked={newBoard} onChange={e => {
+                    setNewBoard(e.target.checked);
+                    if (e.target.checked) { setNewQty('1'); setNewCritical(true); }
+                  }} className="w-4 h-4 accent-purple-500" />
+                  <span className={newBoard ? 'text-purple-300' : 'text-zinc-300'}>
+                    This is the Board (serial becomes unit barcode)
+                  </span>
+                </label>
+              )}
               <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
                 <input type="checkbox" checked={newCritical} onChange={e => setNewCritical(e.target.checked)} className="w-4 h-4 accent-red-500" />
                 Mark as Critical (must be in stock before dispatch)
@@ -331,6 +360,9 @@ export default function BOMAdmin() {
                       <th className="text-left px-3 py-3 text-zinc-400 font-medium">Stage</th>
                     )}
                     <th className="text-left px-3 py-3 text-zinc-400 font-medium">Voltage</th>
+                    {bomTab === 'controller' && (
+                      <th className="text-center px-3 py-3 text-zinc-400 font-medium">Board</th>
+                    )}
                     <th className="text-center px-3 py-3 text-zinc-400 font-medium">Critical</th>
                     <th className="px-3 py-3" />
                   </tr>
@@ -353,6 +385,18 @@ export default function BOMAdmin() {
                         </td>
                       )}
                       <td className="px-3 py-3 text-zinc-400">{item.voltage || <span className="text-zinc-600">All</span>}</td>
+                      {bomTab === 'controller' && (
+                        <td className="px-3 py-3 text-center">
+                          {(item.stage === 'POWERSTAGE_MANUFACTURING' || item.stage === 'BRAINBOARD_MANUFACTURING') ? (
+                            <button onClick={() => toggleBoard(item)}
+                              className={`w-8 h-5 rounded-full transition-colors relative ${item.isBoard ? 'bg-purple-500' : 'bg-zinc-700'}`}>
+                              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${item.isBoard ? 'left-3.5' : 'left-0.5'}`} />
+                            </button>
+                          ) : (
+                            <span className="text-zinc-700">—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-3 py-3 text-center">
                         <button onClick={() => toggleCritical(item)}
                           className={`w-8 h-5 rounded-full transition-colors relative ${item.isCritical ? 'bg-red-500' : 'bg-zinc-700'}`}>

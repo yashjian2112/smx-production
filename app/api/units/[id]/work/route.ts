@@ -133,7 +133,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const unit = await prisma.controllerUnit.findUnique({
     where: { id },
-    select: { currentStage: true, currentStatus: true, qcBarcode: true, product: { select: { code: true } } },
+    select: { currentStage: true, currentStatus: true, qcBarcode: true, powerstageBarcode: true, brainboardBarcode: true, product: { select: { code: true } } },
   });
   if (!unit) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
 
@@ -158,6 +158,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     unit.currentStatus !== UnitStatus.REJECTED_BACK
   ) {
     return NextResponse.json({ error: 'Unit is not available for work' }, { status: 409 });
+  }
+
+  // Block work if board hasn't been assigned via job card dispatch
+  if (unit.currentStage === StageType.POWERSTAGE_MANUFACTURING && !unit.powerstageBarcode) {
+    return NextResponse.json({ error: 'Board not yet assigned — dispatch job card materials first' }, { status: 409 });
+  }
+  if (unit.currentStage === StageType.BRAINBOARD_MANUFACTURING && !unit.brainboardBarcode) {
+    return NextResponse.json({ error: 'Board not yet assigned — dispatch job card materials first' }, { status: 409 });
   }
 
   // REJECTED_BACK: reset to IN_PROGRESS so the test can restart

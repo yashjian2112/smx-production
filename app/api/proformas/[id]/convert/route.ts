@@ -130,27 +130,26 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }
       } else {
         // ── MANUFACTURED ITEMS: units start at POWERSTAGE / PENDING ──
-        const availablePS = await prisma.materialSerial.findMany({
-          where: { stageType: 'PS', status: 'CONFIRMED' },
-          orderBy: { createdAt: 'asc' },
-          take: qty,
+
+        // Check if BOM has board items for PS/BB — if so, barcodes assigned via job card dispatch
+        const hasPSBoard = await prisma.bOMItem.findFirst({
+          where: { productId: product.id, stage: StageType.POWERSTAGE_MANUFACTURING, isBoard: true },
         });
-        const availableBB = await prisma.materialSerial.findMany({
-          where: { stageType: 'BB', status: 'CONFIRMED' },
-          orderBy: { createdAt: 'asc' },
-          take: qty,
+        const hasBBBoard = await prisma.bOMItem.findFirst({
+          where: { productId: product.id, stage: StageType.BRAINBOARD_MANUFACTURING, isBoard: true },
         });
-        const useInventoryPS = availablePS.length >= qty;
-        const useInventoryBB = availableBB.length >= qty;
 
         for (let i = 0; i < qty; i++) {
           const serial    = await generateNextSerial(product.code);
           const qcBarcode = await generateNextQCBarcode(product.code);
-          const powerstageBarcode = useInventoryPS
-            ? availablePS[i].barcode
+
+          // If BOM has board item → null (assigned via job card dispatch)
+          // If no board BOM item → auto-generate (backward compatible)
+          const powerstageBarcode = hasPSBoard
+            ? null
             : await generateNextPowerstageBarcode(product.code);
-          const brainboardBarcode = useInventoryBB
-            ? availableBB[i].barcode
+          const brainboardBarcode = hasBBBoard
+            ? null
             : await generateNextBrainboardBarcode(product.code);
 
           await prisma.controllerUnit.create({
@@ -166,20 +165,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               finalAssemblyBarcode: serial, // FA barcode = serial number
               returnRequestId: linkedReturn?.id ?? undefined,
             },
-          });
-        }
-
-        // Mark allocated MaterialSerials
-        if (useInventoryPS) {
-          await prisma.materialSerial.updateMany({
-            where: { id: { in: availablePS.slice(0, qty).map(s => s.id) } },
-            data: { status: 'ALLOCATED', allocatedToOrderId: order.id },
-          });
-        }
-        if (useInventoryBB) {
-          await prisma.materialSerial.updateMany({
-            where: { id: { in: availableBB.slice(0, qty).map(s => s.id) } },
-            data: { status: 'ALLOCATED', allocatedToOrderId: order.id },
           });
         }
       }
