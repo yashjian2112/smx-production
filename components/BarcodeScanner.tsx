@@ -10,11 +10,13 @@ type Props = {
   continuous?: boolean;
   /** Codes to silently skip (e.g. already-scanned barcodes). Checked before onScan fires. */
   exclude?: React.RefObject<Set<string> | null>;
+  /** Called when an excluded/duplicate code is detected — use to show feedback */
+  onDuplicate?: (code: string) => void;
   /** Render as inline element instead of fixed fullscreen overlay */
   inline?: boolean;
 };
 
-export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, continuous = false, exclude, inline = false }: Props) {
+export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, continuous = false, exclude, onDuplicate, inline = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -33,11 +35,24 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, 
     streamRef.current = null;
   }, []);
 
+  // Track duplicate flash separately (amber instead of green)
+  const [dupFlash, setDupFlash] = useState(false);
+  const dupCooldownRef = useRef(false);
+
   const handleScanResult = useCallback(
     (code: string) => {
       const trimmed = code.trim().toUpperCase();
-      // Skip codes the caller already has (e.g. already-scanned serials)
-      if (exclude?.current?.has(trimmed)) return;
+      // Already-scanned code: show amber flash + notify parent instead of silent skip
+      if (exclude?.current?.has(trimmed)) {
+        if (dupCooldownRef.current) return;
+        dupCooldownRef.current = true;
+        setLastScanned(trimmed);
+        setDupFlash(true);
+        setTimeout(() => setDupFlash(false), 800);
+        setTimeout(() => { dupCooldownRef.current = false; }, 1500); // longer cooldown for dupes
+        onDuplicate?.(trimmed);
+        return;
+      }
       if (continuous) {
         if (cooldownRef.current) return;
         cooldownRef.current = true;
@@ -54,7 +69,7 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, 
         onScan(trimmed);
       }
     },
-    [stopCamera, onScan, continuous, exclude]
+    [stopCamera, onScan, continuous, exclude, onDuplicate]
   );
 
   useEffect(() => {
@@ -133,10 +148,10 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, 
             onPlaying={startScanLoop}
           />
 
-          {/* Green flash on successful scan */}
-          {flash && (
+          {/* Green flash on successful scan / Amber flash on duplicate */}
+          {(flash || dupFlash) && (
             <div className="absolute inset-0 pointer-events-none transition-opacity duration-300"
-              style={{ background: 'rgba(34,197,94,0.25)' }} />
+              style={{ background: dupFlash ? 'rgba(251,191,36,0.3)' : 'rgba(34,197,94,0.25)' }} />
           )}
 
           {/* Scan overlay */}
@@ -155,15 +170,17 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, 
                 'bottom-0 left-0 border-b-2 border-l-2 rounded-bl-xl',
                 'bottom-0 right-0 border-b-2 border-r-2 rounded-br-xl',
               ].map((cls, i) => (
-                <div key={i} className={`absolute w-6 h-6 ${flash ? 'border-green-400' : 'border-sky-400'} ${cls}`} />
+                <div key={i} className={`absolute w-6 h-6 ${dupFlash ? 'border-amber-400' : flash ? 'border-green-400' : 'border-sky-400'} ${cls}`} />
               ))}
               {/* Scan line animation */}
               <div
                 className="absolute left-2 right-2 h-0.5 rounded-full"
                 style={{
-                  background: flash
-                    ? 'linear-gradient(90deg,transparent,#4ade80,transparent)'
-                    : 'linear-gradient(90deg,transparent,#38bdf8,transparent)',
+                  background: dupFlash
+                    ? 'linear-gradient(90deg,transparent,#fbbf24,transparent)'
+                    : flash
+                      ? 'linear-gradient(90deg,transparent,#4ade80,transparent)'
+                      : 'linear-gradient(90deg,transparent,#38bdf8,transparent)',
                   animation: 'scanline 2s ease-in-out infinite',
                   top: '50%',
                 }}
@@ -176,13 +193,15 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose, 
             {cameraReady && barcodeApiSupported ? (
               <div
                 className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-medium"
-                style={flash
-                  ? { background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }
-                  : { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.2)', color: '#38bdf8' }
+                style={dupFlash
+                  ? { background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24' }
+                  : flash
+                    ? { background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }
+                    : { background: 'rgba(14,165,233,0.15)', border: '1px solid rgba(14,165,233,0.2)', color: '#38bdf8' }
                 }
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${flash ? 'bg-green-400' : 'bg-sky-400'} animate-pulse`} />
-                {flash ? 'Scanned!' : 'Scanning…'}
+                <span className={`w-1.5 h-1.5 rounded-full ${dupFlash ? 'bg-amber-400' : flash ? 'bg-green-400' : 'bg-sky-400'} animate-pulse`} />
+                {dupFlash ? 'Already scanned' : flash ? 'Scanned!' : 'Scanning…'}
               </div>
             ) : !cameraReady && !cameraError ? (
               <div className="text-zinc-500 text-xs">Starting camera…</div>

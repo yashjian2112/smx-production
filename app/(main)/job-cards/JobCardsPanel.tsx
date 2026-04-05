@@ -352,6 +352,10 @@ function JobCardScanPanel({ card, onClose, onDone }: { card: JobCard; onClose: (
               continuous
               exclude={scannedCodesRef}
               onScan={(code) => processScan(code)}
+              onDuplicate={(code) => {
+                setLastScan({ text: `"${code}" already scanned`, ok: false });
+                setTimeout(() => setLastScan(null), 2500);
+              }}
               onClose={() => { setShowCamera(false); setTimeout(() => scanRef.current?.focus(), 200); }}
             />
             {/* Scan feedback overlay at bottom of camera */}
