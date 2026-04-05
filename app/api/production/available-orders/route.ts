@@ -48,8 +48,9 @@ export async function GET() {
   for (const unit of pendingUnits) {
     const { order } = unit;
     if (!orderMap[order.id]) {
+      // Only look at controller manufacturing job cards, not harness
       const jobCard = await prisma.jobCard.findFirst({
-        where: { orderId: order.id },
+        where: { orderId: order.id, stage: { not: 'HARNESS_CRIMPING' } },
         orderBy: { createdAt: 'desc' },
         select: { stage: true, status: true }
       });
@@ -80,7 +81,7 @@ export async function GET() {
   const result = Object.values(orderMap)
     .map(order => {
       const accepted = myJobCardKeys.has(`${order.orderId}:${order.stage}`);
-      const jc = myJobCards.find(jc => jc.orderId === order.orderId) ?? null;
+      const jc = myJobCards.find(jc => jc.orderId === order.orderId && jc.stage !== 'HARNESS_CRIMPING') ?? null;
       return { ...order, alreadyAccepted: accepted, myJobCard: jc };
     })
     .filter(order => {
