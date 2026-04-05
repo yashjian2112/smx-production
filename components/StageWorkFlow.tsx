@@ -186,6 +186,11 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
   const verifyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const verifyInputRef = useRef<HTMLInputElement | null>(null);
   const verifyFrontInputRef = useRef<HTMLInputElement | null>(null);
+  const verifyCameraRef = useRef<HTMLVideoElement | null>(null);
+  const verifyStreamRef = useRef<MediaStream | null>(null);
+  const [verifyCameraOpen, setVerifyCameraOpen] = useState(false);
+  const [verifyBackFile, setVerifyBackFile] = useState<File | null>(null);
+  const [verifyFrontFile, setVerifyFrontFile] = useState<File | null>(null);
 
   // ── job card state ─────────────────────────────────────────────────────────
   type JCItem = { id: string; rawMaterial: { name: string; unit: string; barcode?: string | null }; quantityReq: number; quantityIssued: number; verifiedQty: number; isVerified: boolean };
@@ -272,6 +277,86 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
     }
   }, [needsVerification, productId, currentStage]);
 
+  // ── verify camera helpers ─────────────────────────────────────────────────
+  async function openVerifyCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      });
+      verifyStreamRef.current = stream;
+      setVerifyCameraOpen(true);
+    } catch {
+      setVerifyError('Camera access denied. Please allow camera access.');
+    }
+  }
+
+  function stopVerifyCamera() {
+    verifyStreamRef.current?.getTracks().forEach(t => t.stop());
+    verifyStreamRef.current = null;
+    setVerifyCameraOpen(false);
+  }
+
+  function captureVerifyPhoto(side: 'back' | 'front') {
+    const video = verifyCameraRef.current;
+    if (!video || video.videoWidth === 0 || video.readyState < 2) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d')?.drawImage(video, 0, 0);
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      const file = new File([blob], `verify-${side}.jpg`, { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+      stopVerifyCamera();
+      if (side === 'back') {
+        setVerifyBackPhoto(url);
+        setVerifyBackFile(file);
+        setStep('verify_front');
+      } else {
+        setVerifyFrontPhoto(url);
+        setVerifyFrontFile(file);
+        // Both captured — submit for verification
+        setVerifyChecking(true);
+        setVerifyError('');
+        try {
+          const backFile = verifyBackFile;
+          if (!backFile) { setVerifyError('Back photo missing'); setVerifyChecking(false); return; }
+          const form = new FormData();
+          form.append('backPhoto', backFile);
+          form.append('frontPhoto', file);
+          const res = await fetch(`/api/units/${unitId}/verify-board`, { method: 'POST', body: form });
+          const data = await res.json();
+          if (data.verified || data.warning) {
+            if (verifyTimerRef.current) { clearInterval(verifyTimerRef.current); verifyTimerRef.current = null; }
+            await startWork();
+          } else {
+            const reasonText = data.reasons?.join('. ') || 'Board verification failed';
+            setVerifyError(reasonText);
+            setVerifyBackPhoto(null);
+            setVerifyFrontPhoto(null);
+            setVerifyBackFile(null);
+            setVerifyFrontFile(null);
+            setVerifyTimer(VERIFY_TIMEOUT);
+            setStep('idle');
+          }
+        } catch {
+          setVerifyError('Verification network error. Try again.');
+          setStep('idle');
+        } finally {
+          setVerifyChecking(false);
+        }
+      }
+    }, 'image/jpeg', 0.92);
+  }
+
+  const verifyVideoRefCallback = useCallback((node: HTMLVideoElement | null) => {
+    verifyCameraRef.current = node;
+    if (node && verifyStreamRef.current) {
+      node.srcObject = verifyStreamRef.current;
+      node.play().catch(() => {});
+    }
+  }, []);
+
   // ── verification countdown timer ──────────────────────────────────────────
   useEffect(() => {
     if (step !== 'verify_back' && step !== 'verify_front') {
@@ -285,8 +370,13 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
           // Time's up — reset verification
           clearInterval(verifyTimerRef.current!);
           verifyTimerRef.current = null;
+          verifyStreamRef.current?.getTracks().forEach(t => t.stop());
+          verifyStreamRef.current = null;
+          setVerifyCameraOpen(false);
           setVerifyBackPhoto(null);
           setVerifyFrontPhoto(null);
+          setVerifyBackFile(null);
+          setVerifyFrontFile(null);
           setVerifyError('Time expired. Please start verification again.');
           setStep('idle');
           return VERIFY_TIMEOUT;
@@ -296,6 +386,23 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
     }, 1000);
     return () => { if (verifyTimerRef.current) { clearInterval(verifyTimerRef.current); verifyTimerRef.current = null; } };
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── auto-open camera when entering verify steps ───────────────────────────
+  useEffect(() => {
+    if (step === 'verify_back' || step === 'verify_front') {
+      if (!verifyCameraOpen && !verifyChecking) {
+        openVerifyCamera();
+      }
+    }
+    return () => {
+      // Clean up camera when leaving verify steps
+      if (step !== 'verify_back' && step !== 'verify_front') {
+        verifyStreamRef.current?.getTracks().forEach(t => t.stop());
+        verifyStreamRef.current = null;
+        setVerifyCameraOpen(false);
+      }
+    };
+  }, [step, verifyChecking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── auto-start work on mount ───────────────────────────────────────────────
   useEffect(() => {
@@ -873,52 +980,7 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
     const isBack = step === 'verify_back';
     const boardBarcode = currentStage === 'POWERSTAGE_MANUFACTURING' ? powerstageBarcode : brainboardBarcode;
     const timerColor = verifyTimer <= 10 ? '#ef4444' : verifyTimer <= 20 ? '#fbbf24' : '#4ade80';
-
-    const handleVerifyPhoto = async (e: React.ChangeEvent<HTMLInputElement>, side: 'back' | 'front') => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const url = URL.createObjectURL(file);
-      if (side === 'back') {
-        setVerifyBackPhoto(url);
-        setStep('verify_front');
-      } else {
-        setVerifyFrontPhoto(url);
-        // Both captured — submit for verification
-        setVerifyChecking(true);
-        setVerifyError('');
-        try {
-          // Get actual File objects from the input refs
-          const backFile = verifyInputRef.current?.files?.[0];
-          const frontFile = file;
-          if (!backFile) { setVerifyError('Back photo missing'); setVerifyChecking(false); return; }
-
-          const form = new FormData();
-          form.append('backPhoto', backFile);
-          form.append('frontPhoto', frontFile);
-          const res = await fetch(`/api/units/${unitId}/verify-board`, { method: 'POST', body: form });
-          const data = await res.json();
-
-          if (data.verified || data.warning) {
-            // Stop timer, proceed to start work
-            if (verifyTimerRef.current) { clearInterval(verifyTimerRef.current); verifyTimerRef.current = null; }
-            await startWork();
-          } else {
-            // Verification failed
-            const reasonText = data.reasons?.join('. ') || 'Board verification failed';
-            setVerifyError(reasonText);
-            setVerifyBackPhoto(null);
-            setVerifyFrontPhoto(null);
-            setVerifyTimer(VERIFY_TIMEOUT);
-            setStep('idle');
-          }
-        } catch {
-          setVerifyError('Verification network error. Try again.');
-          setStep('idle');
-        } finally {
-          setVerifyChecking(false);
-        }
-      }
-    }
+    const currentSide = isBack ? 'back' : 'front';
 
     return (
       <div className="space-y-4">
@@ -965,53 +1027,64 @@ export function StageWorkFlow({ unitId, unitSerial, stageBarcode, currentStage, 
             <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="text-sm text-zinc-400">Verifying board...</p>
           </div>
-        ) : isBack ? (
-          /* Step 1: Back photo */
-          <div className="space-y-3">
-            <div className="text-center space-y-1">
-              <p className="text-white font-semibold text-sm">Flip board — show barcode side</p>
-              <p className="text-zinc-500 text-xs">Take a clear photo of the back with the barcode label visible</p>
-            </div>
-            {verifyBackPhoto ? (
-              <div className="relative rounded-xl overflow-hidden" style={{ maxHeight: 200 }}>
-                <img src={verifyBackPhoto} alt="Back" className="w-full object-cover rounded-xl" />
-              </div>
-            ) : (
-              <label className="w-full py-6 rounded-2xl flex flex-col items-center gap-3 text-sky-400 font-semibold text-sm cursor-pointer"
-                style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                  <circle cx="12" cy="13" r="4" />
-                </svg>
-                Capture Back Side
-                <input ref={verifyInputRef} type="file" accept="image/*" capture="environment" className="hidden"
-                  onChange={(e) => handleVerifyPhoto(e, 'back')} />
-              </label>
-            )}
-          </div>
         ) : (
-          /* Step 2: Front photo */
           <div className="space-y-3">
             <div className="text-center space-y-1">
-              <p className="text-white font-semibold text-sm">Flip board — show component side</p>
-              <p className="text-zinc-500 text-xs">Take a clear photo of the front (component side)</p>
+              <p className="text-white font-semibold text-sm">
+                {isBack ? 'Flip board — show barcode side' : 'Flip board — show component side'}
+              </p>
+              <p className="text-zinc-500 text-xs">
+                {isBack ? 'Point camera at the back with barcode label visible' : 'Point camera at the front (component side)'}
+              </p>
             </div>
-            {referenceImageUrl && (
+
+            {/* Reference image for front side */}
+            {!isBack && referenceImageUrl && (
               <div className="rounded-xl overflow-hidden p-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 text-center">Reference — your board should look like this</p>
                 <img src={referenceImageUrl} alt="Reference" className="w-full rounded-lg object-cover" style={{ maxHeight: 120 }} />
               </div>
             )}
-            <label className="w-full py-6 rounded-2xl flex flex-col items-center gap-3 text-sky-400 font-semibold text-sm cursor-pointer"
-              style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                <circle cx="12" cy="13" r="4" />
-              </svg>
-              Capture Front Side
-              <input ref={verifyFrontInputRef} type="file" accept="image/*" capture="environment" className="hidden"
-                onChange={(e) => handleVerifyPhoto(e, 'front')} />
-            </label>
+
+            {/* Live camera viewfinder */}
+            {verifyCameraOpen ? (
+              <div className="space-y-3">
+                <div className="relative rounded-xl overflow-hidden bg-black" style={{ aspectRatio: '4/3' }}>
+                  <video
+                    ref={verifyVideoRefCallback}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                  />
+                  {/* Capture overlay */}
+                  <div className="absolute inset-x-0 bottom-0 p-3 flex justify-center"
+                    style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.6))' }}>
+                    <button
+                      type="button"
+                      onClick={() => captureVerifyPhoto(currentSide)}
+                      className="w-16 h-16 rounded-full flex items-center justify-center"
+                      style={{ background: 'rgba(255,255,255,0.2)', border: '3px solid white' }}
+                    >
+                      <div className="w-12 h-12 rounded-full bg-white" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={openVerifyCamera}
+                className="w-full py-6 rounded-2xl flex flex-col items-center gap-3 text-sky-400 font-semibold text-sm"
+                style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)' }}
+              >
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+                Open Camera — {isBack ? 'Back Side' : 'Front Side'}
+              </button>
+            )}
           </div>
         )}
       </div>
