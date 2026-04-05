@@ -13,7 +13,6 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
-  const [manualInput, setManualInput] = useState('');
   const [cameraError, setCameraError] = useState('');
   const [cameraReady, setCameraReady] = useState(false);
   const [barcodeApiSupported, setBarcodeApiSupported] = useState(false);
@@ -49,7 +48,7 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
           videoRef.current.srcObject = stream;
         }
       } catch {
-        setCameraError('Camera access denied. Use the text input below to enter barcode manually.');
+        setCameraError('Camera access denied. Please allow camera access to scan barcodes.');
       }
     }
 
@@ -83,12 +82,6 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
 
     rafRef.current = requestAnimationFrame(loop);
   }, [handleScanResult]);
-
-  function handleManualSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const val = manualInput.trim();
-    if (val) handleScanResult(val);
-  }
 
   function handleClose() {
     stopCamera();
@@ -183,7 +176,7 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
                 <div className="text-zinc-500 text-xs">Starting camera…</div>
               ) : !barcodeApiSupported ? (
                 <div className="text-amber-400 text-xs text-center px-6">
-                  Auto-scan not supported on this browser — use the text field below
+                  Auto-scan not supported on this browser
                 </div>
               ) : null}
             </div>
@@ -191,32 +184,6 @@ export function BarcodeScanner({ title = 'Scan Barcode', hint, onScan, onClose }
         )}
       </div>
 
-      {/* Manual input — always shown as fallback */}
-      <div className="p-4 pb-safe" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
-        <form onSubmit={handleManualSubmit} className="flex gap-2">
-          <input
-            value={manualInput}
-            onChange={(e) => setManualInput(e.target.value)}
-            placeholder="Type barcode manually…"
-            className="flex-1 px-4 py-3 rounded-xl font-mono text-sm text-white placeholder-zinc-600 focus:outline-none"
-            style={{
-              background: 'rgba(255,255,255,0.07)',
-              border: '1px solid rgba(255,255,255,0.12)',
-            }}
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          <button
-            type="submit"
-            disabled={!manualInput.trim()}
-            className="px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-40 transition-opacity"
-            style={{ background: 'rgba(14,165,233,0.2)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}
-          >
-            Go
-          </button>
-        </form>
-      </div>
 
       {/* Scan line keyframe */}
       <style>{`
