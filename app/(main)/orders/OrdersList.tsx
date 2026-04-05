@@ -105,10 +105,10 @@ export function OrdersList({ orders, isManager, sessionRole }: {
   const processing = orders.filter((o) => {
     if (o.status !== 'ACTIVE') return false;
     if (allUnitsDone(o)) return false;
-    // Trading orders always show in Processing (with Accept gate on the card)
-    if (o.product.productType === 'TRADING' || o.units.some(u => u.isTrading)) return true;
-    // For employees: show in Processing if they accepted the order (have job card)
+    // For employees: only show in Processing after they accepted (have job card) or units started
     if (isEmployee) return o.hasMyJobCard || o.units.some(u => u.currentStatus !== 'PENDING');
+    // For managers: trading orders and all active orders show in Processing
+    if (o.product.productType === 'TRADING' || o.units.some(u => u.isTrading)) return true;
     return true;
   });
   const completed = orders.filter((o) => o.status !== 'ACTIVE' || allUnitsDone(o));
